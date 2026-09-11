@@ -32,7 +32,7 @@
 
     <PermissionNotice
       v-else-if="!leaveCan.approve"
-      action="approve leave for"
+      what="approve leave"
     />
 
     <div v-else class="mx-auto max-w-3xl">

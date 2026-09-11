@@ -62,7 +62,7 @@
   </PageHeader>
 
   <div class="px-5 py-4">
-    <PermissionNotice v-if="permissionsLoaded && !can.read" action="see" />
+    <PermissionNotice v-if="permissionsLoaded && !can.read" what="see employees" />
 
     <div v-else-if="employee.loading && !employee.doc" class="mx-auto max-w-2xl space-y-4">
       <Skeleton v-for="n in 5" :key="n" class="h-16 w-full rounded-4" />

@@ -16,7 +16,7 @@
   </PageHeader>
 
   <div class="px-5 py-4">
-    <PermissionNotice v-if="permissionsLoaded && !can.read" action="see" />
+    <PermissionNotice v-if="permissionsLoaded && !can.read" what="see employees" />
 
     <template v-else>
       <div class="flex flex-wrap items-center gap-2">

@@ -36,15 +36,25 @@ def get_session_user() -> dict:
 
 
 def check_app_permission() -> bool:
-	"""Gate the app's tile on the desk apps screen.
+	"""Gate this app's presence on the desk — either of its two sections.
 
-	Not whitelisted: `frappe.get_attr` calls it directly from the apps-screen
-	builder, so exposing it over HTTP would only widen the surface.
+	Deliberately the union rather than an Employee check. Frappe gates *every*
+	`Desktop Icon` belonging to an app with the first `add_to_apps_screen`
+	entry's `has_permission` (see `desktop_icon.check_app_permission`), so a
+	narrower check here would hide the Leave icon from someone who can only do
+	leave. Each section still gates itself: the tiles on `/apps` use their own
+	entry's check, and the pages refuse what the user may not see.
+
+	Not whitelisted: `frappe.get_attr` calls it directly from the icon and
+	apps-screen builders, so exposing it over HTTP would only widen the surface.
 	"""
 	if frappe.session.user == "Administrator":
 		return True
 
-	return bool(frappe.has_permission(EMPLOYEE, "read"))
+	return bool(
+		frappe.has_permission(EMPLOYEE, "read")
+		or frappe.has_permission(LEAVE_APPLICATION, "read")
+	)
 
 
 # --- Leave -----------------------------------------------------------------
@@ -58,6 +68,18 @@ DECISIONS = ("Approved", "Rejected")
 # enough: it grants submit on *every* leave application, which would let one
 # team's supervisor decide another team's requests.
 LEAVE_ADMIN_ROLES = {"HR Manager", "HR User"}
+
+def check_leave_app_permission() -> bool:
+	"""Gate the Leave tile, which is a separate app on the apps screen.
+
+	Deliberately not the same check as the Employees tile: someone who may
+	request their own leave has no business seeing an employee directory, and
+	the point of two tiles is that each stands on its own.
+	"""
+	if frappe.session.user == "Administrator":
+		return True
+
+	return bool(frappe.has_permission(LEAVE_APPLICATION, "read"))
 
 
 @frappe.whitelist()

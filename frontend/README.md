@@ -1,7 +1,9 @@
 # TBS App frontend
 
-The employee tool SPA — Vue 3 + [frappe-ui](https://ui.frappe.io) v1 (espresso),
-served at `/tbsapp`.
+Vue 3 + [frappe-ui](https://ui.frappe.io) v1 (espresso), served at `/tbsapp`.
+
+One bundle, presented as **two apps** with their own desk icons and their own
+sidebars — see [Two apps, one bundle](#two-apps-one-bundle).
 
 ## Develop
 
@@ -29,13 +31,58 @@ every `/tbsapp/*` path at.
 | Path                          | What it is                                                        |
 | ----------------------------- | ----------------------------------------------------------------- |
 | `src/App.vue`                 | `DesktopShell` — sidebar plus the routed page                      |
-| `src/components/AppSidebar.vue` | Left navigation, account menu, theme toggle                     |
+| `src/data/apps.ts`            | **The app registry.** Which apps exist and who may open them       |
+| `src/components/AppSidebar.vue` | Per-app navigation, app switcher, theme toggle                  |
 | `src/data/employeeFields.ts`  | **The field schema.** Both forms render from it — add fields here  |
 | `src/data/employees.ts`       | `useList` / `useDoc` / `useNewDoc` wrappers for Employee          |
 | `src/data/leave.ts`           | Leave lists, balances, and the approve/deny action                 |
 | `src/data/session.ts`         | Session user and the Employee permission flags the UI gates on     |
 | `src/components/LinkControl.vue` | Link-field picker backed by Frappe's own link search           |
 | `src/pages/`                  | Employee list / create / edit, My leave, Approvals                |
+
+## Two apps, one bundle
+
+The desk shows two icons — **TBS Employees** (`/tbsapp/employees`) and **TBS
+Leave** (`/tbsapp/leave`). They are one Vite bundle under one route prefix;
+what makes them feel separate is that every route declares which app it
+belongs to (`meta.app`), and `AppSidebar` renders only that app's navigation.
+The only way across is the switcher in the sidebar header, which lists just the
+apps the user can actually open.
+
+Adding a third means: an entry in `src/data/apps.ts`, `meta.app` on its routes,
+a branch in `AppSidebar`, an `add_to_apps_screen` entry, and an icon in
+`tbsapp/install.py`.
+
+### How the desk icons work
+
+This is less obvious than it looks, and the hook alone is not enough:
+
+- The desk renders **`Desktop Icon` documents**, not the `add_to_apps_screen`
+  hook. Frappe seeds one per app at *site install* from the first hook entry
+  and never revisits it, so changing a title or route in `hooks.py` does
+  nothing on an existing site.
+- `tbsapp/install.py` therefore maintains the two icons itself, from
+  `after_install` **and** `after_migrate`, so `bench migrate` picks up changes.
+  It is idempotent, and it preserves a user's `hidden` / `idx` on an icon that
+  already exists.
+- `/apps` redirects to `/desk` in v16+; the standalone apps screen is gone.
+- Frappe gates *every* icon belonging to an app with the **first** hook entry's
+  `has_permission`, so `tbsapp.api.check_app_permission` is deliberately the
+  union — read on Employee *or* on Leave Application. A narrower check there
+  would hide the Leave icon from someone who can only do leave. Each page still
+  gates itself.
+
+Clicking an icon would also open a **new tab**: the desk builds every External
+icon's href as `origin + link` and then sets `target="_blank"` on anything
+starting with `http`, which that prefix guarantees.
+`tbsapp/public/js/tbsapp.bundle.js` (loaded on the desk via `app_include_js`)
+intercepts clicks on this app's own icons and navigates in place, while leaving
+modified and middle clicks — and every other app's icons — alone. Rebuild it
+with `bench build --app tbsapp`.
+
+After changing icons, run `bench --site <site> migrate`. The icon set is cached
+per user; the sync clears that cache, but a browser also caches boot data, so a
+hard reload may be needed to see it.
 
 ## Leave
 

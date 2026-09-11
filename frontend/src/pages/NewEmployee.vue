@@ -26,7 +26,7 @@
   </PageHeader>
 
   <div class="px-5 py-4">
-    <PermissionNotice v-if="permissionsLoaded && !can.create" action="add" />
+    <PermissionNotice v-if="permissionsLoaded && !can.create" what="add employees" />
 
     <form v-else class="mx-auto max-w-2xl" @submit.prevent="create">
       <p class="text-p-base text-ink-gray-6">

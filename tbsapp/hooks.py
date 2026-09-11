@@ -14,19 +14,29 @@ use_json_request_body = True
 
 # required_apps = []
 
-# Where the app's SPA lives. Shared by the apps-screen tile and the SPA route
-# rule below, so the route is written once.
+# Where the SPA lives. The two apps below are sections of one bundle served
+# under this prefix, so the route is written once.
 app_home = "/tbsapp"
 
-# Each item in the list will be shown as an app in the apps page
+# Two tiles, not one: the apps screen renders an entry per item here, so one
+# Frappe app can present itself as several. Employee records and leave are
+# separate jobs for separate people — each tile gets its own icon, landing
+# route and permission check, and the SPA gives each its own sidebar.
 add_to_apps_screen = [
 	{
 		"name": "tbsapp",
-		"logo": "/assets/tbsapp/images/tbsapp-logo.svg",
-		"title": "TBS App",
-		"route": app_home,
+		"logo": "/assets/tbsapp/images/tbsapp-employees-logo.svg",
+		"title": "TBS Employees",
+		"route": f"{app_home}/employees",
 		"has_permission": "tbsapp.api.check_app_permission",
-	}
+	},
+	{
+		"name": "tbsapp-leave",
+		"logo": "/assets/tbsapp/images/tbsapp-leave-logo.svg",
+		"title": "TBS Leave",
+		"route": f"{app_home}/leave",
+		"has_permission": "tbsapp.api.check_leave_app_permission",
+	},
 ]
 
 # The SPA owns its own history, so every path under /tbsapp has to resolve to
@@ -35,6 +45,12 @@ add_to_apps_screen = [
 website_route_rules = [
 	{"from_route": "/tbsapp/<path:app_path>", "to_route": "tbsapp"},
 ]
+
+# The desk draws `Desktop Icon` documents, which Frappe seeds once per app at
+# install and never updates. Both hooks run the same idempotent sync, so a
+# fresh install and an existing site end up with the same two icons.
+after_install = "tbsapp.install.after_install"
+after_migrate = "tbsapp.install.after_migrate"
 
 # The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
 # Manage Dock on a developer-mode site and press Export to App, and it is written to
@@ -47,6 +63,10 @@ website_route_rules = [
 
 # Includes in <head>
 # ------------------
+
+# Loaded on the desk only. It stops this app's desk icons from opening a new
+# tab — see the file for why the framework does that.
+app_include_js = "tbsapp.bundle.js"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/tbsapp/css/tbsapp.css"
@@ -118,7 +138,6 @@ website_route_rules = [
 # ------------
 
 # before_install = "tbsapp.install.before_install"
-# after_install = "tbsapp.install.after_install"
 
 # Uninstallation
 # ------------

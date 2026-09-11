@@ -11,9 +11,14 @@
   </PageHeader>
 
   <div class="px-5 py-4">
-    <div v-if="!myEmployeeLoaded" class="mx-auto max-w-3xl space-y-3">
+    <div
+      v-if="!myEmployeeLoaded || !leavePermissionsLoaded"
+      class="mx-auto max-w-3xl space-y-3"
+    >
       <Skeleton v-for="n in 3" :key="n" class="h-20 w-full rounded-4" />
     </div>
+
+    <PermissionNotice v-else-if="!leaveCan.read" what="see leave requests" />
 
     <!-- Leave is self-service, so it needs an Employee record pointing at this
          login. Nothing on this page works without one, and the fix is HR's. -->
@@ -177,6 +182,7 @@ import {
 import { user } from '@/data/session'
 import {
   leaveCan,
+  leavePermissionsLoaded,
   leaveStatus,
   myEmployee,
   myEmployeeLoaded,
@@ -185,6 +191,7 @@ import {
 } from '@/data/leave'
 import { formatDate, formatDateRange } from '@/data/format'
 import LeaveRequestDialog from '@/components/LeaveRequestDialog.vue'
+import PermissionNotice from '@/components/PermissionNotice.vue'
 
 const showRequest = ref(false)
 
