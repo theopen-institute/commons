@@ -14,16 +14,27 @@ use_json_request_body = True
 
 # required_apps = []
 
+# Where the app's SPA lives. Shared by the apps-screen tile and the SPA route
+# rule below, so the route is written once.
+app_home = "/tbsapp"
+
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "tbsapp",
-# 		"logo": "/assets/tbsapp/logo.png",
-# 		"title": "TBS App",
-# 		"route": "/tbsapp",
-# 		"has_permission": "tbsapp.api.permission.has_app_permission",
-# 	}
-# ]
+add_to_apps_screen = [
+	{
+		"name": "tbsapp",
+		"logo": "/assets/tbsapp/images/tbsapp-logo.svg",
+		"title": "TBS App",
+		"route": app_home,
+		"has_permission": "tbsapp.api.check_app_permission",
+	}
+]
+
+# The SPA owns its own history, so every path under /tbsapp has to resolve to
+# the one built page (tbsapp/www/tbsapp.html) rather than 404 on a deep link
+# or a refresh.
+website_route_rules = [
+	{"from_route": "/tbsapp/<path:app_path>", "to_route": "tbsapp"},
+]
 
 # The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
 # Manage Dock on a developer-mode site and press Export to App, and it is written to

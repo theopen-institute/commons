@@ -1,0 +1,14 @@
+{
+  "extends": "frappe-ui/tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    // `vite/client` for `import.meta.env`, `unplugin-icons` for the
+    // `~icons/lucide/*` modules frappe-ui components import — without both,
+    // type-checking the library's own sources fails.
+    "types": ["vite/client", "unplugin-icons/types/vue"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.js"]
+}

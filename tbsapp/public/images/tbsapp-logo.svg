@@ -1,0 +1,8 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- A filled tile rather than a bare glyph: the apps screen and the sidebar
+       header both render this on their own background, one light and one dark,
+       and only a tile keeps the mark legible on both. -->
+  <rect width="64" height="64" rx="14" fill="#4F46E5"/>
+  <path d="M18 22h28M32 22v22" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="45" cy="41" r="7.5" fill="#4F46E5" stroke="#fff" stroke-width="4"/>
+</svg>

@@ -1,0 +1,21 @@
+@import 'frappe-ui/style.css';
+
+/*
+  Two things the app root has to supply the shell:
+
+  - Height. `DesktopShell` is `flex h-full` — it fills its parent rather than
+    the viewport, so the chain down to the mount point needs a real height or
+    the sidebar and the scroll region collapse to their content.
+  - A themed background. `bg-surface-sidebar` is deliberately transparent in
+    dark mode (the sidebar and the base surface are the same color there), so
+    without a painted base the dark sidebar shows the browser's white.
+*/
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface-base;
+}
