@@ -1,4 +1,4 @@
-"""Install/migrate hooks: the app's icons on the desk.
+"""Install/migrate hooks: the app's icons on the desk, and its Custom Fields.
 
 The desk renders `Desktop Icon` *documents*, not the `add_to_apps_screen` hook.
 Frappe seeds one icon per installed app at site install
@@ -10,6 +10,48 @@ title or route later, has to maintain those records itself.
 import frappe
 
 APP = "tbsapp"
+
+# Back-references from the stock document to the request it came from. They live
+# on ERPNext's doctypes, so they are Custom Fields rather than part of the
+# `Procurement Request` definition. `make_material_request` fills them in and
+# `update_linked_procurement_requests` reads them back to work out how much of a
+# request has actually been ordered.
+CUSTOM_FIELDS = {
+	"Material Request": [
+		{
+			"fieldname": "procurement_request",
+			"label": "Procurement Request",
+			"fieldtype": "Link",
+			"options": "Procurement Request",
+			"insert_after": "job_card",
+			"read_only": 1,
+			"no_copy": 1,
+			"print_hide": 1,
+		}
+	],
+	"Material Request Item": [
+		{
+			"fieldname": "procurement_request",
+			"label": "Procurement Request",
+			"fieldtype": "Link",
+			"options": "Procurement Request",
+			"insert_after": "job_card_item",
+			"read_only": 1,
+			"no_copy": 1,
+			"print_hide": 1,
+		},
+		{
+			"fieldname": "procurement_request_item",
+			"label": "Procurement Request Item",
+			"fieldtype": "Data",
+			"insert_after": "procurement_request",
+			"read_only": 1,
+			"no_copy": 1,
+			"hidden": 1,
+			"print_hide": 1,
+		},
+	],
+}
 
 # The stale single icon Frappe seeds from the `app_title` hook. Replaced by the
 # two below on the first migrate after this app grew a second section.
@@ -31,10 +73,19 @@ DESKTOP_ICONS = (
 
 def after_install() -> None:
 	sync_desktop_icons()
+	sync_custom_fields()
 
 
 def after_migrate() -> None:
 	sync_desktop_icons()
+	sync_custom_fields()
+
+
+def sync_custom_fields() -> None:
+	"""Add this app's fields to ERPNext's doctypes. Safe to run repeatedly."""
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+	create_custom_fields(CUSTOM_FIELDS, update=True)
 
 
 def sync_desktop_icons() -> None:

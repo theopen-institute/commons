@@ -12,7 +12,9 @@ use_json_request_body = True
 # Apps
 # ------------------
 
-# required_apps = []
+# `Procurement Request` links to Item, UOM, Company and Supplier, and hands over
+# to Material Request, so the doctypes cannot migrate without ERPNext present.
+required_apps = ["erpnext"]
 
 # Where the SPA lives. The two apps below are sections of one bundle served
 # under this prefix, so the route is written once.
@@ -211,13 +213,15 @@ app_include_js = "tbsapp.bundle.js"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+# A Material Request raised from a Procurement Request is what makes that
+# request "ordered". Submit and cancel are the only two events that change
+# whether it counts — a draft Material Request commits to nothing.
+doc_events = {
+	"Material Request": {
+		"on_submit": "tbsapp.tbs_app.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
+		"on_cancel": "tbsapp.tbs_app.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
+	},
+}
 
 # Scheduled Tasks
 # ---------------

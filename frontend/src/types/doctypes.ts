@@ -59,7 +59,7 @@ export interface EmployeeInternalWorkHistory extends ChildDocType {
   to_date?: string;
 }
 
-// Last updated: 2026-08-21 23:11:42.091886
+// Last updated: 2026-03-23 15:26:05.149280
 export interface Employee extends DocType {
   /** Employee: Data */
   employee?: string;
