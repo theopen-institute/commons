@@ -2,7 +2,9 @@
 // For license information, please see license.txt
 
 frappe.listview_settings["Procurement Request"] = {
-	add_fields: ["status", "per_ordered", "transaction_date"],
+	// No `per_ordered`: it is a virtual field, counted per document, and a
+	// list query can only ask for columns.
+	add_fields: ["status", "transaction_date"],
 
 	get_indicator(doc) {
 		const colours = {

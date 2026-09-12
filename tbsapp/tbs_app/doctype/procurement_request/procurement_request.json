@@ -12,12 +12,15 @@
   "naming_series",
   "purpose",
   "company",
+  "currency",
   "title",
   "column_break_request",
   "transaction_date",
   "schedule_date",
   "requested_by",
   "department",
+  "approver",
+  "approver_name",
   "items_section",
   "items",
   "totals_section",
@@ -29,6 +32,7 @@
   "more_info_tab",
   "status_section",
   "status",
+  "rejection_reason",
   "per_ordered",
   "column_break_status",
   "amended_from",
@@ -76,6 +80,15 @@
    "reqd": 1
   },
   {
+   "fetch_from": "company.default_currency",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
    "description": "Set from the requested items when left blank.",
    "fieldname": "title",
    "fieldtype": "Data",
@@ -115,6 +128,23 @@
    "options": "Department"
   },
   {
+   "description": "Who decides this request. Defaults to the requester's expense approver.",
+   "fieldname": "approver",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Approver",
+   "options": "User"
+  },
+  {
+   "fetch_from": "approver.full_name",
+   "fieldname": "approver_name",
+   "fieldtype": "Data",
+   "label": "Approver Name",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
    "fieldname": "items_section",
    "fieldtype": "Section Break",
    "label": "Items"
@@ -124,7 +154,8 @@
    "fieldtype": "Table",
    "label": "Items",
    "options": "Procurement Request Item",
-   "reqd": 1
+   "reqd": 1,
+   "allow_on_submit": 1
   },
   {
    "fieldname": "totals_section",
@@ -149,7 +180,7 @@
    "fieldtype": "Currency",
    "label": "Total Estimated Cost",
    "no_copy": 1,
-   "options": "Company:company:default_currency",
+   "options": "currency",
    "read_only": 1
   },
   {
@@ -182,17 +213,26 @@
    "label": "Status",
    "no_copy": 1,
    "options": "\nDraft\nPending Approval\nApproved\nRejected\nPartially Ordered\nOrdered\nCancelled",
-   "read_only": 1,
+   "permlevel": 1,
    "reqd": 1
   },
   {
    "allow_on_submit": 1,
+   "depends_on": "eval:doc.status==\"Rejected\"",
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for Rejection",
+   "no_copy": 1,
+   "permlevel": 1
+  },
+  {
    "fieldname": "per_ordered",
    "fieldtype": "Percent",
    "label": "% Ordered",
-   "no_copy": 1,
    "print_hide": 1,
-   "read_only": 1
+   "read_only": 1,
+   "is_virtual": 1,
+   "description": "Share of the requested quantity that submitted Material Requests carry. Counted live."
   },
   {
    "fieldname": "column_break_status",
@@ -243,9 +283,9 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-11 00:00:00.000000",
+ "modified": "2026-09-12 09:00:00.000000",
  "modified_by": "Administrator",
- "module": "TBS App",
+ "module": "TBS Commons",
  "name": "Procurement Request",
  "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
@@ -309,6 +349,32 @@
    "role": "Employee",
    "share": 1,
    "submit": 0,
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "All"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Purchase Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Purchase User",
    "write": 1
   }
  ],

@@ -15,16 +15,33 @@ frappe.ui.form.on("Procurement Request", {
 			return;
 		}
 
+		close_the_item_list(frm);
+
 		// The same gate `make_material_request` applies server-side: approval has
-		// happened, and something is still left to order.
+		// happened, and something is still left to order. `per_ordered` is a
+		// virtual field, so this reads the count as of this form load.
 		const approved = ["Approved", "Partially Ordered"].includes(frm.doc.status);
 		if (!approved || flt(frm.doc.per_ordered) >= 100) {
 			return;
 		}
 
+		if (!frappe.model.can_create("Material Request")) {
+			return;
+		}
+
+		// Everything still outstanding comes over, and the buyer adjusts the
+		// quantities and drops what they are not ordering yet on the Material
+		// Request itself -- where the warehouse and the stock rules are anyway.
+		// Ticking rows in the grid first narrows it to those: `open_mapped_doc`
+		// sends the selection along.
 		frm.add_custom_button(
 			__("Material Request"),
-			() => frappe.model.open_mapped_doc({ method: MAKE_MATERIAL_REQUEST, frm: frm }),
+			() => {
+				// Nothing returned on purpose: Frappe disables the button until
+				// whatever a handler returns settles, and what this returns is a
+				// jqXHR, which has no `finally` for it to wait on.
+				frappe.model.open_mapped_doc({ method: MAKE_MATERIAL_REQUEST, frm: frm });
+			},
 			__("Create")
 		);
 		frm.page.set_inner_btn_group_as_primary(__("Create"));
@@ -78,4 +95,13 @@ function set_totals(frm) {
 		"total_estimated_cost",
 		items.reduce((total, row) => total + flt(row.estimated_amount), 0)
 	);
+}
+
+// `allow_on_submit` on the items table is what keeps the Item Code fillable
+// after approval. It also hands the grid back its add and remove buttons, which
+// an approved list of things has no business showing -- the server refuses both
+// either way, so this is about not offering them.
+function close_the_item_list(frm) {
+	frm.set_df_property("items", "cannot_add_rows", true);
+	frm.set_df_property("items", "cannot_delete_rows", true);
 }

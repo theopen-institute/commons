@@ -9,8 +9,8 @@
       <span class="lucide-lock size-8 text-ink-gray-4" />
       <p class="mt-2 text-base-medium text-ink-gray-7">Nothing to show you</p>
       <p class="mt-1 text-p-sm text-ink-gray-5">
-        Your account can't open either app. Ask an HR Manager or a System
-        Manager for access.
+        Your account can't open any of these apps. Ask an HR Manager or a
+        System Manager for access.
       </p>
     </div>
   </div>

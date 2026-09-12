@@ -13,9 +13,9 @@ APP = "tbsapp"
 
 # Back-references from the stock document to the request it came from. They live
 # on ERPNext's doctypes, so they are Custom Fields rather than part of the
-# `Procurement Request` definition. `make_material_request` fills them in and
-# `update_linked_procurement_requests` reads them back to work out how much of a
-# request has actually been ordered.
+# `Procurement Request` definition. `make_material_request` fills them in, and
+# every read of a request counts back through them to see what has actually been
+# ordered -- which is why the two on the item rows are indexed.
 CUSTOM_FIELDS = {
 	"Material Request": [
 		{
@@ -39,6 +39,7 @@ CUSTOM_FIELDS = {
 			"read_only": 1,
 			"no_copy": 1,
 			"print_hide": 1,
+			"search_index": 1,
 		},
 		{
 			"fieldname": "procurement_request_item",
@@ -49,13 +50,14 @@ CUSTOM_FIELDS = {
 			"no_copy": 1,
 			"hidden": 1,
 			"print_hide": 1,
+			"search_index": 1,
 		},
 	],
 }
 
 # The stale single icon Frappe seeds from the `app_title` hook. Replaced by the
 # two below on the first migrate after this app grew a second section.
-LEGACY_ICON_LABEL = "TBS App"
+LEGACY_ICON_LABEL = "TBS Commons"
 
 DESKTOP_ICONS = (
 	{
@@ -67,6 +69,11 @@ DESKTOP_ICONS = (
 		"label": "TBS Leave",
 		"link": "/tbsapp/leave",
 		"logo_url": "/assets/tbsapp/images/tbsapp-leave-logo.svg",
+	},
+	{
+		"label": "TBS Procurement",
+		"link": "/tbsapp/procurement",
+		"logo_url": "/assets/tbsapp/images/tbsapp-procurement-logo.svg",
 	},
 )
 

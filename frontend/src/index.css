@@ -1,6 +1,136 @@
 @import 'frappe-ui/style.css';
 
 /*
+  The desk's own sidebar tokens, values copied from
+  frappe/public/scss/desk/sidebar.scss (and `--shadow-sm` from its global
+  theme). They are defined by the desk bundle, which a page outside /app never
+  loads, so the sidebar here would otherwise be a near-miss of the one a user
+  sees a click away. Kept together, and only used by AppSidebar.vue.
+*/
+:root {
+  --sidebar-width: 220px;
+  --sidebar-hover-color: #f3f3f3;
+  --sidebar-active-color: rgba(255, 255, 255, 1);
+  --sidebar-border-color: #ededed;
+  --shadow-sm: 0px 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --sidebar-hover-color: rgba(43, 43, 43, 1);
+  --sidebar-active-color: rgba(66, 66, 66, 1);
+  --sidebar-border-color: #232323;
+}
+
+/*
+  And the desk's avatar palette, from frappe/public/scss/desk/avatar.scss.
+  Written out as the colours it resolves to rather than as the `var(--green-200)`
+  pairs it is declared with: frappe-ui's ramp of that name is a shade off
+  frappe's, and an avatar that changes colour between the two pages is the thing
+  this is here to stop. `tbsapp.www.tbsapp.get_avatar_color` picks which pair a
+  person gets, by the same arithmetic the desk uses.
+*/
+:root {
+  --orange-avatar-bg: #fff1e7;
+  --orange-avatar-color: #d45a08;
+
+  --pink-avatar-bg: #fff7fc;
+  --pink-avatar-color: #e34aa6;
+
+  --blue-avatar-bg: #f7fbfd;
+  --blue-avatar-color: #0289f7;
+
+  --green-avatar-bg: #daf0e1;
+  --green-avatar-color: #16794c;
+
+  --dark-green-avatar-bg: #daf0e1;
+  --dark-green-avatar-color: #16794c;
+
+  --red-avatar-bg: #fff7f7;
+  --red-avatar-color: #e03636;
+
+  --yellow-avatar-bg: #fffcef;
+  --yellow-avatar-color: #edba13;
+
+  --purple-avatar-bg: #fdfaff;
+  --purple-avatar-color: #9c45e3;
+
+  --gray-avatar-bg: #f8f8f8;
+  --gray-avatar-color: #525252;
+}
+
+[data-theme='dark'] {
+  --orange-avatar-bg: #d45a08;
+  --orange-avatar-color: #fff1e7;
+
+  --pink-avatar-bg: #e34aa6;
+  --pink-avatar-color: #fff7fc;
+
+  --blue-avatar-bg: #0289f7;
+  --blue-avatar-color: #f7fbfd;
+
+  --green-avatar-bg: #59ba8b;
+  --green-avatar-color: #e4f5e9;
+
+  --dark-green-avatar-bg: #59ba8b;
+  --dark-green-avatar-color: #e4f5e9;
+
+  --red-avatar-bg: #e03636;
+  --red-avatar-color: #fff7f7;
+
+  --yellow-avatar-bg: #edba13;
+  --yellow-avatar-color: #fffcef;
+
+  --purple-avatar-bg: #9c45e3;
+  --purple-avatar-color: #fdfaff;
+
+  --gray-avatar-bg: #383838;
+  --gray-avatar-color: #f8f8f8;
+}
+
+/*
+  The desk's typeface, served by Frappe from this same site.
+
+  frappe-ui ships its own build of Inter under the name InterVar and turns on
+  `cv11` (Inter's single-storey `a`) over it. The desk uses InterVariable with
+  no character variants, and the two render a hair apart -- the same email
+  address is 131.1px wide here and 131.9px in the desk, which is exactly the
+  kind of difference you see without being able to name it when the two pages
+  are one click apart. InterVar stays as the fallback, in case Frappe ever
+  moves the file.
+*/
+@font-face {
+  font-family: 'InterVariable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/assets/frappe/css/fonts/inter/InterVariable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'InterVariable';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/assets/frappe/css/fonts/inter/InterVariable-Italic.woff2')
+    format('woff2');
+}
+
+html {
+  font-family: 'InterVariable', 'InterVar', ui-sans-serif, system-ui, sans-serif;
+  font-optical-sizing: auto;
+}
+
+/* The same selector list frappe-ui sets `cv11` with, minus `cv11`. */
+html,
+body,
+button,
+p,
+span,
+div {
+  font-variation-settings: 'opsz' 24;
+}
+
+/*
   Two things the app root has to supply the shell:
 
   - Height. `DesktopShell` is `flex h-full` — it fills its parent rather than

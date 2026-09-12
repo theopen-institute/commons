@@ -9,6 +9,8 @@ export interface MyEmployee {
   company: string
   leave_approver: string | null
   leave_approver_name?: string
+  /** Borrowed by procurement as the default approver — see `get_procurement_approvers`. */
+  expense_approver: string | null
   image: string | null
 }
 

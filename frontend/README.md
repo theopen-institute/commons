@@ -1,4 +1,4 @@
-# TBS App frontend
+# TBS Commons frontend
 
 Vue 3 + [frappe-ui](https://ui.frappe.io) v1 (espresso), served at `/tbsapp`.
 

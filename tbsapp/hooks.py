@@ -1,5 +1,5 @@
 app_name = "tbsapp"
-app_title = "TBS App"
+app_title = "TBS Commons"
 app_publisher = "Peter"
 app_description = "Tools for TBS"
 app_email = "pgraif@gmail.com"
@@ -20,10 +20,11 @@ required_apps = ["erpnext"]
 # under this prefix, so the route is written once.
 app_home = "/tbsapp"
 
-# Two tiles, not one: the apps screen renders an entry per item here, so one
-# Frappe app can present itself as several. Employee records and leave are
-# separate jobs for separate people — each tile gets its own icon, landing
-# route and permission check, and the SPA gives each its own sidebar.
+# Three tiles, not one: the apps screen renders an entry per item here, so one
+# Frappe app can present itself as several. Employee records, leave and
+# procurement are separate jobs for separate people — each tile gets its own
+# icon, landing route and permission check, and the SPA gives each its own
+# sidebar.
 add_to_apps_screen = [
 	{
 		"name": "tbsapp",
@@ -38,6 +39,13 @@ add_to_apps_screen = [
 		"title": "TBS Leave",
 		"route": f"{app_home}/leave",
 		"has_permission": "tbsapp.api.check_leave_app_permission",
+	},
+	{
+		"name": "tbsapp-procurement",
+		"logo": "/assets/tbsapp/images/tbsapp-procurement-logo.svg",
+		"title": "TBS Procurement",
+		"route": f"{app_home}/procurement",
+		"has_permission": "tbsapp.api.check_procurement_app_permission",
 	},
 ]
 

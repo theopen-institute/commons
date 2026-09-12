@@ -4,6 +4,7 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+tbsapp.patches.v1_0.drop_stored_ordered_quantities
 
 [post_fixture_sync]
 # Patches added in this section will be executed after fixtures and customizations

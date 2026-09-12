@@ -17,6 +17,8 @@ declare module 'vue' {
     LeaveRequestDialog: typeof import('./src/components/LeaveRequestDialog.vue')['default']
     LinkControl: typeof import('./src/components/LinkControl.vue')['default']
     PermissionNotice: typeof import('./src/components/PermissionNotice.vue')['default']
+    ProcurementLines: typeof import('./src/components/ProcurementLines.vue')['default']
+    ProcurementRequestDialog: typeof import('./src/components/ProcurementRequestDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }

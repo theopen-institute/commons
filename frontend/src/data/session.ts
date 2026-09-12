@@ -2,9 +2,13 @@ import { computed } from 'vue'
 import { useCall } from 'frappe-ui'
 
 export interface UserInfo {
+  /** The Frappe user id. The email for everyone but Administrator. */
   name: string
   full_name: string
+  email: string | null
   user_image: string | null
+  /** Which of the desk's avatar palette entries this person gets. */
+  avatar_color: string | null
 }
 
 export interface EmployeePermissions {
@@ -35,7 +39,13 @@ const sessionCall = useCall<UserInfo>({
 export const user = computed<UserInfo>(
   () =>
     bootUser ??
-    sessionCall.data ?? { name: 'Guest', full_name: 'Guest', user_image: null },
+    sessionCall.data ?? {
+      name: 'Guest',
+      full_name: 'Guest',
+      email: null,
+      user_image: null,
+      avatar_color: null,
+    },
 )
 
 // Deliberately uncached: a persisted cache is keyed by the browser, not the

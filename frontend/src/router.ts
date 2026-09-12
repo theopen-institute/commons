@@ -50,6 +50,18 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/LeaveApprovals.vue'),
     meta: { app: 'leave' },
   },
+  {
+    path: '/procurement',
+    name: 'MyProcurement',
+    component: () => import('@/pages/MyProcurement.vue'),
+    meta: { app: 'procurement' },
+  },
+  {
+    path: '/procurement/approvals',
+    name: 'ProcurementApprovals',
+    component: () => import('@/pages/ProcurementApprovals.vue'),
+    meta: { app: 'procurement' },
+  },
 ]
 
 export default createRouter({

@@ -15,10 +15,27 @@ writes no stock ledger entries, no bin quantities and no GL entries, and
 `item_code` is optional: a row may carry nothing but a name, a quantity and a
 UOM. The estimated cost fields exist for the approver and are posted nowhere.
 
-Once approved, `make_material_request` carries the request onto a draft Material
-Request. That is where the item master, the warehouse and the stock effects
-finally enter, and it is deliberately the only place they do.
+A request moves Draft -> Pending Approval -> Approved/Rejected. `status` sits
+at permlevel 1 for the same reason Leave Application's does: the requester
+reads it but cannot write it, so nobody approves their own spending. The two
+transitions live in `tbsapp.api` alongside the leave ones, because a decision
+is a status change *and* a submit and the pair has to be one transaction.
+
+Once approved, `make_material_request` carries the request -- all of it, or the
+rows and quantities the buyer picks -- onto a draft Material Request. That is
+where the item master, the warehouse and the stock effects finally enter, and it
+is deliberately the only place they do. A request can be converted repeatedly,
+so a long list can be bought in instalments.
+
+How much of a row has been ordered is never stored. `ordered_qty`, `pending_qty`
+and `order_status` on the rows, and `per_ordered` here, are virtual fields
+counted from the submitted Material Requests that point back at them. `status`
+is the one derived value that *is* stored, because list views filter and sort on
+it; the Material Request hook below refreshes it on submit and cancel, and it
+recomputes itself from the same live count.
 """
+
+from urllib.parse import urlparse
 
 import frappe
 from frappe import _
@@ -30,15 +47,40 @@ from frappe.utils import comma_and, flt, get_link_to_form, getdate
 
 DOCTYPE = "Procurement Request"
 
-# The states an approval step leaves behind. Everything else on the `status`
-# field is derived -- see `_derived_status`.
-APPROVAL_STATES = ("Pending Approval", "Approved", "Rejected")
+# Sent, and waiting on the named approver. Still docstatus 0: nothing is
+# decided until it is submitted.
+PENDING_STATE = "Pending Approval"
+
+# What a decision leaves behind, both submitted. Everything else on the
+# `status` field is derived -- see `_derived_status`.
+DECIDED_STATES = ("Approved", "Rejected")
 
 # A request has to have cleared approval before it can become a Material
 # Request, and a fully ordered one has nothing left to carry over.
 ORDERABLE_STATES = ("Approved", "Partially Ordered")
 
 FALLBACK_UOM = "Nos"
+
+# What a row takes from the item master when it is given an Item Code. None of
+# them is editable after submission -- they describe what was approved.
+FETCHED_FROM_ITEM = ("item_name", "item_group", "description", "uom")
+
+
+def _with_scheme(url: str) -> str:
+	"""Prefix a bare host with https, so a pasted link passes URL validation.
+
+	A `Data` field with options `URL` is validated by Frappe, and that check
+	wants a scheme. Requesters paste what the address bar shows them, which
+	increasingly hides it. Adding the prefix is kinder than throwing the row
+	back over something we can fix ourselves.
+	"""
+	url = (url or "").strip()
+	# Whitespace inside is the mark of something that was never a link. Left
+	# alone it fails Frappe's check, which is the answer wanted here -- adding
+	# a scheme to it would only turn a plain sentence into a passing "URL".
+	if url and not url.startswith("/") and " " not in url and not urlparse(url).scheme:
+		url = f"https://{url}"
+	return url
 
 
 class ProcurementRequest(Document):
@@ -55,7 +97,10 @@ class ProcurementRequest(Document):
 		)
 
 		amended_from: DF.Link | None
+		approver: DF.Link | None
+		approver_name: DF.Data | None
 		company: DF.Link
+		currency: DF.Link | None
 		department: DF.Link | None
 		items: DF.Table[ProcurementRequestItem]
 		justification: DF.SmallText | None
@@ -63,6 +108,7 @@ class ProcurementRequest(Document):
 		naming_series: DF.Literal["PRQ-.YYYY.-"]
 		per_ordered: DF.Percent
 		purpose: DF.Literal["Purchase", "Material Transfer", "Material Issue", "Manufacture"]
+		rejection_reason: DF.SmallText | None
 		requested_by: DF.Link | None
 		schedule_date: DF.Date | None
 		select_print_heading: DF.Link | None
@@ -83,6 +129,7 @@ class ProcurementRequest(Document):
 	# end: auto-generated types
 
 	def validate(self) -> None:
+		self.set_requester_defaults()
 		self.validate_items()
 		self.validate_schedule_date()
 		self.calculate_totals()
@@ -90,7 +137,13 @@ class ProcurementRequest(Document):
 		self.set_status()
 
 	def before_update_after_submit(self) -> None:
+		self.validate_no_rows_added_or_removed()
+		self.keep_the_stored_description()
+		self.validate_item_code_changes()
 		self.validate_schedule_date()
+
+	def on_update_after_submit(self) -> None:
+		self.fill_in_from_item()
 
 	def on_submit(self) -> None:
 		self.set_status(update=True)
@@ -105,6 +158,31 @@ class ProcurementRequest(Document):
 		# `validate` does not run on cancel, and this fires after the write, so
 		# the status has to be pushed down on its own.
 		self.set_status(update=True)
+
+	def set_requester_defaults(self) -> None:
+		"""Fill in what the requester's Employee record already knows."""
+		if not self.requested_by:
+			return
+
+		employee = frappe.db.get_value(
+			"Employee",
+			{"user_id": self.requested_by, "status": "Active"},
+			["department", "expense_approver"],
+			as_dict=True,
+		)
+		if not employee:
+			return
+
+		if not self.department:
+			self.department = employee.department
+
+		# Procurement spend is approved by whoever approves this person's
+		# expenses -- the budget holder either way -- so their existing
+		# `expense_approver` is the default. It stays editable: the picker in
+		# `tbsapp.api.get_procurement_approvers` offers everyone who could
+		# actually decide, for the many employees who have none set.
+		if not self.approver:
+			self.approver = employee.expense_approver
 
 	# -- validation ----------------------------------------------------------
 
@@ -123,6 +201,8 @@ class ProcurementRequest(Document):
 						row.idx
 					)
 				)
+
+			row.reference_url = _with_scheme(row.reference_url)
 
 			if flt(row.qty) <= 0:
 				frappe.throw(_("Row #{0}: Quantity must be greater than zero.").format(row.idx))
@@ -147,6 +227,128 @@ class ProcurementRequest(Document):
 		if not self.schedule_date:
 			dates = [row.schedule_date for row in self.items if row.schedule_date]
 			self.schedule_date = min(dates) if dates else None
+
+	def validate_no_rows_added_or_removed(self) -> None:
+		"""An approved request is a decision about a list of things. The list is closed.
+
+		`items` carries `allow_on_submit` so a row can still be given its Item
+		Code after approval, and Frappe reads that as leave to add and remove
+		rows too -- it skips `validate_update_after_submit` for new rows
+		entirely. Nothing else in the request would catch a line added after the
+		approver said yes, so it is caught here.
+		"""
+		before = set(self.submitted_rows())
+		now = {row.name for row in self.items}
+
+		if added := now - before:
+			frappe.throw(
+				_("{0} row(s) cannot be added to a request that has already been submitted. Amend it, or raise a new one.").format(
+					len(added)
+				),
+				title=_("Items Are Fixed"),
+			)
+
+		if removed := before - now:
+			frappe.throw(
+				_("{0} row(s) cannot be removed from a request that has already been submitted. Amend it, or raise a new one.").format(
+					len(removed)
+				),
+				title=_("Items Are Fixed"),
+			)
+
+	def keep_the_stored_description(self) -> None:
+		"""Undo the form's link fetch on the fields that are closed after submit.
+
+		Picking an Item Code in the desk fills `item_name` and the rest from the
+		item master. On a submitted request that is the catalogue overwriting the
+		requester's own words -- "Bespoke lab bench, 3m" becoming whatever the
+		code happens to be called -- and the save would be refused anyway, for
+		changing a field that is not editable on submit. So the stored values
+		win, and whatever the item master can add to a *blank* one is filled in
+		afterwards by `fill_in_from_item`.
+		"""
+		before = self.submitted_rows()
+
+		for row in self.items:
+			stored = before.get(row.name)
+			if not stored:
+				continue
+
+			for field in FETCHED_FROM_ITEM:
+				row.set(field, stored.get(field))
+
+	def validate_item_code_changes(self) -> None:
+		"""The Item Code stays editable after approval, up to the point it is ordered.
+
+		Coding a row late is the point of the whole arrangement: a request may
+		name something the item master has never heard of, and procurement puts
+		the code on it when they get to it. Once a Material Request carries the
+		row, though, the code is a statement about what was actually ordered,
+		and changing it here would leave the two documents disagreeing.
+		"""
+		ordered = get_ordered_qty_map(self.name)
+		before = self.submitted_rows()
+
+		for row in self.items:
+			was = (before.get(row.name) or frappe._dict()).item_code
+			if (row.item_code or None) == (was or None):
+				continue
+
+			if flt(ordered.get(row.name)):
+				frappe.throw(
+					_("Row #{0}: {1} is already on a Material Request, so its Item Code cannot be changed. Cancel that Material Request first, or amend this request.").format(
+						row.idx, frappe.bold(row.item_name or was)
+					),
+					title=_("Already Ordered"),
+				)
+
+			# Clearing the code is allowed: the row goes back to being something
+			# the item master does not carry. It still has to say what it is,
+			# which all but guarantees this -- `keep_the_stored_description` has
+			# just put back the name the request was saved with, so only a row
+			# stored without one at all can fail here.
+			if not row.item_code and not row.item_name:
+				frappe.throw(
+					_("Row #{0}: Enter an Item Name before clearing the Item Code.").format(row.idx)
+				)
+
+	def submitted_rows(self) -> dict[str, frappe._dict]:
+		"""Each row as the request was last written, straight from the table.
+
+		Not `self.get_doc_before_save()`: that is the document as it was loaded,
+		which for a form save is the same object the browser has been editing.
+		This is what is actually stored.
+		"""
+		return {
+			row.name: row
+			for row in frappe.get_all(
+				f"{DOCTYPE} Item",
+				filters={"parent": self.name, "parenttype": self.doctype},
+				fields=["name", "item_code", *FETCHED_FROM_ITEM],
+			)
+		}
+
+	def fill_in_from_item(self) -> None:
+		"""Fetch what a newly coded row left blank.
+
+		Frappe's own `fetch_from` skips submitted documents unless the fetched
+		field is itself editable on submit, and `item_name` and `item_group`
+		should not be -- they describe what was approved. Written straight to
+		the table for the same reason: these are the item master's answer, not
+		an edit anybody made.
+		"""
+		for row in self.items:
+			if not row.item_code:
+				continue
+
+			wanted = [field for field in ("item_name", "item_group") if not row.get(field)]
+			if not wanted:
+				continue
+
+			values = frappe.db.get_value("Item", row.item_code, wanted, as_dict=True)
+			for field in wanted:
+				if values and values.get(field):
+					row.db_set(field, values[field], update_modified=False)
 
 	def validate_no_submitted_material_requests(self) -> None:
 		linked = frappe.get_all(
@@ -196,10 +398,10 @@ class ProcurementRequest(Document):
 	def _derived_status(self) -> str | None:
 		"""The status this request should carry, or `None` to leave it alone.
 
-		Approval is not this doctype's job. If a Workflow is attached it owns
-		the states in `APPROVAL_STATES` and we only write the ordering ones on
-		top; if none is, there is no approval step to speak of and submitting
-		the document is the approval.
+		This never *decides* anything -- it only keeps the field consistent with
+		the two things that are already true, docstatus and `per_ordered`, and
+		otherwise leaves whatever the approval step wrote. If a Workflow is
+		attached it owns the approval states outright.
 		"""
 		if self.docstatus == 2:
 			return "Cancelled"
@@ -216,33 +418,81 @@ class ProcurementRequest(Document):
 			return "Approved" if self.status in ("Ordered", "Partially Ordered") else None
 
 		if self.docstatus == 0:
+			# A request always begins as a draft, whatever the caller sent.
+			if self.is_new():
+				return "Draft"
+
+			# After that, the draft phase has two legitimate values of its own
+			# and two more that pass through it: `decide_procurement_request`
+			# writes the decision one save before it submits, so a decided
+			# value has to survive here or it would be reset to Draft and the
+			# submit would read as an approval nobody gave. What keeps a
+			# requester out of all four is permlevel 1 on the field, not this.
+			if self.status in (PENDING_STATE, *DECIDED_STATES):
+				return None
+
 			return "Draft"
 
-		return self.status if self.status in APPROVAL_STATES else "Approved"
+		# Submitted. A decision recorded by `decide_procurement_request` stands;
+		# a plain desk submit, with no decision behind it, is the approval.
+		return self.status if self.status in DECIDED_STATES else "Approved"
 
-	def update_ordered_qty(self) -> None:
-		"""Recount how much of this request has reached a submitted Material Request."""
-		ordered = get_ordered_qty_map(self.name)
+	# -- live ordering state -------------------------------------------------
+
+	def prime_ordered_qty(self) -> None:
+		"""Count every row's ordered quantity in one query instead of one each.
+
+		The rows would each answer for themselves -- that is what makes the
+		fields virtual -- but a whole request asked row by row is a query per
+		line. This fills the same per-row cache from a single grouped read, and
+		is called wherever the request is looked at as a whole.
+		"""
+		ordered = get_ordered_qty_map(self.name) if self.name else {}
 
 		for row in self.items:
-			qty = flt(ordered.get(row.name))
-			if qty != flt(row.ordered_qty):
-				row.db_set("ordered_qty", qty, update_modified=False)
+			row.__dict__["_ordered_qty"] = flt(ordered.get(row.name))
 
+	@property
+	def per_ordered(self) -> float:
+		"""How much of the request submitted Material Requests carry, as a percentage.
+
+		Virtual, like the row-level counts it is built from: nothing writes it,
+		so nothing can leave it stale.
+		"""
 		requested = sum(flt(row.qty) for row in self.items)
-		# Capped per row: over-ordering one line does not cover another.
-		covered = sum(min(flt(row.ordered_qty), flt(row.qty)) for row in self.items)
+		if not requested:
+			return 0.0
 
-		self.db_set(
-			"per_ordered",
-			flt(covered / requested * 100, 2) if requested else 0,
-			update_modified=False,
-		)
+		self.prime_ordered_qty()
+		# Capped per row: over-ordering one line does not cover another.
+		covered = sum(min(row.ordered_qty, flt(row.qty)) for row in self.items)
+		return flt(covered / requested * 100, 2)
+
+	@property
+	def open_rows(self) -> list["ProcurementRequestItem"]:
+		"""The rows with something still to order."""
+		self.prime_ordered_qty()
+		return [row for row in self.items if row.pending_qty > 0]
+
+	def update_order_status(self) -> None:
+		"""Refresh the stored `status` after a Material Request moved.
+
+		Only `status` is written: the quantities behind it are counted live, so
+		there is nothing else left to keep in step.
+		"""
 		self.set_status(update=True)
 
 
-def get_ordered_qty_map(procurement_request: str) -> dict[str, float]:
-	"""Quantity per source row that submitted Material Requests already carry."""
+def get_ordered_qty_map(procurement_requests: str | list[str]) -> dict[str, float]:
+	"""Quantity per source row that submitted Material Requests already carry.
+
+	One query for however many requests are asked about, keyed by the source row
+	name. Rows nothing has ordered are absent rather than zero.
+	"""
+	names = [procurement_requests] if isinstance(procurement_requests, str) else list(procurement_requests)
+	if not names:
+		return {}
+
 	mr_item = frappe.qb.DocType("Material Request Item")
 	mr = frappe.qb.DocType("Material Request")
 
@@ -251,11 +501,31 @@ def get_ordered_qty_map(procurement_request: str) -> dict[str, float]:
 		.join(mr)
 		.on(mr_item.parent == mr.name)
 		.select(mr_item.procurement_request_item, Sum(mr_item.qty).as_("qty"))
-		.where((mr.docstatus == 1) & (mr_item.procurement_request == procurement_request))
+		.where((mr.docstatus == 1) & (mr_item.procurement_request.isin(names)))
 		.groupby(mr_item.procurement_request_item)
 	).run(as_dict=True)
 
 	return {row.procurement_request_item: flt(row.qty) for row in rows if row.procurement_request_item}
+
+
+def get_ordered_qty(procurement_request_item: str) -> float:
+	"""How much of one source row submitted Material Requests already carry.
+
+	Behind `ProcurementRequestItem.ordered_qty`. Reading many rows this way is a
+	query each -- use `get_ordered_qty_map` for a whole request.
+	"""
+	mr_item = frappe.qb.DocType("Material Request Item")
+	mr = frappe.qb.DocType("Material Request")
+
+	ordered = (
+		frappe.qb.from_(mr_item)
+		.join(mr)
+		.on(mr_item.parent == mr.name)
+		.select(Sum(mr_item.qty))
+		.where((mr.docstatus == 1) & (mr_item.procurement_request_item == procurement_request_item))
+	).run()
+
+	return flt(ordered[0][0]) if ordered else 0.0
 
 
 def update_linked_procurement_requests(doc, method: str | None = None) -> None:
@@ -267,17 +537,86 @@ def update_linked_procurement_requests(doc, method: str | None = None) -> None:
 	names = {row.procurement_request for row in doc.get("items", []) if row.get("procurement_request")}
 
 	for name in names:
-		frappe.get_doc(DOCTYPE, name).update_ordered_qty()
+		frappe.get_doc(DOCTYPE, name).update_order_status()
+
+
+def _selection(source, selected_items: str | list | None) -> dict[str, float]:
+	"""How much of which row to carry over, checked against what is open *now*.
+
+	Returns row name -> quantity. With nothing selected the whole outstanding
+	balance is taken, which is what the plain "Create > Material Request" button
+	on a fresh request should do.
+	"""
+	open_qty = {row.name: row.pending_qty for row in source.open_rows}
+	if not open_qty:
+		frappe.throw(_("Every item on this request has already been ordered."))
+
+	if isinstance(selected_items, str):
+		selected_items = frappe.parse_json(selected_items)
+
+	# The desk grid's own tick boxes, when the button was pressed with rows
+	# selected and no explicit quantities given.
+	if not selected_items and (ticked := (frappe.flags.selected_children or {}).get("items")):
+		selected_items = [{"name": name} for name in ticked]
+
+	if not selected_items:
+		return open_qty
+
+	wanted: dict[str, float] = {}
+	for entry in selected_items:
+		name = entry.get("name") if isinstance(entry, dict) else entry
+		row = next((row for row in source.items if row.name == name), None)
+		if not row:
+			frappe.throw(_("{0} is not a row of this request.").format(frappe.bold(name)))
+
+		qty = flt(entry.get("qty")) if isinstance(entry, dict) and entry.get("qty") is not None else None
+		if qty == 0:
+			# An explicit "not this time", not an error.
+			continue
+
+		remaining = flt(open_qty.get(name))
+		if not remaining:
+			frappe.throw(
+				_("Row #{0} ({1}) has already been ordered in full.").format(row.idx, row.item_name or row.item_code)
+			)
+
+		if qty is None:
+			qty = remaining
+		elif qty < 0:
+			frappe.throw(_("Row #{0}: Quantity to order cannot be negative.").format(row.idx))
+		elif qty > remaining:
+			frappe.throw(
+				_("Row #{0}: only {1} of {2} is still to be ordered.").format(
+					row.idx, frappe.bold(remaining), row.item_name or row.item_code
+				)
+			)
+
+		wanted[name] = qty
+
+	if not wanted:
+		frappe.throw(_("Choose at least one item to order."))
+
+	return wanted
 
 
 @frappe.whitelist()
-def make_material_request(source_name: str, target_doc: str | None = None) -> Document:
+def make_material_request(
+	source_name: str, target_doc: str | None = None, selected_items: str | list | None = None
+) -> Document:
 	"""Carry an approved Procurement Request onto a draft Material Request.
 
-	Returned unsaved on purpose. This is where the stock rules start applying --
-	a stock item needs a warehouse, a UOM needs a conversion factor -- and those
-	belong on the Material Request form, so the original requester never had to
-	know about them.
+	Everything still outstanding comes over by default. Returned unsaved on
+	purpose: this is where the stock rules start applying -- a stock item needs a
+	warehouse, a UOM needs a conversion factor -- and the buyer trims the
+	quantities and drops the rows they are not ordering yet on that form, before
+	submitting it. Whatever they leave behind stays open here, because what has
+	been ordered is counted from the Material Requests themselves.
+
+	A caller that already knows what it wants can say so instead: `selected_items`
+	is a list of `{"name": <request row>, "qty": <how many>}`, and the desk's own
+	row tick boxes arrive the same way. Either is checked against a live count of
+	what submitted Material Requests already carry, so two buyers working at once
+	cannot order the same line twice.
 	"""
 	source = frappe.get_doc(DOCTYPE, source_name)
 	frappe.has_permission(DOCTYPE, "read", doc=source, throw=True)
@@ -292,24 +631,24 @@ def make_material_request(source_name: str, target_doc: str | None = None) -> Do
 			)
 		)
 
+	wanted = _selection(source, selected_items)
+
 	# The one thing a Procurement Request is allowed to omit is the one thing a
-	# Material Request insists on, so it has to be filled in before the handover.
-	without_item_code = [str(row.idx) for row in source.items if not row.item_code]
-	if without_item_code:
+	# Material Request insists on. Only the rows actually being carried over
+	# have to answer for it -- the rest can stay uncoded until their turn.
+	uncoded = [str(row.idx) for row in source.items if row.name in wanted and not row.item_code]
+	if uncoded:
 		frappe.throw(
-			_("A Material Request needs an Item Code on every row. Set one on row {0}, or remove the row.").format(
-				comma_and(without_item_code)
+			_("A Material Request needs an Item Code on every row. Set one on row {0} -- it can be set on a submitted request -- or tick just the rows you want to order.").format(
+				comma_and(uncoded)
 			),
 			title=_("Item Code Missing"),
 		)
 
-	if not any(flt(row.qty) > flt(row.ordered_qty) for row in source.items):
-		frappe.throw(_("Every item on this request has already been ordered."))
-
 	def update_item(source_row, target_row, source_parent) -> None:
 		from erpnext.stock.get_item_details import get_conversion_factor
 
-		target_row.qty = flt(source_row.qty) - flt(source_row.ordered_qty)
+		target_row.qty = wanted[source_row.name]
 		target_row.schedule_date = source_row.schedule_date or source_parent.schedule_date
 		target_row.stock_uom = frappe.db.get_value("Item", source_row.item_code, "stock_uom")
 		target_row.conversion_factor = (
@@ -346,7 +685,7 @@ def make_material_request(source_name: str, target_doc: str | None = None) -> Do
 					"estimated_rate": "rate",
 				},
 				"postprocess": update_item,
-				"condition": lambda row: flt(row.qty) > flt(row.ordered_qty),
+				"condition": lambda row: row.name in wanted,
 			},
 		},
 		target_doc,
