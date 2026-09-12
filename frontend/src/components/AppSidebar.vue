@@ -244,36 +244,108 @@ const userDeskUrl = computed(
   () => `/app/user/${encodeURIComponent(user.value.name)}`,
 )
 
+// The desk's header menu (`SidebarHeader.dropdown_items`), carried over
+// section for section: navigation, a divider, display and maintenance, a
+// divider, the account actions. Two of the desk's entries have no counterpart
+// here and are left out rather than stubbed -- Session Defaults is a desk
+// boot feature with no dialog to open, and Help lists Navbar Settings links
+// this app does not have. The desk's `is_divider` markers become groups with
+// the label hidden: the menu renderer borders each group, which is that line.
 const menuItems = computed(() => [
-  // Only the apps this user can actually open, and never the one they are in.
-  ...availableApps.value
-    .filter((app) => app.key !== currentApp.value.key)
-    .map((app) => ({
-      label: app.title,
-      icon: 'lucide-arrow-right-left',
-      onClick: () => router.push(app.home),
-    })),
+  // Desktop is the desk's own name for its home. Workspaces is where the desk
+  // lists a workspace's siblings -- here that is the rest of the suite, with
+  // the two destinations that are not workspaces under a divider: the apps
+  // screen, and this app's page in the desk.
   {
-    label: 'All apps',
-    icon: 'lucide-layout-grid',
+    label: 'Desktop',
+    icon: 'lucide-home',
     onClick: () => {
-      window.location.href = '/apps'
+      window.location.href = '/app'
     },
   },
   {
-    label: 'Open in desk',
-    icon: 'lucide-external-link',
-    onClick: openDesk,
+    label: 'Workspaces',
+    icon: 'lucide-layout-dashboard',
+    submenu: [
+      // Only the apps this user can actually open, and never the one they
+      // are in.
+      ...availableApps.value
+        .filter((app) => app.key !== currentApp.value.key)
+        .map((app) => ({
+          label: app.title,
+          icon: APP_ICONS[app.key],
+          onClick: () => router.push(app.home),
+        })),
+      {
+        group: '',
+        hideLabel: true,
+        options: [
+          {
+            label: 'All apps',
+            icon: 'lucide-layout-grid',
+            onClick: () => {
+              window.location.href = '/apps'
+            },
+          },
+          {
+            label: 'Open in desk',
+            icon: 'lucide-external-link',
+            onClick: openDesk,
+          },
+        ],
+      },
+    ],
   },
   {
-    label: colorScheme.value === 'dark' ? 'Light mode' : 'Dark mode',
-    icon: colorScheme.value === 'dark' ? 'lucide-sun' : 'lucide-moon',
-    onClick: toggleColorScheme,
+    label: 'Website',
+    icon: 'lucide-globe',
+    onClick: () => {
+      window.open(window.location.origin)
+    },
   },
   {
-    label: 'Log out',
-    icon: 'lucide-log-out',
-    onClick: logout,
+    group: '',
+    hideLabel: true,
+    options: [
+      {
+        // The desk tucks its appearance controls behind Display; the scheme
+        // is the one choice this app has. `selected` marks the preference,
+        // so nothing is checked while the app follows the OS setting.
+        label: 'Display',
+        icon: 'lucide-palette',
+        submenu: [
+          {
+            label: 'Light mode',
+            icon: 'lucide-sun',
+            selected: colorScheme.value === 'light',
+            onClick: () => setColorScheme('light'),
+          },
+          {
+            label: 'Dark mode',
+            icon: 'lucide-moon',
+            selected: colorScheme.value === 'dark',
+            onClick: () => setColorScheme('dark'),
+          },
+        ],
+      },
+      {
+        label: 'Reload',
+        icon: 'lucide-rotate-cw',
+        shortcut: RELOAD_SHORTCUT,
+        onClick: clearCacheAndReload,
+      },
+    ],
+  },
+  {
+    group: '',
+    hideLabel: true,
+    options: [
+      {
+        label: 'Logout',
+        icon: 'lucide-log-out',
+        onClick: logout,
+      },
+    ],
   },
 ])
 </script>
