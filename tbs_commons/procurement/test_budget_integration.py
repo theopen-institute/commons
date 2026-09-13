@@ -7,8 +7,8 @@ from unittest.mock import patch
 import frappe
 from frappe.utils import add_days, today
 
-from tbs_commons import budget
-from tbs_commons.budget_math import totals
+from tbs_commons.procurement import budget
+from tbs_commons.procurement.budget_math import totals
 
 
 class TestDepartmentBudget(unittest.TestCase):
@@ -88,7 +88,7 @@ class TestDepartmentBudget(unittest.TestCase):
 
 	def mr(self, rate=100, qty=1, kind="Purchase", request=None, submit=True, department=True):
 		if request:
-			from tbs_commons.tbs_commons.doctype.procurement_request.procurement_request import (
+			from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
 				make_material_request,
 			)
 
@@ -413,7 +413,7 @@ class TestDepartmentBudget(unittest.TestCase):
 		self.assertEqual(result[1][0]["account"], account.account)
 
 	def test_legacy_migration_preserves_links_adjustments_and_is_idempotent(self):
-		from tbs_commons.budget_setup import migrate_legacy_budgets
+		from tbs_commons.procurement.budget_setup import migrate_legacy_budgets
 
 		mr = self.mr(rate=300)
 		old_name = "legacy-" + frappe.generate_hash(length=8)

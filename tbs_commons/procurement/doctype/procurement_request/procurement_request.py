@@ -91,7 +91,7 @@ class ProcurementRequest(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
-		from tbs_commons.tbs_commons.doctype.procurement_request_item.procurement_request_item import (
+		from tbs_commons.procurement.doctype.procurement_request_item.procurement_request_item import (
 			ProcurementRequestItem,
 		)
 

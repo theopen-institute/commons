@@ -54,7 +54,7 @@ class ProcurementRequestItem(Document):
 		"""
 		cached = self.__dict__.get("_committed_qty")
 		if cached is None:
-			from tbs_commons.tbs_commons.doctype.procurement_request.procurement_request import (
+			from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
 				get_committed_qty,
 			)
 

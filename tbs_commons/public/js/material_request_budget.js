@@ -2,7 +2,7 @@ frappe.ui.form.on("Material Request", {
 	refresh(frm) {
 		if (frm.is_new() || !["Purchase", "Material Issue"].includes(frm.doc.material_request_type)) return;
 		frappe.call({
-			method: "tbs_commons.budget.get_material_request_budget",
+			method: "tbs_commons.procurement.budget.get_material_request_budget",
 			args: { name: frm.doc.name },
 			callback: ({ message: budget }) => {
 				if (!budget) return;

@@ -1,7 +1,7 @@
 {
  "doctype": "DocType",
  "name": "Department Budget Adjustment",
- "module": "TBS Commons",
+ "module": "Procurement",
  "engine": "InnoDB",
  "autoname": "hash",
  "field_order": [

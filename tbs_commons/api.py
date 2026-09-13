@@ -3,7 +3,7 @@
 import frappe
 from frappe.utils import flt
 
-from tbs_commons.tbs_commons.doctype.procurement_request.procurement_request import get_committed_qty_map
+from tbs_commons.procurement.doctype.procurement_request.procurement_request import get_committed_qty_map
 
 EMPLOYEE = "Employee"
 
@@ -538,7 +538,7 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 
 def _add_procurement_costs(requests: list[dict]) -> None:
 	"""Attach server-owned virtual totals and edit capabilities to list rows."""
-	from tbs_commons.budget import request_summary
+	from tbs_commons.procurement.budget import request_summary
 
 	workflow = _procurement_workflow()
 	for request in requests:

@@ -11,7 +11,7 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
-from tbs_commons.budget_math import number, outstanding_value, totals
+from tbs_commons.procurement.budget_math import number, outstanding_value, totals
 
 BUDGET = "Department Budget"
 POSITION = "Department Budget Position"

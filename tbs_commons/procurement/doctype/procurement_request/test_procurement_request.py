@@ -7,7 +7,7 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, today
 
 from tbs_commons.install import sync_procurement_workflow
-from tbs_commons.tbs_commons.doctype.procurement_request.procurement_request import make_material_request
+from tbs_commons.procurement.doctype.procurement_request.procurement_request import make_material_request
 
 
 class ProcurementTestCase(IntegrationTestCase):

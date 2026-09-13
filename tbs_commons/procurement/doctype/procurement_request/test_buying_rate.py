@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from tbs_commons.tbs_commons.doctype.procurement_request import procurement_request as procurement
+from tbs_commons.procurement.doctype.procurement_request import procurement_request as procurement
 
 
 class TestBuyingRate(TestCase):

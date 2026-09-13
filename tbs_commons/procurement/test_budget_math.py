@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from tbs_commons.budget_math import number, outstanding_value, totals
+from tbs_commons.procurement.budget_math import number, outstanding_value, totals
 
 
 class TestBudgetMath(TestCase):

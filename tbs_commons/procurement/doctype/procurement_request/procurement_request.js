@@ -2,7 +2,7 @@
 // For license information, please see license.txt
 
 const MAKE_MATERIAL_REQUEST =
-	"tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.make_material_request";
+	"tbs_commons.procurement.doctype.procurement_request.procurement_request.make_material_request";
 
 frappe.ui.form.on("Procurement Request", {
 	setup(frm) {
@@ -13,7 +13,7 @@ frappe.ui.form.on("Procurement Request", {
 	refresh(frm) {
 		if (!frm.is_new()) {
 			frappe.call({
-				method: "tbs_commons.budget.get_request_budget",
+				method: "tbs_commons.procurement.budget.get_request_budget",
 				args: { name: frm.doc.name },
 				callback: ({ message: budget }) => {
 					if (!budget) return;
@@ -84,7 +84,7 @@ frappe.ui.form.on("Procurement Request Item", {
 		if (!item_code) return;
 
 		const { message } = await frappe.call({
-			method: "tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.get_verified_buying_price",
+			method: "tbs_commons.procurement.doctype.procurement_request.procurement_request.get_verified_buying_price",
 			args: {
 				item_code,
 				currency: frm.doc.currency,

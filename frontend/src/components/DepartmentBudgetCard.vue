@@ -36,7 +36,7 @@ import { createResource } from 'frappe-ui'
 import type { DepartmentBudgetSummary } from '@/data/procurement'
 import { formatCurrency } from '@/data/format'
 const props = defineProps<{ summary: DepartmentBudgetSummary; requestName?: string }>()
-const documents = createResource({ url: 'tbs_commons.budget.get_budget_documents' })
+const documents = createResource({ url: 'tbs_commons.procurement.budget.get_budget_documents' })
 function loadDocuments(event: Event) {
   if ((event.target as HTMLDetailsElement).open && props.requestName) {
     documents.submit({ request: props.requestName })

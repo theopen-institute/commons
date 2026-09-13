@@ -56,9 +56,10 @@ website_route_rules = [
 	{"from_route": "/tbs_commons/<path:app_path>", "to_route": "tbs_commons"},
 ]
 
-# The desk draws `Desktop Icon` documents, which Frappe seeds once per app at
-# install and never updates. Both hooks run the same idempotent sync, so a
-# fresh install and an existing site end up with the same two icons.
+# The desk icons themselves ship as files under `tbs_commons/desktop_icon/` and
+# are imported by migrate's own sync. These hooks only do what that sync cannot:
+# Custom Fields, the procurement Workflow, and dropping the redundant app-title
+# icon Frappe seeds.
 after_install = [
 	"tbs_commons.install.after_install",
 	"tbs_commons.safer_permissions.install.sync_permission_gates",
@@ -247,15 +248,15 @@ has_permission = {
 # whether it counts — a draft Material Request commits to nothing.
 doc_events = {
 	"Material Request": {
-		"validate": "tbs_commons.budget.validate_material_request",
-		"before_update_after_submit": "tbs_commons.budget.protect_submitted_material_request",
+		"validate": "tbs_commons.procurement.budget.validate_material_request",
+		"before_update_after_submit": "tbs_commons.procurement.budget.protect_submitted_material_request",
 		"on_submit": [
-			"tbs_commons.budget.sync_document",
-			"tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
+			"tbs_commons.procurement.budget.sync_document",
+			"tbs_commons.procurement.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
 		],
 		"on_cancel": [
-			"tbs_commons.budget.sync_document",
-			"tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
+			"tbs_commons.procurement.budget.sync_document",
+			"tbs_commons.procurement.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
 		],
 	},
 }
@@ -383,6 +384,6 @@ require_type_annotated_api_methods = True
 
 # Submitted MR rates are immutable even when a price-list update is requested.
 extend_doctype_class = {
-	"Material Request": ["tbs_commons.budget.BudgetMaterialRequestMixin"],
+	"Material Request": ["tbs_commons.procurement.budget.BudgetMaterialRequestMixin"],
 }
 doctype_js = {"Material Request": "public/js/material_request_budget.js"}

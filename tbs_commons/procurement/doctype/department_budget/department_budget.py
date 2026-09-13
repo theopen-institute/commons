@@ -2,12 +2,12 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from tbs_commons.budget_math import number, totals
+from tbs_commons.procurement.budget_math import number, totals
 
 
 class DepartmentBudget(Document):
 	def validate(self):
-		from tbs_commons.budget import (
+		from tbs_commons.procurement.budget import (
 			lock_budget,
 			portfolio,
 			positions,

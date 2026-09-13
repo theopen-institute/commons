@@ -1,7 +1,7 @@
 {
  "doctype": "DocType",
  "name": "Department Budget Position",
- "module": "TBS Commons",
+ "module": "Procurement",
  "engine": "InnoDB",
  "autoname": "hash",
  "field_order": [
