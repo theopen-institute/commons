@@ -1,25 +1,26 @@
 """Submitted Purchase/Material Issue requests are the sole budget tally.
 
-Procurement Requests provide live provisional estimates only. Source snapshots
-and audit movements are written in the Material Request transaction, serialized
-by the Department Budget row. No purchase or stock ledger events affect usage.
-"""
+Usage is never stored, and neither is attribution. A request belongs to whichever
+allocation covers its department on its transaction date, so the tally is summed
+from the requests themselves and cannot drift from the documents it describes.
+Procurement Requests provide live provisional estimates only. No purchase or stock
+ledger events affect usage.
 
-import json
+History comes from the documents themselves: `docstatus` and `amended_from` on
+the Material Request, its Version log, and the Department Budget amendment chain.
+"""
 
 import frappe
 from frappe import _
 from frappe.utils import flt
 
-from tbs_commons.procurement.budget_math import number, outstanding_value, totals
+from tbs_commons.procurement.budget_math import number, outstanding_value
 
 BUDGET = "Department Budget"
-POSITION = "Department Budget Position"
-MOVEMENT = "Department Budget Movement"
 MR_TYPES = ("Purchase", "Material Issue")
 
 
-def budget_name(company, department, date):
+def budget_name(company, department, date, submitted_only=True):
 	return frappe.db.get_value(
 		BUDGET,
 		{
@@ -27,6 +28,9 @@ def budget_name(company, department, date):
 			"department": department,
 			"start_date": ["<=", date],
 			"end_date": [">=", date],
+			# Only a submitted allocation authorises a charge; a draft is shown
+			# in procurement feedback but cannot be spent against.
+			"docstatus": 1 if submitted_only else ["<", 2],
 		},
 		"name",
 	)
@@ -37,7 +41,7 @@ def find_budget(company, department, date):
 	if not name:
 		frappe.throw(
 			_(
-				"No department budget exists for {0} on {1}. Finance must create the allocation before submitting this Material Request."
+				"No submitted department budget exists for {0} on {1}. Finance must submit the allocation before this Material Request."
 			).format(department or _("this department"), date)
 		)
 	return name
@@ -50,37 +54,45 @@ def lock_budget(name):
 	return rows[0]
 
 
-def positions(name, lock=False):
+def usage_rows(budget, lock=False):
+	"""Submitted Purchase/Material Issue rows falling in this budget's department and period.
+
+	Attribution is derived, not stored: a request belongs to whichever allocation
+	covers its department on its transaction date. `for update` is not decoration:
+	the tally is read inside the Department Budget row lock, and a locking read is
+	what makes it see rows another transaction committed after this one's snapshot.
+	"""
 	return frappe.db.sql(
-		"select * from `tabDepartment Budget Position` where budget=%s and source_type='Material Request'"
+		"""select i.name, i.parent, i.amount from `tabMaterial Request Item` i
+		inner join `tabMaterial Request` mr on mr.name=i.parent
+		where mr.docstatus=1 and mr.material_request_type in %(types)s
+		and mr.company=%(company)s and mr.department=%(department)s
+		and mr.transaction_date between %(start)s and %(end)s"""
 		+ (" for update" if lock else ""),
-		name,
+		{
+			"types": MR_TYPES,
+			"company": budget.company,
+			"department": budget.department,
+			"start": budget.start_date,
+			"end": budget.end_date,
+		},
 		as_dict=True,
 	)
 
 
-def portfolio(records):
-	return [row for record in records for row in json.loads(record.payload)]
+def used_amount(budget, lock=False):
+	return sum((number(row.amount) for row in usage_rows(budget, lock=lock)), number(0))
 
 
-def allocation(budget, lock=False):
-	adjustments = frappe.db.sql(
-		"select amount from `tabDepartment Budget Adjustment` where parent=%s"
-		+ (" for update" if lock else ""),
-		budget.name,
-	)
-	return number(budget.annual_amount) + sum((number(row[0]) for row in adjustments), number(0))
-
-
-def remaining(budget, amounts, lock=False):
-	return allocation(budget, lock=lock) - amounts["used"]
+def remaining(budget, lock=False):
+	return number(budget.annual_amount) - used_amount(budget, lock=lock)
 
 
 def material_request_department(doc):
 	"""Resolve department from validated request-row links, or the explicit MR field."""
 	departments = set()
-	if doc.get("budget_department"):
-		departments.add(doc.budget_department)
+	if doc.get("department"):
+		departments.add(doc.department)
 	for row in doc.items:
 		if row.get("procurement_request_item"):
 			source = frappe.db.get_value(
@@ -142,21 +154,18 @@ def material_request_department(doc):
 
 def validate_material_request(doc, method=None):
 	if doc.material_request_type not in MR_TYPES:
-		doc.budget_amount = 0
-		doc.department_budget = None
 		return
 	department = material_request_department(doc)
-	doc.budget_department = department
-	doc.budget_currency = frappe.db.get_value("Company", doc.company, "default_currency")
+	doc.department = department
+	currency = frappe.db.get_value("Company", doc.company, "default_currency")
 	if doc.get("buying_price_list"):
 		list_currency = frappe.db.get_value("Price List", doc.buying_price_list, "currency")
-		if list_currency and list_currency != doc.budget_currency:
+		if list_currency and list_currency != currency:
 			frappe.throw(
 				_("Material Request rates are in {0}. Select a buying price list in that currency.").format(
-					doc.budget_currency
+					currency
 				)
 			)
-	amount = number(0)
 	for row in doc.items:
 		qty, rate = number(row.qty), number(row.rate)
 		if not qty.is_finite() or not rate.is_finite() or qty <= 0 or rate < 0:
@@ -166,24 +175,22 @@ def validate_material_request(doc, method=None):
 		if doc.docstatus == 1 and rate <= 0:
 			frappe.throw(
 				_("Row {0}: enter a positive Material Request rate in {1} before submitting.").format(
-					row.idx, doc.budget_currency
+					row.idx, currency
 				)
 			)
-		# MR amounts are company currency. Recompute server-side, never trust client totals.
+		# MR amounts are company currency, and are the tally itself. Recompute
+		# server-side, never trust client totals.
 		row.amount = flt(qty * rate, row.precision("amount"))
-		amount += number(row.amount)
-	doc.budget_amount = float(amount)
-	doc.department_budget = budget_name(doc.company, department, doc.transaction_date) if department else None
 	if doc.docstatus == 1:
 		if not department:
 			frappe.throw(_("Select a Budget Department before submitting this Material Request."))
-		doc.department_budget = find_budget(doc.company, department, doc.transaction_date)
+		# Checked, never stored: the allocation is a function of department and date.
+		find_budget(doc.company, department, doc.transaction_date)
 
 
 def material_rows(doc):
 	return [
 		dict(
-			kind="material_request",
 			row=row.name,
 			amount=str(number(row.amount)),
 			qty=str(number(row.qty)),
@@ -200,7 +207,7 @@ def material_rows(doc):
 
 
 def protect_submitted_material_request(doc, method=None):
-	if not frappe.db.exists(POSITION, {"source_key": f"Material Request:{doc.name}"}):
+	if not doc.get("department"):
 		return
 	old = doc.get_doc_before_save()
 	if not old or (old.material_request_type not in MR_TYPES and doc.material_request_type not in MR_TYPES):
@@ -209,9 +216,7 @@ def protect_submitted_material_request(doc, method=None):
 		"company",
 		"transaction_date",
 		"material_request_type",
-		"budget_department",
-		"department_budget",
-		"budget_amount",
+		"department",
 		"buying_price_list",
 		"procurement_request",
 	):
@@ -225,96 +230,56 @@ def protect_submitted_material_request(doc, method=None):
 		)
 
 
-def sync_document(doc, method=None):
+def persist_amounts(name):
+	"""Re-read and rewrite row amounts so the stored column is the tally's truth.
+
+	ERPNext can revise rates in `on_update` before `on_submit` runs.
+	"""
+	doc = frappe.get_doc("Material Request", name)
+	validate_material_request(doc)
+	for row in doc.items:
+		frappe.db.set_value("Material Request Item", row.name, "amount", row.amount, update_modified=False)
+	return doc
+
+
+def charge_material_request(doc, method=None):
+	"""on_submit: refuse the submission if it overruns the department allocation.
+
+	Cancellation needs no counterpart. A cancelled request leaves the tally by
+	virtue of its docstatus.
+	"""
 	# Defense in depth: callers outside MR hooks cannot post purchasing values.
 	if doc.doctype != "Material Request" or doc.material_request_type not in MR_TYPES:
 		return
-	key = f"Material Request:{doc.name}"
-	previous = frappe.db.get_value(POSITION, {"source_key": key}, ["name", "budget", "payload"], as_dict=True)
-	if doc.docstatus != 1 and not previous:
+	if doc.docstatus != 1:
 		return
-	if doc.docstatus == 1:
-		# Read persisted rows: ERPNext can update rates in on_update before on_submit.
-		doc = frappe.get_doc("Material Request", doc.name)
-		validate_material_request(doc)
-		rows = material_rows(doc)
-		name = doc.department_budget
-	else:
-		rows = []
-		name = previous.budget
-	if previous and previous.budget != name:
-		frappe.throw(_("Cancel and amend to move a submitted Material Request to another budget."))
-	current = lock_budget(name)
-	if rows and not current.ready and method != "register_existing":
-		frappe.throw(
-			_("Finance must reconcile submitted Material Requests before using this department budget.")
-		)
-	if method == "register_existing" and current.ready:
-		frappe.throw(_("Disable this budget before importing existing Material Requests."))
-	records = positions(name, lock=True)
-	previous = next((record for record in records if record.source_key == key), None)
-	before = totals(portfolio(records))
-	after = totals(portfolio([record for record in records if record.source_key != key]) + rows)
-	increase = after["used"] - before["used"]
-	available = remaining(current, before, lock=True)
-	if method != "register_existing" and increase > 0 and increase > available:
-		frappe.throw(
-			_(
-				"Department {0}: this Material Request requires {1} {2} additional budget; {3} is available. Shortfall: {4}."
-			).format(
-				current.department,
-				current.currency,
-				f"{increase:,.2f}",
-				f"{available:,.2f}",
-				f"{increase - available:,.2f}",
-			),
-			title=_("Department budget exceeded"),
-		)
-	payload = json.dumps(rows, sort_keys=True)
-	if previous and previous.payload == payload:
+	doc = persist_amounts(doc.name)
+	enforce_allocation(
+		lock_budget(find_budget(doc.company, doc.department, doc.transaction_date)), doc
+	)
+
+
+def enforce_allocation(current, doc):
+	"""Throw unless every submitted request charged to `current` fits its allocation."""
+	rows = usage_rows(current, lock=True)
+	charged = sum((number(row.amount) for row in rows), number(0))
+	allocation = number(current.annual_amount)
+	if charged <= allocation:
 		return
-	if previous:
-		frappe.db.set_value(POSITION, previous.name, "payload", payload)
-	else:
-		frappe.get_doc(
-			dict(
-				doctype=POSITION,
-				source_key=key,
-				budget=name,
-				source_type=doc.doctype,
-				source_name=doc.name,
-				payload=payload,
-			)
-		).insert(ignore_permissions=True)
-	frappe.get_doc(
-		dict(
-			doctype=MOVEMENT,
-			budget=name,
-			source_type=doc.doctype,
-			source_name=doc.name,
-			used=float(increase),
-			details=json.dumps(
-				{"before": json.loads(previous.payload) if previous else [], "after": rows}, sort_keys=True
-			),
-		)
-	).insert(ignore_permissions=True, ignore_links=True)
-	if rows:
-		if method == "register_existing":
-			for row in doc.items:
-				frappe.db.set_value(
-					"Material Request Item", row.name, "amount", row.amount, update_modified=False
-				)
-		frappe.db.set_value(
-			"Material Request",
-			doc.name,
-			{
-				"budget_department": current.department,
-				"department_budget": name,
-				"budget_currency": current.currency,
-				"budget_amount": float(totals(rows)["used"]),
-			},
-			update_modified=False,
-		)
+	own = sum((number(row.amount) for row in rows if row.parent == doc.name), number(0))
+	available = allocation - (charged - own)
+	frappe.throw(
+		_(
+			"Department {0}: this Material Request needs {1} {2}; only {3} remains. Shortfall: {4}."
+		).format(
+			current.department,
+			current.currency,
+			f"{own:,.2f}",
+			f"{available:,.2f}",
+			f"{own - available:,.2f}",
+		),
+		title=_("Department budget exceeded"),
+	)
 
 
 def provisional_requests(budget):
@@ -384,12 +349,12 @@ def can_view_summary(doc):
 def request_summary(doc):
 	if not can_view_summary(doc):
 		return None
-	name = budget_name(doc.company, doc.department, doc.transaction_date)
+	name = budget_name(doc.company, doc.department, doc.transaction_date, submitted_only=False)
 	if not name:
 		return dict(missing=True, department=doc.department)
 	budget = frappe.get_doc(BUDGET, name)
-	amounts = totals(portfolio(positions(name)))
-	available = remaining(budget, amounts)
+	used = used_amount(budget)
+	available = number(budget.annual_amount) - used
 	provisional = provisional_requests(budget)
 	outstanding = request_outstanding(doc) if doc.docstatus != 2 and doc.status != "Rejected" else number(0)
 	# Include the displayed draft once when previewing, but never in other users' pipeline totals.
@@ -398,13 +363,13 @@ def request_summary(doc):
 	)
 	return dict(
 		missing=False,
-		inactive=not bool(budget.ready),
+		inactive=budget.docstatus != 1,
 		name=name,
 		department=budget.department,
 		fiscal_year=budget.fiscal_year,
 		currency=budget.currency,
-		budget=float(allocation(budget)),
-		used=float(amounts["used"]),
+		budget=float(number(budget.annual_amount)),
+		used=float(used),
 		available=float(available),
 		provisional=float(sum(provisional.values(), number(0))),
 		request_amount=float(outstanding),
@@ -422,15 +387,13 @@ def get_budget_documents(request: str) -> list[dict]:
 	summary = get_request_budget(request)
 	if not summary or summary.get("missing"):
 		return []
+	charged = {}
+	for row in usage_rows(frappe.get_doc(BUDGET, summary["name"])):
+		charged[row.parent] = charged.get(row.parent, number(0)) + number(row.amount)
 	return [
-		dict(
-			doctype=record.source_type,
-			name=record.source_name,
-			amount=float(totals(json.loads(record.payload))["used"]),
-		)
-		for record in positions(summary["name"])
-		if json.loads(record.payload)
-		and frappe.has_permission(record.source_type, "read", doc=record.source_name)
+		dict(doctype="Material Request", name=name, amount=float(amount))
+		for name, amount in charged.items()
+		if frappe.has_permission("Material Request", "read", doc=name)
 	]
 
 
@@ -445,87 +408,66 @@ def get_material_request_budget(name: str) -> dict | None:
 		return None
 	if doc.material_request_type not in MR_TYPES:
 		return None
-	department = doc.get("budget_department") or material_request_department(doc)
-	name = doc.get("department_budget") or budget_name(doc.company, department, doc.transaction_date)
+	department = doc.get("department") or material_request_department(doc)
+	name = budget_name(doc.company, department, doc.transaction_date, submitted_only=False)
 	if not name:
 		return dict(missing=True)
 	budget = frappe.get_doc(BUDGET, name)
-	used = totals(portfolio(positions(name)))["used"]
+	used = used_amount(budget)
 	return dict(
 		missing=False,
-		inactive=not bool(budget.ready),
+		inactive=budget.docstatus != 1,
 		currency=budget.currency,
-		budget=float(allocation(budget)),
+		budget=float(number(budget.annual_amount)),
 		used=float(used),
-		available=float(allocation(budget) - used),
+		available=float(number(budget.annual_amount) - used),
 		amount=float(sum((number(row.qty) * number(row.rate) for row in doc.items), number(0))),
 	)
 
 
 def register_existing_documents(documents):
-	"""Finance can import reviewed submitted Material Requests into inactive budgets."""
+	"""Attribute historical submitted Material Requests to a department.
+
+	Attribution is all there is to import: once a request carries a budget
+	department, whichever allocation covers its date counts it.
+	"""
 	frappe.only_for(["Accounts Manager", "System Manager"])
+	references = frappe.parse_json(documents)
 	affected = set()
-	for reference in frappe.parse_json(documents):
+	for reference in references:
 		if reference["doctype"] != "Material Request":
 			frappe.throw(_("Only Material Requests affect department budget usage."))
 		doc = frappe.get_doc("Material Request", reference["name"])
-		if reference.get("department"):
-			if doc.get("budget_department") and doc.budget_department != reference["department"]:
-				frappe.throw(_("Existing Material Request department does not match the import."))
-			frappe.db.set_value("Material Request", doc.name, "budget_department", reference["department"])
-			doc.reload()
 		if doc.docstatus != 1 or doc.material_request_type not in MR_TYPES:
 			frappe.throw(_("Only submitted Purchase or Material Issue requests can be imported."))
-		sync_document(doc, method="register_existing")
-		affected.add(frappe.db.get_value(POSITION, {"source_key": f"Material Request:{doc.name}"}, "budget"))
+		department = reference.get("department") or doc.get("department")
+		if not department:
+			frappe.throw(
+				_("Material Request {0} has no department. Supply one to attribute it.").format(doc.name)
+			)
+		if doc.get("department") and doc.department != department:
+			frappe.throw(_("Existing Material Request department does not match the import."))
+		name = find_budget(doc.company, department, doc.transaction_date)
+		frappe.db.set_value(
+			"Material Request", doc.name, "department", department, update_modified=False
+		)
+		persist_amounts(doc.name)
+		affected.add(name)
 	for name in sorted(affected):
 		current = lock_budget(name)
-		if remaining(current, totals(portfolio(positions(name, lock=True))), lock=True) < 0:
+		if remaining(current, lock=True) < 0:
 			frappe.throw(
 				_("Submitted Material Requests exceed the allocation for {0}.").format(current.department)
 			)
-	return {"registered": len(frappe.parse_json(documents))}
+	return {"registered": len(references)}
 
 
 class BudgetMaterialRequestMixin:
 	def update_item_rates(self):
-		# A later price-list refresh must never revalue a submitted MR.
-		if self.docstatus != 0 and self.get("department_budget"):
+		# A later price-list refresh must never revalue a submitted MR. This is not
+		# belt-and-braces: ERPNext writes the new rate and amount with `db_set`,
+		# which bypasses `validate` and `before_update_after_submit` entirely, and
+		# `amount` is the budget tally itself.
+		if self.docstatus != 0 and self.get("department"):
 			return
 		super().update_item_rates()
-		self.db_set(
-			"budget_amount",
-			sum(flt(row.amount) for row in self.items) if self.material_request_type in MR_TYPES else 0,
-			update_modified=False,
-		)
-
-
-def validate_reconciled_material_requests(budget):
-	"""Do not activate a budget while its known submitted MRs are missing or stale."""
-	names = frappe.db.sql(
-		"""select distinct mr.name from `tabMaterial Request` mr
-		left join `tabMaterial Request Item` i on i.parent=mr.name
-		left join `tabProcurement Request` pr on pr.name=i.procurement_request
-		left join `tabProcurement Request` header_pr on header_pr.name=mr.procurement_request
-		where mr.docstatus=1 and mr.material_request_type in ('Purchase', 'Material Issue')
-		and mr.company=%s and mr.transaction_date between %s and %s
-		and (mr.budget_department=%s or pr.department=%s or header_pr.department=%s)""",
-		(
-			budget.company,
-			budget.start_date,
-			budget.end_date,
-			budget.department,
-			budget.department,
-			budget.department,
-		),
-	)
-	registered = {row.source_name: json.loads(row.payload) for row in positions(budget.name, lock=True)}
-	for (name,) in names:
-		doc = frappe.get_doc("Material Request", name)
-		if registered.get(name) != material_rows(doc):
-			frappe.throw(
-				_(
-					"Register and reconcile submitted Material Request {0} before enabling this budget."
-				).format(name)
-			)

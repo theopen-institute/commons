@@ -18,7 +18,7 @@ frappe.ui.form.on("Procurement Request", {
 				callback: ({ message: budget }) => {
 					if (!budget) return;
 					if (budget.missing || budget.inactive) {
-						frm.dashboard.set_headline_alert(__("The department budget is not ready. Procurement approval can proceed; Material Request submission will require a configured, reconciled budget."), "orange");
+						frm.dashboard.set_headline_alert(__("No submitted department budget covers this period. Procurement approval can proceed; Material Request submission will require one."), "orange");
 						return;
 					}
 					const money = (value) => format_currency(value, budget.currency);

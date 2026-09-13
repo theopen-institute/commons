@@ -7,7 +7,7 @@ frappe.ui.form.on("Material Request", {
 			callback: ({ message: budget }) => {
 				if (!budget) return;
 				if (budget.missing || budget.inactive) {
-					frm.dashboard.set_headline_alert(__("Finance must configure and reconcile the department budget before this Material Request can be submitted."), "orange");
+					frm.dashboard.set_headline_alert(__("Finance must create and submit the department budget before this Material Request can be submitted."), "orange");
 					return;
 				}
 				const money = (value) => format_currency(value, budget.currency);
@@ -19,17 +19,4 @@ frappe.ui.form.on("Material Request", {
 			},
 		});
 	},
-});
-
-function update_material_request_budget_amount(frm) {
-	const amount = ["Purchase", "Material Issue"].includes(frm.doc.material_request_type)
-		? (frm.doc.items || []).reduce((total, row) => total + flt(row.qty) * flt(row.rate), 0)
-		: 0;
-	frm.set_value("budget_amount", amount);
-}
-
-frappe.ui.form.on("Material Request Item", {
-	qty: update_material_request_budget_amount,
-	rate: update_material_request_budget_amount,
-	items_remove: update_material_request_budget_amount,
 });

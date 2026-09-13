@@ -245,11 +245,12 @@ doc_events = {
 		"validate": "tbs_commons.procurement.budget.validate_material_request",
 		"before_update_after_submit": "tbs_commons.procurement.budget.protect_submitted_material_request",
 		"on_submit": [
-			"tbs_commons.procurement.budget.sync_document",
+			"tbs_commons.procurement.budget.charge_material_request",
 			"tbs_commons.procurement.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
 		],
+		# Cancellation needs no budget counterpart: usage is summed from submitted
+		# requests, so a cancelled one leaves the tally by virtue of its docstatus.
 		"on_cancel": [
-			"tbs_commons.procurement.budget.sync_document",
 			"tbs_commons.procurement.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
 		],
 	},

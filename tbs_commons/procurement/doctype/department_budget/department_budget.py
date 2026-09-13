@@ -2,18 +2,16 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from tbs_commons.procurement.budget_math import number, totals
+from tbs_commons.procurement.budget import used_amount
+from tbs_commons.procurement.budget_math import number
+
+IDENTITY = ("company", "department", "fiscal_year")
 
 
 class DepartmentBudget(Document):
 	def validate(self):
-		from tbs_commons.procurement.budget import (
-			lock_budget,
-			portfolio,
-			positions,
-			validate_reconciled_material_requests,
-		)
-
+		# Serialize allocation writes per department: the overlap check below is
+		# only sound while no concurrent transaction can insert a rival period.
 		frappe.db.sql("select name from `tabDepartment` where name=%s for update", self.department)
 		year = frappe.get_doc("Fiscal Year", self.fiscal_year)
 		if year.disabled or (year.companies and self.company not in [r.company for r in year.companies]):
@@ -23,45 +21,51 @@ class DepartmentBudget(Document):
 			frappe.throw(_("Department and budget must belong to the same company."))
 		self.currency = frappe.db.get_value("Company", self.company, "default_currency")
 		self.start_date, self.end_date = year.year_start_date, year.year_end_date
-		self.budget_key = f"{self.company}|{self.department}|{self.fiscal_year}"
 		if number(self.annual_amount) < 0:
 			frappe.throw(_("Annual budget cannot be negative."))
-		old = self.get_doc_before_save()
-		if not self.is_new():
-			lock_budget(self.name)
-			if old:
-				for field in ("company", "department", "fiscal_year", "annual_amount"):
-					if self.get(field) != old.get(field):
-						frappe.throw(
-							_("Keep the original allocation unchanged; append a budget adjustment instead.")
-						)
-				for idx, row in enumerate(old.adjustments):
-					if idx >= len(self.adjustments) or any(
-						self.adjustments[idx].get(f) != row.get(f) for f in ("name", "amount", "reason")
-					):
-						frappe.throw(
-							_(
-								"Existing budget adjustments cannot be changed or removed. Append a reversing adjustment."
-							)
-						)
-		amount = number(self.annual_amount) + sum((number(r.amount) for r in self.adjustments), number(0))
-		used = (
-			sum(totals(portfolio(positions(self.name, lock=not self.is_new()))).values())
-			if not self.is_new()
-			else 0
+		self.validate_amendment()
+		self.validate_single_active_period()
+		self.validate_covers_usage()
+
+	def validate_amendment(self):
+		"""An amendment restates the amount, never the budget's identity."""
+		if not self.amended_from:
+			return
+		previous = frappe.db.get_value(
+			"Department Budget", self.amended_from, IDENTITY, as_dict=True
 		)
-		if amount < used or amount < 0:
-			frappe.throw(_("The revised budget cannot be less than submitted Material Request usage."))
+		if previous and any(self.get(field) != previous.get(field) for field in IDENTITY):
+			frappe.throw(
+				_(
+					"An amendment must keep the same company, department and fiscal year. Create a separate budget instead."
+				)
+			)
+
+	def validate_single_active_period(self):
+		"""Only one submitted allocation may cover a department at a given date."""
 		if frappe.db.exists(
 			"Department Budget",
 			{
 				"company": self.company,
 				"department": self.department,
+				"docstatus": 1,
 				"name": ["!=", self.name],
 				"start_date": ["<=", self.end_date],
 				"end_date": [">=", self.start_date],
 			},
 		):
-			frappe.throw(_("A department budget already exists for this period."))
-		if self.ready:
-			validate_reconciled_material_requests(self)
+			frappe.throw(_("A submitted department budget already exists for this period."))
+
+	def validate_covers_usage(self):
+		"""A restated allocation cannot fall below what its period already carries.
+
+		Usage is derived from department and date, so this reads the same figure
+		whether the budget is new or an amendment: nothing has to be carried over.
+		"""
+		charged = used_amount(self)
+		if number(self.annual_amount) < charged:
+			frappe.throw(
+				_(
+					"The allocation cannot be less than the {0} already charged by submitted Material Requests."
+				).format(f"{charged:,.2f}")
+			)

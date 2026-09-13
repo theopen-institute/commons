@@ -99,16 +99,13 @@ CUSTOM_FIELDS = {
 
 # Budget usage is attributed at the Material Request, including direct requests.
 CUSTOM_FIELDS["Material Request"].extend([
-	{"fieldname": "budget_department", "label": "Budget Department", "fieldtype": "Link",
-	 "options": "Department", "insert_after": "company",
-	 "description": "Required to submit Purchase/Material Issue requests; inherited from linked Procurement Requests."},
-	{"fieldname": "budget_currency", "label": "Budget Currency", "fieldtype": "Link",
-	 "options": "Currency", "insert_after": "budget_department", "read_only": 1},
-	{"fieldname": "department_budget", "label": "Department Budget", "fieldtype": "Link",
-	 "options": "Department Budget", "insert_after": "budget_currency", "read_only": 1, "no_copy": 1},
-	{"fieldname": "budget_amount", "label": "Budget Usage", "fieldtype": "Currency",
-	 "options": "budget_currency", "insert_after": "department_budget", "read_only": 1,
-	 "description": "Sum of MR quantity × rate in company currency. Counted only on submission."},
+	# Header-level and singular on purpose: one request charges one department's
+	# budget. Note that enabling a Department accounting dimension would add a
+	# separate per-row `department` to Material Request Item, which is ERPNext's
+	# accounting attribution and not this.
+	{"fieldname": "department", "label": "Department", "fieldtype": "Link",
+	 "options": "Department", "insert_after": "company", "search_index": 1,
+	 "description": "Whose budget this request is charged to. Required to submit Purchase/Material Issue requests; inherited from linked Procurement Requests."},
 ])
 # Preserve any existing PO/PI attribution data but retire those obsolete controls.
 for _doctype in ("Purchase Order Item", "Purchase Invoice Item"):
@@ -148,12 +145,18 @@ def sync_module_defs() -> None:
 def after_install() -> None:
 	_remove_legacy_icon()
 	sync_custom_fields()
+	migrate_renamed_custom_fields()
+	remove_obsolete_custom_fields()
+	sync_material_request_tracking()
 	sync_procurement_workflow()
 
 
 def after_migrate() -> None:
 	_remove_legacy_icon()
 	sync_custom_fields()
+	migrate_renamed_custom_fields()
+	remove_obsolete_custom_fields()
+	sync_material_request_tracking()
 	sync_procurement_workflow()
 
 
@@ -162,6 +165,68 @@ def sync_custom_fields() -> None:
 	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 	create_custom_fields(CUSTOM_FIELDS, update=True)
+
+
+# Fields this app used to add and no longer wants. `create_custom_fields` only
+# creates and updates, so a field dropped from `CUSTOM_FIELDS` would otherwise
+# linger on every existing site -- and a stale Link keeps its link integrity,
+# which is the whole reason this one had to go.
+OBSOLETE_CUSTOM_FIELDS = (
+	# Which budget a request is charged to is a function of its department and
+	# transaction date. Storing it made Material Request link to Department Budget,
+	# which blocked the cancel-and-amend the allocation is restated by.
+	("Material Request", "department_budget"),
+	# A stored sum of the very rows the tally reads, and the company currency it
+	# was formatted in. Both were written on every save and read for no decision.
+	("Material Request", "budget_amount"),
+	("Material Request", "budget_currency"),
+	# Renamed to `department`; see LEGACY_FIELD_RENAMES, which carries the values
+	# across before this drops the old field.
+	("Material Request", "budget_department"),
+)
+
+# (doctype, old fieldname, new fieldname) for fields this app has since renamed.
+LEGACY_FIELD_RENAMES = (("Material Request", "budget_department", "department"),)
+
+
+def migrate_renamed_custom_fields() -> None:
+	"""Carry values across from fields this app has since renamed.
+
+	Runs between creating the new Custom Field and deleting the old one. Deleting
+	a Custom Field leaves its column behind, so both columns are still present
+	here -- and the `where` clause is what makes re-running it a no-op.
+	"""
+	for doctype, old, new in LEGACY_FIELD_RENAMES:
+		if not (frappe.db.has_column(doctype, old) and frappe.db.has_column(doctype, new)):
+			continue
+		frappe.db.sql(
+			f"""update `tab{doctype}` set `{new}` = `{old}`
+			where ifnull(`{new}`, '') = '' and ifnull(`{old}`, '') != ''"""
+		)
+
+
+def remove_obsolete_custom_fields() -> None:
+	"""Drop this app's retired Custom Fields. Safe to run repeatedly."""
+	for doctype, fieldname in OBSOLETE_CUSTOM_FIELDS:
+		name = frappe.db.exists("Custom Field", {"dt": doctype, "fieldname": fieldname})
+		if name:
+			frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
+
+
+def sync_material_request_tracking() -> None:
+	"""Turn on Frappe's own change log for Material Requests.
+
+	Budget usage is summed live from submitted requests and no longer keeps a
+	bespoke ledger of its own, so the audit trail is the requests' history:
+	`Version` records every field change and every docstatus transition, with the
+	user and timestamp. ERPNext ships Material Request with tracking off.
+	"""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	# `for_doctype` makes this a DocType-level property rather than a field one.
+	# Re-running is safe: Property Setter drops any earlier setter for the same
+	# property before inserting, so `after_migrate` can call this every time.
+	make_property_setter("Material Request", None, "track_changes", 1, "Check", for_doctype=True)
 
 
 def sync_procurement_workflow() -> None:

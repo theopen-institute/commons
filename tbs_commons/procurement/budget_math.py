@@ -1,17 +1,14 @@
-"""Material Requests are the only posted departmental budget usage."""
+"""Arithmetic for the provisional procurement estimate.
+
+Budget usage itself is not computed here: it is summed straight from submitted
+Material Request rows in `budget.usage_rows`.
+"""
 
 from decimal import Decimal
 
 
 def number(value):
 	return Decimal(str(value or 0))
-
-
-def totals(rows):
-	# Older request/order/invoice snapshots are audit history, not this tally.
-	return {
-		"used": sum((number(row["amount"]) for row in rows if row["kind"] == "material_request"), Decimal(0))
-	}
 
 
 def outstanding_value(qty, covered_qty, rate):

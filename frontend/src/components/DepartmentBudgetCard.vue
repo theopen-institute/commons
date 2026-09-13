@@ -3,7 +3,7 @@
     <p class="font-semibold text-ink-gray-8">{{ summary.department }} budget <span v-if="!summary.missing">· {{ summary.fiscal_year }}</span></p>
     <p v-if="summary.missing" class="mt-2 text-ink-red-4">No annual budget is configured. Procurement approval can proceed; Finance must create the allocation before Material Request submission.</p>
     <template v-else>
-      <p v-if="summary.inactive" class="mt-2 text-ink-red-4">Finance must reconcile submitted Material Requests before further Material Requests can be submitted.</p>
+      <p v-if="summary.inactive" class="mt-2 text-ink-red-4">This allocation is still a draft. Finance must submit it before Material Requests can be charged against it.</p>
       <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
         <div v-for="entry in entries" :key="entry.label">
           <dt class="text-ink-gray-6">{{ entry.label }}</dt>
