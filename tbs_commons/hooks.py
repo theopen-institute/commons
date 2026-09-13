@@ -225,23 +225,17 @@ app_include_js = "tbs_commons.bundle.js"
 # request "ordered". Submit and cancel are the only two events that change
 # whether it counts — a draft Material Request commits to nothing.
 doc_events = {
-	"Procurement Request": {
-		"on_submit": "tbs_commons.budget.sync_document",
-		"on_cancel": "tbs_commons.budget.sync_document",
-	},
-	"Purchase Order": {
-		"on_submit": "tbs_commons.budget.sync_document",
-		"on_cancel": "tbs_commons.budget.sync_document",
-		"on_update_after_submit": "tbs_commons.budget.sync_document",
-	},
-	"Purchase Invoice": {
-		"on_submit": "tbs_commons.budget.sync_document",
-		"on_cancel": "tbs_commons.budget.sync_document",
-		"on_update_after_submit": "tbs_commons.budget.sync_document",
-	},
 	"Material Request": {
-		"on_submit": "tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
-		"on_cancel": "tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
+		"validate": "tbs_commons.budget.validate_material_request",
+		"before_update_after_submit": "tbs_commons.budget.protect_submitted_material_request",
+		"on_submit": [
+			"tbs_commons.budget.sync_document",
+			"tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
+		],
+		"on_cancel": [
+			"tbs_commons.budget.sync_document",
+			"tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
+		],
 	},
 }
 
@@ -361,5 +355,8 @@ require_type_annotated_api_methods = True
 # ignore_translatable_strings_from = []
 
 
-# ERPNext closes/reopens orders outside save(), so cover that path as well.
-extend_doctype_class = {"Purchase Order": ["tbs_commons.budget.BudgetPurchaseOrderMixin"]}
+# Submitted MR rates are immutable even when a price-list update is requested.
+extend_doctype_class = {
+	"Material Request": ["tbs_commons.budget.BudgetMaterialRequestMixin"],
+}
+doctype_js = {"Material Request": "public/js/material_request_budget.js"}

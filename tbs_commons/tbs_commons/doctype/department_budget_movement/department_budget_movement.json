@@ -8,6 +8,7 @@
   "budget",
   "source_type",
   "source_name",
+  "used",
   "reserved",
   "committed",
   "spent",
@@ -38,24 +39,32 @@
   },
   {
    "fieldname": "reserved",
-   "label": "Reserved",
-   "fieldtype": "Currency"
+   "label": "Legacy Reserved",
+   "fieldtype": "Currency",
+   "hidden": 1
   },
   {
    "fieldname": "committed",
-   "label": "Committed",
-   "fieldtype": "Currency"
+   "label": "Legacy Committed",
+   "fieldtype": "Currency",
+   "hidden": 1
   },
   {
    "fieldname": "spent",
-   "label": "Spent",
-   "fieldtype": "Currency"
+   "label": "Legacy Spent",
+   "fieldtype": "Currency",
+   "hidden": 1
   },
   {
    "fieldname": "details",
    "label": "Details",
    "fieldtype": "Code",
    "options": "JSON"
+  },
+  {
+   "fieldname": "used",
+   "label": "MR Usage Change",
+   "fieldtype": "Currency"
   }
  ],
  "permissions": [

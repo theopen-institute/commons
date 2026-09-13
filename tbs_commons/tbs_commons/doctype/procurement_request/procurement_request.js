@@ -18,14 +18,14 @@ frappe.ui.form.on("Procurement Request", {
 				callback: ({ message: budget }) => {
 					if (!budget) return;
 					if (budget.missing || budget.inactive) {
-						frm.dashboard.set_headline_alert(__("The annual department budget is missing or awaiting opening-balance reconciliation. Approval is blocked."), "orange");
+						frm.dashboard.set_headline_alert(__("The department budget is not ready. Procurement approval can proceed; Material Request submission will require a configured, reconciled budget."), "orange");
 						return;
 					}
 					const money = (value) => format_currency(value, budget.currency);
 					frm.dashboard.set_headline_alert(
-						__("Budget: {0} · Spent: {1} · Reserved: {2} · Outstanding orders: {3} · Available: {4}",
-							[budget.budget, budget.spent, budget.reserved, budget.committed, budget.available].map(money)),
-						budget.after_approval < 0 ? "orange" : "blue"
+						__("Budget: {0} · Submitted MR usage: {1} · Available: {2} · Outstanding procurement: {3} · Projected available: {4}",
+							[budget.budget, budget.used, budget.available, budget.provisional, budget.projected_available].map(money)),
+						budget.projected_available < 0 ? "orange" : "blue"
 					);
 				},
 			});

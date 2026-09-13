@@ -1,102 +1,169 @@
-# Department procurement budgets
+# Budget modes
 
-Department Budget enforces a single annual procurement allocation per company,
-department and fiscal year, independently of ERPNext's expense-account budgets.
-Finance (Accounts Manager or System Manager) creates and maintains allocations in
-Desk. Original allocations and existing adjustments cannot be rewritten; append a
-reasoned adjustment or reversing adjustment instead. Budget changes are versioned.
+Create allocations in the standard **Budget** DocType. **Budget Mode** has two values:
 
-## Accounting policy
+- **Account** (default): standard ERPNext account/dimension validation, distributions,
+  and configured MR/PO/actual-expense controls. Accounts must still be leaf accounts;
+  selecting the Expenses group is not supported.
+- **Cumulative Material Requests**: one company, leaf department and fiscal year,
+  without an account. The annual limit and append-only adjustments use the MR tally
+  described below. Submit the Budget before activating reconciliation.
 
-- Company currency, **net item amounts excluding taxes**, freight posted as taxes,
-  and other invoice-level charges. Foreign purchases use ERPNext's base net amount.
-- Spent means submitted Purchase Invoice item value, including stock and equipment.
-  It is not cash paid or GL expense. Journals, expense claims, payroll, depreciation,
-  and inventory consumption are outside this procurement budget.
-- Final approval reserves the request's verified rate, falling back to its estimate.
-  Every approved line needs a positive estimate. The approved valuation is frozen.
-- A Material Request does not create another monetary reservation. Its existing
-  committed-quantity fields still describe fulfillment only.
-- Purchase orders replace the corresponding portion of request reservations.
-  Invoices replace the corresponding portion of order commitments. Partial
-  quantities and different UOMs are supported. Direct invoices against Material
-  Requests replace the request reservation directly.
-- Cancelling an invoice restores the order commitment. Cancelling an order restores
-  the still-approved request reservation. Closing an order also restores unfulfilled
-  request reservations: closing an order does **not** withdraw the original approval.
-  To abandon a request, cancel its downstream documents before cancelling it.
-- Credit notes reduce spent and restore the associated outstanding commitment (or
-  reservation). They must identify original invoice items. Close the order when
-  replacement purchasing is no longer intended.
-- A linked purchase retains the original request's budget year; direct purchases use
-  their transaction/posting date. There is no automatic rollover or parent-department
-  pooling. Use separate purchasing documents for different department/year budgets.
-- Budget Department on direct PO/PI item rows is mandatory at submission. Linked
-  rows inherit their budget through request/order/receipt/invoice references. This
-  budget attribution does not replace ERPNext Cost Center/accounting dimensions.
+The mode is fixed after the first save. A cumulative Budget with MR audit history
+cannot be cancelled or revised; use adjustments or turn off reconciliation to
+block further submissions. Draft allocations never authorize MR submission.
 
-## Setup and existing documents
+The installer creates/reuses the Department accounting dimension. Cumulative
+records carry Department for compatibility with native budget readers, but have
+no account, no accounting distribution, and all native applicability switches off.
+The standard Budget Variance Report shows account budgets only; cumulative totals
+are shown on the Budget form and in procurement/MR feedback.
 
-1. Run `bench --site SITE migrate`, then build the frontend with `npm run build`
-   inside `frontend`. Restart long-running production processes normally.
-2. Create each Department Budget in Desk with company, department, fiscal year,
-   owner, and annual allocation. Leave **Opening balances reconciled** unchecked.
-3. Finance must review all spending and outstanding purchasing for that department
-   and year. Attribute direct legacy purchases explicitly. Never assume the balance
-   starts at zero simply because the feature was newly installed.
-4. Register reviewed submitted source documents using the administrative helper
+A cumulative allocation for the MR department and period takes precedence, even
+while draft or unreconciled. Otherwise, if the company has submitted Account-mode
+budgets for that period, ERPNext handles account/dimension matching and enforcement.
+The frontend identifies Account mode without displaying invented department totals.
+Explicit Budget Department is copied to MR item accounting dimensions in Account
+mode, with conflicts rejected. If neither mode is configured, the existing missing
+allocation safeguard still blocks submission.
+
+## Cumulative MR basis
+
+The authoritative budget tally is **submitted Material Requests**, with purpose
+**Purchase** or **Material Issue**. Both use the MR's entered rate in company
+currency. This is a departmental management tally; Material Requests do not post
+ERPNext General Ledger or Stock Ledger entries.
+
+## Totals and document lifecycle
+
+- **Allocation** = Budget amount + audited adjustments.
+- **Used** = sum of quantity × rate on submitted Purchase/Material Issue requests.
+- **Available** = allocation − used. This is the hard backend limit.
+- **Outstanding procurement (provisional)** = the estimated value still uncovered
+  by submitted Purchase/Material Issue requests, across Pending, Under Review,
+  Approved and Completed Procurement Requests in the department and fiscal year.
+- **Projected available** = available − provisional procurement, including the
+  displayed request once if it is still a draft. Other users' private drafts are
+  excluded. Rejected and cancelled requests are excluded.
+
+Procurement Request approval creates no budget reservation or ledger movement.
+It can proceed without a budget or when projected availability is negative.
+The frontend reports these conditions as forecasts; MR submission is the
+point at which the backend requires a reconciled allocation and available funds.
+
+A draft MR consumes nothing. Submission charges its own entered value, which may
+be different from the Procurement Request estimate. Partial submissions remove
+only the covered quantity from the provisional estimate. UOM conversions are
+applied to coverage, not to the value already expressed as MR quantity × rate.
+Cancelling the MR reverses its charge and restores the associated outstanding
+procurement estimate. Amendments follow cancellation and new submission.
+
+A submitted MR continues to count when Stopped, Ordered, Issued or fulfilled.
+Stopping a request does not release budget: cancel and amend it to revise the
+recorded amount. Submitted rates, quantities, date, type, department and source
+references cannot be edited or refreshed from a price list. There is no partial
+release based on downstream fulfillment at this stage.
+
+Purchase Orders, Purchase Receipts, Purchase Invoices, credit notes, Stock Entries,
+payments, GL postings and stock valuation changes have **no effect** on this tally.
+Other MR purposes, such as Material Transfer or Manufacture, are outside it.
+Two separately submitted MRs both count even if they concern the same goods;
+linking a purchase and a later stock issue does not automatically net them out.
+
+## Rates, currency, attribution and fiscal year
+
+Both Purchase and Material Issue requests use their entered MR rate. Stock
+valuation is not consulted or overwritten. A later stock issue valuation or
+invoice price does not retrospectively change the MR charge. Budget usage can
+therefore legitimately differ from inventory value and invoiced expenditure.
+
+MR rate and amount are company-currency fields. Every submitted budgeted MR row
+needs a positive rate and quantity. The server recalculates row amounts using
+field precision. Use a buying price list in company currency; this prevents the
+native MR price lookup from putting an unconverted foreign price into these
+fields. Enter converted estimates explicitly when needed. There are no separate
+tax or freight adjustments in the tally: only entered MR item values count.
+
+MRs inherit the department from validated Procurement Request row references.
+Direct MRs require Budget Department. Linked and explicitly selected departments
+must agree; use separate MRs for different departments. Company consistency and
+valid approved source rows are checked in the backend.
+
+The **MR transaction date** chooses the fiscal year's allocation, even when its
+Procurement Request originated in another year. Provisional Procurement Requests
+are grouped by their own request date and reduced by linked submitted MRs across
+years. There is no automatic rollover or parent-department pooling.
+
+## Enforcement and audit
+
+Material Request document hooks validate values, record submission and cancellation,
+and reject edits to submitted budget values. A Material Request mixin prevents
+ERPNext's price-list updater from revaluing submitted requests. Desk, APIs and
+imports using the document lifecycle all pass through these controls.
+
+Each writer locks the standard Budget row and reads its MR positions using
+`FOR UPDATE` before checking the increase. A refusal rolls back MR submission
+and the budget writes together. Unchanged retries do not create another charge.
+
+Department Budget Position holds the submitted source snapshot. Department Budget
+Movement records MR Usage Change with before/after snapshots, including cancellation
+reversals. Neither Procurement Requests nor purchasing documents create positions.
+Read-only finance access permits inspection without normal edit permissions.
+Budget adjustments are append-only and cannot reduce allocation below actual MR
+usage. Provisional Procurement Requests do not constrain adjustments.
+
+The frontend and Procurement Request Desk form show actual MR usage and a separate
+provisional estimate. The Material Request Desk form shows its own charge and the
+available balance. Supporting links are limited to MRs the user can read.
+
+## Migration and historical requests
+
+Run `bench --site SITE migrate`, build with `npm run build` in `frontend`, and
+restart production processes through the normal deployment procedure.
+
+Existing Department Budget allocations are migrated to submitted standard Budgets
+in Cumulative Material Requests mode. MR links, positions and movements are
+reassigned; adjustments are copied. The original Department Budget documents remain
+read-only archives with links to the new Budgets. Repeated migrations do not
+duplicate allocations or charges. No new Department Budget records are needed.
+
+The change-of-basis patch retains the old Procurement Request/PO/PI ledger as
+history but excludes it from all current totals. Existing budgets are marked
+unreconciled once. PO/PI budget fields are retained, hidden, for historical data;
+they no longer enforce or contribute to this custom budget.
+
+Finance should:
+
+1. Create/review each company, department and fiscal year's allocation in **Budget**,
+   choose **Cumulative Material Requests**, and submit it with reconciliation disabled.
+2. Review all existing submitted Purchase and Material Issue requests for that
+   department/year. Attribute direct historical MRs explicitly; unassigned MRs
+   cannot be inferred to belong to a department.
+3. With the budget inactive, import reviewed MRs using
    `tbs_commons.budget.register_existing_documents`. Its `documents` argument is a
-   list of `{ "doctype": "Procurement Request", "name": "..." }` objects. Supply
-   requests first, then orders, invoices, and credit notes. Include completed
-   requests whose purchases still contribute to this year's spend. Submit one
-   complete batch: the final exposure must fit within the allocation. The batch
-   rolls back on failure. Repeating an unchanged document creates no extra entry.
-   Historical requests need reviewed positive valuations: historical approval
-   amounts cannot be reconstructed if they were never recorded. Direct historical
-   purchases must have their budget department assigned by a reviewed data migration.
-5. Review Department Budget Position and Department Budget Movement, then check
-   **Opening balances reconciled**. Until then, new approvals and purchasing against
-   the budget are refused. Missing budgets also block approval.
+   list of objects such as
+   `{"doctype": "Material Request", "name": "MAT-MR-..."}`. For an unassigned
+   historical MR, optionally supply `"department": "..."`. This assignment must
+   agree with any linked Procurement Request. No prices or assignments are guessed.
+   Only submitted Purchase/Material Issue requests are accepted. The import is
+   idempotent and the batch's final usage must fit within the allocation.
+4. Check **Submitted Material Requests Reconciled**. Activation checks that known
+   submitted MRs for the department have matching registered positions. Missing
+   or stale positions must be reconciled first.
 
-No allocations, historical values, or department assignments are guessed or seeded.
-The owner is administrative metadata; approval authority remains with the existing
-Procurement Request workflow. There is no ordinary approver override. Finance can
-increase an allocation with an audited adjustment.
-
-## Enforcement and visibility
-
-Document hooks cover Procurement Request submission/cancellation, Purchase Order
-and Purchase Invoice submission/cancellation/amendment updates. A Purchase Order
-mixin additionally covers ERPNext's close/reopen method, which bypasses save hooks.
-A refusal rolls back the document and its accounting writes in the same transaction.
-
-Each writer locks the budget row and reads its positions with `FOR UPDATE` before
-checking availability. Positions hold source valuations; append-only movement
-records contain portfolio deltas plus before/after source snapshots. Source keys
-are unique, and unchanged retries are idempotent. Downstream sources cannot be
-orphaned by cancelling their upstream document. Never update submitted purchasing
-rows with raw SQL or `db_set` in another integration; those bypass document hooks.
-
-Approvers see allocation, spent, reserved, outstanding orders, availability, request
-amount and availability after approval. Desk shows the balance as well. Monetary
-shortfalls are returned by the backend. Previews refresh after approval attempts.
-Department summaries require the named approver's submit permission or a finance/
-purchase-manager role, plus read access to the request. Supporting-document links
-are filtered by each source document's read permissions.
-
-For reconciliation, compare positions with their linked submitted documents and
-movement snapshots; positions are the controlled financial projection, not a GL
-ledger. Raw-SQL changes and historical imports outside these hooks require explicit
-reconciliation. A periodic automated GL reconciliation is not included because
-these figures intentionally use procurement values rather than GL expenses.
+Missing/unreconciled budgets block Material Request submission only. They do not
+block Procurement Request approval. Existing submitted MRs with zero/missing rates
+need Finance review and correction through an appropriate migration/amendment.
+Raw SQL or `db_set` changes outside this service bypass document hooks and require
+explicit reconciliation.
 
 ## Verification
 
-- `python -m unittest tbs_commons.test_budget_math` tests stage replacement, partial
-  quantities, credit notes, cancellation, direct purchases and closure arithmetic.
-- `bench --site SITE execute tbs_commons.test_budget_integration.run` runs actual
-  request, PO, PI, credit-note and database tests, then rolls all fixtures back.
-  It isolates budget hooks from workflow validation; the existing workflow itself
-  is unchanged. It checks the mixin path, missing/unreconciled budgets, hard limits,
-  frozen approvals, adjustment restrictions and cancellation reversals.
+- `python -m unittest tbs_commons.test_budget_math` verifies MR-only arithmetic
+  and provisional partial coverage.
+- `bench --site SITE execute tbs_commons.test_budget_integration.run` exercises
+  real Purchase and Material Issue requests, hard limits, cancellation, partial
+  fulfillment, UOMs, immutability, historical reconciliation, and PO/PI independence.
+  Fixtures are rolled back. Workflow validation is isolated in these tests;
+  the existing approval workflow is unchanged.
 - Frontend: `npm run type-check` and `npm run build`.

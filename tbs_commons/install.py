@@ -96,12 +96,26 @@ CUSTOM_FIELDS = {
 	],
 }
 
-# Direct purchases need explicit attribution. Linked purchases inherit their budget.
+# Budget usage is attributed at the Material Request, including direct requests.
+CUSTOM_FIELDS["Material Request"].extend([
+	{"fieldname": "budget_department", "label": "Budget Department", "fieldtype": "Link",
+	 "options": "Department", "insert_after": "company",
+	 "description": "Required to submit Purchase/Material Issue requests; inherited from linked Procurement Requests."},
+	{"fieldname": "budget_currency", "label": "Budget Currency", "fieldtype": "Link",
+	 "options": "Currency", "insert_after": "budget_department", "read_only": 1},
+	{"fieldname": "department_budget", "label": "Department Budget", "fieldtype": "Link",
+	 "options": "Department Budget", "insert_after": "budget_currency", "read_only": 1, "no_copy": 1},
+	{"fieldname": "budget_amount", "label": "Budget Usage", "fieldtype": "Currency",
+	 "options": "budget_currency", "insert_after": "department_budget", "read_only": 1,
+	 "description": "Sum of MR quantity × rate in company currency. Counted only on submission."},
+])
+# Preserve any existing PO/PI attribution data but retire those obsolete controls.
 for _doctype in ("Purchase Order Item", "Purchase Invoice Item"):
 	CUSTOM_FIELDS[_doctype] = [{
-		"fieldname": "budget_department", "label": "Budget Department",
+		"fieldname": "budget_department", "label": "Budget Department (Legacy)",
 		"fieldtype": "Link", "options": "Department", "insert_after": "cost_center",
-		"description": "Required for direct purchases. Linked purchases inherit their original department budget.",
+		"hidden": 1, "read_only": 1,
+		"description": "Historical attribution only. Departmental budget usage is now recorded on Material Requests.",
 	}]
 
 # The stale single icon Frappe seeds from the `app_title` hook. Replaced by the

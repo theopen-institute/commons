@@ -89,9 +89,9 @@
   {
    "fieldname": "ready",
    "fieldtype": "Check",
-   "label": "Opening balances reconciled",
+   "label": "Submitted Material Requests Reconciled",
    "default": "0",
-   "description": "Finance must register existing approved requests, orders and invoices before enabling approvals."
+   "description": "Register and review all existing submitted Purchase/Material Issue requests before enabling Material Request submission."
   }
  ],
  "permissions": [

@@ -7,7 +7,12 @@ from tbs_commons.budget_math import number, totals
 
 class DepartmentBudget(Document):
 	def validate(self):
-		from tbs_commons.budget import lock_budget, portfolio, positions
+		from tbs_commons.budget import (
+			lock_budget,
+			portfolio,
+			positions,
+			validate_reconciled_material_requests,
+		)
 
 		frappe.db.sql("select name from `tabDepartment` where name=%s for update", self.department)
 		year = frappe.get_doc("Fiscal Year", self.fiscal_year)
@@ -46,8 +51,7 @@ class DepartmentBudget(Document):
 			else 0
 		)
 		if amount < used or amount < 0:
-			frappe.throw(_("The revised budget cannot be less than existing spending and commitments."))
-		# Protect against overlapping fiscal years with different names.
+			frappe.throw(_("The revised budget cannot be less than submitted Material Request usage."))
 		if frappe.db.exists(
 			"Department Budget",
 			{
@@ -59,3 +63,5 @@ class DepartmentBudget(Document):
 			},
 		):
 			frappe.throw(_("A department budget already exists for this period."))
+		if self.ready:
+			validate_reconciled_material_requests(self)
