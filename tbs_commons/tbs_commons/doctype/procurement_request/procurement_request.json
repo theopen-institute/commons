@@ -10,15 +10,15 @@
   "details_tab",
   "request_section",
   "naming_series",
-  "purpose",
-  "company",
-  "currency",
   "title",
-  "column_break_request",
   "transaction_date",
   "schedule_date",
-  "requested_by",
+  "company",
+  "currency",
+  "column_break_request",
   "department",
+  "requested_by",
+  "requester_name",
   "approver",
   "approver_name",
   "items_section",
@@ -63,14 +63,11 @@
    "set_only_once": 1
   },
   {
-   "default": "Purchase",
-   "description": "Maps to the Purpose of the Material Request raised from this request.",
-   "fieldname": "purpose",
-   "fieldtype": "Select",
-   "in_standard_filter": 1,
-   "label": "Purpose",
-   "options": "Purchase\nMaterial Transfer\nMaterial Issue\nManufacture",
-   "reqd": 1
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "no_copy": 1,
+   "print_hide": 1
   },
   {
    "fieldname": "company",
@@ -89,14 +86,6 @@
    "read_only": 1
   },
   {
-   "description": "Set from the requested items when left blank.",
-   "fieldname": "title",
-   "fieldtype": "Data",
-   "label": "Title",
-   "no_copy": 1,
-   "print_hide": 1
-  },
-  {
    "fieldname": "column_break_request",
    "fieldtype": "Column Break"
   },
@@ -108,15 +97,16 @@
    "reqd": 1
   },
   {
-   "description": "Applied to every item row that has no date of its own.",
    "fieldname": "schedule_date",
    "fieldtype": "Date",
-   "label": "Required By"
+   "label": "Required By",
+   "reqd": 1
   },
   {
    "default": "__user",
    "fieldname": "requested_by",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Requested By",
    "options": "User"
@@ -124,16 +114,20 @@
   {
    "fieldname": "department",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Department",
-   "options": "Department"
+   "options": "Department",
+   "reqd": 1
   },
   {
    "description": "Who decides this request. Defaults to the requester's expense approver.",
    "fieldname": "approver",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Approver",
-   "options": "User"
+   "options": "User",
+   "reqd": 1
   },
   {
    "fetch_from": "approver.full_name",
@@ -155,7 +149,7 @@
    "label": "Items",
    "options": "Procurement Request Item",
    "reqd": 1,
-   "allow_on_submit": 1
+   "allow_on_submit": 0
   },
   {
    "fieldname": "totals_section",
@@ -181,10 +175,10 @@
    "label": "Total Estimated Cost",
    "no_copy": 1,
    "options": "currency",
-   "read_only": 1
+   "read_only": 1,
+   "is_virtual": 1
   },
   {
-   "collapsible": 1,
    "fieldname": "justification_section",
    "fieldtype": "Section Break",
    "label": "Justification"
@@ -212,7 +206,7 @@
    "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "\nDraft\nPending Approval\nApproved\nRejected\nPartially Ordered\nOrdered\nCancelled",
+   "options": "\nDraft\nPending\nUnder Review\nRejected\nApproved\nCompleted\nCanceled",
    "permlevel": 1,
    "reqd": 1
   },
@@ -228,11 +222,11 @@
   {
    "fieldname": "per_ordered",
    "fieldtype": "Percent",
-   "label": "% Ordered",
+   "label": "% Committed",
    "print_hide": 1,
    "read_only": 1,
    "is_virtual": 1,
-   "description": "Share of the requested quantity that submitted Material Requests carry. Counted live."
+   "description": "Share of the requested quantity committed through submitted Material Requests. Counted live."
   },
   {
    "fieldname": "column_break_status",
@@ -277,6 +271,14 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "requester_name",
+   "fieldtype": "Data",
+   "label": "Requester Name",
+   "fetch_from": "requested_by.full_name",
+   "read_only": 1,
+   "no_copy": 1
   }
  ],
  "icon": "fa fa-shopping-cart",
@@ -349,6 +351,12 @@
    "role": "Employee",
    "share": 1,
    "submit": 0,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Expense Approver",
+   "submit": 1,
    "write": 1
   },
   {
