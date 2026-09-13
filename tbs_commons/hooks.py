@@ -52,8 +52,8 @@ website_route_rules = [
 ]
 
 # The desk icon ships as a file under `tbs_commons/desktop_icon/` and is imported by
-# migrate's own sync. These hooks only do what that sync cannot: Custom Fields and
-# the procurement Workflow.
+# migrate's own sync. These hooks only do what that sync cannot: Custom Fields, the
+# procurement Workflow, and clearing the duplicate app-title icon Frappe seeds.
 after_install = [
 	"tbs_commons.install.after_install",
 	"tbs_commons.safer_permissions.install.sync_permission_gates",

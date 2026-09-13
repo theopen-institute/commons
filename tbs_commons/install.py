@@ -6,8 +6,6 @@ which `frappe.model.sync` imports on every migrate — `desktop_icon` is one of 
 sweep deleted it (it drops any `standard` icon with no backing file) and
 `after_migrate` put it straight back, once per migrate.
 
-Its label is the `app_title`, which is also what Frappe looks for before seeding an
-icon of its own (`get_app_desktop_icon`), so the shipped file suppresses that too.
 """
 
 import frappe
@@ -121,6 +119,15 @@ for _doctype in ("Purchase Order Item", "Purchase Invoice Item"):
 		"description": "Historical attribution only. Departmental budget usage is now recorded on Material Requests.",
 	}]
 
+# The icon this app ships is labelled "TBS", but Frappe seeds one per installed
+# app labelled with the `app_title` ("TBS Commons") and looks for *that* label
+# before deciding it already has one (`get_app_desktop_icon`). Ours does not
+# match, so a second icon appears pointing at the first `add_to_apps_screen`
+# route. It is created with `standard` = 0, which migrate's orphan sweep never
+# touches, so nothing else will clear it.
+LEGACY_ICON_LABEL = "TBS Commons"
+
+
 def before_migrate() -> None:
 	sync_module_defs()
 
@@ -139,11 +146,13 @@ def sync_module_defs() -> None:
 
 
 def after_install() -> None:
+	_remove_legacy_icon()
 	sync_custom_fields()
 	sync_procurement_workflow()
 
 
 def after_migrate() -> None:
+	_remove_legacy_icon()
 	sync_custom_fields()
 	sync_procurement_workflow()
 
@@ -199,3 +208,20 @@ def sync_procurement_workflow() -> None:
 	workflow.set("states", [{k: v for k, v in state.items() if k != "style"} for state in WORKFLOW_STATES])
 	workflow.set("transitions", list(WORKFLOW_TRANSITIONS))
 	workflow.save(ignore_permissions=True)
+
+
+def _remove_legacy_icon() -> None:
+	"""Drop the duplicate app-title icon, if Frappe has seeded one.
+
+	The real icon ships as a file in `tbs_commons/desktop_icon/`; this only
+	removes the extra. Deleting it clears the icon cache via `on_trash`.
+	"""
+	if not frappe.db.exists("Desktop Icon", LEGACY_ICON_LABEL):
+		return
+
+	# Only if it is the one Frappe made for this app -- a user-made icon that
+	# happens to share the label is theirs, not ours to delete.
+	if frappe.db.get_value("Desktop Icon", LEGACY_ICON_LABEL, "app") != APP:
+		return
+
+	frappe.delete_doc("Desktop Icon", LEGACY_ICON_LABEL, ignore_permissions=True, force=True)
