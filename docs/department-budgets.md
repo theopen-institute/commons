@@ -107,6 +107,26 @@ A period with no submitted allocation simply has no tally. Cancelling a budget
 without replacing it does not delete or detach anything — the requests keep their
 department and date, and are counted again as soon as an allocation covers them.
 
+## Upgrading a site that already has allocations
+
+Department Budget became submittable. Rows created before that change carry
+`docstatus = 0`, and a draft authorises nothing — so on such a site **every**
+Purchase/Material Issue submission will be refused until its allocation is
+submitted. There is deliberately no automatic patch for this: submitting a
+document on the user's behalf is Finance's decision, not a migration's.
+
+Review and submit each existing allocation after upgrading:
+
+```
+bench --site SITE console
+>>> import frappe
+>>> frappe.get_all("Department Budget", filters={"docstatus": 0},
+...                fields=["name", "company", "department", "fiscal_year", "annual_amount"])
+```
+
+Submit the ones that are current; leave or delete the rest. A site with no
+Department Budget rows needs nothing.
+
 ## Historical attribution
 
 Submitted requests that already carry a department are counted the moment an

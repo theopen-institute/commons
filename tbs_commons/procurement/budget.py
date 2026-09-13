@@ -21,19 +21,28 @@ MR_TYPES = ("Purchase", "Material Issue")
 
 
 def budget_name(company, department, date, submitted_only=True):
-	return frappe.db.get_value(
-		BUDGET,
-		{
-			"company": company,
-			"department": department,
-			"start_date": ["<=", date],
-			"end_date": [">=", date],
-			# Only a submitted allocation authorises a charge; a draft is shown
-			# in procurement feedback but cannot be spent against.
-			"docstatus": 1 if submitted_only else ["<", 2],
-		},
-		"name",
-	)
+	"""The allocation covering this department on this date.
+
+	Asks for a submitted allocation first and only then, when the caller will
+	display a draft, for a draft. A stale draft can outlive the allocation it was
+	meant to replace, and precedence here is explicit rather than left to whatever
+	order the database happens to return rows in.
+	"""
+	for docstatus in (1, 0) if not submitted_only else (1,):
+		name = frappe.db.get_value(
+			BUDGET,
+			{
+				"company": company,
+				"department": department,
+				"start_date": ["<=", date],
+				"end_date": [">=", date],
+				"docstatus": docstatus,
+			},
+			"name",
+		)
+		if name:
+			return name
+	return None
 
 
 def find_budget(company, department, date):
@@ -80,8 +89,12 @@ def usage_rows(budget, lock=False):
 	)
 
 
+def total(rows):
+	return sum((number(row.amount) for row in rows), number(0))
+
+
 def used_amount(budget, lock=False):
-	return sum((number(row.amount) for row in usage_rows(budget, lock=lock)), number(0))
+	return total(usage_rows(budget, lock=lock))
 
 
 def remaining(budget, lock=False):
@@ -183,9 +196,10 @@ def validate_material_request(doc, method=None):
 		row.amount = flt(qty * rate, row.precision("amount"))
 	if doc.docstatus == 1:
 		if not department:
-			frappe.throw(_("Select a Budget Department before submitting this Material Request."))
+			frappe.throw(_("Select a Department before submitting this Material Request."))
 		# Checked, never stored: the allocation is a function of department and date.
-		find_budget(doc.company, department, doc.transaction_date)
+		# Handed back so the submit hook need not resolve it a second time.
+		return find_budget(doc.company, department, doc.transaction_date)
 
 
 def material_rows(doc):
@@ -236,10 +250,10 @@ def persist_amounts(name):
 	ERPNext can revise rates in `on_update` before `on_submit` runs.
 	"""
 	doc = frappe.get_doc("Material Request", name)
-	validate_material_request(doc)
+	budget = validate_material_request(doc)
 	for row in doc.items:
 		frappe.db.set_value("Material Request Item", row.name, "amount", row.amount, update_modified=False)
-	return doc
+	return doc, budget
 
 
 def charge_material_request(doc, method=None):
@@ -253,20 +267,23 @@ def charge_material_request(doc, method=None):
 		return
 	if doc.docstatus != 1:
 		return
-	doc = persist_amounts(doc.name)
-	enforce_allocation(
-		lock_budget(find_budget(doc.company, doc.department, doc.transaction_date)), doc
-	)
+	doc, budget = persist_amounts(doc.name)
+	current = lock_budget(budget)
+	# Re-read under the lock: the allocation may have been cancelled between
+	# validation and here, and a cancelled one authorises nothing.
+	if current.docstatus != 1:
+		frappe.throw(_("Submit the department budget before charging Material Requests to it."))
+	enforce_allocation(current, doc)
 
 
 def enforce_allocation(current, doc):
 	"""Throw unless every submitted request charged to `current` fits its allocation."""
 	rows = usage_rows(current, lock=True)
-	charged = sum((number(row.amount) for row in rows), number(0))
+	charged = total(rows)
 	allocation = number(current.annual_amount)
 	if charged <= allocation:
 		return
-	own = sum((number(row.amount) for row in rows if row.parent == doc.name), number(0))
+	own = total(row for row in rows if row.parent == doc.name)
 	available = allocation - (charged - own)
 	frappe.throw(
 		_(
@@ -346,16 +363,29 @@ def can_view_summary(doc):
 	)
 
 
-def request_summary(doc):
+def department_position(name, cache=None):
+	"""The figures every request in a department and period shares.
+
+	Given a cache, a list of requests from one department computes this once
+	instead of once per row -- it is the expensive half of a summary.
+	"""
+	if cache is not None and name in cache:
+		return cache[name]
+	budget = frappe.get_doc(BUDGET, name)
+	position = (budget, used_amount(budget), provisional_requests(budget))
+	if cache is not None:
+		cache[name] = position
+	return position
+
+
+def request_summary(doc, cache=None):
 	if not can_view_summary(doc):
 		return None
 	name = budget_name(doc.company, doc.department, doc.transaction_date, submitted_only=False)
 	if not name:
 		return dict(missing=True, department=doc.department)
-	budget = frappe.get_doc(BUDGET, name)
-	used = used_amount(budget)
+	budget, used, provisional = department_position(name, cache)
 	available = number(budget.annual_amount) - used
-	provisional = provisional_requests(budget)
 	outstanding = request_outstanding(doc) if doc.docstatus != 2 and doc.status != "Rejected" else number(0)
 	# Include the displayed draft once when previewing, but never in other users' pipeline totals.
 	projection = sum(provisional.values(), number(0)) + (
@@ -384,16 +414,25 @@ def get_request_budget(name: str) -> dict | None:
 
 @frappe.whitelist()
 def get_budget_documents(request: str) -> list[dict]:
-	summary = get_request_budget(request)
-	if not summary or summary.get("missing"):
+	doc = frappe.get_doc("Procurement Request", request)
+	if not can_view_summary(doc):
+		return []
+	name = budget_name(doc.company, doc.department, doc.transaction_date, submitted_only=False)
+	if not name:
 		return []
 	charged = {}
-	for row in usage_rows(frappe.get_doc(BUDGET, summary["name"])):
+	for row in usage_rows(frappe.get_doc(BUDGET, name)):
 		charged[row.parent] = charged.get(row.parent, number(0)) + number(row.amount)
+	# One permission-filtered query, rather than loading every request to ask.
+	readable = (
+		set(frappe.get_all("Material Request", filters={"name": ["in", list(charged)]}, pluck="name"))
+		if charged
+		else set()
+	)
 	return [
-		dict(doctype="Material Request", name=name, amount=float(amount))
-		for name, amount in charged.items()
-		if frappe.has_permission("Material Request", "read", doc=name)
+		dict(doctype="Material Request", name=request_name, amount=float(amount))
+		for request_name, amount in charged.items()
+		if request_name in readable
 	]
 
 
@@ -468,6 +507,9 @@ class BudgetMaterialRequestMixin:
 		# belt-and-braces: ERPNext writes the new rate and amount with `db_set`,
 		# which bypasses `validate` and `before_update_after_submit` entirely, and
 		# `amount` is the budget tally itself.
-		if self.docstatus != 0 and self.get("department"):
+		# Keyed on purpose, not on `department`: that field is not cleared when a
+		# request's type changes, and a stale value would silently suppress the
+		# refresh on a submitted Material Transfer.
+		if self.docstatus != 0 and self.material_request_type in MR_TYPES:
 			return
 		super().update_item_rates()

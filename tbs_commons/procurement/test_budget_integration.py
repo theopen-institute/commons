@@ -236,6 +236,39 @@ class TestDepartmentBudget(unittest.TestCase):
 		self.assertEqual(new.amended_from, self.budget.name)
 		self.assertEqual(frappe.db.get_value(budget.BUDGET, self.budget.name, "docstatus"), 2)
 
+	def test_price_refresh_is_suppressed_only_for_budgeted_request_types(self):
+		"""The guard keys on purpose, not on `department`, which outlives a type change."""
+		from erpnext.stock.doctype.material_request.material_request import MaterialRequest
+
+		doc = self.mr(rate=250)
+		with patch.object(MaterialRequest, "update_item_rates") as native:
+			doc.update_item_rates()
+			self.assertFalse(native.called)
+			# Same document, same lingering department, non-budgeted purpose: the
+			# native price refresh must still run.
+			doc.material_request_type = "Material Transfer"
+			doc.update_item_rates()
+			self.assertTrue(native.called)
+
+	def test_a_stale_draft_does_not_shadow_the_submitted_allocation(self):
+		"""Documents the guarantee rather than catching a regression: the old code
+		picked whichever row the database returned first, so it could pass by luck."""
+		self.budget.reload().cancel()
+		frappe.db.delete(budget.BUDGET, {"name": self.budget.name})
+		self.allocation(9999, submit=False)
+		self.allocation(1000)
+		summary = budget.request_summary(self.request(400))
+		self.assertFalse(summary["inactive"])
+		self.assertEqual(summary["budget"], 1000)
+
+	def test_a_shared_position_cache_does_not_change_the_answer(self):
+		self.mr(rate=250)
+		first, second = self.request(400), self.request(200)
+		cache: dict = {}
+		for doc in (first, second):
+			self.assertEqual(budget.request_summary(doc), budget.request_summary(doc, cache))
+		self.assertEqual(len(cache), 1)
+
 	# --- provisional procurement -------------------------------------------
 
 	def test_procurement_approval_is_provisional_even_over_budget(self):

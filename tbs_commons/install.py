@@ -143,15 +143,19 @@ def sync_module_defs() -> None:
 
 
 def after_install() -> None:
-	_remove_legacy_icon()
-	sync_custom_fields()
-	migrate_renamed_custom_fields()
-	remove_obsolete_custom_fields()
-	sync_material_request_tracking()
-	sync_procurement_workflow()
+	sync_app()
 
 
 def after_migrate() -> None:
+	sync_app()
+
+
+def sync_app() -> None:
+	"""Everything this app asserts on both install and migrate, in order.
+
+	Field renames run between creating the new Custom Fields and dropping the
+	retired ones, which is the only moment both sides of a rename exist.
+	"""
 	_remove_legacy_icon()
 	sync_custom_fields()
 	migrate_renamed_custom_fields()
@@ -197,7 +201,13 @@ def migrate_renamed_custom_fields() -> None:
 	here -- and the `where` clause is what makes re-running it a no-op.
 	"""
 	for doctype, old, new in LEGACY_FIELD_RENAMES:
-		if not (frappe.db.has_column(doctype, old) and frappe.db.has_column(doctype, new)):
+		# The retired Custom Field, not its column: deleting a Custom Field leaves
+		# the column behind forever, so a column check would rescan this table on
+		# every migrate for the life of the site. The record is dropped in the same
+		# run, just after this, which makes the next migrate skip immediately.
+		if not frappe.db.exists("Custom Field", {"dt": doctype, "fieldname": old}):
+			continue
+		if not frappe.db.has_column(doctype, new):
 			continue
 		frappe.db.sql(
 			f"""update `tab{doctype}` set `{new}` = `{old}`

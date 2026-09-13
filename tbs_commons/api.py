@@ -541,11 +541,15 @@ def _add_procurement_costs(requests: list[dict]) -> None:
 	from tbs_commons.procurement.budget import request_summary
 
 	workflow = _procurement_workflow()
+	# Rows on one page usually share a department, and the department-wide half of
+	# a summary is the expensive half: the Material Request join, the outstanding
+	# Procurement Request scan and its UOM conversions. Compute it once per budget.
+	position_cache: dict = {}
 	for request in requests:
 		doc = frappe.get_doc(PROCUREMENT_REQUEST, request.name)
 		request.total_estimated_cost = doc.total_estimated_cost
 		request.can_edit = _can_edit_procurement_request(doc, workflow)
-		request.budget_summary = request_summary(doc)
+		request.budget_summary = request_summary(doc, position_cache)
 
 
 @frappe.whitelist()
