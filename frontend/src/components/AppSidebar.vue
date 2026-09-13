@@ -37,13 +37,16 @@
 			</button>
 		</Dropdown>
 
-		<!-- One app's navigation only. The three apps are separate tiles on the
-         desk apps screen and stay separate here; the switcher in the header
-         dropdown is the only way across. No section label above these: the
-         header already says which app they belong to, exactly as the desk
-         lists a workspace's items straight under its name. -->
-		<div class="flex-1 space-y-px overflow-y-auto">
-			<template v-if="currentApp.key === 'employees'">
+		<!-- One app's navigation only; the switcher in the header dropdown is the
+         only way across. Employees is a flat list under its header, exactly as
+         the desk lists a workspace's items straight under its name. Requests
+         holds two jobs that are read separately -- leave and procurement -- so
+         each gets a label, which is the desk's own pattern for a sidebar that
+         carries more than one group. A section whose permission this user does
+         not have is absent rather than empty. -->
+		<div class="flex-1 overflow-y-auto">
+			<!-- Rows a pixel apart, like the desk's own list of workspace items. -->
+			<div v-if="currentApp.key === 'employees'" class="space-y-px">
 				<SidebarItem
 					label="Employees"
 					icon="lucide-users"
@@ -56,43 +59,58 @@
 					icon="lucide-user-plus"
 					:to="{ name: 'NewEmployee' }"
 				/>
-			</template>
+			</div>
 
-			<template v-else-if="currentApp.key === 'procurement'">
+			<!-- `gap-2` on top of the 8px each SidebarSection already carries: the
+           two sections are separate jobs, and the label alone does not read as
+           a break at the library's default spacing. No `space-y-*` on this
+           container -- its specificity beats the sections' own `mt-2` and
+           collapses them back together. -->
+			<div v-else class="flex flex-col gap-2">
+				<!-- A bare row, not a section: one page with nothing under it, and
+             ungated, so it sits above the two jobs rather than beside them. -->
 				<SidebarItem
-					label="My requests"
-					icon="lucide-shopping-cart"
-					:to="{ name: 'MyProcurement' }"
+					label="Announcements"
+					icon="lucide-megaphone"
+					:to="{ name: 'Announcements' }"
 				/>
-				<SidebarItem
-					v-if="procurementCan.workflow_access"
-					label="Approvals"
-					icon="lucide-check-check"
-					:to="{ name: 'ProcurementApprovals' }"
-				>
-					<template v-if="procurementCan.pending_workflow_actions" #suffix>
-						<Badge theme="amber" variant="subtle">
-							{{ procurementCan.pending_workflow_actions }}
-						</Badge>
-					</template>
-				</SidebarItem>
-			</template>
 
-			<template v-else>
-				<SidebarItem label="My leave" icon="lucide-palmtree" :to="{ name: 'MyLeave' }" />
-				<SidebarItem
-					v-if="leaveCan.approve"
-					label="Approvals"
-					icon="lucide-check-check"
-					:to="{ name: 'LeaveApprovals' }"
-				>
-					<template v-if="leaveCan.pending_approvals" #suffix>
-						<Badge theme="amber" variant="subtle">
-							{{ leaveCan.pending_approvals }}
-						</Badge>
-					</template>
-				</SidebarItem>
-			</template>
+				<SidebarSection v-if="leaveCan.read" label="Leave" collapsible>
+					<SidebarItem label="My leave" icon="lucide-palmtree" :to="{ name: 'MyLeave' }" />
+					<SidebarItem
+						v-if="leaveCan.approve"
+						label="Approvals"
+						icon="lucide-check-check"
+						:to="{ name: 'LeaveApprovals' }"
+					>
+						<template v-if="leaveCan.pending_approvals" #suffix>
+							<Badge theme="amber" variant="subtle">
+								{{ leaveCan.pending_approvals }}
+							</Badge>
+						</template>
+					</SidebarItem>
+				</SidebarSection>
+
+				<SidebarSection v-if="procurementCan.read" label="Procurement" collapsible>
+					<SidebarItem
+						label="My requests"
+						icon="lucide-shopping-cart"
+						:to="{ name: 'MyProcurement' }"
+					/>
+					<SidebarItem
+						v-if="procurementCan.workflow_access"
+						label="Approvals"
+						icon="lucide-check-check"
+						:to="{ name: 'ProcurementApprovals' }"
+					>
+						<template v-if="procurementCan.pending_workflow_actions" #suffix>
+							<Badge theme="amber" variant="subtle">
+								{{ procurementCan.pending_workflow_actions }}
+							</Badge>
+						</template>
+					</SidebarItem>
+				</SidebarSection>
+			</div>
 		</div>
 
 		<!-- Who you are, and a way to your own User record -- the one thing the
@@ -136,7 +154,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Badge, Dropdown, Sidebar, SidebarItem, useCall, useColorScheme } from 'frappe-ui'
+import {
+	Badge,
+	Dropdown,
+	Sidebar,
+	SidebarItem,
+	SidebarSection,
+	useCall,
+	useColorScheme,
+} from 'frappe-ui'
 import { can, logout, user } from '@/data/session'
 import { leaveCan } from '@/data/leave'
 import { procurementCan } from '@/data/procurement'
@@ -172,24 +198,26 @@ const { colorScheme, setColorScheme } = useColorScheme()
 // landing route, which redirects away before this matters.
 const currentApp = computed<AppDefinition>(() => apps[route.meta.app ?? 'employees'])
 
+// Keyed by route prefix, not by app: Requests spans two doctypes, and "Open in
+// desk" should land on the one whose section is on screen.
+const DESK_ROUTES: [prefix: string, deskPath: string][] = [
+	['/employees', '/app/employee'],
+	['/leave', '/app/leave-application'],
+	['/procurement', '/app/procurement-request'],
+]
+
 // A full page load, not a router push: the desk is a different app served off
 // the same site.
-const DESK_ROUTES: Record<AppKey, string> = {
-	employees: '/app/employee',
-	leave: '/app/leave-application',
-	procurement: '/app/procurement-request',
-}
-
 function openDesk() {
-	window.location.href = DESK_ROUTES[currentApp.value.key]
+	const match = DESK_ROUTES.find(([prefix]) => route.path.startsWith(prefix))
+	window.location.href = match ? match[1] : '/app'
 }
 
 // The marks each app carries in the switcher -- the same ones its navigation
 // rows use, so a submenu entry reads as the section it opens.
 const APP_ICONS: Record<AppKey, string> = {
 	employees: 'lucide-users',
-	leave: 'lucide-palmtree',
-	procurement: 'lucide-shopping-cart',
+	requests: 'lucide-inbox',
 }
 
 // The desk's Reload (`frappe.ui.toolbar.clear_cache`): clear the server's

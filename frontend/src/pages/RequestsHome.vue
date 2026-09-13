@@ -1,0 +1,37 @@
+<template>
+  <!-- Deliberately bare: this is a redirect with a heartbeat, not a page. -->
+  <div class="flex h-full items-center justify-center">
+    <div v-if="!apps.requests.resolved.value" class="flex items-center gap-2 text-ink-gray-5">
+      <Spinner class="size-4" />
+      <span class="text-p-base">Loading…</span>
+    </div>
+    <div v-else class="max-w-md px-5 text-center">
+      <span class="lucide-lock size-8 text-ink-gray-4" />
+      <p class="mt-2 text-base-medium text-ink-gray-7">Nothing to show you</p>
+      <p class="mt-1 text-p-sm text-ink-gray-5">
+        Your account can't open leave or procurement. Ask an HR Manager or a
+        System Manager for access.
+      </p>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { Spinner } from 'frappe-ui'
+import { apps, firstRequestSection } from '@/data/apps'
+
+const router = useRouter()
+
+// The apps-screen tile lands here rather than on a section, because either
+// section may be the only one this user can open. Same shape as Landing.vue,
+// one level down: that one picks an app, this one picks a section within it.
+watch(
+  firstRequestSection,
+  (section) => {
+    if (section) router.replace(section)
+  },
+  { immediate: true },
+)
+</script>

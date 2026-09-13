@@ -39,28 +39,44 @@ const routes: RouteRecordRaw[] = [
     meta: { app: 'employees' },
   },
   {
+    // Above both sections, and ungated: every user of this app sees the same
+    // announcements. It is also where the desk icon lands.
+    path: '/announcements',
+    name: 'Announcements',
+    component: () => import('@/pages/Announcements.vue'),
+    meta: { app: 'requests' },
+  },
+  {
+    // Where the Requests tile lands: which of the two sections opens depends on
+    // permissions that haven't loaded yet, so a component decides.
+    path: '/requests',
+    name: 'RequestsHome',
+    component: () => import('@/pages/RequestsHome.vue'),
+    meta: { app: 'requests' },
+  },
+  {
     path: '/leave',
     name: 'MyLeave',
     component: () => import('@/pages/MyLeave.vue'),
-    meta: { app: 'leave' },
+    meta: { app: 'requests' },
   },
   {
     path: '/leave/approvals',
     name: 'LeaveApprovals',
     component: () => import('@/pages/LeaveApprovals.vue'),
-    meta: { app: 'leave' },
+    meta: { app: 'requests' },
   },
   {
     path: '/procurement',
     name: 'MyProcurement',
     component: () => import('@/pages/MyProcurement.vue'),
-    meta: { app: 'procurement' },
+    meta: { app: 'requests' },
   },
   {
     path: '/procurement/approvals',
     name: 'ProcurementApprovals',
     component: () => import('@/pages/ProcurementApprovals.vue'),
-    meta: { app: 'procurement' },
+    meta: { app: 'requests' },
   },
 ]
 

@@ -44,10 +44,9 @@ def check_app_permission() -> bool:
 	Deliberately the union rather than an Employee check. Frappe gates *every*
 	`Desktop Icon` belonging to an app with the first `add_to_apps_screen`
 	entry's `has_permission` (see `desktop_icon.check_app_permission`), so a
-	narrower check here would hide the Leave and Procurement icons from someone
-	who can only do those. Each section still gates itself: the tiles on
-	`/apps` use their own entry's check, and the pages refuse what the user may
-	not see.
+	narrower check here would hide the Requests icon from someone who can only
+	do those. Each section still gates itself: the tiles on `/apps` use their
+	own entry's check, and the pages refuse what the user may not see.
 
 	Not whitelisted: `frappe.get_attr` calls it directly from the icon and
 	apps-screen builders, so exposing it over HTTP would only widen the surface.
@@ -74,17 +73,26 @@ DECISIONS = ("Approved", "Rejected")
 # team's supervisor decide another team's requests.
 LEAVE_ADMIN_ROLES = {"HR Manager", "HR User"}
 
-def check_leave_app_permission() -> bool:
-	"""Gate the Leave tile, which is a separate app on the apps screen.
+def check_requests_permission() -> bool:
+	"""Gate the Requests tile, which holds both Leave and Procurement.
 
-	Deliberately not the same check as the Employees tile: someone who may
-	request their own leave has no business seeing an employee directory, and
-	the point of two tiles is that each stands on its own.
+	The union of the two, because the tile opens whichever section the user can
+	actually use (`/requests` redirects to the first one). Deliberately not the
+	same check as the Employees tile: someone who may request their own leave
+	has no business seeing an employee directory, and the point of two tiles is
+	that each stands on its own.
+
+	Each section still gates itself -- the sidebar hides a section this user
+	cannot read, and the pages refuse what they may not see -- so the union
+	only decides whether the tile appears at all.
 	"""
 	if frappe.session.user == "Administrator":
 		return True
 
-	return bool(frappe.has_permission(LEAVE_APPLICATION, "read"))
+	return bool(
+		frappe.has_permission(LEAVE_APPLICATION, "read")
+		or frappe.has_permission(PROCUREMENT_REQUEST, "read")
+	)
 
 
 @frappe.whitelist()
@@ -207,14 +215,6 @@ def decide_leave_application(name: str, decision: str) -> dict:
 # --- Procurement -----------------------------------------------------------
 
 PROCUREMENT_REQUEST = "Procurement Request"
-
-def check_procurement_app_permission() -> bool:
-	"""Gate the Procurement tile, which is its own app on the apps screen."""
-	if frappe.session.user == "Administrator":
-		return True
-
-	return bool(frappe.has_permission(PROCUREMENT_REQUEST, "read"))
-
 
 @frappe.whitelist()
 def get_procurement_permissions() -> dict:

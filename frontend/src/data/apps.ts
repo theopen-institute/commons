@@ -10,19 +10,23 @@ import { procurementCan, procurementPermissionsLoaded } from './procurement'
  * the frontend half of the same split: a route belongs to exactly one app
  * (`meta.app`), and the sidebar shows only that app's navigation. The two
  * halves have to agree on the keys and the landing routes.
+ *
+ * Leave and procurement are one app here, `requests`: both are something a
+ * person raises about themselves and waits on an approver for, and the people
+ * who do one mostly do the other. They keep separate routes (`/leave`,
+ * `/procurement`) and separate permission checks -- what they share is the
+ * sidebar, where each gets its own labelled section.
  */
 
 /**
- * What the three apps are sections of.
+ * What the apps are sections of.
  *
  * The desk sidebar names a workspace over the app it belongs to -- "Budget"
  * over "ERPNext" -- and the header here does the same with `title` over this.
- * The desk tiles carry the long form ("TBS Procurement"), because on the apps
- * screen there is nothing above them to say whose they are.
  */
 export const SUITE_TITLE = 'TBS Commons'
 
-export type AppKey = 'employees' | 'leave' | 'procurement'
+export type AppKey = 'employees' | 'requests'
 
 export interface AppDefinition {
   key: AppKey
@@ -46,25 +50,32 @@ export const apps: Record<AppKey, AppDefinition> = {
     available: computed(() => can.value.read),
     resolved: computed(() => permissionsLoaded.value),
   },
-  leave: {
-    key: 'leave',
-    title: 'Leave',
-    logo: '/assets/tbs_commons/images/tbs_commons-leave-logo.svg',
-    home: '/leave',
-    available: computed(() => leaveCan.value.read),
-    resolved: computed(() => leavePermissionsLoaded.value),
-  },
-  procurement: {
-    key: 'procurement',
-    title: 'Procurement',
+  requests: {
+    key: 'requests',
+    title: 'Requests',
     logo: '/assets/tbs_commons/images/tbs_commons-procurement-logo.svg',
-    home: '/procurement',
-    available: computed(() => procurementCan.value.read),
-    resolved: computed(() => procurementPermissionsLoaded.value),
+    // Not a section route: either section may be the one this user can open,
+    // so the tile lands on a redirect that picks. See RequestsHome.vue.
+    home: '/requests',
+    available: computed(() => leaveCan.value.read || procurementCan.value.read),
+    resolved: computed(
+      () => leavePermissionsLoaded.value && procurementPermissionsLoaded.value,
+    ),
   },
 }
 
-export const appList = [apps.employees, apps.leave, apps.procurement]
+export const appList = [apps.employees, apps.requests]
+
+/**
+ * Where `/requests` and the apps-screen tile actually land, in sidebar order.
+ * Null until both permission answers are in, so nothing redirects early.
+ */
+export const firstRequestSection = computed<string | null>(() => {
+  if (!apps.requests.resolved.value) return null
+  if (leaveCan.value.read) return '/leave'
+  if (procurementCan.value.read) return '/procurement'
+  return null
+})
 
 /** Apps this user can actually open — what the switcher offers. */
 export const availableApps = computed(() =>

@@ -22,9 +22,9 @@ app_home = "/tbs_commons"
 
 # Three tiles, not one: the apps screen renders an entry per item here, so one
 # Frappe app can present itself as several. Employee records, leave and
-# procurement are separate jobs for separate people — each tile gets its own
-# icon, landing route and permission check, and the SPA gives each its own
-# sidebar.
+# procurement are separate jobs for separate people — the directory gets its own
+# tile, icon and permission check, and the two request kinds share one, where the
+# SPA gives each its own labelled section in the sidebar.
 add_to_apps_screen = [
 	{
 		"name": "tbs_commons-employees",
@@ -34,18 +34,13 @@ add_to_apps_screen = [
 		"has_permission": "tbs_commons.api.check_app_permission",
 	},
 	{
-		"name": "tbs_commons-leave",
-		"logo": "/assets/tbs_commons/images/tbs_commons-leave-logo.svg",
-		"title": "Leave",
-		"route": f"{app_home}/leave",
-		"has_permission": "tbs_commons.api.check_leave_app_permission",
-	},
-	{
-		"name": "tbs_commons-procurement",
+		"name": "tbs_commons-requests",
 		"logo": "/assets/tbs_commons/images/tbs_commons-procurement-logo.svg",
-		"title": "Procurement",
-		"route": f"{app_home}/procurement",
-		"has_permission": "tbs_commons.api.check_procurement_app_permission",
+		"title": "Requests",
+		# Not a section route: `/requests` redirects to whichever of Leave and
+		# Procurement this user can open, so the tile works for either alone.
+		"route": f"{app_home}/requests",
+		"has_permission": "tbs_commons.api.check_requests_permission",
 	},
 ]
 
@@ -56,10 +51,9 @@ website_route_rules = [
 	{"from_route": "/tbs_commons/<path:app_path>", "to_route": "tbs_commons"},
 ]
 
-# The desk icons themselves ship as files under `tbs_commons/desktop_icon/` and
-# are imported by migrate's own sync. These hooks only do what that sync cannot:
-# Custom Fields, the procurement Workflow, and dropping the redundant app-title
-# icon Frappe seeds.
+# The desk icon ships as a file under `tbs_commons/desktop_icon/` and is imported by
+# migrate's own sync. These hooks only do what that sync cannot: Custom Fields and
+# the procurement Workflow.
 after_install = [
 	"tbs_commons.install.after_install",
 	"tbs_commons.safer_permissions.install.sync_permission_gates",
