@@ -141,6 +141,23 @@ DESKTOP_ICONS = (
 )
 
 
+def before_migrate() -> None:
+	sync_module_defs()
+
+
+def sync_module_defs() -> None:
+	"""Register this app's modules before migrate imports doctypes into them.
+
+	`Module Def` records are created by `add_module_defs` when an app is
+	*installed* and never again, so a module added to `modules.txt` afterwards
+	has none -- and importing a doctype that names it fails. This runs from
+	`before_migrate`, ahead of the doctype sync that would trip over it.
+	"""
+	from frappe.installer import add_module_defs
+
+	add_module_defs(APP, ignore_if_duplicate=True)
+
+
 def after_install() -> None:
 	sync_desktop_icons()
 	sync_custom_fields()

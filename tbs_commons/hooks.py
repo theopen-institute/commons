@@ -59,8 +59,20 @@ website_route_rules = [
 # The desk draws `Desktop Icon` documents, which Frappe seeds once per app at
 # install and never updates. Both hooks run the same idempotent sync, so a
 # fresh install and an existing site end up with the same two icons.
-after_install = "tbs_commons.install.after_install"
-after_migrate = "tbs_commons.install.after_migrate"
+after_install = [
+	"tbs_commons.install.after_install",
+	"tbs_commons.safer_permissions.install.sync_permission_gates",
+]
+after_migrate = [
+	"tbs_commons.install.after_migrate",
+	"tbs_commons.safer_permissions.install.sync_permission_gates",
+]
+
+# `Safer Permissions` was added to `modules.txt` after this app had already
+# been installed somewhere, and `Module Def` records are only written at
+# install. Without one, migrate cannot import a doctype that names the module
+# -- so this has to run before the doctype sync, not after it.
+before_migrate = "tbs_commons.install.before_migrate"
 
 # The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
 # Manage Dock on a developer-mode site and press Export to App, and it is written to
@@ -207,15 +219,24 @@ app_include_js = "tbs_commons.bundle.js"
 
 # Permissions
 # -----------
-# Permissions evaluated in scripted ways
-
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
+# Role Permissions grant access to a whole doctype and User Permissions take
+# most of it back, so the restriction is always the second step -- and a User
+# Permission that was never created reads exactly like a user meant to see
+# everything. `tbs_commons.safer_permissions.permissions` adds the missing third state: a role
+# marked "Require User Permission" in the Role Permission Manager grants
+# nothing until one exists.
 #
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+# Registered against every doctype rather than a named few, because which
+# doctypes are gated is configuration (`Permission Gate Settings`), not code.
+# Both hooks can only deny, and both answer a cached dict lookup for doctypes
+# nobody has gated.
+permission_query_conditions = {
+	"*": "tbs_commons.safer_permissions.permissions.permission_query_conditions",
+}
+
+has_permission = {
+	"*": "tbs_commons.safer_permissions.permissions.has_permission",
+}
 
 # Document Events
 # ---------------
@@ -276,9 +297,14 @@ doc_events = {
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "tbs_commons.event.get_events"
-# }
+# Query and Script Reports run the report author's SQL and consult neither
+# permission hook, so a gated role cannot be shown one safely -- not even with
+# its User Permission in place. These two wrappers refuse them; everything else
+# about the reports is untouched.
+override_whitelisted_methods = {
+	"frappe.desk.query_report.run": "tbs_commons.safer_permissions.permissions.run_query_report",
+	"frappe.desk.query_report.export_query": "tbs_commons.safer_permissions.permissions.export_query_report",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

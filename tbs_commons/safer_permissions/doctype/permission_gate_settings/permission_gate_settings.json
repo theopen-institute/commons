@@ -1,0 +1,37 @@
+{
+ "doctype": "DocType",
+ "name": "Permission Gate Settings",
+ "module": "Safer Permissions",
+ "engine": "InnoDB",
+ "issingle": 1,
+ "track_changes": 1,
+ "field_order": [
+  "intro",
+  "rules"
+ ],
+ "fields": [
+  {
+   "fieldname": "intro",
+   "fieldtype": "HTML",
+   "options": "<p class=\"text-muted small\">Role Permissions grant access to every document of a doctype, and User Permissions take most of it back. A User Permission that is missing, deleted, or never created therefore reads as unrestricted access.</p><p class=\"text-muted small\">Listing a doctype here adds a <b>Require User Permission</b> checkbox to each of its rows in the <a href=\"/app/permission-manager\">Role Permission Manager</a>. A role with that box ticked sees <b>nothing</b> until the user holds the User Permission named below; a role without it is unaffected. So <code>Employee</code> can be gated to their own records while <code>HR Manager</code> keeps full access to the same doctype.</p><p class=\"text-muted small\">Adding a row takes effect after the next <code>bench migrate</code>, which creates the checkbox. Gated roles are also refused Query and Script Reports on these doctypes, because report SQL cannot honour User Permissions.</p>"
+  },
+  {
+   "fieldname": "rules",
+   "label": "Gated Doctypes",
+   "fieldtype": "Table",
+   "options": "Permission Gate Rule"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}
