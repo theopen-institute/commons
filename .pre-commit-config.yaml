@@ -8,7 +8,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        files: "tbsapp.*"
+        files: "tbs_commons.*"
         exclude: ".*json$|.*txt$|.*csv|.*md|.*svg"
       - id: check-merge-conflict
       - id: check-ast
@@ -38,11 +38,11 @@ repos:
         # Ignore any files that might contain jinja / bundles
         exclude: |
             (?x)^(
-                tbsapp/public/dist/.*|
+                tbs_commons/public/dist/.*|
                 .*node_modules.*|
                 .*boilerplate.*|
-                tbsapp/templates/includes/.*|
-                tbsapp/public/js/lib/.*
+                tbs_commons/templates/includes/.*|
+                tbs_commons/public/js/lib/.*
             )$
 
 
@@ -55,12 +55,12 @@ repos:
         # Ignore any files that might contain jinja / bundles
         exclude: |
             (?x)^(
-                tbsapp/public/dist/.*|
+                tbs_commons/public/dist/.*|
                 cypress/.*|
                 .*node_modules.*|
                 .*boilerplate.*|
-                tbsapp/templates/includes/.*|
-                tbsapp/public/js/lib/.*
+                tbs_commons/templates/includes/.*|
+                tbs_commons/public/js/lib/.*
             )$
 
 ci:

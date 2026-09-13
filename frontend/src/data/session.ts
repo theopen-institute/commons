@@ -32,7 +32,7 @@ declare global {
 const bootUser = window.user_info
 
 const sessionCall = useCall<UserInfo>({
-  url: '/api/v2/method/tbsapp.api.get_session_user',
+  url: '/api/v2/method/tbs_commons.api.get_session_user',
   immediate: !bootUser,
 })
 
@@ -53,7 +53,7 @@ export const user = computed<UserInfo>(
 // render of someone else's permissions — a create button that flashes up and
 // then fails. The request is one small call at boot.
 const permissionsCall = useCall<EmployeePermissions>({
-  url: '/api/v2/method/tbsapp.api.get_employee_permissions',
+  url: '/api/v2/method/tbs_commons.api.get_employee_permissions',
 })
 
 const NO_PERMISSIONS: EmployeePermissions = {

@@ -1,0 +1,117 @@
+{
+ "doctype": "DocType",
+ "name": "Department Budget",
+ "module": "TBS Commons",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "company",
+  "department",
+  "fiscal_year",
+  "currency",
+  "budget_owner",
+  "annual_amount",
+  "adjustments",
+  "budget_key",
+  "start_date",
+  "end_date",
+  "ready"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "label": "Company",
+   "fieldtype": "Link",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "department",
+   "label": "Department",
+   "fieldtype": "Link",
+   "options": "Department",
+   "reqd": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "label": "Fiscal Year",
+   "fieldtype": "Link",
+   "options": "Fiscal Year",
+   "reqd": 1
+  },
+  {
+   "fieldname": "currency",
+   "label": "Currency",
+   "fieldtype": "Link",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "budget_owner",
+   "label": "Budget Owner",
+   "fieldtype": "Link",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "annual_amount",
+   "label": "Annual Amount",
+   "fieldtype": "Currency",
+   "options": "currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "adjustments",
+   "label": "Adjustments",
+   "fieldtype": "Table",
+   "options": "Department Budget Adjustment"
+  },
+  {
+   "fieldname": "budget_key",
+   "label": "Budget Key",
+   "fieldtype": "Data",
+   "unique": 1,
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "start_date",
+   "label": "Start Date",
+   "fieldtype": "Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "end_date",
+   "label": "End Date",
+   "fieldtype": "Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready",
+   "fieldtype": "Check",
+   "label": "Opening balances reconciled",
+   "default": "0",
+   "description": "Finance must register existing approved requests, orders and invoices before enabling approvals."
+  }
+ ],
+ "permissions": [
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1
+  }
+ ],
+ "track_changes": 1,
+ "title_field": "department"
+}

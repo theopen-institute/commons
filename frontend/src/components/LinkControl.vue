@@ -59,6 +59,8 @@ const props = defineProps<{
    * tree, not from a filter over User.
    */
   query?: string
+  /** Show the result's human-readable title above its stored ID. */
+  titleFirst?: boolean
   label?: string
   description?: string
   error?: string
@@ -96,6 +98,16 @@ const results = ref<LinkOption[]>([])
 const seen = ref(new Map<string, LinkOption>())
 
 function toOption(result: LinkSearchResult): LinkOption {
+  if (props.titleFirst) {
+    const title = result.label && result.label !== result.value
+      ? result.label
+      : result.description || result.value
+    return {
+      value: result.value,
+      label: title,
+      sublabel: title !== result.value ? result.value : undefined,
+    }
+  }
   const label = result.label || result.value
   return {
     value: result.value,

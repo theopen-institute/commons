@@ -3,7 +3,7 @@
 import frappe
 from frappe.utils import flt
 
-from tbsapp.tbs_app.doctype.procurement_request.procurement_request import get_ordered_qty_map
+from tbs_commons.tbs_commons.doctype.procurement_request.procurement_request import get_committed_qty_map
 
 EMPLOYEE = "Employee"
 
@@ -33,7 +33,7 @@ def get_session_user() -> dict:
 	A production build gets this from the page's boot data; the Vite dev
 	server serves index.html without the Jinja pass, so the SPA asks for it.
 	"""
-	from tbsapp.www.tbsapp import get_user_info
+	from tbs_commons.www.tbs_commons import get_user_info
 
 	return get_user_info()
 
@@ -208,14 +208,6 @@ def decide_leave_application(name: str, decision: str) -> dict:
 
 PROCUREMENT_REQUEST = "Procurement Request"
 
-# Roles that may decide a request they are not named on — the backstop for an
-# approver who has left, and the people who run procurement anyway. Narrower
-# than "whoever can submit", which by design includes every Purchase User.
-PROCUREMENT_ADMIN_ROLES = {"Purchase Manager"}
-
-PENDING_APPROVAL = "Pending Approval"
-
-
 def check_procurement_app_permission() -> bool:
 	"""Gate the Procurement tile, which is its own app on the apps screen."""
 	if frappe.session.user == "Administrator":
@@ -228,36 +220,181 @@ def check_procurement_app_permission() -> bool:
 def get_procurement_permissions() -> dict:
 	"""What the session user may do with procurement, plus their backlog.
 
-	`approve` is the doctype-level submit right. Whether this user decides
-	*this* request is a separate question that `decide_procurement_request`
-	answers per document.
-
-	Carries the two defaults a new request needs as well. They are cheap, and
+	Carries the server-owned defaults a new request needs as well. They are cheap, and
 	the alternative is the request form making its own round trips for a
 	company and a unit before it can render a single blank line.
 	"""
-	can_approve = bool(frappe.has_permission(PROCUREMENT_REQUEST, "submit"))
-
-	pending = 0
-	if can_approve:
-		pending = frappe.db.count(
-			PROCUREMENT_REQUEST,
-			{"approver": frappe.session.user, "docstatus": 0, "status": PENDING_APPROVAL},
-		)
+	workflow = _procurement_workflow()
+	can_read = bool(frappe.has_permission(PROCUREMENT_REQUEST, "read"))
+	workflow_access = bool(workflow and can_read)
+	pending = len(_procurement_workflow_queue(False)["requests"]) if workflow_access else 0
 
 	company = _default_company()
+	employee = frappe.db.get_value(
+		"Employee",
+		{"user_id": frappe.session.user, "status": "Active"},
+		["name", "department", "expense_approver"],
+		as_dict=True,
+	)
 
 	return {
-		"read": bool(frappe.has_permission(PROCUREMENT_REQUEST, "read")),
+		"read": can_read,
 		"request": bool(frappe.has_permission(PROCUREMENT_REQUEST, "create")),
-		"approve": can_approve,
-		"pending_approvals": pending,
+		"workflow_access": workflow_access,
+		"pending_workflow_actions": pending,
 		"default_company": company,
 		"default_currency": (
 			frappe.db.get_value("Company", company, "default_currency") if company else None
 		),
+		"default_department": employee.department if employee else None,
+		"default_approver": employee.expense_approver if employee else None,
 		"default_uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
 	}
+
+
+def _procurement_workflow():
+	from frappe.model.workflow import get_workflow_name
+
+	name = get_workflow_name(PROCUREMENT_REQUEST)
+	return frappe.get_cached_doc("Workflow", name) if name else None
+
+
+@frappe.whitelist()
+def get_procurement_workflow() -> dict | None:
+	"""The active Workflow definition, reduced to fields the SPA can render."""
+	frappe.has_permission(PROCUREMENT_REQUEST, "read", throw=True)
+	workflow = _procurement_workflow()
+	if not workflow:
+		return None
+	styles = dict(
+		frappe.get_all(
+			"Workflow State",
+			filters={"name": ["in", [row.state for row in workflow.states]]},
+			fields=["name", "style"],
+			as_list=True,
+		)
+	)
+	return {
+		"name": workflow.name,
+		"workflow_state_field": workflow.workflow_state_field,
+		"initial_actions": _initial_workflow_actions(workflow),
+		"states": [
+			{"state": row.state, "doc_status": int(row.doc_status), "style": styles.get(row.state)}
+			for row in workflow.states
+		],
+		"transitions": [
+			{"state": row.state, "action": row.action, "next_state": row.next_state}
+			for row in workflow.transitions
+		],
+	}
+
+
+def _initial_workflow_actions(workflow) -> list[dict]:
+	"""Actions a document created by this user can take from the initial state."""
+	if not workflow.states:
+		return []
+
+	initial_state = workflow.states[0].state
+	roles = set(frappe.get_roles())
+	return _unique_workflow_actions(
+		row
+		for row in workflow.transitions
+		if row.state == initial_state
+		and row.allowed in roles
+		and (row.allow_self_approval or frappe.session.user == "Administrator")
+	)
+
+
+def _unique_workflow_actions(transitions) -> list[dict]:
+	"""Return one button per action accepted by Frappe's Workflow API.
+
+	A Workflow needs parallel transition rows to grant the same action to
+	different roles. Users who hold more than one of those roles receive every
+	matching row from ``get_transitions``, while ``apply_workflow`` accepts only
+	the action name and therefore exposes a single effective choice.
+	"""
+	actions = []
+	seen = set()
+	for row in transitions:
+		if row.action in seen:
+			continue
+		seen.add(row.action)
+		actions.append({"action": row.action, "next_state": row.next_state})
+	return actions
+
+
+@frappe.whitelist(methods=["POST"])
+def save_procurement_request(doc: str | dict, action: str | None = None) -> dict:
+	"""Insert or edit a request, optionally applying a Workflow action atomically."""
+	values = frappe.parse_json(doc) or {}
+	if not isinstance(values, dict):
+		frappe.throw(frappe._("A Procurement Request document is required."))
+	if values.get("doctype") not in (None, PROCUREMENT_REQUEST):
+		frappe.throw(frappe._("Only Procurement Requests can be created here."))
+
+	name = values.pop("name", None)
+	values["doctype"] = PROCUREMENT_REQUEST
+	values["docstatus"] = 0
+	workflow = _procurement_workflow()
+	if workflow:
+		values.pop(workflow.workflow_state_field, None)
+	for row in values.get("items") or []:
+		# Vue's stable rendering key is not part of the child doctype.
+		row.pop("key", None)
+
+	if name:
+		request = frappe.get_doc(PROCUREMENT_REQUEST, name)
+		if not _can_edit_procurement_request(request, workflow):
+			frappe.throw(
+				frappe._("You are not permitted to edit this Procurement Request in its current workflow state."),
+				frappe.PermissionError,
+			)
+		values.pop("doctype", None)
+		values.pop("docstatus", None)
+		_preserve_non_frontend_line_fields(values.get("items") or [], request)
+		request.update(values)
+		request.save()
+	else:
+		_preserve_non_frontend_line_fields(values.get("items") or [])
+		request = frappe.get_doc(values).insert()
+	if action:
+		from frappe.model.workflow import apply_workflow
+
+		request = apply_workflow(request, action)
+	return request.as_dict()
+
+
+def _can_edit_procurement_request(doc, workflow=None) -> bool:
+	"""Match Frappe Desk's Workflow allow-edit rule, with server permissions."""
+	if doc.docstatus != 0 or not doc.has_permission("write"):
+		return False
+
+	workflow = workflow if workflow is not None else _procurement_workflow()
+	if not workflow:
+		return True
+
+	state = doc.get(workflow.workflow_state_field)
+	if not state:
+		state = next(
+			(row.state for row in workflow.states if int(row.doc_status or 0) == doc.docstatus),
+			None,
+		)
+	state_row = next((row for row in workflow.states if row.state == state), None)
+	if not state_row:
+		return False
+	return state_row.allow_edit in frappe.get_roles()
+
+
+def _preserve_non_frontend_line_fields(items: list[dict], request=None) -> None:
+	"""Keep catalogue assignment and verification outside the requester UI."""
+	stored = {row.name: row for row in request.items} if request else {}
+	for row in items:
+		previous = stored.get(row.get("name"))
+		for fieldname in ("item_code", "verified_rate"):
+			if previous:
+				row[fieldname] = previous.get(fieldname)
+			else:
+				row.pop(fieldname, None)
 
 
 def _default_company() -> str | None:
@@ -275,108 +412,140 @@ def _default_company() -> str | None:
 	return companies[0] if len(companies) == 1 else None
 
 
-@frappe.whitelist(methods=["POST"])
-def send_procurement_request(name: str) -> dict:
-	"""Hand a draft to its approver.
+@frappe.whitelist()
+def get_my_procurement_requests() -> list[dict]:
+	"""One entry per request chain, showing the latest readable amendment."""
+	workflow = _procurement_workflow()
+	state_field = workflow.workflow_state_field if workflow else "status"
+	fields = [
+		"name", "amended_from", "title", "company", "currency", "transaction_date",
+		"schedule_date", "requested_by", "requester_name", "department", "approver",
+		"approver_name", "justification", "rejection_reason", "total_qty", "status",
+		"docstatus", "modified",
+	]
+	if state_field not in fields:
+		fields.append(state_field)
+	requests = frappe.get_list(
+		PROCUREMENT_REQUEST,
+		filters={"requested_by": frappe.session.user},
+		fields=fields,
+		order_by="creation desc, name desc",
+		limit_page_length=0,
+	)
+	# Collapse before limiting so amendments cannot disappear across a page boundary.
+	requests = _replace_cancelled_requests(requests)[:20]
+	_add_procurement_costs(requests)
+	for request in requests:
+		request.workflow_state = request.get(state_field)
+	return requests
 
-	Separate from creating it: a request assembled in the desk is a draft until
-	someone says it is ready, and the line items are the part that takes more
-	than one sitting.
+
+def _replace_cancelled_requests(requests: list[dict]) -> list[dict]:
+	"""Keep original positions, replacing cancelled ancestors with their descendants.
+
+	Input is newest first. If several amendments exist, the newest wins.
+	Only rows already returned by the permission-checked query participate.
 	"""
-	doc = frappe.get_doc(PROCUREMENT_REQUEST, name)
-	doc.check_permission("write")
+	by_name = {row["name"]: row for row in requests}
+	amendments = {}
+	for row in requests:
+		parent = by_name.get(row.get("amended_from"))
+		if parent and parent["docstatus"] == 2:
+			amendments.setdefault(parent["name"], row)
 
-	if doc.docstatus != 0:
-		frappe.throw(
-			frappe._("{0} has already been decided.").format(name), frappe.ValidationError
+	result = []
+	emitted = set()
+	for row in requests:
+		parent = by_name.get(row.get("amended_from"))
+		if parent and parent["docstatus"] == 2:
+			continue
+		seen = set()
+		while row["docstatus"] == 2 and row["name"] in amendments and row["name"] not in seen:
+			seen.add(row["name"])
+			row = amendments[row["name"]]
+		if row["name"] not in emitted:
+			result.append(row)
+			emitted.add(row["name"])
+	return result
+
+
+@frappe.whitelist()
+def get_procurement_request_transitions(requests: str) -> dict[str, list[dict]]:
+	"""Workflow transitions Frappe currently permits for each readable request."""
+	from frappe.model.workflow import get_transitions
+
+	names = frappe.parse_json(requests) or []
+	if not names or not _procurement_workflow():
+		return {}
+	readable = frappe.get_list(
+		PROCUREMENT_REQUEST,
+		filters={"name": ["in", names]},
+		pluck="name",
+		limit_page_length=0,
+	)
+	available = {}
+	for name in readable:
+		available[name] = _unique_workflow_actions(
+			get_transitions(frappe.get_doc(PROCUREMENT_REQUEST, name))
+		)
+	return available
+
+
+@frappe.whitelist()
+def get_procurement_workflow_queue(decided: int = 0) -> dict:
+	"""Requests represented by this user's open or completed Workflow Actions."""
+	return _procurement_workflow_queue(bool(frappe.utils.cint(decided)))
+
+
+def _procurement_workflow_queue(decided: bool) -> dict:
+	filters = {"reference_doctype": PROCUREMENT_REQUEST}
+	if decided:
+		filters.update({"status": "Completed", "completed_by": frappe.session.user})
+		actions = frappe.get_all("Workflow Action", filters=filters, fields=["reference_name"])
+	else:
+		filters["status"] = "Open"
+		actions = frappe.get_list(
+			"Workflow Action", filters=filters, fields=["reference_name"], limit_page_length=0
 		)
 
-	if doc.status == PENDING_APPROVAL:
-		frappe.throw(
-			frappe._("{0} is already with {1}.").format(
-				name, doc.approver_name or doc.approver or frappe._("its approver")
-			),
-			frappe.ValidationError,
-		)
+	names = list(dict.fromkeys(row.reference_name for row in actions if row.reference_name))
+	if not names:
+		return {"requests": [], "actions": {}}
+	workflow = _procurement_workflow()
+	state_field = workflow.workflow_state_field if workflow else "status"
+	fields = [
+		"name", "title", "company", "currency", "transaction_date", "schedule_date",
+		"requested_by", "requester_name", "department", "approver", "approver_name",
+		"justification", "rejection_reason", "total_qty", "status", "docstatus", "modified",
+	]
+	if state_field not in fields:
+		fields.append(state_field)
+	requests = frappe.get_list(
+		PROCUREMENT_REQUEST,
+		filters={"name": ["in", names]},
+		fields=fields,
+		order_by="modified desc",
+		limit_page_length=20,
+	)
+	_add_procurement_costs(requests)
+	available = get_procurement_request_transitions(frappe.as_json([row.name for row in requests]))
+	for request in requests:
+		request.workflow_state = request.get(state_field)
+	if not decided:
+		requests = [row for row in requests if available.get(row.name)]
+	return {"requests": requests, "actions": available}
 
-	if not doc.approver:
-		frappe.throw(
-			frappe._("Name an approver before sending this request."), frappe.ValidationError
-		)
 
-	# `db_set`, not `save`: `status` is permlevel 1 and the requester cannot
-	# write it, which is the whole point — they may hand the request over, not
-	# decide it. The value is fixed here, not user input.
-	doc.db_set("status", PENDING_APPROVAL)
+def _add_procurement_costs(requests: list[dict]) -> None:
+	"""Attach server-owned virtual totals and edit capabilities to list rows."""
+	from tbs_commons.budget import request_summary
 
-	return {"name": doc.name, "status": doc.status, "docstatus": doc.docstatus}
-
-
-@frappe.whitelist(methods=["POST"])
-def decide_procurement_request(name: str, decision: str, reason: str | None = None) -> dict:
-	"""Approve or reject a procurement request and submit it.
-
-	One action for the approver, two writes underneath, for the same reason as
-	`decide_leave_application`: `status` is permlevel 1, and only a submitted
-	request can go on to become a Material Request. Splitting them would leave
-	a request that reads as decided to one person and pending to everyone else.
-	"""
-	if decision not in DECISIONS:
-		frappe.throw(
-			frappe._("Decision must be one of {0}").format(", ".join(DECISIONS)),
-			frappe.ValidationError,
-		)
-
-	doc = frappe.get_doc(PROCUREMENT_REQUEST, name)
-
-	# The right to decide, not merely to read, checked against this document so
-	# user permissions and sharing apply.
-	doc.check_permission("submit")
-
-	# ...and then narrower: this request's own approver. `check_permission`
-	# only answers "may this user submit procurement requests", which for a
-	# Purchase User means all of them.
-	if doc.approver != frappe.session.user and not (
-		PROCUREMENT_ADMIN_ROLES & set(frappe.get_roles())
-	):
-		frappe.throw(
-			frappe._("{0} is not yours to decide — it is assigned to {1}.").format(
-				name, doc.approver_name or doc.approver or frappe._("nobody")
-			),
-			frappe.PermissionError,
-		)
-
-	if doc.docstatus != 0:
-		frappe.throw(
-			frappe._("{0} has already been {1}.").format(name, doc.status.lower()),
-			frappe.ValidationError,
-		)
-
-	if doc.status != PENDING_APPROVAL:
-		frappe.throw(
-			frappe._("{0} has not been sent for approval yet.").format(name),
-			frappe.ValidationError,
-		)
-
-	doc.status = decision
-	if decision == "Rejected":
-		doc.rejection_reason = reason or None
-	doc.save()
-
-	# permlevel 1 again: a user without write access there has the change
-	# silently reverted rather than refused, and would then submit a request
-	# that still says it is pending.
-	if doc.status != decision:
-		frappe.throw(
-			frappe._(
-				"You are not permitted to decide procurement requests. The Purchase User and Purchase Manager roles grant this."
-			),
-			frappe.PermissionError,
-		)
-
-	doc.submit()
-
-	return {"name": doc.name, "status": doc.status, "docstatus": doc.docstatus}
+	workflow = _procurement_workflow()
+	for request in requests:
+		doc = frappe.get_doc(PROCUREMENT_REQUEST, request.name)
+		request.total_estimated_cost = doc.total_estimated_cost
+		request.can_edit = _can_edit_procurement_request(doc, workflow)
+		request.budget_summary = request_summary(doc)
 
 
 @frappe.whitelist()
@@ -420,21 +589,21 @@ def get_procurement_request_lines(requests: str) -> list[dict]:
 			"preferred_supplier",
 			"qty",
 			"uom",
-			"schedule_date",
 			"estimated_rate",
-			"estimated_amount",
+			"verified_rate",
 		],
 		order_by="parent asc, idx asc",
 		limit_page_length=0,
 	)
 
-	# `ordered_qty` and what is left of each row are counted, not stored, so a
+	# `committed_qty` and what is left of each row are counted, not stored, so a
 	# list query cannot ask for them. One grouped read covers every line on the
-	# page -- see `get_ordered_qty_map`.
-	ordered = get_ordered_qty_map(readable)
+	# page -- see `get_committed_qty_map`.
+	ordered = get_committed_qty_map(readable)
 	for line in lines:
-		line.ordered_qty = flt(ordered.get(line.name))
-		line.pending_qty = max(flt(line.qty) - line.ordered_qty, 0.0)
+		line.committed_qty = flt(ordered.get(line.name))
+		line.uncommitted_qty = max(flt(line.qty) - line.committed_qty, 0.0)
+		line.estimated_cost = flt(line.qty) * (flt(line.verified_rate) or flt(line.estimated_rate))
 
 	return lines
 
@@ -479,7 +648,12 @@ def get_procurement_approvers(
 		.run()
 	)
 
-	preferred = _preferred_approvers(filters.get("employee") if filters else None)
+	employee = filters.get("employee") if filters else None
+	if not employee:
+		employee = frappe.db.get_value(
+			"Employee", {"user_id": frappe.session.user, "status": "Active"}, "name"
+		)
+	preferred = _preferred_approvers(employee)
 	candidates.sort(key=lambda row: (row[0] not in preferred, (row[1] or row[0]).lower()))
 
 	start, page_len = frappe.utils.cint(start), frappe.utils.cint(page_len)
@@ -487,11 +661,8 @@ def get_procurement_approvers(
 
 
 def _roles_that_may_approve() -> set[str]:
-	"""Roles with submit on Procurement Request.
-
-	Custom DocPerm replaces the shipped rows wholesale when a site has any, so
-	it is checked first rather than merged.
-	"""
+	"""Roles whose Frappe DocPerm allows submitting this doctype."""
+	# Custom DocPerm replaces the standard permission rows when present.
 	for source in ("Custom DocPerm", "DocPerm"):
 		roles = frappe.get_all(
 			source, filters={"parent": PROCUREMENT_REQUEST, "submit": 1}, pluck="role"

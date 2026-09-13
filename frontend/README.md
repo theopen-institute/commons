@@ -1,6 +1,6 @@
 # TBS Commons frontend
 
-Vue 3 + [frappe-ui](https://ui.frappe.io) v1 (espresso), served at `/tbsapp`.
+Vue 3 + [frappe-ui](https://ui.frappe.io) v1 (espresso), served at `/tbs_commons`.
 
 One bundle, presented as **two apps** with their own desk icons and their own
 sidebars — see [Two apps, one bundle](#two-apps-one-bundle).
@@ -19,12 +19,12 @@ start, so type changes follow schema changes.
 
 ```sh
 yarn type-check  # vue-tsc
-yarn build       # writes ../tbsapp/public/frontend + ../tbsapp/www/tbsapp.html
+yarn build       # writes ../tbs_commons/public/frontend + ../tbs_commons/www/tbs_commons.html
 ```
 
-`yarn build` is what makes `/tbsapp` work on the site: it copies the built page
-to `tbsapp/www/tbsapp.html`, which `website_route_rules` in `hooks.py` points
-every `/tbsapp/*` path at.
+`yarn build` is what makes `/tbs_commons` work on the site: it copies the built page
+to `tbs_commons/www/tbs_commons.html`, which `website_route_rules` in `hooks.py` points
+every `/tbs_commons/*` path at.
 
 ## Layout
 
@@ -42,8 +42,8 @@ every `/tbsapp/*` path at.
 
 ## Two apps, one bundle
 
-The desk shows two icons — **TBS Employees** (`/tbsapp/employees`) and **TBS
-Leave** (`/tbsapp/leave`). They are one Vite bundle under one route prefix;
+The desk shows two icons — **TBS Employees** (`/tbs_commons/employees`) and **TBS
+Leave** (`/tbs_commons/leave`). They are one Vite bundle under one route prefix;
 what makes them feel separate is that every route declares which app it
 belongs to (`meta.app`), and `AppSidebar` renders only that app's navigation.
 The only way across is the switcher in the sidebar header, which lists just the
@@ -51,7 +51,7 @@ apps the user can actually open.
 
 Adding a third means: an entry in `src/data/apps.ts`, `meta.app` on its routes,
 a branch in `AppSidebar`, an `add_to_apps_screen` entry, and an icon in
-`tbsapp/install.py`.
+`tbs_commons/install.py`.
 
 ### How the desk icons work
 
@@ -61,13 +61,13 @@ This is less obvious than it looks, and the hook alone is not enough:
   hook. Frappe seeds one per app at *site install* from the first hook entry
   and never revisits it, so changing a title or route in `hooks.py` does
   nothing on an existing site.
-- `tbsapp/install.py` therefore maintains the two icons itself, from
+- `tbs_commons/install.py` therefore maintains the two icons itself, from
   `after_install` **and** `after_migrate`, so `bench migrate` picks up changes.
   It is idempotent, and it preserves a user's `hidden` / `idx` on an icon that
   already exists.
 - `/apps` redirects to `/desk` in v16+; the standalone apps screen is gone.
 - Frappe gates *every* icon belonging to an app with the **first** hook entry's
-  `has_permission`, so `tbsapp.api.check_app_permission` is deliberately the
+  `has_permission`, so `tbs_commons.api.check_app_permission` is deliberately the
   union — read on Employee *or* on Leave Application. A narrower check there
   would hide the Leave icon from someone who can only do leave. Each page still
   gates itself.
@@ -75,10 +75,10 @@ This is less obvious than it looks, and the hook alone is not enough:
 Clicking an icon would also open a **new tab**: the desk builds every External
 icon's href as `origin + link` and then sets `target="_blank"` on anything
 starting with `http`, which that prefix guarantees.
-`tbsapp/public/js/tbsapp.bundle.js` (loaded on the desk via `app_include_js`)
+`tbs_commons/public/js/tbs_commons.bundle.js` (loaded on the desk via `app_include_js`)
 intercepts clicks on this app's own icons and navigates in place, while leaving
 modified and middle clicks — and every other app's icons — alone. Rebuild it
-with `bench build --app tbsapp`.
+with `bench build --app tbs_commons`.
 
 After changing icons, run `bench --site <site> migrate`. The icon set is cached
 per user; the sync clears that cache, but a browser also caches boot data, so a
@@ -95,7 +95,7 @@ Two pages over HRMS's `Leave Application`:
   with Approve / Deny.
 
 A decision is two writes underneath — `status` (which sits at permlevel 1) and
-a submit — so `tbsapp.api.decide_leave_application` does both in one
+a submit — so `tbs_commons.api.decide_leave_application` does both in one
 transaction. The endpoint requires the caller to be the application's *named*
 approver, or hold an HR role: the `Leave Approver` role by itself grants submit
 on every leave application, which would let one team's supervisor decide
@@ -123,8 +123,8 @@ Leave fails at submit, not at request time, if these are missing:
 
 ## Permissions
 
-`src/data/session.ts` fetches `tbsapp.api.get_employee_permissions` and
-`src/data/leave.ts` fetches `tbsapp.api.get_leave_permissions`; the UI hides or
+`src/data/session.ts` fetches `tbs_commons.api.get_employee_permissions` and
+`src/data/leave.ts` fetches `tbs_commons.api.get_leave_permissions`; the UI hides or
 disables what the user can't do. That is a courtesy, not the boundary: every
 read and write goes through the REST API, which applies the same checks
 server-side.

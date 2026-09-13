@@ -11,7 +11,7 @@ declare module 'vue-router' {
 
 const routes: RouteRecordRaw[] = [
   {
-    // Bare /tbsapp: which app to open depends on permissions that haven't
+    // Bare /tbs_commons: which app to open depends on permissions that haven't
     // loaded yet, so a component decides rather than a static redirect.
     path: '/',
     name: 'Landing',
@@ -65,6 +65,6 @@ const routes: RouteRecordRaw[] = [
 ]
 
 export default createRouter({
-  history: createWebHistory('/tbsapp'),
+  history: createWebHistory('/tbs_commons'),
   routes,
 })

@@ -9,17 +9,15 @@ carries. Neither suits the step that comes first, where someone says what they
 need in their own words and an approver decides whether it is worth buying at
 all.
 
-So this doctype keeps the shape of a Material Request -- series, purpose,
+So this doctype keeps the shape of a Material Request -- series,
 company, dated item rows, submit and cancel -- and drops the consequences. It
 writes no stock ledger entries, no bin quantities and no GL entries, and
 `item_code` is optional: a row may carry nothing but a name, a quantity and a
 UOM. The estimated cost fields exist for the approver and are posted nowhere.
 
-A request moves Draft -> Pending Approval -> Approved/Rejected. `status` sits
-at permlevel 1 for the same reason Leave Application's does: the requester
-reads it but cannot write it, so nobody approves their own spending. The two
-transitions live in `tbsapp.api` alongside the leave ones, because a decision
-is a status change *and* a submit and the pair has to be one transaction.
+A request moves through the active Frappe Workflow: staff draft it, procurement
+checks and codes it, its expense approver reviews it, and procurement fulfills
+it. The `status` field is also the workflow state field.
 
 Once approved, `make_material_request` carries the request -- all of it, or the
 rows and quantities the buyer picks -- onto a draft Material Request. That is
@@ -27,8 +25,8 @@ where the item master, the warehouse and the stock effects finally enter, and it
 is deliberately the only place they do. A request can be converted repeatedly,
 so a long list can be bought in instalments.
 
-How much of a row has been ordered is never stored. `ordered_qty`, `pending_qty`
-and `order_status` on the rows, and `per_ordered` here, are virtual fields
+How much of a row has been ordered is never stored. `committed_qty`, `uncommitted_qty`
+on the rows, and `per_ordered` here, are virtual fields
 counted from the submitted Material Requests that point back at them. `status`
 is the one derived value that *is* stored, because list views filter and sort on
 it; the Material Request hook below refreshes it on submit and cancel, and it
@@ -43,13 +41,14 @@ from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
 from frappe.model.workflow import get_workflow_name
 from frappe.query_builder.functions import Sum
-from frappe.utils import comma_and, flt, get_link_to_form, getdate
+from frappe.utils import comma_and, flt, get_link_to_form, getdate, today
 
 DOCTYPE = "Procurement Request"
 
 # Sent, and waiting on the named approver. Still docstatus 0: nothing is
 # decided until it is submitted.
-PENDING_STATE = "Pending Approval"
+PENDING_STATE = "Pending"
+REVIEW_STATE = "Under Review"
 
 # What a decision leaves behind, both submitted. Everything else on the
 # `status` field is derived -- see `_derived_status`.
@@ -57,13 +56,13 @@ DECIDED_STATES = ("Approved", "Rejected")
 
 # A request has to have cleared approval before it can become a Material
 # Request, and a fully ordered one has nothing left to carry over.
-ORDERABLE_STATES = ("Approved", "Partially Ordered")
+ORDERABLE_STATES = ("Approved",)
 
 FALLBACK_UOM = "Nos"
 
 # What a row takes from the item master when it is given an Item Code. None of
 # them is editable after submission -- they describe what was approved.
-FETCHED_FROM_ITEM = ("item_name", "item_group", "description", "uom")
+FETCHED_FROM_ITEM = ("item_name", "item_group", "description")
 
 
 def _with_scheme(url: str) -> str:
@@ -92,7 +91,7 @@ class ProcurementRequest(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
-		from tbsapp.tbs_app.doctype.procurement_request_item.procurement_request_item import (
+		from tbs_commons.tbs_commons.doctype.procurement_request_item.procurement_request_item import (
 			ProcurementRequestItem,
 		)
 
@@ -107,20 +106,20 @@ class ProcurementRequest(Document):
 		letter_head: DF.Link | None
 		naming_series: DF.Literal["PRQ-.YYYY.-"]
 		per_ordered: DF.Percent
-		purpose: DF.Literal["Purchase", "Material Transfer", "Material Issue", "Manufacture"]
 		rejection_reason: DF.SmallText | None
+		requester_name: DF.Data | None
 		requested_by: DF.Link | None
 		schedule_date: DF.Date | None
 		select_print_heading: DF.Link | None
 		status: DF.Literal[
 			"",
 			"Draft",
-			"Pending Approval",
+			"Pending",
+			"Under Review",
 			"Approved",
 			"Rejected",
-			"Partially Ordered",
-			"Ordered",
-			"Cancelled",
+			"Completed",
+			"Canceled",
 		]
 		title: DF.Data | None
 		total_estimated_cost: DF.Currency
@@ -131,6 +130,7 @@ class ProcurementRequest(Document):
 	def validate(self) -> None:
 		self.set_requester_defaults()
 		self.validate_items()
+		self.set_verified_rates_for_changed_items()
 		self.validate_schedule_date()
 		self.calculate_totals()
 		self.set_title()
@@ -140,10 +140,12 @@ class ProcurementRequest(Document):
 		self.validate_no_rows_added_or_removed()
 		self.keep_the_stored_description()
 		self.validate_item_code_changes()
+		self.set_verified_rates_for_changed_items()
 		self.validate_schedule_date()
 
 	def on_update_after_submit(self) -> None:
 		self.fill_in_from_item()
+		self.set_status(update=True)
 
 	def on_submit(self) -> None:
 		self.set_status(update=True)
@@ -179,7 +181,7 @@ class ProcurementRequest(Document):
 		# Procurement spend is approved by whoever approves this person's
 		# expenses -- the budget holder either way -- so their existing
 		# `expense_approver` is the default. It stays editable: the picker in
-		# `tbsapp.api.get_procurement_approvers` offers everyone who could
+		# `tbs_commons.api.get_procurement_approvers` offers everyone who could
 		# actually decide, for the many employees who have none set.
 		if not self.approver:
 			self.approver = employee.expense_approver
@@ -215,27 +217,28 @@ class ProcurementRequest(Document):
 				)
 
 	def validate_schedule_date(self) -> None:
+		if self.schedule_date and getdate(self.schedule_date) < getdate(self.transaction_date):
+			frappe.throw(_("Required By cannot be earlier than the Request Date."))
+
+	def set_verified_rates_for_changed_items(self) -> None:
+		"""Refresh defaults only on recoding; subsequent manual rate edits survive."""
+		before = self.get_doc_before_save()
+		previous = {row.name: row for row in before.items} if before else {}
 		for row in self.items:
-			if not row.schedule_date:
-				row.schedule_date = self.schedule_date
-
-			if row.schedule_date and getdate(row.schedule_date) < getdate(self.transaction_date):
-				frappe.throw(
-					_("Row #{0}: Required By cannot be earlier than the Request Date.").format(row.idx)
-				)
-
-		if not self.schedule_date:
-			dates = [row.schedule_date for row in self.items if row.schedule_date]
-			self.schedule_date = min(dates) if dates else None
+			old = previous.get(row.name)
+			if (old.item_code if old else None) != (row.item_code or None):
+				price = get_default_buying_price(row.item_code, self.currency)
+				row.verified_rate = price["verified_rate"]
+				if row.item_code and price["uom"]:
+					row.uom = price["uom"]
+				elif not row.item_code and old:
+					row.uom = old.uom
 
 	def validate_no_rows_added_or_removed(self) -> None:
 		"""An approved request is a decision about a list of things. The list is closed.
 
-		`items` carries `allow_on_submit` so a row can still be given its Item
-		Code after approval, and Frappe reads that as leave to add and remove
-		rows too -- it skips `validate_update_after_submit` for new rows
-		entirely. Nothing else in the request would catch a line added after the
-		approver said yes, so it is caught here.
+		Frappe's metadata enforces this too. Keep the server check as protection
+		for sites whose cached DocType has not yet been migrated.
 		"""
 		before = set(self.submitted_rows())
 		now = {row.name for row in self.items}
@@ -278,15 +281,12 @@ class ProcurementRequest(Document):
 				row.set(field, stored.get(field))
 
 	def validate_item_code_changes(self) -> None:
-		"""The Item Code stays editable after approval, up to the point it is ordered.
+		"""Defensively reject recoding a submitted row once it has been committed.
 
-		Coding a row late is the point of the whole arrangement: a request may
-		name something the item master has never heard of, and procurement puts
-		the code on it when they get to it. Once a Material Request carries the
-		row, though, the code is a statement about what was actually ordered,
-		and changing it here would leave the two documents disagreeing.
+		The DocField is not editable after submit. This also protects existing
+		sites whose metadata has not yet been migrated.
 		"""
-		ordered = get_ordered_qty_map(self.name)
+		ordered = get_committed_qty_map(self.name)
 		before = self.submitted_rows()
 
 		for row in self.items:
@@ -367,14 +367,16 @@ class ProcurementRequest(Document):
 	# -- derived values ------------------------------------------------------
 
 	def calculate_totals(self) -> None:
-		for row in self.items:
-			row.estimated_amount = flt(
-				flt(row.qty) * flt(row.estimated_rate), row.precision("estimated_amount")
-			)
-
 		self.total_qty = flt(sum(flt(row.qty) for row in self.items), self.precision("total_qty"))
-		self.total_estimated_cost = flt(
-			sum(flt(row.estimated_amount) for row in self.items),
+
+	@property
+	def total_estimated_cost(self) -> float:
+		"""Current line costs, preferring a nonzero verified rate over the estimate."""
+		return flt(
+			sum(
+				flt(row.qty) * (flt(row.verified_rate) or flt(row.estimated_rate))
+				for row in self.get("items", [])
+			),
 			self.precision("total_estimated_cost"),
 		)
 
@@ -383,7 +385,7 @@ class ProcurementRequest(Document):
 			return
 
 		named = [row.item_name or row.item_code for row in self.items[:3]]
-		self.title = _("{0} Request for {1}").format(_(self.purpose), ", ".join(named))[:140]
+		self.title = _("Request for {0}").format(", ".join(named))[:140]
 
 	def set_status(self, update: bool = False) -> None:
 		status = self._derived_status()
@@ -404,18 +406,18 @@ class ProcurementRequest(Document):
 		attached it owns the approval states outright.
 		"""
 		if self.docstatus == 2:
-			return "Cancelled"
+			return "Canceled"
 
 		if flt(self.per_ordered) >= 100:
-			return "Ordered"
+			return "Completed"
 
 		if flt(self.per_ordered) > 0:
-			return "Partially Ordered"
+			return "Approved"
 
 		if get_workflow_name(self.doctype):
 			# Nothing ordered any more (the Material Request was cancelled), so
 			# hand the document back to the Workflow's own last approval state.
-			return "Approved" if self.status in ("Ordered", "Partially Ordered") else None
+			return "Approved" if self.status == "Completed" else None
 
 		if self.docstatus == 0:
 			# A request always begins as a draft, whatever the caller sent.
@@ -428,7 +430,7 @@ class ProcurementRequest(Document):
 			# value has to survive here or it would be reset to Draft and the
 			# submit would read as an approval nobody gave. What keeps a
 			# requester out of all four is permlevel 1 on the field, not this.
-			if self.status in (PENDING_STATE, *DECIDED_STATES):
+			if self.status in (PENDING_STATE, REVIEW_STATE, *DECIDED_STATES):
 				return None
 
 			return "Draft"
@@ -439,7 +441,7 @@ class ProcurementRequest(Document):
 
 	# -- live ordering state -------------------------------------------------
 
-	def prime_ordered_qty(self) -> None:
+	def prime_committed_qty(self) -> None:
 		"""Count every row's ordered quantity in one query instead of one each.
 
 		The rows would each answer for themselves -- that is what makes the
@@ -447,10 +449,10 @@ class ProcurementRequest(Document):
 		line. This fills the same per-row cache from a single grouped read, and
 		is called wherever the request is looked at as a whole.
 		"""
-		ordered = get_ordered_qty_map(self.name) if self.name else {}
+		ordered = get_committed_qty_map(self.name, self.items) if self.name else {}
 
 		for row in self.items:
-			row.__dict__["_ordered_qty"] = flt(ordered.get(row.name))
+			row.__dict__["_committed_qty"] = flt(ordered.get(row.name))
 
 	@property
 	def per_ordered(self) -> float:
@@ -463,16 +465,16 @@ class ProcurementRequest(Document):
 		if not requested:
 			return 0.0
 
-		self.prime_ordered_qty()
+		self.prime_committed_qty()
 		# Capped per row: over-ordering one line does not cover another.
-		covered = sum(min(row.ordered_qty, flt(row.qty)) for row in self.items)
+		covered = sum(min(row.committed_qty, flt(row.qty)) for row in self.items)
 		return flt(covered / requested * 100, 2)
 
 	@property
 	def open_rows(self) -> list["ProcurementRequestItem"]:
 		"""The rows with something still to order."""
-		self.prime_ordered_qty()
-		return [row for row in self.items if row.pending_qty > 0]
+		self.prime_committed_qty()
+		return [row for row in self.items if row.uncommitted_qty > 0]
 
 	def update_order_status(self) -> None:
 		"""Refresh the stored `status` after a Material Request moved.
@@ -483,49 +485,118 @@ class ProcurementRequest(Document):
 		self.set_status(update=True)
 
 
-def get_ordered_qty_map(procurement_requests: str | list[str]) -> dict[str, float]:
-	"""Quantity per source row that submitted Material Requests already carry.
+def get_default_buying_price(item_code: str | None, currency: str | None) -> dict:
+	"""Return rate and UOM from the same current general buying Item Price."""
+	from erpnext.setup.utils import get_exchange_rate
 
-	One query for however many requests are asked about, keyed by the source row
-	name. Rows nothing has ordered are absent rather than zero.
-	"""
+	result = {"verified_rate": 0.0, "uom": None}
+	if not item_code:
+		return result
+	result["uom"] = frappe.get_cached_value("Item", item_code, "stock_uom")
+	price_list = frappe.db.get_single_value("Buying Settings", "buying_price_list")
+	if not price_list:
+		return result
+	price_list_doc = frappe.get_cached_doc("Price List", price_list)
+	if not price_list_doc.enabled or not price_list_doc.buying:
+		return result
+
+	# Do not filter by the previous item's UOM: the selected price supplies it.
+	prices = frappe.get_all(
+		"Item Price",
+		filters={
+			"item_code": item_code,
+			"price_list": price_list,
+			"supplier": ["is", "not set"],
+			"customer": ["is", "not set"],
+			"batch_no": ["is", "not set"],
+		},
+		fields=["price_list_rate", "uom", "valid_from", "valid_upto"],
+		order_by="valid_from desc, creation desc",
+	)
+	current_date = getdate(today())
+	price = next(
+		(p for p in prices if (not p.valid_from or getdate(p.valid_from) <= current_date)
+		 and (not p.valid_upto or getdate(p.valid_upto) >= current_date)),
+		None,
+	)
+	if price is None:
+		return result
+	result["uom"] = price.uom or result["uom"]
+	if not price.price_list_rate:
+		return result
+	if not currency:
+		frappe.throw(_("Select a request currency before fetching the buying price."))
+	exchange_rate = get_exchange_rate(price_list_doc.currency, currency, today(), "for_buying")
+	if not exchange_rate:
+		frappe.throw(
+			_("No buying exchange rate is available from {0} to {1}.").format(price_list_doc.currency, currency)
+		)
+	result["verified_rate"] = flt(price.price_list_rate) * flt(exchange_rate)
+	return result
+
+
+@frappe.whitelist()
+def get_verified_buying_price(
+	item_code: str,
+	currency: str | None = None,
+	request: str | None = None,
+) -> dict:
+	"""Rate and UOM preview for users creating or editing a procurement request."""
+	if request:
+		frappe.get_doc(DOCTYPE, request).check_permission("write")
+	else:
+		frappe.has_permission(DOCTYPE, "create", throw=True)
+	frappe.has_permission("Item", "read", doc=item_code, throw=True)
+	return get_default_buying_price(item_code, currency)
+
+
+def get_committed_qty_map(procurement_requests: str | list[str], items=None) -> dict[str, float]:
+	"""Committed stock quantities expressed in each request line's current UOM."""
+	from erpnext.stock.get_item_details import get_conversion_factor
+
 	names = [procurement_requests] if isinstance(procurement_requests, str) else list(procurement_requests)
 	if not names:
 		return {}
 
 	mr_item = frappe.qb.DocType("Material Request Item")
 	mr = frappe.qb.DocType("Material Request")
-
 	rows = (
 		frappe.qb.from_(mr_item)
 		.join(mr)
 		.on(mr_item.parent == mr.name)
-		.select(mr_item.procurement_request_item, Sum(mr_item.qty).as_("qty"))
+		.select(mr_item.procurement_request_item, Sum(mr_item.stock_qty).as_("stock_qty"))
 		.where((mr.docstatus == 1) & (mr_item.procurement_request.isin(names)))
 		.groupby(mr_item.procurement_request_item)
 	).run(as_dict=True)
+	stock_quantities = {row.procurement_request_item: flt(row.stock_qty) for row in rows}
+	if not stock_quantities:
+		return {}
+	if items is None:
+		items = frappe.get_all(
+			"Procurement Request Item",
+			filters={"parent": ["in", names], "parenttype": DOCTYPE},
+			fields=["name", "item_code", "uom"],
+		)
 
-	return {row.procurement_request_item: flt(row.qty) for row in rows if row.procurement_request_item}
+	committed = {}
+	factors = {}
+	for row in items:
+		if row.name not in stock_quantities:
+			continue
+		key = (row.item_code, row.uom)
+		if key not in factors:
+			factors[key] = flt(get_conversion_factor(*key).get("conversion_factor"))
+		factor = factors[key]
+		if factor <= 0:
+			frappe.throw(_("No UOM conversion is available for {0} in {1}.").format(*key))
+		committed[row.name] = stock_quantities[row.name] / factor
+	return committed
 
 
-def get_ordered_qty(procurement_request_item: str) -> float:
-	"""How much of one source row submitted Material Requests already carry.
-
-	Behind `ProcurementRequestItem.ordered_qty`. Reading many rows this way is a
-	query each -- use `get_ordered_qty_map` for a whole request.
-	"""
-	mr_item = frappe.qb.DocType("Material Request Item")
-	mr = frappe.qb.DocType("Material Request")
-
-	ordered = (
-		frappe.qb.from_(mr_item)
-		.join(mr)
-		.on(mr_item.parent == mr.name)
-		.select(Sum(mr_item.qty))
-		.where((mr.docstatus == 1) & (mr_item.procurement_request_item == procurement_request_item))
-	).run()
-
-	return flt(ordered[0][0]) if ordered else 0.0
+def get_committed_qty(procurement_request_item: str) -> float:
+	"""Committed quantity of a saved line, in that line's UOM."""
+	parent = frappe.db.get_value("Procurement Request Item", procurement_request_item, "parent")
+	return get_committed_qty_map(parent).get(procurement_request_item, 0.0) if parent else 0.0
 
 
 def update_linked_procurement_requests(doc, method: str | None = None) -> None:
@@ -547,7 +618,7 @@ def _selection(source, selected_items: str | list | None) -> dict[str, float]:
 	balance is taken, which is what the plain "Create > Material Request" button
 	on a fresh request should do.
 	"""
-	open_qty = {row.name: row.pending_qty for row in source.open_rows}
+	open_qty = {row.name: row.uncommitted_qty for row in source.open_rows}
 	if not open_qty:
 		frappe.throw(_("Every item on this request has already been ordered."))
 
@@ -639,7 +710,7 @@ def make_material_request(
 	uncoded = [str(row.idx) for row in source.items if row.name in wanted and not row.item_code]
 	if uncoded:
 		frappe.throw(
-			_("A Material Request needs an Item Code on every row. Set one on row {0} -- it can be set on a submitted request -- or tick just the rows you want to order.").format(
+			_("A Material Request needs an Item Code on every row. Amend this request to set one on row {0}, or tick just the coded rows you want to order.").format(
 				comma_and(uncoded)
 			),
 			title=_("Item Code Missing"),
@@ -649,11 +720,14 @@ def make_material_request(
 		from erpnext.stock.get_item_details import get_conversion_factor
 
 		target_row.qty = wanted[source_row.name]
-		target_row.schedule_date = source_row.schedule_date or source_parent.schedule_date
+		target_row.schedule_date = source_parent.schedule_date
 		target_row.stock_uom = frappe.db.get_value("Item", source_row.item_code, "stock_uom")
-		target_row.conversion_factor = (
-			flt(get_conversion_factor(source_row.item_code, source_row.uom).get("conversion_factor")) or 1
+		target_row.conversion_factor = flt(
+			get_conversion_factor(source_row.item_code, source_row.uom).get("conversion_factor")
 		)
+		if target_row.conversion_factor <= 0:
+			frappe.throw(_("No UOM conversion is available for {0} in {1}.").format(source_row.item_code, source_row.uom))
+		target_row.rate = flt(source_row.verified_rate) or flt(source_row.estimated_rate)
 		target_row.stock_qty = flt(target_row.qty) * flt(target_row.conversion_factor)
 		# A hint, not a decision: the item's own default warehouse if it has one,
 		# otherwise the Material Request form asks.
@@ -671,7 +745,6 @@ def make_material_request(
 				"doctype": "Material Request",
 				"field_map": {
 					"name": "procurement_request",
-					"purpose": "material_request_type",
 				},
 				# The Material Request is raised today, whenever the request was made.
 				"field_no_map": ["transaction_date"],
@@ -682,7 +755,6 @@ def make_material_request(
 				"field_map": {
 					"name": "procurement_request_item",
 					"parent": "procurement_request",
-					"estimated_rate": "rate",
 				},
 				"postprocess": update_item,
 				"condition": lambda row: row.name in wanted,

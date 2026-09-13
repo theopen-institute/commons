@@ -1,0 +1,74 @@
+{
+ "doctype": "DocType",
+ "name": "Department Budget Movement",
+ "module": "TBS Commons",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "budget",
+  "source_type",
+  "source_name",
+  "reserved",
+  "committed",
+  "spent",
+  "details"
+ ],
+ "fields": [
+  {
+   "fieldname": "budget",
+   "label": "Budget",
+   "fieldtype": "Link",
+   "options": "Department Budget",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "source_type",
+   "label": "Source Type",
+   "fieldtype": "Link",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "fieldname": "source_name",
+   "label": "Source Name",
+   "fieldtype": "Dynamic Link",
+   "options": "source_type",
+   "reqd": 1
+  },
+  {
+   "fieldname": "reserved",
+   "label": "Reserved",
+   "fieldtype": "Currency"
+  },
+  {
+   "fieldname": "committed",
+   "label": "Committed",
+   "fieldtype": "Currency"
+  },
+  {
+   "fieldname": "spent",
+   "label": "Spent",
+   "fieldtype": "Currency"
+  },
+  {
+   "fieldname": "details",
+   "label": "Details",
+   "fieldtype": "Code",
+   "options": "JSON"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "report": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "track_changes": 1
+}

@@ -8,7 +8,7 @@ def get_data() -> dict:
 	"""Connections tab: the stock documents this request turned into.
 
 	`procurement_request` is a Custom Field this app adds to Material Request --
-	see `tbsapp.install`.
+	see `tbs_commons.install`.
 	"""
 	return {
 		"fieldname": "procurement_request",

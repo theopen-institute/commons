@@ -1,5 +1,5 @@
 [project]
-name = "tbsapp"
+name = "tbs_commons"
 authors = [
     { name = "Peter", email = "pgraif@gmail.com"}
 ]

@@ -9,7 +9,48 @@ title or route later, has to maintain those records itself.
 
 import frappe
 
-APP = "tbsapp"
+APP = "tbs_commons"
+PROCUREMENT_WORKFLOW = "Procurement Request Workflow"
+
+WORKFLOW_STATES = (
+	{"state": "Draft", "style": "Primary", "doc_status": "0", "allow_edit": "Employee"},
+	{"state": "Pending", "style": "Warning", "doc_status": "0", "allow_edit": "Purchase User"},
+	{"state": "Under Review", "style": "Info", "doc_status": "0", "allow_edit": "Expense Approver"},
+	{"state": "Approved", "style": "Success", "doc_status": "1", "allow_edit": "Purchase User"},
+	{"state": "Rejected", "style": "Danger", "doc_status": "1", "allow_edit": "Expense Approver"},
+	{"state": "Completed", "style": "Success", "doc_status": "1", "allow_edit": "Purchase User"},
+	{"state": "Canceled", "style": "Inverse", "doc_status": "2", "allow_edit": "Purchase User"},
+)
+
+WORKFLOW_ACTIONS = ("Send to Procurement", "Send for Review", "Approve", "Reject", "Cancel")
+
+WORKFLOW_TRANSITIONS = (
+	{"state": "Draft", "action": "Send to Procurement", "next_state": "Pending", "allowed": "Employee", "allow_self_approval": 1},
+	{
+		"state": "Pending",
+		"action": "Send for Review",
+		"next_state": "Under Review",
+		"allowed": "Purchase User",
+		"condition": 'not frappe.db.get_value("Procurement Request Item", {"parent": doc.name, "item_code": ["is", "not set"]}, "name")',
+	},
+	{
+		"state": "Under Review",
+		"action": "Approve",
+		"next_state": "Approved",
+		"allowed": "Expense Approver",
+		"condition": "doc.approver == frappe.session.user",
+	},
+	{
+		"state": "Under Review",
+		"action": "Reject",
+		"next_state": "Rejected",
+		"allowed": "Expense Approver",
+		"condition": "doc.approver == frappe.session.user",
+	},
+	{"state": "Under Review", "action": "Approve", "next_state": "Approved", "allowed": "Purchase Manager"},
+	{"state": "Under Review", "action": "Reject", "next_state": "Rejected", "allowed": "Purchase Manager"},
+	{"state": "Approved", "action": "Cancel", "next_state": "Canceled", "allowed": "Purchase User"},
+)
 
 # Back-references from the stock document to the request it came from. They live
 # on ERPNext's doctypes, so they are Custom Fields rather than part of the
@@ -55,6 +96,14 @@ CUSTOM_FIELDS = {
 	],
 }
 
+# Direct purchases need explicit attribution. Linked purchases inherit their budget.
+for _doctype in ("Purchase Order Item", "Purchase Invoice Item"):
+	CUSTOM_FIELDS[_doctype] = [{
+		"fieldname": "budget_department", "label": "Budget Department",
+		"fieldtype": "Link", "options": "Department", "insert_after": "cost_center",
+		"description": "Required for direct purchases. Linked purchases inherit their original department budget.",
+	}]
+
 # The stale single icon Frappe seeds from the `app_title` hook. Replaced by the
 # two below on the first migrate after this app grew a second section.
 LEGACY_ICON_LABEL = "TBS Commons"
@@ -62,18 +111,18 @@ LEGACY_ICON_LABEL = "TBS Commons"
 DESKTOP_ICONS = (
 	{
 		"label": "TBS Employees",
-		"link": "/tbsapp/employees",
-		"logo_url": "/assets/tbsapp/images/tbsapp-employees-logo.svg",
+		"link": "/tbs_commons/employees",
+		"logo_url": "/assets/tbs_commons/images/tbs_commons-employees-logo.svg",
 	},
 	{
 		"label": "TBS Leave",
-		"link": "/tbsapp/leave",
-		"logo_url": "/assets/tbsapp/images/tbsapp-leave-logo.svg",
+		"link": "/tbs_commons/leave",
+		"logo_url": "/assets/tbs_commons/images/tbs_commons-leave-logo.svg",
 	},
 	{
 		"label": "TBS Procurement",
-		"link": "/tbsapp/procurement",
-		"logo_url": "/assets/tbsapp/images/tbsapp-procurement-logo.svg",
+		"link": "/tbs_commons/procurement",
+		"logo_url": "/assets/tbs_commons/images/tbs_commons-procurement-logo.svg",
 	},
 )
 
@@ -81,11 +130,13 @@ DESKTOP_ICONS = (
 def after_install() -> None:
 	sync_desktop_icons()
 	sync_custom_fields()
+	sync_procurement_workflow()
 
 
 def after_migrate() -> None:
 	sync_desktop_icons()
 	sync_custom_fields()
+	sync_procurement_workflow()
 
 
 def sync_custom_fields() -> None:
@@ -93,6 +144,52 @@ def sync_custom_fields() -> None:
 	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 	create_custom_fields(CUSTOM_FIELDS, update=True)
+
+
+def sync_procurement_workflow() -> None:
+	"""Seed the workflow once, then leave its business rules to Frappe.
+
+	An existing workflow, including an inactive one deliberately disabled by an
+	administrator, is never rewritten during migrate.
+	"""
+	if frappe.db.exists("Workflow", {"document_type": "Procurement Request"}):
+		return
+
+	for state in WORKFLOW_STATES:
+		name = state["state"]
+		if not frappe.db.exists("Workflow State", name):
+			frappe.get_doc(
+				{"doctype": "Workflow State", "workflow_state_name": name, "style": state["style"]}
+			).insert(ignore_permissions=True)
+
+	for action in WORKFLOW_ACTIONS:
+		if not frappe.db.exists("Workflow Action Master", action):
+			frappe.get_doc(
+				{"doctype": "Workflow Action Master", "workflow_action_name": action}
+			).insert(ignore_permissions=True)
+
+	# Preserve the meaning of documents created before this workflow shipped.
+	for old, new in {
+		"Pending Approval": "Under Review",
+		"Partially Ordered": "Approved",
+		"Ordered": "Completed",
+		"Cancelled": "Canceled",
+	}.items():
+		frappe.db.set_value("Procurement Request", {"status": old}, "status", new, update_modified=False)
+
+	workflow = frappe.new_doc("Workflow")
+	workflow.update(
+		{
+			"workflow_name": PROCUREMENT_WORKFLOW,
+			"document_type": "Procurement Request",
+			"workflow_state_field": "status",
+			"is_active": 1,
+			"send_email_alert": 1,
+		}
+	)
+	workflow.set("states", [{k: v for k, v in state.items() if k != "style"} for state in WORKFLOW_STATES])
+	workflow.set("transitions", list(WORKFLOW_TRANSITIONS))
+	workflow.save(ignore_permissions=True)
 
 
 def sync_desktop_icons() -> None:

@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AppSidebar: typeof import('./src/components/AppSidebar.vue')['default']
+    DepartmentBudgetCard: typeof import('./src/components/DepartmentBudgetCard.vue')['default']
     EmployeeField: typeof import('./src/components/EmployeeField.vue')['default']
     FormSection: typeof import('./src/components/FormSection.vue')['default']
     LeaveRequestDialog: typeof import('./src/components/LeaveRequestDialog.vue')['default']

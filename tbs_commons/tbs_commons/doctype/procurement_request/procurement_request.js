@@ -2,7 +2,7 @@
 // For license information, please see license.txt
 
 const MAKE_MATERIAL_REQUEST =
-	"tbsapp.tbs_app.doctype.procurement_request.procurement_request.make_material_request";
+	"tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.make_material_request";
 
 frappe.ui.form.on("Procurement Request", {
 	setup(frm) {
@@ -11,6 +11,25 @@ frappe.ui.form.on("Procurement Request", {
 	},
 
 	refresh(frm) {
+		if (!frm.is_new()) {
+			frappe.call({
+				method: "tbs_commons.budget.get_request_budget",
+				args: { name: frm.doc.name },
+				callback: ({ message: budget }) => {
+					if (!budget) return;
+					if (budget.missing || budget.inactive) {
+						frm.dashboard.set_headline_alert(__("The annual department budget is missing or awaiting opening-balance reconciliation. Approval is blocked."), "orange");
+						return;
+					}
+					const money = (value) => format_currency(value, budget.currency);
+					frm.dashboard.set_headline_alert(
+						__("Budget: {0} · Spent: {1} · Reserved: {2} · Outstanding orders: {3} · Available: {4}",
+							[budget.budget, budget.spent, budget.reserved, budget.committed, budget.available].map(money)),
+						budget.after_approval < 0 ? "orange" : "blue"
+					);
+				},
+			});
+		}
 		if (frm.doc.docstatus !== 1) {
 			return;
 		}
@@ -20,7 +39,7 @@ frappe.ui.form.on("Procurement Request", {
 		// The same gate `make_material_request` applies server-side: approval has
 		// happened, and something is still left to order. `per_ordered` is a
 		// virtual field, so this reads the count as of this form load.
-		const approved = ["Approved", "Partially Ordered"].includes(frm.doc.status);
+		const approved = frm.doc.status === "Approved";
 		if (!approved || flt(frm.doc.per_ordered) >= 100) {
 			return;
 		}
@@ -47,44 +66,42 @@ frappe.ui.form.on("Procurement Request", {
 		frm.page.set_inner_btn_group_as_primary(__("Create"));
 	},
 
-	schedule_date(frm) {
-		// Fill the blanks only. A row that names its own date meant it.
-		if (!frm.doc.schedule_date) {
-			return;
-		}
-
-		(frm.doc.items || [])
-			.filter((row) => !row.schedule_date)
-			.forEach((row) =>
-				frappe.model.set_value(row.doctype, row.name, "schedule_date", frm.doc.schedule_date)
-			);
-	},
 });
 
 frappe.ui.form.on("Procurement Request Item", {
-	qty: (frm, cdt, cdn) => set_estimates(frm, cdt, cdn),
-	estimated_rate: (frm, cdt, cdn) => set_estimates(frm, cdt, cdn),
+	qty: (frm) => set_totals(frm),
+	estimated_rate: (frm) => set_totals(frm),
+	verified_rate: (frm) => set_totals(frm),
+	items_add: (frm) => set_totals(frm),
 	items_remove: (frm) => set_totals(frm),
 
-	item_code(frm, cdt, cdn) {
+	async item_code(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
-		if (!row.item_code) {
-			return;
-		}
-		if (!row.schedule_date) {
-			frappe.model.set_value(cdt, cdn, "schedule_date", frm.doc.schedule_date);
+		const item_code = row.item_code;
+		const lookup = (row.__buying_rate_lookup || 0) + 1;
+		row.__buying_rate_lookup = lookup;
+		await frappe.model.set_value(cdt, cdn, "verified_rate", 0);
+		if (!item_code) return;
+
+		const { message } = await frappe.call({
+			method: "tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.get_verified_buying_price",
+			args: {
+				item_code,
+				currency: frm.doc.currency,
+				request: frm.is_new() ? null : frm.doc.name,
+			},
+		});
+		// A slow response must not put another item's price on the current row.
+		if (row.item_code === item_code && row.__buying_rate_lookup === lookup) {
+			await frappe.model.set_value(cdt, cdn, {
+				verified_rate: flt(message.verified_rate),
+				uom: message.uom || row.uom,
+			});
 		}
 	},
 });
 
-// A preview of what the server recomputes on save, so an approver sees the
-// number move as they type.
-function set_estimates(frm, cdt, cdn) {
-	const row = locals[cdt][cdn];
-	frappe.model.set_value(cdt, cdn, "estimated_amount", flt(row.qty) * flt(row.estimated_rate));
-	set_totals(frm);
-}
-
+// Preview the virtual total as quantities and rates change.
 function set_totals(frm) {
 	const items = frm.doc.items || [];
 	frm.set_value(
@@ -93,14 +110,15 @@ function set_totals(frm) {
 	);
 	frm.set_value(
 		"total_estimated_cost",
-		items.reduce((total, row) => total + flt(row.estimated_amount), 0)
+		items.reduce(
+			(total, row) => total + flt(row.qty) * (flt(row.verified_rate) || flt(row.estimated_rate)),
+			0
+		)
 	);
 }
 
-// `allow_on_submit` on the items table is what keeps the Item Code fillable
-// after approval. It also hands the grid back its add and remove buttons, which
-// an approved list of things has no business showing -- the server refuses both
-// either way, so this is about not offering them.
+// A submitted request is a fixed list. Keep the grid controls closed even on
+// sites whose cached metadata has not yet picked up that restriction.
 function close_the_item_list(frm) {
 	frm.set_df_property("items", "cannot_add_rows", true);
 	frm.set_df_property("items", "cannot_delete_rows", true);

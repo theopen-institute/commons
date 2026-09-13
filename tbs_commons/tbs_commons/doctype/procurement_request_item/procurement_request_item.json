@@ -7,9 +7,9 @@
  "engine": "InnoDB",
  "field_order": [
   "item_code",
+  "column_break_item",
   "item_name",
   "reference_url",
-  "column_break_item",
   "item_group",
   "preferred_supplier",
   "description_section",
@@ -18,28 +18,28 @@
   "qty",
   "uom",
   "column_break_quantity",
-  "schedule_date",
-  "ordered_qty",
-  "pending_qty",
-  "order_status",
+  "committed_qty",
+  "uncommitted_qty",
   "cost_section",
   "estimated_rate",
   "column_break_cost",
-  "estimated_amount"
+  "verified_rate"
  ],
  "fields": [
   {
-   "columns": 2,
-   "description": "Optional. Leave blank for something the Item master does not carry yet -- it can be coded later, after approval, and still has to be before the row can become a Material Request.",
+   "description": "Optional. Leave blank for something the Item master does not carry yet; procurement can assign it during the correctness check before approval.",
    "fieldname": "item_code",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Item Code",
    "options": "Item",
-   "allow_on_submit": 1
+   "allow_on_submit": 0
   },
   {
-   "columns": 2,
+   "fieldname": "column_break_item",
+   "fieldtype": "Column Break"
+  },
+  {
    "fetch_from": "item_code.item_name",
    "fetch_if_empty": 1,
    "fieldname": "item_name",
@@ -54,24 +54,6 @@
    "label": "Reference Link",
    "length": 500,
    "options": "URL"
-  },
-  {
-   "fieldname": "column_break_item",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fetch_from": "item_code.item_group",
-   "fetch_if_empty": 1,
-   "fieldname": "item_group",
-   "fieldtype": "Link",
-   "label": "Item Group",
-   "options": "Item Group"
-  },
-  {
-   "fieldname": "preferred_supplier",
-   "fieldtype": "Link",
-   "label": "Preferred Supplier",
-   "options": "Supplier"
   },
   {
    "fieldname": "description_section",
@@ -101,65 +83,48 @@
   },
   {
    "columns": 1,
-   "fetch_from": "item_code.stock_uom",
-   "fetch_if_empty": 1,
    "fieldname": "uom",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "UOM",
    "options": "UOM",
-   "reqd": 1
+   "reqd": 1,
+   "allow_on_submit": 0
   },
   {
    "fieldname": "column_break_quantity",
    "fieldtype": "Column Break"
   },
   {
-   "columns": 1,
-   "fieldname": "schedule_date",
-   "fieldtype": "Date",
-   "in_list_view": 1,
-   "label": "Required By"
-  },
-  {
-   "description": "Counted live from submitted Material Requests. Not stored.",
-   "fieldname": "ordered_qty",
+   "description": "Quantity committed by Resources through submitted Material Requests.",
+   "fieldname": "committed_qty",
    "fieldtype": "Float",
-   "label": "Ordered Qty",
+   "label": "Committed Qty",
    "print_hide": 1,
    "read_only": 1,
    "is_virtual": 1,
-   "columns": 1,
-   "in_list_view": 1
+   "columns": 1
   },
   {
    "columns": 1,
    "description": "Quantity on this row that no submitted Material Request carries yet.",
-   "fieldname": "pending_qty",
+   "fieldname": "uncommitted_qty",
    "fieldtype": "Float",
-   "in_list_view": 1,
    "is_virtual": 1,
-   "label": "Still to Order",
+   "label": "Still to Commit",
    "print_hide": 1,
    "read_only": 1
   },
   {
-   "fieldname": "order_status",
-   "fieldtype": "Data",
-   "is_virtual": 1,
-   "label": "Order Status",
-   "print_hide": 1,
-   "read_only": 1
-  },
-  {
-   "collapsible": 1,
    "fieldname": "cost_section",
    "fieldtype": "Section Break",
    "label": "Estimated Cost"
   },
   {
+   "columns": 1,
    "fieldname": "estimated_rate",
    "fieldtype": "Currency",
+   "in_list_view": 1,
    "label": "Estimated Rate",
    "options": "currency"
   },
@@ -168,12 +133,13 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "estimated_amount",
+   "allow_on_submit": 0,
+   "columns": 1,
+   "fieldname": "verified_rate",
    "fieldtype": "Currency",
-   "label": "Estimated Amount",
-   "no_copy": 1,
-   "options": "currency",
-   "read_only": 1
+   "in_list_view": 1,
+   "label": "Verified Rate",
+   "options": "currency"
   }
  ],
  "index_web_pages_for_search": 1,

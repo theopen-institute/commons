@@ -41,7 +41,7 @@ export const apps: Record<AppKey, AppDefinition> = {
   employees: {
     key: 'employees',
     title: 'Employees',
-    logo: '/assets/tbsapp/images/tbsapp-employees-logo.svg',
+    logo: '/assets/tbs_commons/images/tbs_commons-employees-logo.svg',
     home: '/employees',
     available: computed(() => can.value.read),
     resolved: computed(() => permissionsLoaded.value),
@@ -49,7 +49,7 @@ export const apps: Record<AppKey, AppDefinition> = {
   leave: {
     key: 'leave',
     title: 'Leave',
-    logo: '/assets/tbsapp/images/tbsapp-leave-logo.svg',
+    logo: '/assets/tbs_commons/images/tbs_commons-leave-logo.svg',
     home: '/leave',
     available: computed(() => leaveCan.value.read),
     resolved: computed(() => leavePermissionsLoaded.value),
@@ -57,7 +57,7 @@ export const apps: Record<AppKey, AppDefinition> = {
   procurement: {
     key: 'procurement',
     title: 'Procurement',
-    logo: '/assets/tbsapp/images/tbsapp-procurement-logo.svg',
+    logo: '/assets/tbs_commons/images/tbs_commons-procurement-logo.svg',
     home: '/procurement',
     available: computed(() => procurementCan.value.read),
     resolved: computed(() => procurementPermissionsLoaded.value),

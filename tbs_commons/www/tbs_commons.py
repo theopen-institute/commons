@@ -1,6 +1,6 @@
 """Server context for the TBS Commons SPA page.
 
-`tbsapp/www/tbsapp.html` is the built frontend, copied here by the Vite build.
+`tbs_commons/www/tbs_commons.html` is the built frontend, copied here by the Vite build.
 Everything this module puts on `context.boot` is written onto `window` by the
 Jinja block frappe-ui's build injects, so the SPA has a user and a CSRF token
 on first paint instead of after a round trip.

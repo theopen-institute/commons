@@ -1,9 +1,9 @@
-app_name = "tbsapp"
+app_name = "tbs_commons"
 app_title = "TBS Commons"
 app_publisher = "Peter"
 app_description = "Tools for TBS"
 app_email = "pgraif@gmail.com"
-app_license = "unlicense"
+app_license = "none"
 
 # Send non-GET requests for this app's endpoints as native `application/json`
 # bodies instead of form-encoded, per-key JSON-stringified values.
@@ -18,7 +18,7 @@ required_apps = ["erpnext"]
 
 # Where the SPA lives. The two apps below are sections of one bundle served
 # under this prefix, so the route is written once.
-app_home = "/tbsapp"
+app_home = "/tbs_commons"
 
 # Three tiles, not one: the apps screen renders an entry per item here, so one
 # Frappe app can present itself as several. Employee records, leave and
@@ -27,44 +27,44 @@ app_home = "/tbsapp"
 # sidebar.
 add_to_apps_screen = [
 	{
-		"name": "tbsapp",
-		"logo": "/assets/tbsapp/images/tbsapp-employees-logo.svg",
-		"title": "TBS Employees",
+		"name": "tbs_commons-employees",
+		"logo": "/assets/tbs_commons/images/tbs_commons-employees-logo.svg",
+		"title": "Employees",
 		"route": f"{app_home}/employees",
-		"has_permission": "tbsapp.api.check_app_permission",
+		"has_permission": "tbs_commons.api.check_app_permission",
 	},
 	{
-		"name": "tbsapp-leave",
-		"logo": "/assets/tbsapp/images/tbsapp-leave-logo.svg",
-		"title": "TBS Leave",
+		"name": "tbs_commons-leave",
+		"logo": "/assets/tbs_commons/images/tbs_commons-leave-logo.svg",
+		"title": "Leave",
 		"route": f"{app_home}/leave",
-		"has_permission": "tbsapp.api.check_leave_app_permission",
+		"has_permission": "tbs_commons.api.check_leave_app_permission",
 	},
 	{
-		"name": "tbsapp-procurement",
-		"logo": "/assets/tbsapp/images/tbsapp-procurement-logo.svg",
-		"title": "TBS Procurement",
+		"name": "tbs_commons-procurement",
+		"logo": "/assets/tbs_commons/images/tbs_commons-procurement-logo.svg",
+		"title": "Procurement",
 		"route": f"{app_home}/procurement",
-		"has_permission": "tbsapp.api.check_procurement_app_permission",
+		"has_permission": "tbs_commons.api.check_procurement_app_permission",
 	},
 ]
 
-# The SPA owns its own history, so every path under /tbsapp has to resolve to
-# the one built page (tbsapp/www/tbsapp.html) rather than 404 on a deep link
+# The SPA owns its own history, so every path under /tbs_commons has to resolve to
+# the one built page (tbs_commons/www/tbs_commons.html) rather than 404 on a deep link
 # or a refresh.
 website_route_rules = [
-	{"from_route": "/tbsapp/<path:app_path>", "to_route": "tbsapp"},
+	{"from_route": "/tbs_commons/<path:app_path>", "to_route": "tbs_commons"},
 ]
 
 # The desk draws `Desktop Icon` documents, which Frappe seeds once per app at
 # install and never updates. Both hooks run the same idempotent sync, so a
 # fresh install and an existing site end up with the same two icons.
-after_install = "tbsapp.install.after_install"
-after_migrate = "tbsapp.install.after_migrate"
+after_install = "tbs_commons.install.after_install"
+after_migrate = "tbs_commons.install.after_migrate"
 
 # The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
 # Manage Dock on a developer-mode site and press Export to App, and it is written to
-# `tbsapp/dock/tbsapp/tbsapp.json` for git to carry. An app that ships none has no
+# `tbs_commons/dock/tbs_commons/tbs_commons.json` for git to carry. An app that ships none has no
 # rail: its sidebar gets a switcher in the header instead.
 #
 # A companion app, one that extends a host app rather than standing on its own, says so with
@@ -76,18 +76,18 @@ after_migrate = "tbsapp.install.after_migrate"
 
 # Loaded on the desk only. It stops this app's desk icons from opening a new
 # tab — see the file for why the framework does that.
-app_include_js = "tbsapp.bundle.js"
+app_include_js = "tbs_commons.bundle.js"
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/tbsapp/css/tbsapp.css"
-# app_include_js = "/assets/tbsapp/js/tbsapp.js"
+# app_include_css = "/assets/tbs_commons/css/tbs_commons.css"
+# app_include_js = "/assets/tbs_commons/js/tbs_commons.js"
 
 # include js, css files in header of web template
-# web_include_css = "/assets/tbsapp/css/tbsapp.css"
-# web_include_js = "/assets/tbsapp/js/tbsapp.js"
+# web_include_css = "/assets/tbs_commons/css/tbs_commons.css"
+# web_include_js = "/assets/tbs_commons/js/tbs_commons.js"
 
 # include custom scss in every website theme (without file extension ".scss")
-# website_theme_scss = "tbsapp/public/scss/website"
+# website_theme_scss = "tbs_commons/public/scss/website"
 
 # include js, css files in header of web form
 # webform_include_js = {"doctype": "public/js/doctype.js"}
@@ -105,7 +105,7 @@ app_include_js = "tbsapp.bundle.js"
 # Svg Icons
 # ------------------
 # include app icons in desk
-# app_include_icons = "tbsapp/public/icons.svg"
+# app_include_icons = "tbs_commons/public/icons.svg"
 
 # Home Pages
 # ----------
@@ -124,7 +124,7 @@ app_include_js = "tbsapp.bundle.js"
 # open a fresh site's setup in this app's own UI instead of the desk wizard.
 # must be a non-desk route (not under /desk or /app); to customize setup within
 # desk, use setup_wizard_stages / setup_wizard_complete instead.
-# setup_wizard_url = "/tbsapp/setup"
+# setup_wizard_url = "/tbs_commons/setup"
 
 # Generators
 # ----------
@@ -140,20 +140,20 @@ app_include_js = "tbsapp.bundle.js"
 
 # add methods and filters to jinja environment
 # jinja = {
-# 	"methods": "tbsapp.utils.jinja_methods",
-# 	"filters": "tbsapp.utils.jinja_filters"
+# 	"methods": "tbs_commons.utils.jinja_methods",
+# 	"filters": "tbs_commons.utils.jinja_filters"
 # }
 
 # Installation
 # ------------
 
-# before_install = "tbsapp.install.before_install"
+# before_install = "tbs_commons.install.before_install"
 
 # Uninstallation
 # ------------
 
-# before_uninstall = "tbsapp.uninstall.before_uninstall"
-# after_uninstall = "tbsapp.uninstall.after_uninstall"
+# before_uninstall = "tbs_commons.uninstall.before_uninstall"
+# after_uninstall = "tbs_commons.uninstall.after_uninstall"
 
 # Disable / Enable
 # ----------------
@@ -161,49 +161,49 @@ app_include_js = "tbsapp.bundle.js"
 # without uninstalling it. Use this to hide/restore fields this app adds
 # to other apps' doctypes.
 
-# before_disable = "tbsapp.uninstall.before_disable"
-# after_disable = "tbsapp.uninstall.after_disable"
-# before_enable = "tbsapp.install.before_enable"
-# after_enable = "tbsapp.install.after_enable"
+# before_disable = "tbs_commons.uninstall.before_disable"
+# after_disable = "tbs_commons.uninstall.after_disable"
+# before_enable = "tbs_commons.install.before_enable"
+# after_enable = "tbs_commons.install.after_enable"
 
 # Integration Setup
 # ------------------
 # To set up dependencies/integrations with other apps
 # Name of the app being installed is passed as an argument
 
-# before_app_install = "tbsapp.utils.before_app_install"
-# after_app_install = "tbsapp.utils.after_app_install"
+# before_app_install = "tbs_commons.utils.before_app_install"
+# after_app_install = "tbs_commons.utils.after_app_install"
 
 # Integration Cleanup
 # -------------------
 # To clean up dependencies/integrations with other apps
 # Name of the app being uninstalled is passed as an argument
 
-# before_app_uninstall = "tbsapp.utils.before_app_uninstall"
-# after_app_uninstall = "tbsapp.utils.after_app_uninstall"
+# before_app_uninstall = "tbs_commons.utils.before_app_uninstall"
+# after_app_uninstall = "tbs_commons.utils.after_app_uninstall"
 
 # Build
 # ------------------
 # To hook into the build process
 
-# after_build = "tbsapp.build.after_build"
+# after_build = "tbs_commons.build.after_build"
 
 # To hook into the build process of other apps
 # The list of apps being built is passed as an argument
 
-# after_app_build = "tbsapp.build.after_app_build"
+# after_app_build = "tbs_commons.build.after_app_build"
 
 # Desk Notifications
 # ------------------
 # See frappe.core.notifications.get_notification_config
 
-# notification_config = "tbsapp.notifications.get_notification_config"
+# notification_config = "tbs_commons.notifications.get_notification_config"
 
 # Awesome Bar
 # -----------
 # Extra search results: list of dicts with label, description, route, index.
 # route: ["List", "ToDo"], "/desk/docs/some/page", or "https://example.com"
-# awesomebar_search = ["tbsapp.search.awesomebar_results"]
+# awesomebar_search = ["tbs_commons.search.awesomebar_results"]
 
 # Permissions
 # -----------
@@ -225,9 +225,23 @@ app_include_js = "tbsapp.bundle.js"
 # request "ordered". Submit and cancel are the only two events that change
 # whether it counts — a draft Material Request commits to nothing.
 doc_events = {
+	"Procurement Request": {
+		"on_submit": "tbs_commons.budget.sync_document",
+		"on_cancel": "tbs_commons.budget.sync_document",
+	},
+	"Purchase Order": {
+		"on_submit": "tbs_commons.budget.sync_document",
+		"on_cancel": "tbs_commons.budget.sync_document",
+		"on_update_after_submit": "tbs_commons.budget.sync_document",
+	},
+	"Purchase Invoice": {
+		"on_submit": "tbs_commons.budget.sync_document",
+		"on_cancel": "tbs_commons.budget.sync_document",
+		"on_update_after_submit": "tbs_commons.budget.sync_document",
+	},
 	"Material Request": {
-		"on_submit": "tbsapp.tbs_app.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
-		"on_cancel": "tbsapp.tbs_app.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
+		"on_submit": "tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
+		"on_cancel": "tbs_commons.tbs_commons.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
 	},
 }
 
@@ -236,47 +250,47 @@ doc_events = {
 
 # scheduler_events = {
 # 	"all": [
-# 		"tbsapp.tasks.all"
+# 		"tbs_commons.tasks.all"
 # 	],
 # 	"daily": [
-# 		"tbsapp.tasks.daily"
+# 		"tbs_commons.tasks.daily"
 # 	],
 # 	"hourly": [
-# 		"tbsapp.tasks.hourly"
+# 		"tbs_commons.tasks.hourly"
 # 	],
 # 	"weekly": [
-# 		"tbsapp.tasks.weekly"
+# 		"tbs_commons.tasks.weekly"
 # 	],
 # 	"monthly": [
-# 		"tbsapp.tasks.monthly"
+# 		"tbs_commons.tasks.monthly"
 # 	],
 # }
 
 # Testing
 # -------
 
-# before_tests = "tbsapp.install.before_tests"
+# before_tests = "tbs_commons.install.before_tests"
 
 # Extend DocType Class
 # ------------------------------
 #
 # Specify custom mixins to extend the standard doctype controller.
 # extend_doctype_class = {
-# 	"Task": "tbsapp.custom.task.CustomTaskMixin"
+# 	"Task": "tbs_commons.custom.task.CustomTaskMixin"
 # }
 
 # Overriding Methods
 # ------------------------------
 #
 # override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "tbsapp.event.get_events"
+# 	"frappe.desk.doctype.event.event.get_events": "tbs_commons.event.get_events"
 # }
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
 # along with any modifications made in other Frappe apps
 # override_doctype_dashboards = {
-# 	"Task": "tbsapp.task.get_dashboard_data"
+# 	"Task": "tbs_commons.task.get_dashboard_data"
 # }
 
 # exempt linked doctypes from being automatically cancelled
@@ -290,15 +304,15 @@ doc_events = {
 
 # Request Events
 # ----------------
-# before_request = ["tbsapp.utils.before_request"]
-# after_request = ["tbsapp.utils.after_request"]
+# before_request = ["tbs_commons.utils.before_request"]
+# after_request = ["tbs_commons.utils.after_request"]
 
 # Job Events
 # ----------
-# before_job = ["tbsapp.utils.before_job"]
-# after_job = ["tbsapp.utils.after_job"]
+# before_job = ["tbs_commons.utils.before_job"]
+# after_job = ["tbs_commons.utils.after_job"]
 
-# after_file_upload = ["tbsapp.utils.after_file_upload"]
+# after_file_upload = ["tbs_commons.utils.after_file_upload"]
 
 # User Data Protection
 # --------------------
@@ -328,7 +342,7 @@ doc_events = {
 # --------------------------------
 
 # auth_hooks = [
-# 	"tbsapp.auth.validate"
+# 	"tbs_commons.auth.validate"
 # ]
 
 # Automatically update python controller files with type annotations for this app.
@@ -346,3 +360,6 @@ require_type_annotated_api_methods = True
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+
+# ERPNext closes/reopens orders outside save(), so cover that path as well.
+extend_doctype_class = {"Purchase Order": ["tbs_commons.budget.BudgetPurchaseOrderMixin"]}

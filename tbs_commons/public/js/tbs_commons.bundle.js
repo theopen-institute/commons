@@ -10,7 +10,7 @@
 // re-renders its icons (edit mode, folders, reordering), and anything written
 // onto the element is lost on the next render. This has no timing dependency.
 (function () {
-	const APP_PREFIX = '/tbsapp'
+	const APP_PREFIX = '/tbs_commons'
 
 	function isInternalAppIcon(anchor) {
 		if (!anchor) return false

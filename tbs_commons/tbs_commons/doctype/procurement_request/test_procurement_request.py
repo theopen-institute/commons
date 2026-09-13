@@ -2,11 +2,12 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe.model.workflow import apply_workflow
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, today
 
-from tbsapp.api import decide_procurement_request, send_procurement_request
-from tbsapp.tbs_app.doctype.procurement_request.procurement_request import make_material_request
+from tbs_commons.install import sync_procurement_workflow
+from tbs_commons.tbs_commons.doctype.procurement_request.procurement_request import make_material_request
 
 
 class ProcurementTestCase(IntegrationTestCase):
@@ -15,10 +16,13 @@ class ProcurementTestCase(IntegrationTestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		super().setUpClass()
+		sync_procurement_workflow()
 		cls.company = frappe.db.get_value("Company", {}, "name")
+		cls.department = frappe.db.get_value("Department", {}, "name")
 		cls.item = make_test_item()
 		cls.requester = make_test_user("requester@procurement.test", "Employee")
-		cls.approver = make_test_user("approver@procurement.test", "Purchase Manager")
+		cls.procurement_user = make_test_user("buyer@procurement.test", "Purchase User")
+		cls.approver = make_test_user("approver@procurement.test", "Expense Approver")
 
 	def tearDown(self) -> None:
 		frappe.set_user("Administrator")
@@ -31,10 +35,10 @@ class ProcurementTestCase(IntegrationTestCase):
 			{
 				"doctype": "Procurement Request",
 				"company": self.company,
-				"purpose": "Purchase",
+				"department": self.department,
 				"transaction_date": today(),
 				"schedule_date": add_days(today(), 7),
-				"approver": approver,
+				"approver": approver or self.approver,
 				"items": items,
 			}
 		).insert()
@@ -97,23 +101,16 @@ class TestProcurementRequest(ProcurementTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			self.make_request([{"qty": 1, "uom": "Nos"}])
 
-	def test_required_by_falls_back_to_the_parent(self):
-		request = self.make_request([{"item_name": "Desk lamp", "qty": 1, "uom": "Nos"}])
-
-		self.assertEqual(str(request.items[0].schedule_date), request.schedule_date)
+	def test_material_request_uses_parent_required_by(self):
+		request = self.make_request([{"item_code": self.item, "qty": 1, "uom": "Nos"}], submit=True)
+		material_request = make_material_request(request.name)
+		self.assertEqual(str(material_request.items[0].schedule_date), str(request.schedule_date))
 
 	def test_required_by_cannot_precede_the_request(self):
+		request = self.make_request([{"item_name": "Desk lamp", "qty": 1, "uom": "Nos"}])
+		request.schedule_date = add_days(today(), -1)
 		with self.assertRaises(frappe.ValidationError):
-			self.make_request(
-				[
-					{
-						"item_name": "Desk lamp",
-						"qty": 1,
-						"uom": "Nos",
-						"schedule_date": add_days(today(), -1),
-					}
-				]
-			)
+			request.save()
 
 	def test_estimates_are_totalled(self):
 		request = self.make_request(
@@ -123,8 +120,25 @@ class TestProcurementRequest(ProcurementTestCase):
 			]
 		)
 
-		self.assertEqual(request.items[0].estimated_amount, 60)
 		self.assertEqual(request.total_qty, 5)
+		self.assertEqual(request.total_estimated_cost, 70)
+
+	def test_verified_rate_updates_virtual_total(self):
+		request = self.make_request(
+			[
+				{"item_name": "Desk lamp", "qty": 3, "uom": "Nos", "estimated_rate": 20},
+				{"item_name": "Cable", "qty": 2, "uom": "Nos", "estimated_rate": 5},
+			],
+		)
+		request.items[0].verified_rate = 25
+		self.assertEqual(request.total_estimated_cost, 85)
+		request.save()
+		request.reload()
+		self.assertEqual(request.total_estimated_cost, 85)
+		self.assertEqual(request.as_dict().total_estimated_cost, 85)
+		request.items[0].verified_rate = 0
+		request.save()
+		request.reload()
 		self.assertEqual(request.total_estimated_cost, 70)
 
 	def test_submitting_approves_when_no_workflow_is_attached(self):
@@ -158,14 +172,14 @@ class TestProcurementRequest(ProcurementTestCase):
 		self.assertEqual(material_request.items[0].procurement_request_item, request.items[0].name)
 
 		request.reload()
-		self.assertEqual(request.items[0].ordered_qty, 6)
+		self.assertEqual(request.items[0].committed_qty, 6)
 		self.assertEqual(request.per_ordered, 100)
-		self.assertEqual(request.status, "Ordered")
+		self.assertEqual(request.status, "Completed")
 
 		# Cancelling the stock document hands the request back to the approver.
 		material_request.cancel()
 		request.reload()
-		self.assertEqual(request.items[0].ordered_qty, 0)
+		self.assertEqual(request.items[0].committed_qty, 0)
 		self.assertEqual(request.per_ordered, 0)
 		self.assertEqual(request.status, "Approved")
 
@@ -184,11 +198,9 @@ class TestProcurementRequest(ProcurementTestCase):
 		self.assertEqual(material_request.items[0].procurement_request_item, request.items[1].name)
 
 		request.reload()
-		self.assertEqual(request.items[0].order_status, "Open")
-		self.assertEqual(request.items[0].pending_qty, 2)
-		self.assertEqual(request.items[1].order_status, "Ordered")
-		self.assertEqual(request.items[1].pending_qty, 0)
-		self.assertEqual(request.status, "Partially Ordered")
+		self.assertEqual(request.items[0].uncommitted_qty, 2)
+		self.assertEqual(request.items[1].uncommitted_qty, 0)
+		self.assertEqual(request.status, "Approved")
 
 	def test_part_of_a_row_can_be_ordered_now_and_the_rest_later(self):
 		request = self.make_request([{"item_code": self.item, "qty": 10, "uom": "Nos"}], submit=True)
@@ -196,20 +208,19 @@ class TestProcurementRequest(ProcurementTestCase):
 		self.order(request, [{"name": request.items[0].name, "qty": 4}])
 
 		request.reload()
-		self.assertEqual(request.items[0].ordered_qty, 4)
-		self.assertEqual(request.items[0].pending_qty, 6)
-		self.assertEqual(request.items[0].order_status, "Partially Ordered")
+		self.assertEqual(request.items[0].committed_qty, 4)
+		self.assertEqual(request.items[0].uncommitted_qty, 6)
 		self.assertEqual(request.per_ordered, 40)
-		self.assertEqual(request.status, "Partially Ordered")
+		self.assertEqual(request.status, "Approved")
 
 		# The second instalment carries the remainder, and nothing more.
-		self.assertEqual(request.open_rows[0].pending_qty, 6)
+		self.assertEqual(request.open_rows[0].uncommitted_qty, 6)
 
 		self.order(request)
 
 		request.reload()
-		self.assertEqual(request.items[0].pending_qty, 0)
-		self.assertEqual(request.status, "Ordered")
+		self.assertEqual(request.items[0].uncommitted_qty, 0)
+		self.assertEqual(request.status, "Completed")
 
 	def test_ordering_more_than_is_left_is_refused(self):
 		request = self.make_request([{"item_code": self.item, "qty": 5, "uom": "Nos"}], submit=True)
@@ -236,63 +247,20 @@ class TestProcurementRequest(ProcurementTestCase):
 		self.assertEqual(len(material_request.items), 1)
 
 		request.reload()
-		self.assertEqual(request.items[1].order_status, "Open")
-		self.assertEqual(request.status, "Partially Ordered")
+		self.assertEqual(request.status, "Approved")
 
-	def test_an_item_code_can_be_set_after_submission(self):
-		request = self.make_request(
-			[{"item_name": "Bespoke lab bench, 3m", "qty": 1, "uom": "Nos"}], submit=True
-		)
-
-		# Nothing could be ordered while the row named no item.
-		with self.assertRaises(frappe.ValidationError):
-			make_material_request(request.name)
-
-		request.items[0].item_code = self.item
-		request.save()
-		request.reload()
-
-		self.assertEqual(request.items[0].item_code, self.item)
-		self.assertEqual(len(request.open_rows), 1)
-
-		material_request = self.order(request)
-		self.assertEqual(material_request.items[0].item_code, self.item)
-
-	def test_the_requesters_own_words_survive_a_late_item_code(self):
-		request = self.make_request(
-			[{"item_name": "Bespoke lab bench, 3m", "qty": 1, "uom": "Nos"}], submit=True
-		)
-
-		# What the desk sends when an Item Code is picked: its link fetch has
-		# already overwritten the name with the catalogue's.
-		request.items[0].item_code = self.item
-		request.items[0].item_name = "_Test Procurement Item"
-		request.save()
-		request.reload()
-
-		self.assertEqual(request.items[0].item_code, self.item)
-		self.assertEqual(request.items[0].item_name, "Bespoke lab bench, 3m")
-
-	def test_an_item_code_can_be_cleared_again(self):
-		request = self.make_request([{"item_code": self.item, "qty": 1, "uom": "Nos"}], submit=True)
-
-		request.items[0].item_code = None
-		request.save()
-		request.reload()
-
-		self.assertFalse(request.items[0].item_code)
-		# The row still says what it is, so it is a request for something the
-		# item master does not carry -- exactly as if it had been raised that way.
-		self.assertTrue(request.items[0].item_name)
-
-	def test_an_item_code_cannot_be_changed_once_the_row_is_ordered(self):
+	def test_item_fields_cannot_be_changed_after_submission(self):
 		request = self.make_request([{"item_code": self.item, "qty": 2, "uom": "Nos"}], submit=True)
-		self.order(request)
 
-		request.reload()
-		request.items[0].item_code = make_test_item("_Test Procurement Recode")
-		with self.assertRaises(frappe.ValidationError):
-			request.save()
+		for fieldname, value in (
+			("item_code", make_test_item("_Test Procurement Recode")),
+			("uom", "Unit"),
+			("verified_rate", 25),
+		):
+			request.reload()
+			request.items[0].set(fieldname, value)
+			with self.assertRaises(frappe.ValidationError):
+				request.save()
 
 	def test_rows_cannot_be_added_or_removed_after_submission(self):
 		request = self.make_request(
@@ -322,88 +290,83 @@ class TestProcurementRequest(ProcurementTestCase):
 
 
 class TestProcurementApproval(ProcurementTestCase):
-	"""The request/approval loop the SPA drives, via the same endpoints it calls."""
+	"""The configured Frappe Workflow, using Frappe's standard action API."""
 
-	def make_sent_request(self) -> "frappe.Document":
+	def make_pending_request(self) -> "frappe.Document":
 		frappe.set_user(self.requester)
 		request = self.make_request(
-			[{"item_name": "Lab tripods", "qty": 4, "uom": "Nos", "estimated_rate": 50}],
+			[{"item_code": self.item, "qty": 4, "uom": "Nos", "estimated_rate": 50}],
 			approver=self.approver,
 		)
-		send_procurement_request(request.name)
+		apply_workflow(request, "Send to Procurement")
 		request.reload()
 		return request
 
-	def test_sending_needs_an_approver(self):
-		frappe.set_user(self.requester)
-		request = self.make_request([{"item_name": "Lab tripods", "qty": 1, "uom": "Nos"}])
-
-		with self.assertRaises(frappe.ValidationError):
-			send_procurement_request(request.name)
+	def make_review_request(self) -> "frappe.Document":
+		request = self.make_pending_request()
+		frappe.set_user(self.procurement_user)
+		apply_workflow(request, "Send for Review")
+		request.reload()
+		return request
 
 	def test_sending_hands_the_request_over(self):
-		request = self.make_sent_request()
+		request = self.make_pending_request()
 
-		self.assertEqual(request.status, "Pending Approval")
+		self.assertEqual(request.status, "Pending")
 		self.assertEqual(request.docstatus, 0)
 
 	def test_a_requester_cannot_approve_their_own(self):
-		request = self.make_sent_request()
-
-		# permlevel 1 on `status`: the write is reverted rather than refused,
-		# which is what makes the explicit check in the endpoint necessary.
-		request.status = "Approved"
-		request.save()
-		request.reload()
-		self.assertEqual(request.status, "Pending Approval")
+		request = self.make_review_request()
+		frappe.set_user(self.requester)
+		with self.assertRaises(frappe.ValidationError):
+			apply_workflow(request, "Approve")
 
 	def test_only_the_named_approver_decides(self):
-		request = self.make_sent_request()
-		stranger = make_test_user("stranger@procurement.test", "Purchase Manager")
+		request = self.make_review_request()
+		stranger = make_test_user("stranger@procurement.test", "Expense Approver")
 
 		frappe.set_user(stranger)
-		with self.assertRaises(frappe.PermissionError):
-			decide_procurement_request(request.name, "Approved")
+		with self.assertRaises(frappe.ValidationError):
+			apply_workflow(request, "Approve")
 
 	def test_an_undecided_request_must_have_been_sent(self):
 		frappe.set_user(self.requester)
 		request = self.make_request(
-			[{"item_name": "Lab tripods", "qty": 1, "uom": "Nos"}], approver=self.approver
+			[{"item_code": self.item, "qty": 1, "uom": "Nos"}], approver=self.approver
 		)
 
 		frappe.set_user(self.approver)
 		with self.assertRaises(frappe.ValidationError):
-			decide_procurement_request(request.name, "Approved")
+			apply_workflow(request, "Approve")
 
 	def test_approving_submits(self):
-		request = self.make_sent_request()
+		request = self.make_review_request()
 
 		frappe.set_user(self.approver)
-		decide_procurement_request(request.name, "Approved")
+		apply_workflow(request, "Approve")
 
 		request.reload()
 		self.assertEqual(request.status, "Approved")
 		self.assertEqual(request.docstatus, 1)
 
-	def test_turning_down_records_the_reason(self):
-		request = self.make_sent_request()
+	def test_rejecting_submits(self):
+		request = self.make_review_request()
 
 		frappe.set_user(self.approver)
-		decide_procurement_request(request.name, "Rejected", reason="Over budget.")
+		apply_workflow(request, "Reject")
 
 		request.reload()
 		self.assertEqual(request.status, "Rejected")
 		self.assertEqual(request.docstatus, 1)
-		self.assertEqual(request.rejection_reason, "Over budget.")
 
 	def test_a_decided_request_cannot_be_decided_again(self):
-		request = self.make_sent_request()
+		request = self.make_review_request()
 
 		frappe.set_user(self.approver)
-		decide_procurement_request(request.name, "Approved")
+		apply_workflow(request, "Approve")
 
 		with self.assertRaises(frappe.ValidationError):
-			decide_procurement_request(request.name, "Rejected")
+			apply_workflow(request, "Reject")
 
 
 def make_test_item(code: str = "_Test Procurement Item") -> str:

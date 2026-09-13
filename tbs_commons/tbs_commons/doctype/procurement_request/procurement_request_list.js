@@ -4,17 +4,17 @@
 frappe.listview_settings["Procurement Request"] = {
 	// No `per_ordered`: it is a virtual field, counted per document, and a
 	// list query can only ask for columns.
-	add_fields: ["status", "transaction_date"],
+	add_fields: ["status", "transaction_date", "requested_by", "approver", "department"],
 
 	get_indicator(doc) {
 		const colours = {
 			Draft: "red",
-			"Pending Approval": "orange",
+			Pending: "orange",
+			"Under Review": "blue",
 			Approved: "blue",
 			Rejected: "red",
-			"Partially Ordered": "yellow",
-			Ordered: "green",
-			Cancelled: "grey",
+			Completed: "green",
+			Canceled: "grey",
 		};
 
 		return [__(doc.status), colours[doc.status] || "grey", `status,=,${doc.status}`];

@@ -24,7 +24,7 @@ import { appsResolved, availableApps } from '@/data/apps'
 
 const router = useRouter()
 
-// Someone landing on bare /tbsapp gets the first app they can actually use.
+// Someone landing on bare /tbs_commons gets the first app they can actually use.
 // Normal entry is via an apps-screen tile, which lands on a real route, so
 // this only catches a hand-typed URL or an old bookmark.
 watch(
