@@ -4,6 +4,11 @@ const MAKE_MATERIAL_REQUEST =
 
 frappe.ui.form.on("Procurement Request", {
 	setup(frm) {
+		// Lets the Connections tab show a "+" next to Material Request: it
+		// hands the click to the Create button added below, instead of the
+		// generic new-doc dialog that would know nothing about the mapping.
+		frm.custom_make_buttons = { "Material Request": "Material Request" };
+
 		frm.set_query("item_code", "items", () => ({ filters: { disabled: 0 } }));
 	},
 
