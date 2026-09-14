@@ -18,13 +18,7 @@
 	const setup_if_owner = engine.prototype.setup_if_owner;
 	engine.prototype.setup_if_owner = function (d, role_cell) {
 		setup_if_owner.call(this, d, role_cell);
-		this.add_check(
-			role_cell,
-			d,
-			"require_user_permission",
-			__("Require User Permission"),
-			__("This role sees nothing until a User Permission narrows it")
-		)
+		this.add_check(role_cell, d, "require_user_permission", __("Require User Permission"))
 			.removeClass("col-md-4")
 			.css({ "margin-top": "10px" });
 	};
