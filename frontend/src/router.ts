@@ -3,19 +3,18 @@ import type { AppKey } from '@/data/apps'
 
 declare module 'vue-router' {
   interface RouteMeta {
-    /** Which app this route belongs to — drives the sidebar. Every route
-     *  except the landing redirect declares one. */
+    /** Which app this route belongs to — drives the sidebar. Every route that
+     *  renders a page declares one; the landing redirect has none. */
     app?: AppKey
   }
 }
 
 const routes: RouteRecordRaw[] = [
   {
-    // Bare /tbs_commons: which app to open depends on permissions that haven't
-    // loaded yet, so a component decides rather than a static redirect.
+    // Bare /tbs_commons lands on announcements: the one page every user of this
+    // app can open, so it needs no permission answer to redirect on.
     path: '/',
-    name: 'Landing',
-    component: () => import('@/pages/Landing.vue'),
+    redirect: { name: 'Announcements' },
   },
   {
     path: '/employees',

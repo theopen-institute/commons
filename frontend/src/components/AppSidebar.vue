@@ -194,8 +194,8 @@ const route = useRoute()
 const router = useRouter()
 const { colorScheme, setColorScheme } = useColorScheme()
 
-// The route says which app we are in. Employees is the fallback for the
-// landing route, which redirects away before this matters.
+// The route says which app we are in. Every route that renders declares one;
+// the fallback is only for the bare landing path, which redirects before it.
 const currentApp = computed<AppDefinition>(() => apps[route.meta.app ?? 'employees'])
 
 // Keyed by route prefix, not by app: Requests spans two doctypes, and "Open in

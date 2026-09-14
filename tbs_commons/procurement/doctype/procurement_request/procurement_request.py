@@ -41,7 +41,7 @@ from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
 from frappe.model.workflow import get_workflow_name
 from frappe.query_builder.functions import Sum
-from frappe.utils import comma_and, flt, get_link_to_form, getdate, today
+from frappe.utils import comma_and, flt, get_fullname, get_link_to_form, getdate, today
 
 DOCTYPE = "Procurement Request"
 
@@ -368,6 +368,23 @@ class ProcurementRequest(Document):
 
 	def calculate_totals(self) -> None:
 		self.total_qty = flt(sum(flt(row.qty) for row in self.items), self.precision("total_qty"))
+
+	@property
+	def approver_name(self) -> str | None:
+		"""Who the named approver is, read at the moment the request is.
+
+		Virtual rather than fetched: a stored copy is written once, when the
+		approver is picked, and a rename on the User afterwards leaves the
+		request showing a name nobody answers to. `get_fullname` memoises per
+		request, so a page of rows sharing an approver costs one query.
+
+		Guarded because `get_fullname(None)` answers with the *session* user,
+		which would quietly label an unassigned request with the name of
+		whoever happens to be reading it.
+		"""
+		if not self.approver:
+			return None
+		return get_fullname(self.approver)
 
 	@property
 	def total_estimated_cost(self) -> float:

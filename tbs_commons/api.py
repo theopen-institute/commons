@@ -216,6 +216,13 @@ def decide_leave_application(name: str, decision: str) -> dict:
 
 PROCUREMENT_REQUEST = "Procurement Request"
 
+# Whose queue the Approvals page is. The Workflow grants transitions to three
+# roles, but only this one reviews requests here -- Purchase User moves a
+# request along and Purchase Manager overrides, both from the desk. Gating on
+# the role rather than on holding any transition at all is what keeps the page
+# and its sidebar row off everyone else's screen.
+PROCUREMENT_APPROVER_ROLE = "Expense Approver"
+
 @frappe.whitelist()
 def get_procurement_permissions() -> dict:
 	"""What the session user may do with procurement, plus their backlog.
@@ -226,7 +233,8 @@ def get_procurement_permissions() -> dict:
 	"""
 	workflow = _procurement_workflow()
 	can_read = bool(frappe.has_permission(PROCUREMENT_REQUEST, "read"))
-	workflow_access = bool(workflow and can_read)
+	is_approver = PROCUREMENT_APPROVER_ROLE in frappe.get_roles()
+	workflow_access = bool(workflow and can_read and is_approver)
 	pending = len(_procurement_workflow_queue(False)["requests"]) if workflow_access else 0
 
 	company = _default_company()
@@ -247,9 +255,32 @@ def get_procurement_permissions() -> dict:
 			frappe.db.get_value("Company", company, "default_currency") if company else None
 		),
 		"default_department": employee.department if employee else None,
-		"default_approver": employee.expense_approver if employee else None,
+		"default_approver": _default_procurement_approver(employee),
 		"default_uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
 	}
+
+
+def _default_procurement_approver(employee: frappe._dict | None) -> str | None:
+	"""Who a new request should name, before the requester touches the field.
+
+	The employee's own expense approver first; failing that the first approver
+	their department lists, which is how the desk's expense claims decide it
+	too. A disabled department is not an answer, and neither is a department
+	with an empty table — the form then opens blank and the requester picks.
+	"""
+	if not employee:
+		return None
+	if employee.expense_approver:
+		return employee.expense_approver
+	if not employee.department:
+		return None
+	if frappe.db.get_value("Department", employee.department, "disabled"):
+		return None
+	return frappe.db.get_value(
+		"Department Approver",
+		{"parent": employee.department, "parentfield": "expense_approvers", "idx": 1},
+		"approver",
+	)
 
 
 def _procurement_workflow():
@@ -420,7 +451,7 @@ def get_my_procurement_requests() -> list[dict]:
 	fields = [
 		"name", "amended_from", "title", "company", "currency", "transaction_date",
 		"schedule_date", "requested_by", "requester_name", "department", "approver",
-		"approver_name", "justification", "rejection_reason", "total_qty", "status",
+		"justification", "rejection_reason", "total_qty", "status",
 		"docstatus", "modified",
 	]
 	if state_field not in fields:
@@ -515,7 +546,7 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 	state_field = workflow.workflow_state_field if workflow else "status"
 	fields = [
 		"name", "title", "company", "currency", "transaction_date", "schedule_date",
-		"requested_by", "requester_name", "department", "approver", "approver_name",
+		"requested_by", "requester_name", "department", "approver",
 		"justification", "rejection_reason", "total_qty", "status", "docstatus", "modified",
 	]
 	if state_field not in fields:
@@ -537,7 +568,11 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 
 
 def _add_procurement_costs(requests: list[dict]) -> None:
-	"""Attach server-owned virtual totals and edit capabilities to list rows."""
+	"""Attach the virtual fields and edit capabilities a list query cannot select.
+
+	`total_estimated_cost` and `approver_name` have no column to read, so they
+	are taken from the loaded document rather than asked of the database.
+	"""
 	from tbs_commons.procurement.budget import request_summary
 
 	workflow = _procurement_workflow()
@@ -548,6 +583,7 @@ def _add_procurement_costs(requests: list[dict]) -> None:
 	for request in requests:
 		doc = frappe.get_doc(PROCUREMENT_REQUEST, request.name)
 		request.total_estimated_cost = doc.total_estimated_cost
+		request.approver_name = doc.approver_name
 		request.can_edit = _can_edit_procurement_request(doc, workflow)
 		request.budget_summary = request_summary(doc, position_cache)
 

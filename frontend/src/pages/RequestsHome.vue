@@ -25,8 +25,8 @@ import { apps, firstRequestSection } from '@/data/apps'
 const router = useRouter()
 
 // The apps-screen tile lands here rather than on a section, because either
-// section may be the only one this user can open. Same shape as Landing.vue,
-// one level down: that one picks an app, this one picks a section within it.
+// section may be the only one this user can open, and that answer is a
+// permission call away -- so a component redirects, not a route.
 watch(
   firstRequestSection,
   (section) => {

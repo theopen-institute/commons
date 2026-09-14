@@ -12,6 +12,9 @@ export interface ProcurementPermissions {
   default_company: string | null
   default_currency: string | null
   default_department: string | null
+  /** The employee's own expense approver, or failing that the first one their
+   *  department lists. Null when neither names anyone — the form opens with
+   *  the field blank rather than guessing. */
   default_approver: string | null
   default_uom: string
 }

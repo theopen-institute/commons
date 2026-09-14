@@ -1,13 +1,11 @@
 <template>
 	<Dialog
 		v-model:open="open"
-		:title="props.request ? 'Edit procurement request' : 'New procurement request'"
+		:title="props.request ? 'Edit Procurement Request' : 'New Procurement Request'"
 		:actions="actions"
 		size="3xl"
 	>
 		<div class="space-y-4">
-			<p class="text-p-base text-ink-gray-6">Say what you need and roughly what it costs.</p>
-
 			<div class="grid gap-4 sm:grid-cols-2">
 				<FormControl v-model="form.schedule_date" type="date" label="Needed by" required />
 				<LinkControl
@@ -21,10 +19,6 @@
 			<section>
 				<div>
 					<h3 class="text-base-medium text-ink-gray-8">What you need</h3>
-					<p class="mt-0.5 text-p-sm text-ink-gray-5">
-						Describe each thing in your own words. Procurement matches it to the
-						catalogue when they price it.
-					</p>
 				</div>
 
 				<ul class="mt-3 space-y-3">
@@ -59,7 +53,7 @@
 							v-model="line.reference_url"
 							class="mt-3"
 							type="text"
-							label="Link"
+							label="Link to Item"
 							placeholder="Optional — a product page, quote or spec"
 						/>
 
@@ -81,13 +75,14 @@
 					</li>
 				</ul>
 
-				<Button
-					class="mt-3"
-					variant="subtle"
-					icon-left="lucide-plus"
-					label="Add line"
-					@click="addLine"
-				/>
+				<div class="mt-3 flex justify-end">
+					<Button
+						variant="subtle"
+						icon-left="lucide-plus"
+						label="Add line"
+						@click="addLine"
+					/>
+				</div>
 			</section>
 
 			<FormControl
