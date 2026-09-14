@@ -43,6 +43,11 @@
 				:message="workflowAction.error.message"
 				class="mb-3"
 			/>
+			<ErrorMessage
+				v-if="requestLines.error"
+				:message="requestLines.error.message"
+				class="mb-3"
+			/>
 
 			<div v-if="requests.loading && !requests.data" class="space-y-2">
 				<Skeleton v-for="n in 3" :key="n" class="h-40 w-full rounded-4" />
@@ -144,17 +149,22 @@
 							:disabled="requestLines.loading || !byRequest.has(request.name)"
 							@click="editRequest(request)"
 						/>
-						<Button
-							v-for="action in availableActions(request)"
-							:key="action.action"
-							variant="solid"
-							:theme="workflowActionTheme(action, procurementWorkflow)"
-							:label="action.action"
-							:loading="runningAction === `${request.name}:${action.action}`"
-							:disabled="Boolean(runningAction)"
-							@click="applyAction(request, action)"
-						/>
-						<span class="ml-auto text-p-sm text-ink-gray-5">
+						<div class="ml-auto flex flex-wrap items-center gap-2">
+							<Button
+								v-for="action in availableActions(request)"
+								:key="action.action"
+								variant="solid"
+								:theme="workflowActionTheme(action, procurementWorkflow)"
+								:label="action.action"
+								:loading="runningAction === `${request.name}:${action.action}`"
+								:disabled="Boolean(runningAction)"
+								@click="applyAction(request, action)"
+							/>
+						</div>
+						<!-- The action group above carries the row's only auto margin;
+						     a second one here would split the free space between the
+						     two, stranding the buttons mid-row instead of right. -->
+						<span class="text-p-sm text-ink-gray-5">
 							Requested {{ formatDate(request.transaction_date) }}
 						</span>
 					</div>

@@ -43,6 +43,11 @@
 				:message="workflowAction.error.message"
 				class="mt-3"
 			/>
+			<ErrorMessage
+				v-if="requestLines.error"
+				:message="requestLines.error.message"
+				class="mt-3"
+			/>
 
 			<div v-if="requests.loading && !requests.data" class="mt-3 space-y-2">
 				<Skeleton v-for="n in 3" :key="n" class="h-16 w-full rounded-4" />
@@ -150,16 +155,18 @@
 								:disabled="requestLines.loading || !byRequest.has(request.name)"
 								@click="editRequest(request)"
 							/>
-							<Button
-								v-for="action in availableActions(request)"
-								:key="action.action"
-								variant="solid"
-								:theme="workflowActionTheme(action, procurementWorkflow)"
-								:label="action.action"
-								:loading="runningAction === `${request.name}:${action.action}`"
-								:disabled="Boolean(runningAction)"
-								@click="applyAction(request, action)"
-							/>
+							<div class="ml-auto flex items-center gap-2">
+								<Button
+									v-for="action in availableActions(request)"
+									:key="action.action"
+									variant="solid"
+									:theme="workflowActionTheme(action, procurementWorkflow)"
+									:label="action.action"
+									:loading="runningAction === `${request.name}:${action.action}`"
+									:disabled="Boolean(runningAction)"
+									@click="applyAction(request, action)"
+								/>
+							</div>
 						</div>
 					</div>
 				</li>

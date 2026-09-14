@@ -56,6 +56,21 @@
    "options": "URL"
   },
   {
+   "fetch_from": "item_code.item_group",
+   "fetch_if_empty": 1,
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group"
+  },
+  {
+   "description": "Optional. Who procurement expects to buy this from.",
+   "fieldname": "preferred_supplier",
+   "fieldtype": "Link",
+   "label": "Preferred Supplier",
+   "options": "Supplier"
+  },
+  {
    "fieldname": "description_section",
    "fieldtype": "Section Break",
    "label": "Description"
