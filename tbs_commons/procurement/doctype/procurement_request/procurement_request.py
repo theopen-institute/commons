@@ -19,18 +19,24 @@ A request moves through the active Frappe Workflow: staff draft it, procurement
 checks and codes it, its expense approver reviews it, and procurement fulfills
 it. The `status` field is also the workflow state field.
 
+Approval is what submits a request: every state before a decision is a draft,
+and so is `Rejected`. `docstatus` 1 therefore means approved, and nothing has to
+consult the name of a state to know it. A rejection is not the end of the road
+either -- procurement can `Reopen` a turned-down request, which hands it back to
+them at `Pending` with the old reason cleared off it.
+
 Once approved, `make_material_request` carries the request -- all of it, or the
 rows and quantities the buyer picks -- onto a draft Material Request. That is
 where the item master, the warehouse and the stock effects finally enter, and it
 is deliberately the only place they do. A request can be converted repeatedly,
 so a long list can be bought in instalments.
 
-How much of a row has been ordered is never stored. `committed_qty`, `uncommitted_qty`
-on the rows, and `per_ordered` here, are virtual fields
-counted from the submitted Material Requests that point back at them. `status`
-is the one derived value that *is* stored, because list views filter and sort on
-it; the Material Request hook below refreshes it on submit and cancel, and it
-recomputes itself from the same live count.
+How much of a row has been ordered is never stored. `committed_qty`,
+`uncommitted_qty` on the rows, and `per_ordered` here, are virtual fields counted
+from the submitted Material Requests that point back at them. `status` is not
+derived here either: the Workflow owns it outright, and how much of a request has
+actually been ordered is read from `per_ordered` rather than mirrored into a
+state.
 """
 
 from urllib.parse import urlparse
@@ -39,24 +45,10 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
-from frappe.model.workflow import get_workflow_name
 from frappe.query_builder.functions import Sum
-from frappe.utils import comma_and, flt, get_fullname, get_link_to_form, getdate, today
+from frappe.utils import comma_and, flt, get_link_to_form, getdate, today
 
 DOCTYPE = "Procurement Request"
-
-# Sent, and waiting on the named approver. Still docstatus 0: nothing is
-# decided until it is submitted.
-PENDING_STATE = "Pending"
-REVIEW_STATE = "Under Review"
-
-# What a decision leaves behind, both submitted. Everything else on the
-# `status` field is derived -- see `_derived_status`.
-DECIDED_STATES = ("Approved", "Rejected")
-
-# A request has to have cleared approval before it can become a Material
-# Request, and a fully ordered one has nothing left to carry over.
-ORDERABLE_STATES = ("Approved",)
 
 FALLBACK_UOM = "Nos"
 
@@ -65,21 +57,21 @@ FALLBACK_UOM = "Nos"
 FETCHED_FROM_ITEM = ("item_name", "item_group", "description")
 
 
-def _with_scheme(url: str) -> str:
-	"""Prefix a bare host with https, so a pasted link passes URL validation.
+# def _with_scheme(url: str) -> str:
+# 	"""Prefix a bare host with https, so a pasted link passes URL validation.
 
-	A `Data` field with options `URL` is validated by Frappe, and that check
-	wants a scheme. Requesters paste what the address bar shows them, which
-	increasingly hides it. Adding the prefix is kinder than throwing the row
-	back over something we can fix ourselves.
-	"""
-	url = (url or "").strip()
-	# Whitespace inside is the mark of something that was never a link. Left
-	# alone it fails Frappe's check, which is the answer wanted here -- adding
-	# a scheme to it would only turn a plain sentence into a passing "URL".
-	if url and not url.startswith("/") and " " not in url and not urlparse(url).scheme:
-		url = f"https://{url}"
-	return url
+# 	A `Data` field with options `URL` is validated by Frappe, and that check
+# 	wants a scheme. Requesters paste what the address bar shows them, which
+# 	increasingly hides it. Adding the prefix is kinder than throwing the row
+# 	back over something we can fix ourselves.
+# 	"""
+# 	url = (url or "").strip()
+# 	# Whitespace inside is the mark of something that was never a link. Left
+# 	# alone it fails Frappe's check, which is the answer wanted here -- adding
+# 	# a scheme to it would only turn a plain sentence into a passing "URL".
+# 	if url and not url.startswith("/") and " " not in url and not urlparse(url).scheme:
+# 		url = f"https://{url}"
+# 	return url
 
 
 class ProcurementRequest(Document):
@@ -90,37 +82,22 @@ class ProcurementRequest(Document):
 
 	if TYPE_CHECKING:
 		from frappe.types import DF
-
-		from tbs_commons.procurement.doctype.procurement_request_item.procurement_request_item import (
-			ProcurementRequestItem,
-		)
+		from tbs_commons.procurement.doctype.procurement_request_item.procurement_request_item import ProcurementRequestItem
 
 		amended_from: DF.Link | None
-		approver: DF.Link | None
+		approver: DF.Link
 		approver_name: DF.Data | None
 		company: DF.Link
 		currency: DF.Link | None
-		department: DF.Link | None
+		department: DF.Link
 		items: DF.Table[ProcurementRequestItem]
 		justification: DF.SmallText | None
-		letter_head: DF.Link | None
 		naming_series: DF.Literal["PRQ-.YYYY.-"]
-		per_ordered: DF.Percent
 		rejection_reason: DF.SmallText | None
+		requested_by: DF.Link
 		requester_name: DF.Data | None
-		requested_by: DF.Link | None
-		schedule_date: DF.Date | None
-		select_print_heading: DF.Link | None
-		status: DF.Literal[
-			"",
-			"Draft",
-			"Pending",
-			"Under Review",
-			"Approved",
-			"Rejected",
-			"Completed",
-			"Canceled",
-		]
+		schedule_date: DF.Date
+		status: DF.Literal["", "Draft", "Pending", "Under Review", "Rejected", "Approved", "Completed", "Canceled"]
 		title: DF.Data | None
 		total_estimated_cost: DF.Currency
 		total_qty: DF.Float
@@ -134,7 +111,6 @@ class ProcurementRequest(Document):
 		self.validate_schedule_date()
 		self.calculate_totals()
 		self.set_title()
-		self.set_status()
 
 	def before_update_after_submit(self) -> None:
 		self.validate_no_rows_added_or_removed()
@@ -145,21 +121,12 @@ class ProcurementRequest(Document):
 
 	def on_update_after_submit(self) -> None:
 		self.fill_in_from_item()
-		self.set_status(update=True)
-
-	def on_submit(self) -> None:
-		self.set_status(update=True)
 
 	def before_cancel(self) -> None:
 		# Before, not `on_cancel`: post-save hooks fire after the row has already
 		# been written, so a refusal there leaves docstatus 2 behind for anything
 		# that does not roll the transaction back.
 		self.validate_no_submitted_material_requests()
-
-	def on_cancel(self) -> None:
-		# `validate` does not run on cancel, and this fires after the write, so
-		# the status has to be pushed down on its own.
-		self.set_status(update=True)
 
 	def set_requester_defaults(self) -> None:
 		"""Fill in what the requester's Employee record already knows."""
@@ -204,7 +171,7 @@ class ProcurementRequest(Document):
 					)
 				)
 
-			row.reference_url = _with_scheme(row.reference_url)
+			# row.reference_url = _with_scheme(row.reference_url)
 
 			if flt(row.qty) <= 0:
 				frappe.throw(_("Row #{0}: Quantity must be greater than zero.").format(row.idx))
@@ -370,23 +337,6 @@ class ProcurementRequest(Document):
 		self.total_qty = flt(sum(flt(row.qty) for row in self.items), self.precision("total_qty"))
 
 	@property
-	def approver_name(self) -> str | None:
-		"""Who the named approver is, read at the moment the request is.
-
-		Virtual rather than fetched: a stored copy is written once, when the
-		approver is picked, and a rename on the User afterwards leaves the
-		request showing a name nobody answers to. `get_fullname` memoises per
-		request, so a page of rows sharing an approver costs one query.
-
-		Guarded because `get_fullname(None)` answers with the *session* user,
-		which would quietly label an unassigned request with the name of
-		whoever happens to be reading it.
-		"""
-		if not self.approver:
-			return None
-		return get_fullname(self.approver)
-
-	@property
 	def total_estimated_cost(self) -> float:
 		"""Current line costs, preferring a nonzero verified rate over the estimate."""
 		return flt(
@@ -403,59 +353,6 @@ class ProcurementRequest(Document):
 
 		named = [row.item_name or row.item_code for row in self.items[:3]]
 		self.title = _("Request for {0}").format(", ".join(named))[:140]
-
-	def set_status(self, update: bool = False) -> None:
-		status = self._derived_status()
-		if not status or status == self.status:
-			return
-
-		if update:
-			self.db_set("status", status, update_modified=False)
-		else:
-			self.status = status
-
-	def _derived_status(self) -> str | None:
-		"""The status this request should carry, or `None` to leave it alone.
-
-		This never *decides* anything -- it only keeps the field consistent with
-		the two things that are already true, docstatus and `per_ordered`, and
-		otherwise leaves whatever the approval step wrote. If a Workflow is
-		attached it owns the approval states outright.
-		"""
-		if self.docstatus == 2:
-			return "Canceled"
-
-		if flt(self.per_ordered) >= 100:
-			return "Completed"
-
-		if flt(self.per_ordered) > 0:
-			return "Approved"
-
-		if get_workflow_name(self.doctype):
-			# Nothing ordered any more (the Material Request was cancelled), so
-			# hand the document back to the Workflow's own last approval state.
-			return "Approved" if self.status == "Completed" else None
-
-		if self.docstatus == 0:
-			# A request always begins as a draft, whatever the caller sent.
-			if self.is_new():
-				return "Draft"
-
-			# After that, the draft phase has two legitimate values of its own
-			# and two more that pass through it: `decide_procurement_request`
-			# writes the decision one save before it submits, so a decided
-			# value has to survive here or it would be reset to Draft and the
-			# submit would read as an approval nobody gave. What keeps a
-			# requester out of all four is permlevel 1 on the field, not this.
-			if self.status in (PENDING_STATE, REVIEW_STATE, *DECIDED_STATES):
-				return None
-
-			return "Draft"
-
-		# Submitted. A decision recorded by `decide_procurement_request` stands;
-		# a plain desk submit, with no decision behind it, is the approval.
-		return self.status if self.status in DECIDED_STATES else "Approved"
-
 	# -- live ordering state -------------------------------------------------
 
 	def prime_committed_qty(self) -> None:
@@ -492,16 +389,6 @@ class ProcurementRequest(Document):
 		"""The rows with something still to order."""
 		self.prime_committed_qty()
 		return [row for row in self.items if row.uncommitted_qty > 0]
-
-	def update_order_status(self) -> None:
-		"""Refresh the stored `status` after a Material Request moved.
-
-		Only `status` is written: the quantities behind it are counted live, so
-		there is nothing else left to keep in step.
-		"""
-		self.set_status(update=True)
-
-
 def get_default_buying_price(item_code: str | None, currency: str | None) -> dict:
 	"""Return rate and UOM from the same current general buying Item Price."""
 	from erpnext.setup.utils import get_exchange_rate
@@ -614,20 +501,6 @@ def get_committed_qty(procurement_request_item: str) -> float:
 	"""Committed quantity of a saved line, in that line's UOM."""
 	parent = frappe.db.get_value("Procurement Request Item", procurement_request_item, "parent")
 	return get_committed_qty_map(parent).get(procurement_request_item, 0.0) if parent else 0.0
-
-
-def update_linked_procurement_requests(doc, method: str | None = None) -> None:
-	"""`Material Request` hook: keep the source request's ordered quantities honest.
-
-	Registered in hooks.py for submit and cancel, the two events that change
-	whether a Material Request counts. Drafts deliberately do not.
-	"""
-	names = {row.procurement_request for row in doc.get("items", []) if row.get("procurement_request")}
-
-	for name in names:
-		frappe.get_doc(DOCTYPE, name).update_order_status()
-
-
 def _selection(source, selected_items: str | list | None) -> dict[str, float]:
 	"""How much of which row to carry over, checked against what is open *now*.
 
@@ -709,10 +582,11 @@ def make_material_request(
 	source = frappe.get_doc(DOCTYPE, source_name)
 	frappe.has_permission(DOCTYPE, "read", doc=source, throw=True)
 
+	# Approval is the submission, so `docstatus` is the whole test: the states
+	# before a decision and `Rejected` are all drafts, and `Canceled` is 2. The
+	# state name is read here only to say which one it is. A request that has
+	# been ordered in full is turned away further down, by `_selection`.
 	if source.docstatus != 1:
-		frappe.throw(_("Submit the Procurement Request before raising a Material Request from it."))
-
-	if source.status not in ORDERABLE_STATES:
 		frappe.throw(
 			_("Only an approved Procurement Request can become a Material Request. This one is {0}.").format(
 				frappe.bold(_(source.status))

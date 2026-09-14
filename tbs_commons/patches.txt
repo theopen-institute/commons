@@ -4,6 +4,7 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+tbs_commons.patches.v1_0.rejection_leaves_a_request_in_draft
 
 [post_fixture_sync]
 # Patches added in this section will be executed after fixtures and customizations

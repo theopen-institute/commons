@@ -37,10 +37,10 @@ frappe.ui.form.on("Procurement Request", {
 		close_the_item_list(frm);
 
 		// The same gate `make_material_request` applies server-side: approval has
-		// happened, and something is still left to order. `per_ordered` is a
-		// virtual field, so this reads the count as of this form load.
-		const approved = frm.doc.status === "Approved";
-		if (!approved || flt(frm.doc.per_ordered) >= 100) {
+		// happened -- which is what the `docstatus` check above already means --
+		// and something is still left to order. `per_ordered` is a virtual
+		// field, so this reads the count as of this form load.
+		if (flt(frm.doc.per_ordered) >= 100) {
 			return;
 		}
 

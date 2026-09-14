@@ -450,7 +450,7 @@ def get_my_procurement_requests() -> list[dict]:
 	state_field = workflow.workflow_state_field if workflow else "status"
 	fields = [
 		"name", "amended_from", "title", "company", "currency", "transaction_date",
-		"schedule_date", "requested_by", "requester_name", "department", "approver",
+		"schedule_date", "requested_by", "department", "approver",
 		"justification", "rejection_reason", "total_qty", "status",
 		"docstatus", "modified",
 	]
@@ -546,7 +546,7 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 	state_field = workflow.workflow_state_field if workflow else "status"
 	fields = [
 		"name", "title", "company", "currency", "transaction_date", "schedule_date",
-		"requested_by", "requester_name", "department", "approver",
+		"requested_by", "department", "approver",
 		"justification", "rejection_reason", "total_qty", "status", "docstatus", "modified",
 	]
 	if state_field not in fields:
@@ -570,8 +570,15 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 def _add_procurement_costs(requests: list[dict]) -> None:
 	"""Attach the virtual fields and edit capabilities a list query cannot select.
 
-	`total_estimated_cost` and `approver_name` have no column to read, so they
-	are taken from the loaded document rather than asked of the database.
+	`total_estimated_cost` and the two name fields have no column to read, so
+	they are taken from the loaded document rather than asked of the database.
+
+	Through `as_dict` rather than attribute access, because Frappe backs a
+	virtual field two ways and only one of them answers to `doc.fieldname`: a
+	controller property does, an `options` expression on the DocField does not
+	-- it is evaluated by `get_valid_dict`, and reading the attribute raises
+	`AttributeError`. Going through the dict works whichever way a field is
+	backed, so switching between them stays a DocType-only change.
 	"""
 	from tbs_commons.procurement.budget import request_summary
 
@@ -582,8 +589,10 @@ def _add_procurement_costs(requests: list[dict]) -> None:
 	position_cache: dict = {}
 	for request in requests:
 		doc = frappe.get_doc(PROCUREMENT_REQUEST, request.name)
-		request.total_estimated_cost = doc.total_estimated_cost
-		request.approver_name = doc.approver_name
+		computed = doc.as_dict()
+		request.total_estimated_cost = computed.get("total_estimated_cost")
+		request.approver_name = computed.get("approver_name")
+		request.requester_name = computed.get("requester_name")
 		request.can_edit = _can_edit_procurement_request(doc, workflow)
 		request.budget_summary = request_summary(doc, position_cache)
 

@@ -174,7 +174,6 @@ class TestProcurementRequest(ProcurementTestCase):
 		request.reload()
 		self.assertEqual(request.items[0].committed_qty, 6)
 		self.assertEqual(request.per_ordered, 100)
-		self.assertEqual(request.status, "Completed")
 
 		# Cancelling the stock document hands the request back to the approver.
 		material_request.cancel()
@@ -220,7 +219,6 @@ class TestProcurementRequest(ProcurementTestCase):
 
 		request.reload()
 		self.assertEqual(request.items[0].uncommitted_qty, 0)
-		self.assertEqual(request.status, "Completed")
 
 	def test_ordering_more_than_is_left_is_refused(self):
 		request = self.make_request([{"item_code": self.item, "qty": 5, "uom": "Nos"}], submit=True)
@@ -349,7 +347,7 @@ class TestProcurementApproval(ProcurementTestCase):
 		self.assertEqual(request.status, "Approved")
 		self.assertEqual(request.docstatus, 1)
 
-	def test_rejecting_submits(self):
+	def test_rejecting_leaves_the_request_a_draft(self):
 		request = self.make_review_request()
 
 		frappe.set_user(self.approver)
@@ -357,7 +355,39 @@ class TestProcurementApproval(ProcurementTestCase):
 
 		request.reload()
 		self.assertEqual(request.status, "Rejected")
-		self.assertEqual(request.docstatus, 1)
+		# Approval is the submission, so a turned-down request never reaches
+		# docstatus 1 -- which is what `make_material_request` gates on.
+		self.assertEqual(request.docstatus, 0)
+
+	def test_a_rejected_request_cannot_become_a_material_request(self):
+		request = self.make_review_request()
+
+		frappe.set_user(self.approver)
+		apply_workflow(request, "Reject")
+
+		frappe.set_user("Administrator")
+		with self.assertRaises(frappe.ValidationError):
+			make_material_request(request.name)
+
+	def test_a_rejected_request_can_be_reopened(self):
+		request = self.make_review_request()
+		frappe.set_user(self.approver)
+		request.db_set("rejection_reason", "Too expensive this quarter")
+		apply_workflow(request, "Reject")
+
+		frappe.set_user(self.procurement_user)
+		apply_workflow(request.reload(), "Reopen")
+
+		request.reload()
+		self.assertEqual(request.status, "Pending")
+		self.assertEqual(request.docstatus, 0)
+		# The rejection does not outlive the state it belongs to.
+		self.assertFalse(request.rejection_reason)
+
+		# And it can go round again.
+		apply_workflow(request, "Send for Review")
+		request.reload()
+		self.assertEqual(request.status, "Under Review")
 
 	def test_a_decided_request_cannot_be_decided_again(self):
 		request = self.make_review_request()

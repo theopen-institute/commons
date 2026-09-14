@@ -237,22 +237,16 @@ has_permission = {
 # ---------------
 # Hook on document methods and events
 
-# A Material Request raised from a Procurement Request is what makes that
-# request "ordered". Submit and cancel are the only two events that change
-# whether it counts — a draft Material Request commits to nothing.
+# A Material Request raised from a Procurement Request is what makes that request
+# "ordered", but nothing is written back to the request when it happens: how much
+# has been ordered is counted live from the submitted Material Requests that point
+# at it. Only the budget needs a hook, and only on submit — usage is summed from
+# submitted requests, so a cancelled one leaves the tally by its docstatus alone.
 doc_events = {
 	"Material Request": {
 		"validate": "tbs_commons.procurement.budget.validate_material_request",
 		"before_update_after_submit": "tbs_commons.procurement.budget.protect_submitted_material_request",
-		"on_submit": [
-			"tbs_commons.procurement.budget.charge_material_request",
-			"tbs_commons.procurement.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
-		],
-		# Cancellation needs no budget counterpart: usage is summed from submitted
-		# requests, so a cancelled one leaves the tally by virtue of its docstatus.
-		"on_cancel": [
-			"tbs_commons.procurement.doctype.procurement_request.procurement_request.update_linked_procurement_requests",
-		],
+		"on_submit": "tbs_commons.procurement.budget.charge_material_request",
 	},
 }
 

@@ -309,9 +309,11 @@ class TestDepartmentBudget(unittest.TestCase):
 	def test_drafts_rejections_and_cancellations_stay_out_of_the_projection(self):
 		active = self.request(400)
 		self.request(500, approve=False)
+		# A rejection leaves the request a draft, so this is a straight write
+		# rather than a submit -- going through the workflow would need the
+		# approver role, and all this test wants is a request in that state.
 		rejected = self.request(600, approve=False)
-		rejected.status = "Rejected"
-		rejected.submit()
+		rejected.db_set("status", "Rejected")
 		self.request(700).cancel()
 		self.assertEqual(budget.request_summary(active)["provisional"], 400)
 

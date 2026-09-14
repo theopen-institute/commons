@@ -2,15 +2,15 @@
  "actions": [],
  "allow_import": 1,
  "autoname": "naming_series:",
- "creation": "2026-09-11 00:00:00.000000",
+ "creation": "2026-09-11 00:00:00",
  "doctype": "DocType",
  "document_type": "Document",
  "engine": "InnoDB",
  "field_order": [
   "details_tab",
   "request_section",
-  "naming_series",
   "title",
+  "naming_series",
   "transaction_date",
   "schedule_date",
   "company",
@@ -36,10 +36,6 @@
   "per_ordered",
   "column_break_status",
   "amended_from",
-  "printing_section",
-  "letter_head",
-  "column_break_printing",
-  "select_print_heading",
   "connections_tab"
  ],
  "fields": [
@@ -109,7 +105,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Requested By",
-   "options": "User"
+   "options": "User",
+   "reqd": 1
   },
   {
    "fieldname": "department",
@@ -120,7 +117,6 @@
    "reqd": 1
   },
   {
-   "description": "Who decides this request. Defaults to the requester's expense approver.",
    "fieldname": "approver",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -135,6 +131,7 @@
    "is_virtual": 1,
    "label": "Approver Name",
    "no_copy": 1,
+   "options": "frappe.get_fullname(doc.approver) if doc.approver else None",
    "print_hide": 1,
    "read_only": 1
   },
@@ -148,8 +145,7 @@
    "fieldtype": "Table",
    "label": "Items",
    "options": "Procurement Request Item",
-   "reqd": 1,
-   "allow_on_submit": 0
+   "reqd": 1
   },
   {
    "fieldname": "totals_section",
@@ -172,11 +168,11 @@
    "description": "Indicative only. A Procurement Request makes no accounting entries.",
    "fieldname": "total_estimated_cost",
    "fieldtype": "Currency",
+   "is_virtual": 1,
    "label": "Total Estimated Cost",
    "no_copy": 1,
    "options": "currency",
-   "read_only": 1,
-   "is_virtual": 1
+   "read_only": 1
   },
   {
    "fieldname": "justification_section",
@@ -220,13 +216,13 @@
    "permlevel": 1
   },
   {
+   "description": "Share of the requested quantity committed through submitted Material Requests. Counted live.",
    "fieldname": "per_ordered",
    "fieldtype": "Percent",
+   "is_virtual": 1,
    "label": "% Committed",
    "print_hide": 1,
-   "read_only": 1,
-   "is_virtual": 1,
-   "description": "Share of the requested quantity committed through submitted Material Requests. Counted live."
+   "read_only": 1
   },
   {
    "fieldname": "column_break_status",
@@ -242,31 +238,6 @@
    "read_only": 1
   },
   {
-   "collapsible": 1,
-   "fieldname": "printing_section",
-   "fieldtype": "Section Break",
-   "label": "Printing Settings"
-  },
-  {
-   "fieldname": "letter_head",
-   "fieldtype": "Link",
-   "label": "Letter Head",
-   "options": "Letter Head",
-   "print_hide": 1
-  },
-  {
-   "fieldname": "column_break_printing",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "select_print_heading",
-   "fieldtype": "Link",
-   "label": "Print Heading",
-   "no_copy": 1,
-   "options": "Print Heading",
-   "print_hide": 1
-  },
-  {
    "fieldname": "connections_tab",
    "fieldtype": "Tab Break",
    "label": "Connections",
@@ -275,18 +246,19 @@
   {
    "fieldname": "requester_name",
    "fieldtype": "Data",
+   "is_virtual": 1,
    "label": "Requester Name",
-   "fetch_from": "requested_by.full_name",
-   "read_only": 1,
-   "no_copy": 1
+   "no_copy": 1,
+   "options": "frappe.get_fullname(doc.requested_by) if doc.requested_by else None\n",
+   "read_only": 1
   }
  ],
  "icon": "fa fa-shopping-cart",
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-12 09:00:00.000000",
- "modified_by": "Administrator",
+ "modified": "2026-09-14 15:25:21.973832",
+ "modified_by": "pgraif@gmail.com",
  "module": "Procurement",
  "name": "Procurement Request",
  "naming_rule": "By \"Naming Series\" field",
@@ -323,10 +295,7 @@
    "write": 1
   },
   {
-   "amend": 0,
-   "cancel": 0,
    "create": 1,
-   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -338,19 +307,13 @@
    "write": 1
   },
   {
-   "amend": 0,
-   "cancel": 0,
    "create": 1,
-   "delete": 0,
    "email": 1,
-   "export": 0,
    "if_owner": 1,
    "print": 1,
    "read": 1,
-   "report": 0,
    "role": "Employee",
    "share": 1,
-   "submit": 0,
    "write": 1
   },
   {

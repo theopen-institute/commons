@@ -13,17 +13,39 @@ import frappe
 APP = "tbs_commons"
 PROCUREMENT_WORKFLOW = "Procurement Request Workflow"
 
+# Approval is the submission. Everything before a decision is a draft, a
+# rejection leaves it one, and only `Approved` carries the request to docstatus
+# 1 -- which is what lets `make_material_request` gate on `docstatus` alone
+# rather than on the name of a state. `Completed` and `Canceled` are the two
+# ways out of it afterwards.
+#
+# Order is load-bearing twice over. `Draft` is first, so it is the state Frappe
+# assigns a document that arrives without one, and `Approved` is the first
+# `doc_status` 1 row, so it is the state `set_workflow_state_on_action` picks
+# when something submits a request without going through the workflow.
 WORKFLOW_STATES = (
 	{"state": "Draft", "style": "Primary", "doc_status": "0", "allow_edit": "Employee"},
-	{"state": "Pending", "style": "Warning", "doc_status": "0", "allow_edit": "Purchase User"},
+	{
+		"state": "Pending",
+		"style": "Warning",
+		"doc_status": "0",
+		"allow_edit": "Purchase User",
+		# Reopening brings a rejected request back here, so this is also where a
+		# rejection stops standing. Left alone, last time's reason would still be
+		# on the request the next time an approver turned it down. An empty
+		# `update_value` clears the field: `evaluate_workflow_value` reads any
+		# falsy value as None.
+		"update_field": "rejection_reason",
+		"update_value": "",
+	},
 	{"state": "Under Review", "style": "Info", "doc_status": "0", "allow_edit": "Expense Approver"},
 	{"state": "Approved", "style": "Success", "doc_status": "1", "allow_edit": "Purchase User"},
-	{"state": "Rejected", "style": "Danger", "doc_status": "1", "allow_edit": "Expense Approver"},
+	{"state": "Rejected", "style": "Danger", "doc_status": "0", "allow_edit": "Expense Approver"},
 	{"state": "Completed", "style": "Success", "doc_status": "1", "allow_edit": "Purchase User"},
 	{"state": "Canceled", "style": "Inverse", "doc_status": "2", "allow_edit": "Purchase User"},
 )
 
-WORKFLOW_ACTIONS = ("Send to Procurement", "Send for Review", "Approve", "Reject", "Cancel")
+WORKFLOW_ACTIONS = ("Send to Procurement", "Send for Review", "Approve", "Reject", "Cancel", "Reopen")
 
 WORKFLOW_TRANSITIONS = (
 	{"state": "Draft", "action": "Send to Procurement", "next_state": "Pending", "allowed": "Employee", "allow_self_approval": 1},
@@ -51,6 +73,18 @@ WORKFLOW_TRANSITIONS = (
 	{"state": "Under Review", "action": "Approve", "next_state": "Approved", "allowed": "Purchase Manager"},
 	{"state": "Under Review", "action": "Reject", "next_state": "Rejected", "allowed": "Purchase Manager"},
 	{"state": "Approved", "action": "Cancel", "next_state": "Canceled", "allowed": "Purchase User"},
+	# A rejection is a decision, not a shredder. Procurement owns the queue, so
+	# they are the ones who decide whether a turned-down request is worth
+	# reworking, and reopening puts it back in their hands at `Pending` -- where
+	# it is theirs to edit again, which `Rejected` deliberately is not.
+	{
+		"state": "Rejected",
+		"action": "Reopen",
+		"next_state": "Pending",
+		"allowed": "Purchase User",
+		# Reopening decides nothing, so a buyer may reopen their own request.
+		"allow_self_approval": 1,
+	},
 )
 
 # Back-references from the stock document to the request it came from. They live
