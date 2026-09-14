@@ -33,6 +33,39 @@ OPEN_USER = "tbs-gate-open@example.com"
 
 
 class TestPermissionGate(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls):
+		"""Stand the gate up once for the class, and take it down after.
+
+		These fixtures cannot live in `setUp`: the `Custom DocPerm` rows have to
+		be committed so that permission lookups on other connections see them,
+		which a per-test savepoint would undo. Bracketing the class is also what
+		lets `bench run-tests` run this suite at all -- it was previously only
+		reachable through `run()` below, which did the bracketing itself, so
+		under the standard runner every fixture was missing.
+		"""
+		super().setUpClass()
+		cls._original_user = frappe.session.user
+		frappe.set_user("Administrator")
+		# `add_permission` copies a doctype's standard `DocPerm` rows into
+		# `Custom DocPerm` the first time it is customised, and core reads
+		# `Custom DocPerm` from then on. Noted before anything runs, so the
+		# teardown knows whether to hand the doctype back to its own app -- and
+		# so that a failure during setup still tears down.
+		cls._had_custom_perms = bool(frappe.db.exists("Custom DocPerm", {"parent": DOCTYPE}))
+		try:
+			_register_gate()
+		except Exception:
+			_retire_gate(cls._had_custom_perms)
+			raise
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.db.rollback()
+		_retire_gate(cls._had_custom_perms)
+		frappe.set_user(cls._original_user)
+		super().tearDownClass()
+
 	def setUp(self):
 		frappe.db.savepoint("permission_gate_test")
 		frappe.set_user("Administrator")
@@ -179,7 +212,15 @@ def _roles_and_users():
 	for user, role in ((GATED_USER, GATED_ROLE), (OPEN_USER, OPEN_ROLE)):
 		if not frappe.db.exists("User", user):
 			frappe.get_doc(
-				{"doctype": "User", "email": user, "first_name": "Gate Test", "user_type": "System User"}
+				{
+					"doctype": "User",
+					"email": user,
+					"first_name": "Gate Test",
+					"user_type": "System User",
+					# A site with no Email Account configured -- a fresh test
+					# site, say -- refuses the welcome email and so the insert.
+					"send_welcome_email": 0,
+				}
 			).insert()
 		frappe.get_doc("User", user).add_roles(role)
 
@@ -209,24 +250,17 @@ def _drop_user_permissions():
 
 
 def run():
-	original_user = frappe.session.user
-	frappe.set_user("Administrator")
-	# `add_permission` copies a doctype's standard `DocPerm` rows into `Custom
-	# DocPerm` the first time it is customised, and core reads `Custom DocPerm`
-	# from then on. Noted before anything runs, so the teardown knows whether
-	# to hand the doctype back to its own app -- and so that a failure during
-	# setup still tears down.
-	had_custom_perms = bool(frappe.db.exists("Custom DocPerm", {"parent": DOCTYPE}))
-	try:
-		_register_gate()
-		result = unittest.TextTestRunner(verbosity=2).run(
-			unittest.defaultTestLoader.loadTestsFromTestCase(TestPermissionGate)
-		)
-		if not result.wasSuccessful():
-			raise RuntimeError("Permission gate integration tests failed")
-		return dict(tests=result.testsRun, success=True)
-	finally:
-		frappe.db.rollback()
-		_retire_gate(had_custom_perms)
-		frappe.flags.in_test = False
-		frappe.set_user(original_user)
+	"""Run this suite against a site by hand, verbosely.
+
+	`bench --site SITE execute tbs_commons.safer_permissions.test_permission_gate_integration.run`
+
+	Standing the gate up and taking it down again is `setUpClass`/`tearDownClass`
+	business now, so this only chooses a runner -- and `bench run-tests` gets the
+	same fixtures without going through here.
+	"""
+	result = unittest.TextTestRunner(verbosity=2).run(
+		unittest.defaultTestLoader.loadTestsFromTestCase(TestPermissionGate)
+	)
+	if not result.wasSuccessful():
+		raise RuntimeError("Permission gate integration tests failed")
+	return dict(tests=result.testsRun, success=True)

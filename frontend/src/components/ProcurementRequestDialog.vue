@@ -47,8 +47,8 @@
 							required
 						/>
 
-						<!-- The server adds the scheme to a bare host, so a link pasted
-                 from the address bar is accepted as typed. -->
+						<!-- `withScheme` adds the scheme to a bare host on the way out,
+                 so a link pasted from the address bar is accepted as typed. -->
 						<FormControl
 							v-model="line.reference_url"
 							class="mt-3"
@@ -120,6 +120,7 @@ import {
 	type ProcurementRequestItemRow,
 	type ProcurementRequestRow,
 } from '@/data/procurement'
+import { withScheme } from '@/data/format'
 
 const APPROVER_QUERY = 'tbs_commons.api.get_procurement_approvers'
 
@@ -140,9 +141,7 @@ interface LineForm {
 	item_code?: string | null
 	item_name: string
 	reference_url: string
-	item_group?: string | null
 	description?: string | null
-	preferred_supplier?: string | null
 	qty: number
 	uom: string
 	estimated_rate: number
@@ -188,9 +187,7 @@ function blankForm(): RequestForm {
 				item_code: line.item_code,
 				item_name: line.item_name ?? '',
 				reference_url: line.reference_url ?? '',
-				item_group: line.item_group,
 				description: line.description,
-				preferred_supplier: line.preferred_supplier,
 				qty: line.qty,
 				uom: line.uom,
 				estimated_rate: line.estimated_rate,
@@ -240,7 +237,12 @@ function requestDocument() {
 	return {
 		doctype: 'Procurement Request',
 		...form,
-		items: form.items.map(({ key: _key, ...line }) => line),
+		items: form.items.map(({ key: _key, ...line }) => ({
+			...line,
+			// On the way out rather than as it is typed: rewriting the field under
+			// the cursor fights whoever is still halfway through pasting into it.
+			reference_url: withScheme(line.reference_url),
+		})),
 	}
 }
 

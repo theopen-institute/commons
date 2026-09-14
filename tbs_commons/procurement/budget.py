@@ -408,11 +408,6 @@ def request_summary(doc, cache=None):
 
 
 @frappe.whitelist()
-def get_request_budget(name: str) -> dict | None:
-	return request_summary(frappe.get_doc("Procurement Request", name))
-
-
-@frappe.whitelist()
 def get_budget_documents(request: str) -> list[dict]:
 	doc = frappe.get_doc("Procurement Request", request)
 	if not can_view_summary(doc):

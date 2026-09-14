@@ -93,3 +93,22 @@ export function formatCurrency(
 export function pluralise(count: number, singular: string, plural?: string) {
   return `${count} ${count === 1 ? singular : (plural ?? `${singular}s`)}`
 }
+
+/**
+ * Prefix a bare host with `https`, so a link pasted from the address bar is
+ * accepted as typed.
+ *
+ * `reference_url` is a Frappe `Data(URL)` field and that check wants a scheme,
+ * which browsers increasingly hide — so what a requester copies often has none.
+ * Supplying it here is kinder than bouncing the row back over something we can
+ * fix ourselves, and it belongs with the form that collects the link rather
+ * than with the document that stores it.
+ */
+export function withScheme(url?: string | null): string {
+  const link = (url ?? '').trim()
+  // Whitespace inside is the mark of something that was never a link. Left
+  // alone it fails the server's check, which is the answer wanted here —
+  // adding a scheme would only turn a plain sentence into a passing "URL".
+  if (!link || link.startsWith('/') || link.includes(' ')) return link
+  return /^[a-z][a-z0-9+.-]*:/i.test(link) ? link : `https://${link}`
+}

@@ -30,14 +30,10 @@ class ProcurementRequestItem(Document):
 		description: DF.TextEditor | None
 		estimated_rate: DF.Currency
 		item_code: DF.Link | None
-		item_group: DF.Link | None
-		item_name: DF.Data | None
-		committed_qty: DF.Float
+		item_name: DF.Data
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
-		uncommitted_qty: DF.Float
-		preferred_supplier: DF.Link | None
 		qty: DF.Float
 		reference_url: DF.Data | None
 		uom: DF.Link
@@ -55,12 +51,14 @@ class ProcurementRequestItem(Document):
 		cached = self.__dict__.get("_committed_qty")
 		if cached is None:
 			from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
-				get_committed_qty,
+				get_committed_qty_map,
 			)
 
 			# An unsaved row has no name a Material Request could point at, so
 			# there is nothing to count and nothing to ask the database.
-			cached = self.__dict__["_committed_qty"] = get_committed_qty(self.name) if self.name else 0.0
+			cached = self.__dict__["_committed_qty"] = (
+				flt(get_committed_qty_map(self.parent, [self]).get(self.name)) if self.name else 0.0
+			)
 		return cached
 
 	@property

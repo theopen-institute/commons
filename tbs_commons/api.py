@@ -451,8 +451,8 @@ def get_my_procurement_requests() -> list[dict]:
 	fields = [
 		"name", "amended_from", "title", "company", "currency", "transaction_date",
 		"schedule_date", "requested_by", "department", "approver",
-		"justification", "rejection_reason", "total_qty", "status",
-		"docstatus", "modified",
+		"justification", "rejection_reason", "total_qty", "total_estimated_cost",
+		"status", "docstatus", "modified",
 	]
 	if state_field not in fields:
 		fields.append(state_field)
@@ -547,7 +547,8 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 	fields = [
 		"name", "title", "company", "currency", "transaction_date", "schedule_date",
 		"requested_by", "department", "approver",
-		"justification", "rejection_reason", "total_qty", "status", "docstatus", "modified",
+		"justification", "rejection_reason", "total_qty", "total_estimated_cost",
+		"status", "docstatus", "modified",
 	]
 	if state_field not in fields:
 		fields.append(state_field)
@@ -570,8 +571,8 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 def _add_procurement_costs(requests: list[dict]) -> None:
 	"""Attach the virtual fields and edit capabilities a list query cannot select.
 
-	`total_estimated_cost` and the two name fields have no column to read, so
-	they are taken from the loaded document rather than asked of the database.
+	Only the two name fields now: the totals are stored columns, and the list
+	queries above select them directly.
 
 	Through `as_dict` rather than attribute access, because Frappe backs a
 	virtual field two ways and only one of them answers to `doc.fieldname`: a
@@ -590,7 +591,6 @@ def _add_procurement_costs(requests: list[dict]) -> None:
 	for request in requests:
 		doc = frappe.get_doc(PROCUREMENT_REQUEST, request.name)
 		computed = doc.as_dict()
-		request.total_estimated_cost = computed.get("total_estimated_cost")
 		request.approver_name = computed.get("approver_name")
 		request.requester_name = computed.get("requester_name")
 		request.can_edit = _can_edit_procurement_request(doc, workflow)
@@ -633,9 +633,7 @@ def get_procurement_request_lines(requests: str) -> list[dict]:
 			"item_code",
 			"item_name",
 			"reference_url",
-			"item_group",
 			"description",
-			"preferred_supplier",
 			"qty",
 			"uom",
 			"estimated_rate",

@@ -20,7 +20,6 @@ class TestBuyingRate(TestCase):
 		self.price = self.frappe.get_all
 		self.price.return_value = [SimpleNamespace(price_list_rate=24, uom="Box", valid_from=None, valid_upto=None)]
 		self.exchange = self.enterContext(patch("erpnext.setup.utils.get_exchange_rate", return_value=2))
-		self.enterContext(patch.object(procurement, "today", return_value="2026-09-12"))
 
 	def test_current_buying_price_uses_uom_and_currency(self):
 		self.assertEqual(procurement.get_default_buying_price("ITEM", "NPR"), {"verified_rate": 48, "uom": "Box"})

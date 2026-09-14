@@ -22,9 +22,6 @@
 						<div class="mt-0.5 text-p-sm text-ink-gray-5">
 							<span v-if="line.item_code">{{ line.item_code }}</span>
 							<span v-else>-</span>
-							<span v-if="line.preferred_supplier">
-								· {{ line.preferred_supplier }}
-							</span>
 						</div>
 						<!-- `rel` because the link is whatever a requester pasted, and it
                  opens outside the site. -->

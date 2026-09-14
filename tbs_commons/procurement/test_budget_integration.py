@@ -12,7 +12,13 @@ from tbs_commons.procurement import budget
 class TestDepartmentBudget(unittest.TestCase):
 	def setUp(self):
 		frappe.db.savepoint("budget_test")
-		self.company = frappe.db.get_value("Company", {}, "name")
+		# `_Test Company` by name rather than whichever company answers first:
+		# it is the one ERPNext's `before_tests` hook sets up, so its currency
+		# matches the buying price list and its warehouses exist. A site
+		# carrying other companies would otherwise hand back an arbitrary one.
+		self.company = frappe.db.get_value("Company", "_Test Company", "name") or frappe.db.get_value(
+			"Company", {}, "name"
+		)
 		self.department = self.new_department()
 		self.year = frappe.db.get_value(
 			"Fiscal Year",
@@ -76,6 +82,10 @@ class TestDepartmentBudget(unittest.TestCase):
 		if self.budget.docstatus == 1:
 			self.budget.cancel()
 		draft = frappe.copy_doc(self.budget)
+		# `copy_doc` clears `docstatus` everywhere except under the test runner
+		# -- it keeps it when `frappe.in_test`, so a copy of the allocation just
+		# cancelled above arrives at docstatus 2 and cannot be inserted.
+		draft.docstatus = 0
 		draft.amended_from = self.budget.name
 		draft.annual_amount = amount
 		draft.update(overrides)

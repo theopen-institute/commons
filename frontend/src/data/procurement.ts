@@ -69,9 +69,7 @@ export interface ProcurementRequestItemRow {
   item_name: string | null
   /** Where the requester saw it. Normalised to carry a scheme on save. */
   reference_url: string | null
-  item_group: string | null
   description: string | null
-  preferred_supplier: string | null
   qty: number
   uom: string
   /** How much Resources has committed through submitted Material Requests. Counted

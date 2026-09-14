@@ -24,7 +24,7 @@
   "items_section",
   "items",
   "totals_section",
-  "total_qty",
+  "column_break_shfk",
   "column_break_totals",
   "total_estimated_cost",
   "justification_section",
@@ -32,8 +32,8 @@
   "more_info_tab",
   "status_section",
   "status",
+  "item_summary",
   "rejection_reason",
-  "per_ordered",
   "column_break_status",
   "amended_from",
   "connections_tab"
@@ -59,6 +59,7 @@
    "set_only_once": 1
   },
   {
+   "default": "Request for {item_summary}",
    "fieldname": "title",
    "fieldtype": "Data",
    "label": "Title",
@@ -153,14 +154,6 @@
    "label": "Totals"
   },
   {
-   "fieldname": "total_qty",
-   "fieldtype": "Float",
-   "label": "Total Quantity",
-   "no_copy": 1,
-   "print_hide": 1,
-   "read_only": 1
-  },
-  {
    "fieldname": "column_break_totals",
    "fieldtype": "Column Break"
   },
@@ -171,7 +164,7 @@
    "is_virtual": 1,
    "label": "Total Estimated Cost",
    "no_copy": 1,
-   "options": "currency",
+   "options": "sum(frappe.utils.flt(d.verified_rate or d.estimated_rate) * frappe.utils.flt(d.qty) for d in (doc.get(\"items\") or []))",
    "read_only": 1
   },
   {
@@ -198,12 +191,10 @@
    "allow_on_submit": 1,
    "default": "Draft",
    "fieldname": "status",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "\nDraft\nPending\nUnder Review\nRejected\nApproved\nCompleted\nCanceled",
-   "permlevel": 1,
    "reqd": 1
   },
   {
@@ -214,15 +205,6 @@
    "label": "Reason for Rejection",
    "no_copy": 1,
    "permlevel": 1
-  },
-  {
-   "description": "Share of the requested quantity committed through submitted Material Requests. Counted live.",
-   "fieldname": "per_ordered",
-   "fieldtype": "Percent",
-   "is_virtual": 1,
-   "label": "% Committed",
-   "print_hide": 1,
-   "read_only": 1
   },
   {
    "fieldname": "column_break_status",
@@ -251,13 +233,30 @@
    "no_copy": 1,
    "options": "frappe.get_fullname(doc.requested_by) if doc.requested_by else None\n",
    "read_only": 1
+  },
+  {
+   "fieldname": "column_break_shfk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "item_summary",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "is_virtual": 1,
+   "label": "Item Summary",
+   "options": "\", \".join([d.item_name for d in (doc.get(\"items\") or []) if d.item_name][:3])"
   }
  ],
  "icon": "fa fa-shopping-cart",
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
- "links": [],
- "modified": "2026-09-14 15:25:21.973832",
+ "links": [
+  {
+   "link_doctype": "Material Request",
+   "link_fieldname": "procurement_request"
+  }
+ ],
+ "modified": "2026-09-14 20:21:34.447415",
  "modified_by": "pgraif@gmail.com",
  "module": "Procurement",
  "name": "Procurement Request",

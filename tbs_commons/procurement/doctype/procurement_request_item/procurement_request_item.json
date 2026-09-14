@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "hash",
- "creation": "2026-09-11 00:00:00.000000",
+ "creation": "2026-09-11 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -10,20 +10,18 @@
   "column_break_item",
   "item_name",
   "reference_url",
-  "item_group",
-  "preferred_supplier",
   "description_section",
   "description",
   "quantity_section",
   "qty",
   "uom",
   "column_break_quantity",
-  "committed_qty",
-  "uncommitted_qty",
-  "cost_section",
   "estimated_rate",
+  "verified_rate",
+  "cost_section",
+  "committed_qty",
   "column_break_cost",
-  "verified_rate"
+  "uncommitted_qty"
  ],
  "fields": [
   {
@@ -32,8 +30,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Item Code",
-   "options": "Item",
-   "allow_on_submit": 0
+   "options": "Item"
   },
   {
    "fieldname": "column_break_item",
@@ -45,7 +42,8 @@
    "fieldname": "item_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Item Name"
+   "label": "Item Name",
+   "reqd": 1
   },
   {
    "description": "Optional. Where the requester saw it -- a product page, a quote or a spec.",
@@ -54,21 +52,6 @@
    "label": "Reference Link",
    "length": 500,
    "options": "URL"
-  },
-  {
-   "fetch_from": "item_code.item_group",
-   "fetch_if_empty": 1,
-   "fieldname": "item_group",
-   "fieldtype": "Link",
-   "label": "Item Group",
-   "options": "Item Group"
-  },
-  {
-   "description": "Optional. Who procurement expects to buy this from.",
-   "fieldname": "preferred_supplier",
-   "fieldtype": "Link",
-   "label": "Preferred Supplier",
-   "options": "Supplier"
   },
   {
    "fieldname": "description_section",
@@ -94,31 +77,33 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Quantity",
+   "non_negative": 1,
    "reqd": 1
   },
   {
    "columns": 1,
+   "fetch_from": "item_code.stock_uom",
+   "fetch_if_empty": 1,
    "fieldname": "uom",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "UOM",
    "options": "UOM",
-   "reqd": 1,
-   "allow_on_submit": 0
+   "reqd": 1
   },
   {
    "fieldname": "column_break_quantity",
    "fieldtype": "Column Break"
   },
   {
+   "columns": 1,
    "description": "Quantity committed by Resources through submitted Material Requests.",
    "fieldname": "committed_qty",
    "fieldtype": "Float",
+   "is_virtual": 1,
    "label": "Committed Qty",
    "print_hide": 1,
-   "read_only": 1,
-   "is_virtual": 1,
-   "columns": 1
+   "read_only": 1
   },
   {
    "columns": 1,
@@ -133,7 +118,7 @@
   {
    "fieldname": "cost_section",
    "fieldtype": "Section Break",
-   "label": "Estimated Cost"
+   "label": "Managed Quantities"
   },
   {
    "columns": 1,
@@ -141,6 +126,7 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Estimated Rate",
+   "non_negative": 1,
    "options": "currency"
   },
   {
@@ -148,20 +134,20 @@
    "fieldtype": "Column Break"
   },
   {
-   "allow_on_submit": 0,
    "columns": 1,
    "fieldname": "verified_rate",
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Verified Rate",
+   "non_negative": 1,
    "options": "currency"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-12 09:00:00.000000",
- "modified_by": "Administrator",
+ "modified": "2026-09-14 18:48:55.602627",
+ "modified_by": "pgraif@gmail.com",
  "module": "Procurement",
  "name": "Procurement Request Item",
  "naming_rule": "Random",
