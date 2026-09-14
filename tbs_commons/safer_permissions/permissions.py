@@ -27,10 +27,9 @@ document on a form, no report. Roles that should genuinely see everything are
 left unmarked, so `Employee` and `HR Manager` can both hold read on `Salary
 Slip` and mean entirely different things by it.
 
-None of this patches core. The marker is a `Permission Type` record, a core
-extension point that creates a Check field on `DocPerm`, `Custom DocPerm` and
-`DocShare` and draws it in the Role Permission Manager beside "Only if
-Creator" -- see `safer_permissions.install.sync_permission_gates`. Enforcement
+None of this patches core. The marker is one Check field on `DocPerm`, `Custom
+DocPerm` and `DocShare`, which the Role Permission Manager draws beside "Only if
+Creator" -- see `safer_permissions.install.sync_gate_field`. Enforcement
 is core's two permission hooks, both of which accept a `"*"` key so they are
 consulted for every doctype, and both of which can only ever deny:
 
@@ -42,38 +41,75 @@ report author wrote, and no amount of hooking makes that respect User
 Permissions -- so gated roles are refused them outright. See
 `run_query_report`.
 
-Which doctypes can be gated, and which User Permission each one demands, is
-configured in `Permission Gate Settings`. Which roles are gated is configured
-where role permissions already live, in the Role Permission Manager.
+Configured in one place: the Role Permission Manager, beside "Only if Creator".
+
+The gate cannot demand a *particular* User Permission. That page renders
+checkboxes and nothing else, so a role row has nowhere to name one. What it can
+demand is that somebody pointed a permission at *this doctype on purpose*: a
+User Permission whose `applicable_for` is the doctype being checked.
+
+Blanket permissions are therefore ignored here, though core honours them. A User
+Permission created without an `applicable_for` gets `apply_to_all_doctypes`, and
+that is the default -- so counting them would mean one `Company` restriction,
+created for some unrelated reason, silently satisfied every gate on the site.
+
+This still cannot ask *which* link: a `Company` permission scoped to `Salary
+Slip` opens that gate and shows every slip in the company. What it rules out is
+opening a gate by accident, which is the failure that actually happens.
 """
 
 import frappe
 from frappe import _
-from frappe.core.doctype.permission_type.permission_type import get_doctype_ptype_map
-from frappe.permissions import get_allowed_docs_for_doctype
 from frappe.utils import cint
 
-# The custom permission type. One `Permission Type` record per gateable
-# doctype registers it and gives it its checkbox; the Role Permission Manager
-# labels the checkbox by title-casing this, so it reads "Require User
-# Permission".
+# The marker field. The Role Permission Manager labels a permission checkbox by
+# title-casing its fieldname, so this reads "Require User Permission".
 GATE = "require_user_permission"
-
-SETTINGS = "Permission Gate Settings"
 
 # Reaching a document at all. A role that grants neither is not granting
 # access this module could usefully withhold.
 READ_RIGHTS = ("read", "select")
 
 
-def is_gateable(doctype: str) -> bool:
-	"""Return True if `doctype` has the gate checkbox at all.
+def gated_doctypes() -> frozenset[str]:
+	"""Doctypes where at least one role has the gate ticked.
 
-	`get_doctype_ptype_map` is site-cached and this is the first thing every
-	hook below asks, so the overwhelmingly common answer -- an ordinary
-	doctype nobody has gated -- costs one dict lookup.
+	Memoised for the request. `gate_applies` is the first thing both hooks ask,
+	on a path that answers every permission check on the site, so the common
+	answer -- a doctype nobody has gated -- has to cost a set lookup rather than
+	a role scan.
+
+	Read with raw SQL on purpose. `frappe.get_all` would route through
+	`DatabaseQuery`, which consults the very `permission_query_conditions` hook
+	this function exists to serve; the sentinel below closes the same door twice.
+
+	Not `site_cache`: that cache lives in one worker process and is not shared,
+	so a gate ticked in one worker would stay invisible to the others until a
+	restart. A silent hole in a permission check is not worth the saving.
 	"""
-	return GATE in get_doctype_ptype_map().get(doctype, [])
+	cached = getattr(frappe.local, "tbs_gated_doctypes", None)
+	if cached is not None:
+		return cached
+
+	# Set before reading, so a re-entrant check terminates instead of recursing.
+	frappe.local.tbs_gated_doctypes = frozenset()
+
+	gated: set[str] = set()
+	for table in ("Custom DocPerm", "DocPerm"):
+		try:
+			rows = frappe.db.sql(f"select distinct parent from `tab{table}` where `{GATE}` = 1")
+		except Exception:
+			# Before this app's first migrate the column is not there yet.
+			continue
+		gated.update(row[0] for row in rows if row[0])
+
+	frappe.local.tbs_gated_doctypes = frozenset(gated)
+	return frappe.local.tbs_gated_doctypes
+
+
+def clear_gated_doctypes() -> None:
+	"""Drop the request memo, so a tick is visible to the rest of this request."""
+	frappe.local.tbs_gated_doctypes = None
 
 
 def gate_applies(user: str, doctype: str) -> bool:
@@ -84,7 +120,7 @@ def gate_applies(user: str, doctype: str) -> bool:
 	across roles in `get_role_permissions`, where an unrestricted grant beats a
 	restricted one rather than intersecting with it.
 	"""
-	if not is_gateable(doctype):
+	if doctype not in gated_doctypes():
 		return False
 
 	# Administrator short-circuits every permission check in core long before
@@ -111,46 +147,24 @@ def gate_applies(user: str, doctype: str) -> bool:
 
 
 def gate_satisfied(user: str, doctype: str) -> bool:
-	"""Return True if `user` holds the User Permissions the gate demands."""
+	"""Return True if `user` holds a User Permission aimed at `doctype` itself."""
 	user_permissions = frappe.permissions.get_user_permissions(user)
 	if not user_permissions:
 		return False
 
-	required = required_user_permissions(doctype)
-	if required:
-		# Every configured rule, not any of them: two rows for one doctype
-		# means both restrictions have to be in place.
-		return all(
-			get_allowed_docs_for_doctype(user_permissions.get(allow, []), doctype) for allow in required
-		)
-
-	# No rule configured, yet a role is gated -- someone removed the rule row
-	# and left the checkbox ticked. Fall back to the weaker question, "is this
-	# user narrowed on this doctype at all", which is still closed by default.
-	# `_configuration_gap` says so out loud rather than letting it pass.
-	_configuration_gap(doctype)
+	# `applicable_for` matched exactly, never core's
+	# `filter_allowed_docs_for_doctype`, which also accepts a blanket permission
+	# (`not applicable_for`) -- and blanket is the default. See the module docstring.
 	return any(
-		get_allowed_docs_for_doctype(user_permissions.get(allow, []), doctype)
+		entry.get("applicable_for") == doctype
 		for allow in constraining_doctypes(doctype)
+		for entry in user_permissions.get(allow, [])
 	)
 
 
 def is_blocked(user: str, doctype: str) -> bool:
 	"""Return True if the gate applies to `user` here and is not satisfied."""
 	return gate_applies(user, doctype) and not gate_satisfied(user, doctype)
-
-
-def required_user_permissions(doctype: str) -> list[str]:
-	"""The User Permission doctypes `Permission Gate Settings` demands here."""
-	if not frappe.db.exists("DocType", SETTINGS):
-		return []
-
-	settings = frappe.get_cached_doc(SETTINGS)
-	return [
-		rule.required_user_permission
-		for rule in settings.rules
-		if rule.document_type == doctype and rule.required_user_permission
-	]
 
 
 def constraining_doctypes(doctype: str) -> set[str]:
@@ -167,29 +181,6 @@ def constraining_doctypes(doctype: str) -> set[str]:
 	}
 	allowed.add(doctype)
 	return allowed
-
-
-def _configuration_gap(doctype: str) -> None:
-	"""Record a gate with no rule behind it, on the file log and once only.
-
-	Not `frappe.log_error`: this runs inside a permission check, on a path
-	that answers every list query, and `Error Log` is a document -- inserting
-	one would need its own permission checks, and would fail outright on the
-	read-only connection reports run under. A row per query would be useless
-	anyway, so each request says it at most once.
-	"""
-	reported = getattr(frappe.local, "tbs_permission_gaps", None)
-	if reported is None:
-		reported = frappe.local.tbs_permission_gaps = set()
-	if doctype in reported:
-		return
-	reported.add(doctype)
-
-	frappe.logger("permission_gate").warning(
-		f"A role is gated on {doctype} but {SETTINGS} lists no rule for it, so the gate is "
-		f"accepting any User Permission that narrows {doctype}. Add a rule naming the User "
-		f"Permission this doctype should require."
-	)
 
 
 # Hooks

@@ -1,10 +1,9 @@
 """The gate against a real site: bench --site SITE execute tbs_commons.test_permission_gate_integration.run
 
-Not purely rollback-only, unlike the budget suite. Registering the gate creates
-a `Permission Type`, which adds Custom Fields to `DocPerm`, `Custom DocPerm`
-and `DocShare` -- DDL, which MariaDB commits whatever this suite does
-afterwards. `_register_gate` and `_retire_gate` bracket the run to put that
-back; everything within it rolls back.
+Not purely rollback-only, unlike the budget suite. The `Custom DocPerm` rows are
+committed so other connections see them, and `_register_gate` and `_retire_gate`
+bracket the run to put them back; everything within it rolls back. The gate
+column itself is created once by `sync_gate_field` and left alone.
 
 `Branch` stands in for a payslip. It has one field, it autonames from it, no
 role outside HR can read it, and this app's are the only permission hooks
@@ -17,8 +16,8 @@ import unittest
 
 import frappe
 
-from tbs_commons.safer_permissions.install import sync_permission_gates
-from tbs_commons.safer_permissions.permissions import GATE, SETTINGS
+from tbs_commons.safer_permissions.install import sync_gate_field
+from tbs_commons.safer_permissions.permissions import GATE
 
 DOCTYPE = "Branch"
 REQUIRED = "Branch"
@@ -77,6 +76,17 @@ class TestPermissionGate(unittest.TestCase):
 		self.assertTrue(self.readable(GATED_USER, MINE))
 		self.assertFalse(self.readable(GATED_USER, THEIRS))
 
+	def test_a_blanket_user_permission_does_not_open_the_gate(self):
+		"""`apply_to_all_doctypes` is what a User Permission gets by default, so
+		counting it would let one restriction created for an unrelated reason
+		satisfy every gate on the site."""
+		_user_permission(GATED_USER, MINE, applicable_for=None)
+		self.assertEqual(self.visible(GATED_USER), set())
+
+	def test_the_same_permission_aimed_at_this_doctype_does_open_it(self):
+		_user_permission(GATED_USER, MINE, applicable_for=DOCTYPE)
+		self.assertEqual(self.visible(GATED_USER), {MINE})
+
 	def test_a_user_permission_on_something_else_does_not_open_it(self):
 		_user_permission(GATED_USER, frappe.db.get_value("Language", {}, "name"), allow="Language")
 		self.assertEqual(self.visible(GATED_USER), set())
@@ -86,6 +96,21 @@ class TestPermissionGate(unittest.TestCase):
 		frappe.get_doc("User", GATED_USER).add_roles(OPEN_ROLE)
 		frappe.clear_cache(user=GATED_USER)
 		self.assertEqual(self.visible(GATED_USER), {MINE, THEIRS})
+
+	def test_the_gate_is_configured_entirely_from_the_permission_row(self):
+		"""No second document: the tick on the role is the whole configuration."""
+		from tbs_commons.safer_permissions.permissions import clear_gated_doctypes, gated_doctypes
+
+		clear_gated_doctypes()
+		self.assertIn(DOCTYPE, gated_doctypes())
+		self.assertFalse(frappe.db.exists("DocType", "Permission Gate Settings"))
+
+	def test_a_doctype_nobody_ticked_is_untouched(self):
+		"""The fast path, and the safety: gating is opt-in per role row."""
+		from tbs_commons.safer_permissions.permissions import clear_gated_doctypes, is_blocked
+
+		clear_gated_doctypes()
+		self.assertFalse(is_blocked(GATED_USER, "ToDo"))
 
 	def test_a_gated_role_is_refused_reports(self):
 		from tbs_commons.safer_permissions.permissions import _refuse_gated_report
@@ -104,13 +129,7 @@ def _register_gate():
 	_fixtures()
 	_roles_and_users()
 
-	settings = frappe.get_single(SETTINGS)
-	# Idempotent: a run killed between setup and teardown leaves its rule, and
-	# appending a second would only trip the settings' own duplicate check.
-	settings.rules = [rule for rule in settings.rules if rule.document_type != DOCTYPE]
-	settings.append("rules", {"document_type": DOCTYPE, "required_user_permission": REQUIRED})
-	settings.save()
-	sync_permission_gates()
+	sync_gate_field()
 
 	frappe.permissions.add_permission(DOCTYPE, GATED_ROLE, 0)
 	frappe.permissions.update_permission_property(DOCTYPE, GATED_ROLE, 0, GATE, 1)
@@ -124,13 +143,6 @@ def _retire_gate(had_custom_perms: bool):
 	stale = {"parent": DOCTYPE} if not had_custom_perms else {"parent": DOCTYPE, "role": ["in", (GATED_ROLE, OPEN_ROLE)]}
 	for name in frappe.get_all("Custom DocPerm", filters=stale, pluck="name"):
 		frappe.delete_doc("Custom DocPerm", name, force=True, ignore_permissions=True)
-
-	if permission_type := frappe.db.get_value("Permission Type", {"perm_type": GATE, "doc_type": DOCTYPE}):
-		frappe.delete_doc("Permission Type", permission_type, force=True, ignore_permissions=True)
-
-	settings = frappe.get_single(SETTINGS)
-	settings.rules = [rule for rule in settings.rules if rule.document_type != DOCTYPE]
-	settings.save()
 
 	_drop_user_permissions()
 	for doctype, names in (("Report", (REPORT,)), (DOCTYPE, (MINE, THEIRS)), ("User", (GATED_USER, OPEN_USER)), ("Role", (GATED_ROLE, OPEN_ROLE))):
@@ -172,9 +184,18 @@ def _roles_and_users():
 		frappe.get_doc("User", user).add_roles(role)
 
 
-def _user_permission(user, for_value, allow=REQUIRED):
+def _user_permission(user, for_value, allow=REQUIRED, applicable_for=DOCTYPE):
+	"""Aimed at a doctype by default. `applicable_for=None` makes it blanket,
+	which is what core creates when nobody names one -- and what a gate ignores."""
 	frappe.get_doc(
-		{"doctype": "User Permission", "user": user, "allow": allow, "for_value": for_value}
+		{
+			"doctype": "User Permission",
+			"user": user,
+			"allow": allow,
+			"for_value": for_value,
+			"apply_to_all_doctypes": 0 if applicable_for else 1,
+			"applicable_for": applicable_for,
+		}
 	).insert(ignore_permissions=True)
 	frappe.cache.hdel("user_permissions", user)
 
@@ -190,10 +211,6 @@ def _drop_user_permissions():
 def run():
 	original_user = frappe.session.user
 	frappe.set_user("Administrator")
-	# `Permission Type` is writable during install, migrate, developer mode or
-	# tests; saying which this is also stops core exporting it as a fixture
-	# into whichever app happens to own the gated doctype.
-	frappe.flags.in_test = True
 	# `add_permission` copies a doctype's standard `DocPerm` rows into `Custom
 	# DocPerm` the first time it is customised, and core reads `Custom DocPerm`
 	# from then on. Noted before anything runs, so the teardown knows whether

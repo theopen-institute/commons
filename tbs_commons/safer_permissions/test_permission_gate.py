@@ -27,18 +27,21 @@ def meta(*perms):
 class GateApplies(TestCase):
 	"""Which users the gate holds back."""
 
-	def check(self, roles, perms, gateable=True):
+	def check(self, roles, perms, ticked=True):
 		with (
 			patch.object(
-				permissions, "get_doctype_ptype_map", return_value={DOCTYPE: [GATE]} if gateable else {}
+				permissions,
+				"gated_doctypes",
+				return_value=frozenset({DOCTYPE}) if ticked else frozenset(),
 			),
 			patch.object(permissions.frappe, "get_roles", return_value=roles),
 			patch.object(permissions.frappe, "get_meta", return_value=meta(*perms)),
 		):
 			return permissions.gate_applies("employee@example.com", DOCTYPE)
 
-	def test_doctype_without_the_checkbox_is_never_gated(self):
-		self.assertFalse(self.check(["Employee"], [perm("Employee", gated=True)], gateable=False))
+	def test_doctype_nobody_ticked_is_never_gated(self):
+		"""The fast path: no tick anywhere on the doctype, no gate to apply."""
+		self.assertFalse(self.check(["Employee"], [perm("Employee", gated=True)], ticked=False))
 
 	def test_gated_role_is_held_back(self):
 		self.assertTrue(self.check(["Employee"], [perm("Employee", gated=True)]))
@@ -85,47 +88,50 @@ class GateApplies(TestCase):
 
 	def test_administrator_is_never_gated(self):
 		with (
-			patch.object(permissions, "get_doctype_ptype_map", return_value={DOCTYPE: [GATE]}),
+			patch.object(permissions, "gated_doctypes", return_value=frozenset({DOCTYPE})),
 			patch.object(permissions.frappe, "get_meta", return_value=meta(perm("Employee", gated=True))),
 		):
 			self.assertFalse(permissions.gate_applies("Administrator", DOCTYPE))
 
 
 class GateSatisfied(TestCase):
-	"""What gets a gated user through."""
+	"""What gets a gated user through: a permission aimed at this doctype."""
 
-	def check(self, user_permissions, required):
+	def check(self, user_permissions, constraining=("Employee", "Company")):
 		with (
 			patch.object(permissions.frappe.permissions, "get_user_permissions", return_value=user_permissions),
-			patch.object(permissions, "required_user_permissions", return_value=required),
+			patch.object(permissions, "constraining_doctypes", return_value=set(constraining)),
 		):
 			return permissions.gate_satisfied("employee@example.com", DOCTYPE)
 
+	def held(self, allow, applicable_for):
+		return {allow: [frappe._dict(doc="SOME-DOC", applicable_for=applicable_for)]}
+
 	def test_no_user_permissions_at_all_fails_closed(self):
-		self.assertFalse(self.check({}, ["Employee"]))
+		self.assertFalse(self.check({}))
 
-	def test_the_required_user_permission_opens_the_gate(self):
-		self.assertTrue(
-			self.check({"Employee": [frappe._dict(doc="HR-EMP-0001", applicable_for=None)]}, ["Employee"])
-		)
+	def test_a_permission_aimed_at_this_doctype_opens_the_gate(self):
+		self.assertTrue(self.check(self.held("Employee", DOCTYPE)))
 
-	def test_a_user_permission_for_something_else_does_not(self):
-		self.assertFalse(
-			self.check({"Company": [frappe._dict(doc="TBS", applicable_for=None)]}, ["Employee"])
-		)
+	def test_a_blanket_permission_does_not_open_the_gate(self):
+		"""The hole this closes. `apply_to_all_doctypes` -- an absent
+		`applicable_for` -- is the default, and core honours it everywhere. One
+		Company restriction created for an unrelated reason would otherwise
+		satisfy every gate on the site."""
+		self.assertFalse(self.check(self.held("Company", None)))
 
 	def test_a_permission_scoped_to_another_doctype_does_not(self):
-		"""`applicable_for` elsewhere means it never restricts this doctype."""
-		self.assertFalse(
-			self.check(
-				{"Employee": [frappe._dict(doc="HR-EMP-0001", applicable_for="Leave Application")]},
-				["Employee"],
-			)
-		)
+		self.assertFalse(self.check(self.held("Employee", "Leave Application")))
 
-	def test_every_configured_rule_must_be_met(self):
-		held = {"Employee": [frappe._dict(doc="HR-EMP-0001", applicable_for=None)]}
-		self.assertFalse(self.check(held, ["Employee", "Company"]))
+	def test_a_permission_that_cannot_reach_the_doctype_does_not(self):
+		self.assertFalse(self.check(self.held("Language", DOCTYPE), constraining=("Employee",)))
+
+	def test_the_wrong_dimension_still_opens_it_if_aimed_here(self):
+		"""What the checkbox still cannot express. A Company permission pointed at
+		this doctype opens the gate and shows every row in that company; closing
+		this would need the gate to name which link it wants, and a checkbox has
+		nowhere to say so."""
+		self.assertTrue(self.check(self.held("Company", DOCTYPE)))
 
 
 class Hooks(TestCase):

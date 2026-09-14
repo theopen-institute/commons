@@ -56,11 +56,11 @@ website_route_rules = [
 # procurement Workflow, and clearing the duplicate app-title icon Frappe seeds.
 after_install = [
 	"tbs_commons.install.after_install",
-	"tbs_commons.safer_permissions.install.sync_permission_gates",
+	"tbs_commons.safer_permissions.install.sync_gate_field",
 ]
 after_migrate = [
 	"tbs_commons.install.after_migrate",
-	"tbs_commons.safer_permissions.install.sync_permission_gates",
+	"tbs_commons.safer_permissions.install.sync_gate_field",
 ]
 
 # `Safer Permissions` was added to `modules.txt` after this app had already
@@ -222,7 +222,7 @@ app_include_js = "tbs_commons.bundle.js"
 # nothing until one exists.
 #
 # Registered against every doctype rather than a named few, because which
-# doctypes are gated is configuration (`Permission Gate Settings`), not code.
+# doctypes are gated is configuration (a tick in the Role Permission Manager), not code.
 # Both hooks can only deny, and both answer a cached dict lookup for doctypes
 # nobody has gated.
 permission_query_conditions = {
@@ -382,3 +382,7 @@ extend_doctype_class = {
 	"Material Request": ["tbs_commons.procurement.budget.BudgetMaterialRequestMixin"],
 }
 doctype_js = {"Material Request": "public/js/material_request_budget.js"}
+
+# The gate checkbox is drawn next to "Only if Creator" rather than among the
+# rights, because it scopes rows rather than granting a right.
+page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
