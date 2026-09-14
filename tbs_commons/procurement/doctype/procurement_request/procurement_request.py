@@ -1,6 +1,3 @@
-# Copyright (c) 2026, Peter and contributors
-# For license information, please see license.txt
-
 """A request to buy something, raised and approved before any stock document exists.
 
 A Material Request is a stock document. Submitting one moves `requested_qty` on

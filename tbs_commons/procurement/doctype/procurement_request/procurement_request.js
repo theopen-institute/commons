@@ -1,5 +1,3 @@
-// Copyright (c) 2026, Peter and contributors
-// For license information, please see license.txt
 
 const MAKE_MATERIAL_REQUEST =
 	"tbs_commons.procurement.doctype.procurement_request.procurement_request.make_material_request";

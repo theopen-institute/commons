@@ -190,7 +190,6 @@ def sync_app() -> None:
 	Field renames run between creating the new Custom Fields and dropping the
 	retired ones, which is the only moment both sides of a rename exist.
 	"""
-	_remove_legacy_icon()
 	sync_custom_fields()
 	migrate_renamed_custom_fields()
 	remove_obsolete_custom_fields()
@@ -317,20 +316,3 @@ def sync_procurement_workflow() -> None:
 	workflow.set("states", [{k: v for k, v in state.items() if k != "style"} for state in WORKFLOW_STATES])
 	workflow.set("transitions", list(WORKFLOW_TRANSITIONS))
 	workflow.save(ignore_permissions=True)
-
-
-def _remove_legacy_icon() -> None:
-	"""Drop the duplicate app-title icon, if Frappe has seeded one.
-
-	The real icon ships as a file in `tbs_commons/desktop_icon/`; this only
-	removes the extra. Deleting it clears the icon cache via `on_trash`.
-	"""
-	if not frappe.db.exists("Desktop Icon", LEGACY_ICON_LABEL):
-		return
-
-	# Only if it is the one Frappe made for this app -- a user-made icon that
-	# happens to share the label is theirs, not ours to delete.
-	if frappe.db.get_value("Desktop Icon", LEGACY_ICON_LABEL, "app") != APP:
-		return
-
-	frappe.delete_doc("Desktop Icon", LEGACY_ICON_LABEL, ignore_permissions=True, force=True)

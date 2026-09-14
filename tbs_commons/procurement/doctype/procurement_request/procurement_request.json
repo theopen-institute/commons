@@ -195,6 +195,7 @@
    "in_standard_filter": 1,
    "label": "Status",
    "no_copy": 1,
+   "options": "\nDraft\nPending\nUnder Review\nRejected\nApproved\nCompleted\nCanceled",
    "reqd": 1
   },
   {
@@ -250,13 +251,8 @@
  "icon": "fa fa-shopping-cart",
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
- "links": [
-  {
-   "link_doctype": "Material Request",
-   "link_fieldname": "procurement_request"
-  }
- ],
- "modified": "2026-09-14 20:21:34.447415",
+ "links": [],
+ "modified": "2026-09-14 20:39:28.249517",
  "modified_by": "pgraif@gmail.com",
  "module": "Procurement",
  "name": "Procurement Request",

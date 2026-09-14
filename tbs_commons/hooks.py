@@ -14,35 +14,11 @@ use_json_request_body = True
 
 # `Procurement Request` links to Item, UOM, Company and Supplier, and hands over
 # to Material Request, so the doctypes cannot migrate without ERPNext present.
-required_apps = ["erpnext"]
+required_apps = ["erpnext", "hrms"]
 
 # Where the SPA lives. The two apps below are sections of one bundle served
 # under this prefix, so the route is written once.
 app_home = "/tbs_commons"
-
-# Three tiles, not one: the apps screen renders an entry per item here, so one
-# Frappe app can present itself as several. Employee records, leave and
-# procurement are separate jobs for separate people — the directory gets its own
-# tile, icon and permission check, and the two request kinds share one, where the
-# SPA gives each its own labelled section in the sidebar.
-add_to_apps_screen = [
-	{
-		"name": "tbs_commons-employees",
-		"logo": "/assets/tbs_commons/images/tbs_commons-employees-logo.svg",
-		"title": "Employees",
-		"route": f"{app_home}/employees",
-		"has_permission": "tbs_commons.api.check_app_permission",
-	},
-	{
-		"name": "tbs_commons-requests",
-		"logo": "/assets/tbs_commons/images/tbs_commons-procurement-logo.svg",
-		"title": "Requests",
-		# Not a section route: `/requests` redirects to whichever of Leave and
-		# Procurement this user can open, so the tile works for either alone.
-		"route": f"{app_home}/requests",
-		"has_permission": "tbs_commons.api.check_requests_permission",
-	},
-]
 
 # The SPA owns its own history, so every path under /tbs_commons has to resolve to
 # the one built page (tbs_commons/www/tbs_commons.html) rather than 404 on a deep link
