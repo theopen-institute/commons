@@ -42,43 +42,32 @@ every `/tbs_commons/*` path at.
 
 ## Two apps, one bundle
 
-The desk shows two icons — **TBS Employees** (`/tbs_commons/employees`) and **TBS
-Leave** (`/tbs_commons/leave`). They are one Vite bundle under one route prefix;
-what makes them feel separate is that every route declares which app it
-belongs to (`meta.app`), and `AppSidebar` renders only that app's navigation.
-The only way across is the switcher in the sidebar header, which lists just the
-apps the user can actually open.
+The desk shows one icon, **TBS**, and behind it the bundle is two sections:
+**Employees** (`/employees`) and **Requests** (`/requests`, which holds both
+leave and procurement). They are one Vite bundle under one route prefix; what
+makes them feel separate is that every route declares which section it belongs
+to (`meta.app`), and `AppSidebar` renders only that section's navigation. The
+only way across is the switcher in the sidebar header, which lists just the
+sections the user can actually open.
 
 Adding a third means: an entry in `src/data/apps.ts`, `meta.app` on its routes,
-a branch in `AppSidebar`, an `add_to_apps_screen` entry, and an icon in
-`tbs_commons/install.py`.
+and a branch in `AppSidebar`.
 
 ### How the desk icons work
 
-This is less obvious than it looks, and the hook alone is not enough:
+The desk renders **`Desktop Icon` documents**, not a hook. This app ships one as
+a file, `tbs_commons/desktop_icon/tbs.json`, which `frappe.model.sync` imports on
+every migrate because `desktop_icon` is one of its `app_level_folders`. Editing
+that file and migrating is the whole workflow -- `install.py` maintains no icons,
+and there is no `add_to_apps_screen` entry to keep in step with it.
 
-- The desk renders **`Desktop Icon` documents**, not the `add_to_apps_screen`
-  hook. Frappe seeds one per app at *site install* from the first hook entry
-  and never revisits it, so changing a title or route in `hooks.py` does
-  nothing on an existing site.
-- `tbs_commons/install.py` therefore maintains the two icons itself, from
-  `after_install` **and** `after_migrate`, so `bench migrate` picks up changes.
-  It is idempotent, and it preserves a user's `hidden` / `idx` on an icon that
-  already exists.
-- `/apps` redirects to `/desk` in v16+; the standalone apps screen is gone.
-- Frappe gates *every* icon belonging to an app with the **first** hook entry's
-  `has_permission`, so `tbs_commons.api.check_app_permission` is deliberately the
-  union — read on Employee *or* on Leave Application. A narrower check there
-  would hide the Leave icon from someone who can only do leave. Each page still
-  gates itself.
+That file is also why the icon is not built at runtime any more: migrate's orphan
+sweep drops any `standard` icon with no backing file, so an icon created from
+`after_migrate` was deleted and recreated once per migrate.
 
-Clicking an icon would also open a **new tab**: the desk builds every External
-icon's href as `origin + link` and then sets `target="_blank"` on anything
-starting with `http`, which that prefix guarantees.
-`tbs_commons/public/js/tbs_commons.bundle.js` (loaded on the desk via `app_include_js`)
-intercepts clicks on this app's own icons and navigates in place, while leaving
-modified and middle clicks — and every other app's icons — alone. Rebuild it
-with `bench build --app tbs_commons`.
+The icon carries no `roles`, so the desk shows it to everyone and each page gates
+itself -- the sidebar hides a section this user cannot read, and every endpoint
+refuses what they may not see.
 
 After changing icons, run `bench --site <site> migrate`. The icon set is cached
 per user; the sync clears that cache, but a browser also caches boot data, so a
@@ -124,7 +113,7 @@ Leave fails at submit, not at request time, if these are missing:
 ## Permissions
 
 `src/data/session.ts` fetches `tbs_commons.api.get_employee_permissions` and
-`src/data/leave.ts` fetches `tbs_commons.api.get_leave_permissions`; the UI hides or
+`src/data/leave.ts` fetches `tbs_commons.leave.api.get_leave_permissions`; the UI hides or
 disables what the user can't do. That is a courtesy, not the boundary: every
 read and write goes through the REST API, which applies the same checks
 server-side.

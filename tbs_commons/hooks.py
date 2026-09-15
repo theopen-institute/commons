@@ -28,14 +28,14 @@ website_route_rules = [
 ]
 
 # The desk icon ships as a file under `tbs_commons/desktop_icon/` and is imported by
-# migrate's own sync. These hooks only do what that sync cannot: Custom Fields, the
-# procurement Workflow, and clearing the duplicate app-title icon Frappe seeds.
+# migrate's own sync. These hooks only do what that sync cannot, and each entry is
+# the install module of the section that owns it -- nothing here is app-wide.
 after_install = [
-	"tbs_commons.install.after_install",
+	"tbs_commons.procurement.install.sync_procurement",
 	"tbs_commons.safer_permissions.install.sync_gate_field",
 ]
 after_migrate = [
-	"tbs_commons.install.after_migrate",
+	"tbs_commons.procurement.install.sync_procurement",
 	"tbs_commons.safer_permissions.install.sync_gate_field",
 ]
 
@@ -43,7 +43,7 @@ after_migrate = [
 # been installed somewhere, and `Module Def` records are only written at
 # install. Without one, migrate cannot import a doctype that names the module
 # -- so this has to run before the doctype sync, not after it.
-before_migrate = "tbs_commons.install.before_migrate"
+before_migrate = "tbs_commons.install.sync_module_defs"
 
 # The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
 # Manage Dock on a developer-mode site and press Export to App, and it is written to

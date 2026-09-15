@@ -17,7 +17,7 @@ import unittest
 import frappe
 
 from tbs_commons.safer_permissions.install import sync_gate_field
-from tbs_commons.safer_permissions.permissions import GATE
+from tbs_commons.safer_permissions.permissions import GATE, clear_gated_doctypes
 
 DOCTYPE = "Branch"
 REQUIRED = "Branch"
@@ -72,12 +72,19 @@ class TestPermissionGate(unittest.TestCase):
 	def setUp(self):
 		frappe.db.savepoint("permission_gate_test")
 		frappe.set_user("Administrator")
+		# `gated_doctypes` memoises onto `frappe.local`, which is a per-request
+		# store everywhere but here: one test process serves every module, so a
+		# memo taken before `setUpClass` ticked the gate would say this doctype is
+		# ungated and the first test would see rows the gate exists to withhold.
+		clear_gated_doctypes()
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
 		_drop_user_permissions()
 		frappe.db.rollback(save_point="permission_gate_test")
 		frappe.clear_cache()
+		# The gate is retired after this class, so leave no memo asserting it.
+		clear_gated_doctypes()
 
 	def visible(self, user):
 		"""Which of the two fixtures this user can list."""
@@ -154,7 +161,7 @@ class TestPermissionGate(unittest.TestCase):
 
 	def test_the_gate_is_configured_entirely_from_the_permission_row(self):
 		"""No second document: the tick on the role is the whole configuration."""
-		from tbs_commons.safer_permissions.permissions import clear_gated_doctypes, gated_doctypes
+		from tbs_commons.safer_permissions.permissions import gated_doctypes
 
 		clear_gated_doctypes()
 		self.assertIn(DOCTYPE, gated_doctypes())
@@ -162,7 +169,7 @@ class TestPermissionGate(unittest.TestCase):
 
 	def test_a_doctype_nobody_ticked_is_untouched(self):
 		"""The fast path, and the safety: gating is opt-in per role row."""
-		from tbs_commons.safer_permissions.permissions import blocked_scope, clear_gated_doctypes
+		from tbs_commons.safer_permissions.permissions import blocked_scope
 
 		clear_gated_doctypes()
 		self.assertIsNone(blocked_scope(GATED_USER, "ToDo"))

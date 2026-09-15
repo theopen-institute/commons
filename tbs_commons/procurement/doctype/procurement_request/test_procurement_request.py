@@ -6,7 +6,7 @@ from frappe.model.workflow import apply_workflow
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, today
 
-from tbs_commons.install import PROCUREMENT_WORKFLOW, sync_procurement_workflow
+from tbs_commons.procurement.install import PROCUREMENT_WORKFLOW, sync_procurement_workflow
 from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
 	DOCTYPE,
 	make_material_request,
@@ -186,11 +186,13 @@ class TestProcurementRequest(ProcurementTestCase):
 			]
 		)
 
-		self.assertEqual(request.total_qty, 5)
-		self.assertEqual(request.total_estimated_cost, 70)
+		# `total_estimated_cost` is a virtual field backed by an `options` expression,
+		# which `get_valid_dict` evaluates -- so it answers to `as_dict` and not to
+		# attribute access, where the DocField reads back as an empty column.
+		self.assertEqual(request.as_dict().total_estimated_cost, 70)
 
 	def test_a_verified_rate_takes_over_from_the_estimate_in_the_total(self):
-		"""The total is stored, so it restates itself on save rather than on read."""
+		"""The total is computed on read, so a changed rate shows up without a resave."""
 		request = self.make_request(
 			[
 				{"item_name": "Desk lamp", "qty": 3, "uom": "Nos", "estimated_rate": 20},
@@ -200,18 +202,12 @@ class TestProcurementRequest(ProcurementTestCase):
 		request.items[0].verified_rate = 25
 		request.save()
 		request.reload()
-		self.assertEqual(request.total_estimated_cost, 85)
 		self.assertEqual(request.as_dict().total_estimated_cost, 85)
-
-		# A list query can read it now, which is the point of storing it.
-		self.assertEqual(
-			frappe.db.get_value(DOCTYPE, request.name, "total_estimated_cost"), 85
-		)
 
 		request.items[0].verified_rate = 0
 		request.save()
 		request.reload()
-		self.assertEqual(request.total_estimated_cost, 70)
+		self.assertEqual(request.as_dict().total_estimated_cost, 70)
 
 	def test_submitting_approves_when_no_workflow_is_attached(self):
 		request = self.make_request(
@@ -245,13 +241,11 @@ class TestProcurementRequest(ProcurementTestCase):
 
 		request.reload()
 		self.assertEqual(request.items[0].committed_qty, 6)
-		self.assertEqual(request.per_ordered, 100)
 
 		# Cancelling the stock document hands the request back to the approver.
 		material_request.cancel()
 		request.reload()
 		self.assertEqual(request.items[0].committed_qty, 0)
-		self.assertEqual(request.per_ordered, 0)
 		self.assertEqual(request.status, "Approved")
 
 	def test_only_the_chosen_rows_are_carried_over(self):
@@ -281,7 +275,6 @@ class TestProcurementRequest(ProcurementTestCase):
 		request.reload()
 		self.assertEqual(request.items[0].committed_qty, 4)
 		self.assertEqual(request.items[0].uncommitted_qty, 6)
-		self.assertEqual(request.per_ordered, 40)
 		self.assertEqual(request.status, "Approved")
 
 		# The second instalment carries the remainder, and nothing more.

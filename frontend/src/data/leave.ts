@@ -57,7 +57,7 @@ const LIST_FIELDS = [
 ] as const
 
 const myEmployeeCall = useCall<MyEmployee | null>({
-  url: '/api/v2/method/tbs_commons.api.get_my_employee',
+  url: '/api/v2/method/tbs_commons.leave.api.get_my_employee',
 })
 
 /** The Employee record behind the session user — `null` when none is linked. */
@@ -65,7 +65,7 @@ export const myEmployee = computed(() => myEmployeeCall.data ?? null)
 export const myEmployeeLoaded = computed(() => myEmployeeCall.isFinished)
 
 const leavePermissionsCall = useCall<LeavePermissions>({
-  url: '/api/v2/method/tbs_commons.api.get_leave_permissions',
+  url: '/api/v2/method/tbs_commons.leave.api.get_leave_permissions',
 })
 
 const NO_LEAVE_PERMISSIONS: LeavePermissions = {
@@ -184,7 +184,7 @@ export function useLeaveDecision() {
     { name: string; status: string; docstatus: number },
     { name: string; decision: 'Approved' | 'Rejected' }
   >({
-    url: '/api/v2/method/tbs_commons.api.decide_leave_application',
+    url: '/api/v2/method/tbs_commons.leave.api.decide_leave_application',
     method: 'POST',
     immediate: false,
   })

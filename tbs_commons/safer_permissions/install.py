@@ -26,11 +26,7 @@ def sync_gate_field() -> None:
 	_bust_permission_manager_cache()
 
 	for target in GATE_FIELD_TARGETS:
-		if existing := frappe.db.exists("Custom Field", {"dt": target, "fieldname": GATE}):
-			# An earlier version scoped this field to the doctypes a settings
-			# document listed. It applies everywhere now, so drop the leftover
-			# condition rather than leave the checkbox hidden.
-			frappe.db.set_value("Custom Field", existing, "depends_on", "")
+		if frappe.db.exists("Custom Field", {"dt": target, "fieldname": GATE}):
 			continue
 
 		create_custom_field(

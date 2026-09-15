@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
-from tbs_commons import api
+from tbs_commons.procurement import api
 
 
 def request(name, docstatus=0, amended_from=None):
@@ -137,3 +137,25 @@ class TestProcurementAmendments(TestCase):
 				{"requested_by": "requester@example.com"},
 			)
 			frappe.get_all.assert_not_called()
+
+	def test_list_rows_carry_the_virtual_total_the_list_query_drops(self):
+		"""`get_list` omits a virtual field silently, so the row is filled in after."""
+		row = api.frappe._dict(name="PR-1")
+		doc = SimpleNamespace(
+			as_dict=lambda: {
+				"approver_name": "Ann Approver",
+				"requester_name": "Bob Buyer",
+				"total_estimated_cost": 70.0,
+			}
+		)
+		with (
+			patch.object(api.frappe, "get_doc", return_value=doc),
+			patch.object(api, "_procurement_workflow", return_value=None),
+			patch.object(api, "_can_edit_procurement_request", return_value=True),
+			patch("tbs_commons.procurement.budget.request_summary", return_value=None),
+		):
+			api._add_procurement_costs([row])
+
+		self.assertEqual(row.total_estimated_cost, 70.0)
+		self.assertEqual(row.approver_name, "Ann Approver")
+		self.assertEqual(row.requester_name, "Bob Buyer")

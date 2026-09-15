@@ -14,7 +14,7 @@ estimated cost fields exist for the approver and are posted nowhere.
 
 Very little of that is enforced here, because very little of it has to be. The
 DocType JSON carries the defaults, the `fetch_from` links into the item master
-and the mandatory and non-negative checks. The Workflow in `tbs_commons.install`
+and the mandatory and non-negative checks. The Workflow in `tbs_commons.procurement.install`
 carries who may do what and when -- including the rule that every row must have
 an `item_code` before a request can go for review, so an approved request has
 no uncoded row unless a site has switched the Workflow off. Frappe itself
@@ -40,11 +40,12 @@ is deliberately the only place they do. A request can be converted repeatedly,
 so a long list can be bought in instalments.
 
 How much of a row has been ordered is never stored. `committed_qty` and
-`uncommitted_qty` on the rows, and `per_ordered` here, are virtual fields
-counted from the submitted Material Requests that point back at them: they
-depend on other documents, so a stored copy could drift. The two totals are
-stored, because they depend on nothing but this request's own rows -- which
-Frappe freezes the moment it is approved.
+`uncommitted_qty` on the rows are virtual fields counted from the submitted
+Material Requests that point back at them: they depend on other documents, so a
+stored copy could drift. `total_estimated_cost` is virtual as well, for the
+opposite reason -- it depends on nothing but this request's own rows, so summing
+it on read is cheaper than keeping a column in step with them. Being virtual, it
+answers to `as_dict()` and not to attribute access, and a list query drops it.
 """
 
 import frappe
@@ -52,7 +53,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
 from frappe.query_builder.functions import Sum
-from frappe.utils import flt
+from frappe.utils import flt, getdate
 
 DOCTYPE = "Procurement Request"
 
@@ -86,6 +87,43 @@ class ProcurementRequest(Document):
 		total_estimated_cost: DF.Currency
 		transaction_date: DF.Date
 	# end: auto-generated types
+
+	def validate(self) -> None:
+		self.validate_quantities()
+		self.validate_schedule_date()
+
+	def validate_quantities(self) -> None:
+		"""Refuse a row that asks for nothing.
+
+		The DocField covers the rest: `reqd` stops an empty quantity and
+		`non_negative` stops a negative one. Neither catches zero -- Frappe reads a
+		Float's content as the string "0.0", which is truthy, and zero is not
+		negative. Tested for equality rather than `<= 0` so a negative quantity
+		still falls through to `non_negative` and raises `NonNegativeError`,
+		which is the doctype's answer and not this one.
+		"""
+		for row in self.items:
+			if flt(row.qty) == 0:
+				frappe.throw(
+					_("Row {0}: quantity must be greater than zero.").format(row.idx),
+					frappe.ValidationError,
+				)
+
+	def validate_schedule_date(self) -> None:
+		"""Refuse a required-by date that precedes the request itself.
+
+		A cross-field comparison, so there is nowhere in the DocType JSON to
+		declare it.
+		"""
+		if not self.schedule_date or not self.transaction_date:
+			return
+		if getdate(self.schedule_date) < getdate(self.transaction_date):
+			frappe.throw(
+				_("Required by cannot be before the request date {0}.").format(
+					frappe.utils.formatdate(self.transaction_date)
+				),
+				frappe.ValidationError,
+			)
 
 	def onload(self) -> None:
 		# `committed_qty` and `uncommitted_qty` are virtual, and Frappe resolves a

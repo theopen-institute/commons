@@ -376,25 +376,6 @@ class TestDepartmentBudget(unittest.TestCase):
 		# sides together.
 		self.assertEqual(budget.provisional_requests(self.budget.reload()), (200, 0))
 
-	# --- historical attribution ---------------------------------------------
-
-	def test_historical_attribution_is_idempotent(self):
-		doc = self.mr(rate=400, department=False, submit=False)
-		doc.db_set("docstatus", 1)
-		self.assertEqual(self.used(), 0)
-		refs = [{"doctype": "Material Request", "name": doc.name, "department": self.department}]
-		budget.register_existing_documents(refs)
-		budget.register_existing_documents(refs)
-		self.assertEqual(self.used(), 400)
-
-	def test_historical_attribution_cannot_overrun_the_allocation(self):
-		doc = self.mr(rate=4000, department=False, submit=False)
-		doc.db_set("docstatus", 1)
-		with self.assertRaises(frappe.ValidationError):
-			budget.register_existing_documents(
-				[{"doctype": "Material Request", "name": doc.name, "department": self.department}]
-			)
-
 	# --- purchasing independence -------------------------------------------
 
 	def test_po_and_pi_cannot_change_budget(self):

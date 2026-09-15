@@ -122,7 +122,7 @@ import {
 } from '@/data/procurement'
 import { withScheme } from '@/data/format'
 
-const APPROVER_QUERY = 'tbs_commons.api.get_procurement_approvers'
+const APPROVER_QUERY = 'tbs_commons.procurement.api.get_procurement_approvers'
 
 const props = defineProps<{
 	request?: ProcurementRequestRow | null

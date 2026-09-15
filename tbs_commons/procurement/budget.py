@@ -499,43 +499,6 @@ def get_material_request_budget(name: str) -> dict | None:
 	)
 
 
-def register_existing_documents(documents):
-	"""Attribute historical submitted Material Requests to a department.
-
-	Attribution is all there is to import: once a request carries a budget
-	department, whichever allocation covers its date counts it.
-	"""
-	frappe.only_for(["Accounts Manager", "System Manager"])
-	references = frappe.parse_json(documents)
-	affected = set()
-	for reference in references:
-		if reference["doctype"] != "Material Request":
-			frappe.throw(_("Only Material Requests affect department budget usage."))
-		doc = frappe.get_doc("Material Request", reference["name"])
-		if doc.docstatus != 1 or doc.material_request_type not in MR_TYPES:
-			frappe.throw(_("Only submitted Purchase or Material Issue requests can be imported."))
-		department = reference.get("department") or doc.get("department")
-		if not department:
-			frappe.throw(
-				_("Material Request {0} has no department. Supply one to attribute it.").format(doc.name)
-			)
-		if doc.get("department") and doc.department != department:
-			frappe.throw(_("Existing Material Request department does not match the import."))
-		name = find_budget(doc.company, department, doc.transaction_date)
-		frappe.db.set_value(
-			"Material Request", doc.name, "department", department, update_modified=False
-		)
-		persist_amounts(doc.name)
-		affected.add(name)
-	for name in sorted(affected):
-		current = lock_budget(name)
-		if remaining(current, lock=True) < 0:
-			frappe.throw(
-				_("Submitted Material Requests exceed the allocation for {0}.").format(current.department)
-			)
-	return {"registered": len(references)}
-
-
 class BudgetMaterialRequestMixin:
 	def update_item_rates(self):
 		# A later price-list refresh must never revalue a submitted MR. This is not
