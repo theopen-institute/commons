@@ -524,26 +524,32 @@ def get_procurement_request_transitions(requests: str) -> dict[str, list[dict]]:
 
 @frappe.whitelist()
 def get_procurement_workflow_queue(decided: int = 0) -> dict:
-	"""Requests represented by this user's open or completed Workflow Actions."""
+	"""The requests waiting on this user, or the ones they have already decided."""
 	return _procurement_workflow_queue(bool(frappe.utils.cint(decided)))
 
 
 def _procurement_workflow_queue(decided: bool) -> dict:
-	filters = {"reference_doctype": PROCUREMENT_REQUEST}
-	if decided:
-		filters.update({"status": "Completed", "completed_by": frappe.session.user})
-		actions = frappe.get_all("Workflow Action", filters=filters, fields=["reference_name"])
-	else:
-		filters["status"] = "Open"
-		actions = frappe.get_list(
-			"Workflow Action", filters=filters, fields=["reference_name"], limit_page_length=0
-		)
-
-	names = list(dict.fromkeys(row.reference_name for row in actions if row.reference_name))
-	if not names:
-		return {"requests": [], "actions": {}}
 	workflow = _procurement_workflow()
 	state_field = workflow.workflow_state_field if workflow else "status"
+
+	if decided:
+		# What this user did is recorded nowhere else, and `completed_by` names
+		# them, so a Workflow Action answers the History tab exactly.
+		actions = frappe.get_all(
+			"Workflow Action",
+			filters={
+				"reference_doctype": PROCUREMENT_REQUEST,
+				"status": "Completed",
+				"completed_by": frappe.session.user,
+			},
+			fields=["reference_name"],
+		)
+		names = list(dict.fromkeys(row.reference_name for row in actions if row.reference_name))
+	else:
+		names = _requests_awaiting_user(workflow, state_field)
+
+	if not names:
+		return {"requests": [], "actions": {}}
 	fields = [
 		"name", "title", "company", "currency", "transaction_date", "schedule_date",
 		"requested_by", "department", "approver",
@@ -566,6 +572,41 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 	if not decided:
 		requests = [row for row in requests if available.get(row.name)]
 	return {"requests": requests, "actions": available}
+
+
+def _requests_awaiting_user(workflow, state_field: str) -> list[str]:
+	"""Readable requests parked in a state one of this user's roles can move.
+
+	Not the open `Workflow Action` rows, which is how Frappe itself answers
+	"what is waiting on me". A Workflow Action records the *roles* a transition
+	is open to, and this workflow decides by *user*: the `Expense Approver`
+	transitions out of `Under Review` are conditioned on `doc.approver ==
+	frappe.session.user`. Frappe evaluates that condition in
+	`process_workflow_actions`, which runs in the session of whoever made the
+	*previous* transition -- the buyer who sent the request for review, never
+	the approver it names. So the condition is false at the moment the action is
+	written, `Expense Approver` is dropped from its `permitted_roles`, and the
+	one person entitled to decide is the one person the queue never shows it to.
+
+	Roles and states are read off the workflow rather than named here, so a
+	transition added or re-pointed later does not have to be remembered twice.
+	Holding the role only makes a request a candidate: which of these rows this
+	user may actually act on is settled afterwards by `get_transitions`, in
+	*their* session, where that condition means what it says.
+	"""
+	if not workflow:
+		return []
+	roles = set(frappe.get_roles())
+	states = {t.state for t in workflow.transitions if t.allowed in roles}
+	if not states:
+		return []
+	return frappe.get_list(
+		PROCUREMENT_REQUEST,
+		filters={state_field: ["in", sorted(states)]},
+		pluck="name",
+		order_by="modified desc",
+		limit_page_length=0,
+	)
 
 
 def _add_procurement_costs(requests: list[dict]) -> None:

@@ -27,12 +27,11 @@ export interface DepartmentBudgetSummary {
   name?: string
   fiscal_year?: string
   currency?: string
-  budget?: number
-  used?: number
-  provisional?: number
-  available?: number
-  request_amount?: number
-  projected_available?: number
+  annual?: number
+  spent?: number
+  committed?: number
+  remaining?: number
+  open_requests?: number
 }
 
 export interface ProcurementRequestRow {

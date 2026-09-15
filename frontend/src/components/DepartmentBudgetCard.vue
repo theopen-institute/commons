@@ -10,8 +10,8 @@
           <dd class="font-medium text-ink-gray-9">{{ formatCurrency(entry.value ?? 0, summary.currency) }}</dd>
         </div>
       </dl>
-      <p v-if="(summary.projected_available ?? 0) < 0" class="mt-2 text-ink-red-4">
-        Provisional shortfall: {{ formatCurrency(-(summary.projected_available ?? 0), summary.currency) }}. This is a forecast; the hard limit is checked on Material Request submission.
+      <p v-if="(summary.remaining ?? 0) < 0" class="mt-2 text-ink-red-4">
+        Over budget by {{ formatCurrency(-(summary.remaining ?? 0), summary.currency) }}.
       </p>
       <details v-if="requestName" class="mt-2" @toggle="loadDocuments">
         <summary class="cursor-pointer text-ink-gray-7">Submitted Material Requests</summary>
@@ -25,7 +25,7 @@
         </ul>
         <p class="mt-1 text-ink-gray-5">Only submitted Material Requests you can read are listed.</p>
       </details>
-      <p class="mt-2 text-ink-gray-5">MR quantity × submitted rate in company currency. Outstanding Procurement Requests are provisional only.</p>
+      <p class="mt-2 text-ink-gray-5">Open requests are not yet approved, so they are not subtracted from what remains.</p>
     </template>
   </div>
 </template>
@@ -43,11 +43,10 @@ function loadDocuments(event: Event) {
   }
 }
 const entries = computed(() => [
-  { label: 'Annual budget', value: props.summary.budget },
-  { label: 'Submitted MR usage', value: props.summary.used },
-  { label: 'Outstanding procurement (provisional)', value: props.summary.provisional },
-  { label: 'Available', value: props.summary.available },
-  { label: 'This request still outstanding', value: props.summary.request_amount },
-  { label: 'Projected available (including this request)', value: props.summary.projected_available },
+  { label: 'Annual budget', value: props.summary.annual },
+  { label: 'Spent', value: props.summary.spent },
+  { label: 'Committed', value: props.summary.committed },
+  { label: 'Remaining', value: props.summary.remaining },
+  { label: 'Open requests', value: props.summary.open_requests },
 ])
 </script>

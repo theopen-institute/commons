@@ -32,15 +32,28 @@ cannot drift from the documents it describes, so there is nothing to reconcile a
 no import step beyond attribution; and no Material Request links to a Department
 Budget, so restating one moves no data and rewrites no request.
 
-- **Allocation** = the budget's annual amount.
-- **Used** = quantity × rate over submitted Purchase/Material Issue requests.
-- **Available** = allocation − used. This is the hard backend limit.
-- **Outstanding procurement (provisional)** = estimated value not yet covered by
-  submitted requests, across Pending, Under Review, Approved and Completed
-  Procurement Requests in the department and fiscal year.
-- **Projected available** = available − provisional, including the displayed
-  request once if it is still a draft. Other users' drafts, rejections and
-  cancellations are excluded.
+The readout on the approvals list and on the Material Request form is five
+lines, and only the first four are arithmetic:
+
+- **Annual budget** = the allocation's annual amount.
+- **Spent** = submitted Purchase/Material Issue requests that have been
+  **Received** or **Issued**.
+- **Committed** = every other submitted request — ordered but not yet delivered,
+  including Stopped ones — plus the estimated value of **approved** Procurement
+  Requests that no Material Request covers yet.
+- **Remaining** = annual budget − spent − committed.
+- **Open requests** = the estimated value of Procurement Requests still awaiting
+  a decision — Pending or Under Review. Shown beside the subtraction, never
+  inside it: nobody has decided to spend them. A request its author has not sent
+  to procurement yet, and a rejected one, are not counted at all.
+
+Spent and committed never count the same money twice. Once a Material Request
+covers part of a Procurement Request, that part is counted at the Material
+Request's own rate and drops out of the estimate.
+
+The hard backend limit is not one of these lines. It is allocation − *all*
+submitted requests, spent and committed together, and it is checked on Material
+Request submission.
 
 Purchase Orders, Purchase Receipts, Purchase Invoices, credit notes, Stock Entries,
 payments, GL postings and stock valuation changes have **no effect**. Other request
@@ -60,8 +73,8 @@ Submitted rates, quantities, date, type, department and source references cannot
 be edited, and a price-list refresh will not revalue them.
 
 Procurement Request approval creates no reservation and can proceed without a
-budget or with negative projected availability. Material Request submission is the
-point at which a submitted allocation and available funds are required.
+budget or with nothing remaining. Material Request submission is the point at
+which a submitted allocation and available funds are required.
 
 ## Rates, currency and attribution
 
@@ -150,7 +163,7 @@ of this.
 
 ## Verification
 
-- `python -m unittest tbs_commons.procurement.test_budget_math` — provisional estimate arithmetic.
+- `python -m unittest tbs_commons.procurement.test_budget_math` — outstanding estimate arithmetic.
 - `bench --site SITE execute tbs_commons.procurement.test_budget_integration.run` —
   real Purchase and Material Issue requests, hard limits, cancellation, budget
   amendment, partial fulfilment, UOMs, immutability, historical attribution and

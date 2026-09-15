@@ -12,9 +12,9 @@ frappe.ui.form.on("Material Request", {
 				}
 				const money = (value) => format_currency(value, budget.currency);
 				frm.dashboard.set_headline_alert(
-					__("Budget: {0} · Submitted MR usage: {1} · Available: {2} · This MR: {3}",
-						[budget.budget, budget.used, budget.available, budget.amount].map(money)),
-					frm.doc.docstatus === 0 && budget.amount > budget.available ? "orange" : "blue"
+					__("Annual budget: {0} · Spent: {1} · Committed: {2} · Remaining: {3} · Open requests: {4}",
+						[budget.annual, budget.spent, budget.committed, budget.remaining, budget.open_requests].map(money)),
+					frm.doc.docstatus === 0 && budget.amount > budget.remaining ? "orange" : "blue"
 				);
 			},
 		});

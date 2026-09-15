@@ -1,6 +1,7 @@
 
 const MAKE_MATERIAL_REQUEST =
 	"tbs_commons.procurement.doctype.procurement_request.procurement_request.make_material_request";
+const GET_CONVERSION_FACTOR = "erpnext.stock.get_item_details.get_conversion_factor";
 
 frappe.ui.form.on("Procurement Request", {
 	setup(frm) {
@@ -39,6 +40,46 @@ frappe.ui.form.on("Procurement Request", {
 });
 
 frappe.ui.form.on("Procurement Request Item", {
+	async item_code(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		const item_code = row.item_code;
+
+		// Clearing the code leaves the row as the requester typed it: a row with
+		// no item is exactly the free-text line this doctype allows, and its
+		// quantity, UOM and prices are the only description of it there is.
+		if (!item_code) return;
+
+		const requested_uom = row.uom;
+		const requested_qty = flt(row.qty);
+		const requested_rate = flt(row.estimated_rate);
+
+		const item = (
+			await frappe.db.get_value("Item", item_code, ["valuation_rate", "stock_uom"])
+		).message;
+		if (!item || row.item_code !== item_code) return;
+
+		await frappe.model.set_value(cdt, cdn, "verified_rate", flt(item.valuation_rate));
+		await frappe.model.set_value(cdt, cdn, "uom", item.stock_uom);
+
+		if (!requested_uom || requested_uom === item.stock_uom) return;
+
+		// Stock units per the UOM that was asked for. An item with no conversion
+		// to the unit the requester used answers 1, which is also the answer for
+		// a unit that really is one stock unit -- either way the numbers below
+		// come out unchanged, so an unconvertible row keeps what was typed.
+		const { message } = await frappe.call({
+			method: GET_CONVERSION_FACTOR,
+			args: { item_code: item_code, uom: requested_uom },
+		});
+		const factor = flt(message && message.conversion_factor);
+		if (!factor || factor === 1 || row.item_code !== item_code) return;
+
+		// The same request said a different way: more of a smaller unit, each
+		// costing proportionally less, for the same quantity and the same money.
+		await frappe.model.set_value(cdt, cdn, "qty", requested_qty * factor);
+		await frappe.model.set_value(cdt, cdn, "estimated_rate", requested_rate / factor);
+	},
+
 	reference_url(frm, cdt, cdn) {
 		const link = with_scheme(locals[cdt][cdn].reference_url);
 		if (link !== locals[cdt][cdn].reference_url) {

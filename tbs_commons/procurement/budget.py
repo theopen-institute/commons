@@ -18,6 +18,10 @@ from tbs_commons.procurement.budget_math import number, outstanding_value
 
 BUDGET = "Department Budget"
 MR_TYPES = ("Purchase", "Material Issue")
+# A received or issued request is money gone; every other submitted one is money
+# the department has committed but still holds. `Stopped` counts as committed --
+# it is still charged to the allocation until someone cancels it.
+MR_DELIVERED = ("Received", "Issued")
 
 
 def budget_name(company, department, date, submitted_only=True):
@@ -72,7 +76,7 @@ def usage_rows(budget, lock=False):
 	what makes it see rows another transaction committed after this one's snapshot.
 	"""
 	return frappe.db.sql(
-		"""select i.name, i.parent, i.amount from `tabMaterial Request Item` i
+		"""select i.name, i.parent, i.amount, mr.status from `tabMaterial Request Item` i
 		inner join `tabMaterial Request` mr on mr.name=i.parent
 		where mr.docstatus=1 and mr.material_request_type in %(types)s
 		and mr.company=%(company)s and mr.department=%(department)s
@@ -95,6 +99,11 @@ def total(rows):
 
 def used_amount(budget, lock=False):
 	return total(usage_rows(budget, lock=lock))
+
+
+def spent_amount(rows):
+	"""The delivered half of the tally. The rest of it is still only committed."""
+	return total(row for row in rows if row.status in MR_DELIVERED)
 
 
 def remaining(budget, lock=False):
@@ -300,8 +309,19 @@ def enforce_allocation(current, doc):
 
 
 def provisional_requests(budget):
-	"""Sent/review/approved requests only; batch-read rows and their MR coverage."""
-	names = frappe.get_all(
+	"""Outstanding request value for this department and period, split by decision.
+
+	Approval is what submits a request, so `docstatus` 1 is spending the
+	department has committed to and a draft already with procurement or its
+	approver is only an open ask. Neither a request still being written nor a
+	rejected one counts at all, and a cancelled one has left the pipeline
+	altogether.
+
+	Outstanding, not total: whatever a request has already been ordered for is
+	counted by the Material Request tally instead, and counting both would spend
+	the allocation twice.
+	"""
+	requests = frappe.get_all(
 		"Procurement Request",
 		filters={
 			"company": budget.company,
@@ -310,16 +330,20 @@ def provisional_requests(budget):
 			"docstatus": ["<", 2],
 			"status": ["in", ["Pending", "Under Review", "Approved", "Completed"]],
 		},
-		pluck="name",
+		fields=["name", "docstatus"],
 	)
-	if not names:
-		return {}
+	if not requests:
+		return number(0), number(0)
+	names = [row.name for row in requests]
 	items = frappe.get_all(
 		"Procurement Request Item",
 		filters={"parent": ["in", names]},
 		fields=["name", "parent", "qty", "item_code", "uom", "verified_rate", "estimated_rate"],
 	)
-	return outstanding_values(names, items)
+	values = outstanding_values(names, items)
+	approved = {row.name for row in requests if row.docstatus == 1}
+	committed = sum((value for name, value in values.items() if name in approved), number(0))
+	return committed, sum(values.values(), number(0)) - committed
 
 
 def outstanding_values(names, items):
@@ -351,10 +375,6 @@ def outstanding_values(names, items):
 	return result
 
 
-def request_outstanding(doc):
-	return outstanding_values([doc.name], doc.items)[doc.name]
-
-
 def can_view_summary(doc):
 	frappe.has_permission(doc.doctype, "read", doc=doc, throw=True)
 	return bool(
@@ -372,10 +392,35 @@ def department_position(name, cache=None):
 	if cache is not None and name in cache:
 		return cache[name]
 	budget = frappe.get_doc(BUDGET, name)
-	position = (budget, used_amount(budget), provisional_requests(budget))
+	rows = usage_rows(budget)
+	spent = spent_amount(rows)
+	approved, open_requests = provisional_requests(budget)
+	# An undelivered Material Request and an approved request nobody has ordered
+	# against yet are the same kind of money: decided on, not yet gone.
+	position = (budget, spent, total(rows) - spent + approved, open_requests)
 	if cache is not None:
 		cache[name] = position
 	return position
+
+
+def budget_lines(budget, spent, committed, open_requests):
+	"""The readout itself: what was allocated, where it has gone, what is left.
+
+	Open requests sit outside the subtraction on purpose. Nobody has decided to
+	spend them, so they are context for the approver rather than a claim on the
+	allocation -- and a request its author has not sent anywhere yet is not even
+	that, so it is not counted at all.
+	"""
+	annual = number(budget.annual_amount)
+	return dict(
+		inactive=budget.docstatus != 1,
+		currency=budget.currency,
+		annual=float(annual),
+		spent=float(spent),
+		committed=float(committed),
+		remaining=float(annual - spent - committed),
+		open_requests=float(open_requests),
+	)
 
 
 def request_summary(doc, cache=None):
@@ -384,26 +429,13 @@ def request_summary(doc, cache=None):
 	name = budget_name(doc.company, doc.department, doc.transaction_date, submitted_only=False)
 	if not name:
 		return dict(missing=True, department=doc.department)
-	budget, used, provisional = department_position(name, cache)
-	available = number(budget.annual_amount) - used
-	outstanding = request_outstanding(doc) if doc.docstatus != 2 and doc.status != "Rejected" else number(0)
-	# Include the displayed draft once when previewing, but never in other users' pipeline totals.
-	projection = sum(provisional.values(), number(0)) + (
-		outstanding if doc.name not in provisional else number(0)
-	)
+	budget, *position = department_position(name, cache)
 	return dict(
 		missing=False,
-		inactive=budget.docstatus != 1,
 		name=name,
 		department=budget.department,
 		fiscal_year=budget.fiscal_year,
-		currency=budget.currency,
-		budget=float(number(budget.annual_amount)),
-		used=float(used),
-		available=float(available),
-		provisional=float(sum(provisional.values(), number(0))),
-		request_amount=float(outstanding),
-		projected_available=float(available - projection),
+		**budget_lines(budget, *position),
 	)
 
 
@@ -446,16 +478,13 @@ def get_material_request_budget(name: str) -> dict | None:
 	name = budget_name(doc.company, department, doc.transaction_date, submitted_only=False)
 	if not name:
 		return dict(missing=True)
-	budget = frappe.get_doc(BUDGET, name)
-	used = used_amount(budget)
+	budget, *position = department_position(name)
 	return dict(
 		missing=False,
-		inactive=budget.docstatus != 1,
-		currency=budget.currency,
-		budget=float(number(budget.annual_amount)),
-		used=float(used),
-		available=float(number(budget.annual_amount) - used),
+		# Not a line of the readout: the form colours its banner with it, so a
+		# draft that would not fit what is left says so before it is submitted.
 		amount=float(sum((number(row.qty) * number(row.rate) for row in doc.items), number(0))),
+		**budget_lines(budget, *position),
 	)
 
 

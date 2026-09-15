@@ -94,6 +94,11 @@ class TestDepartmentBudget(unittest.TestCase):
 	def used(self):
 		return budget.used_amount(self.budget)
 
+	def deliver(self, doc):
+		"""What a receipt or an issue leaves behind, without the stock documents."""
+		doc.db_set("status", "Received" if doc.material_request_type == "Purchase" else "Issued")
+		return doc
+
 	def request(self, amount=400, approve=True):
 		doc = frappe.get_doc(
 			dict(
@@ -269,7 +274,7 @@ class TestDepartmentBudget(unittest.TestCase):
 		self.allocation(1000)
 		summary = budget.request_summary(self.request(400))
 		self.assertFalse(summary["inactive"])
-		self.assertEqual(summary["budget"], 1000)
+		self.assertEqual(summary["annual"], 1000)
 
 	def test_a_shared_position_cache_does_not_change_the_answer(self):
 		self.mr(rate=250)
@@ -279,15 +284,41 @@ class TestDepartmentBudget(unittest.TestCase):
 			self.assertEqual(budget.request_summary(doc), budget.request_summary(doc, cache))
 		self.assertEqual(len(cache), 1)
 
-	# --- provisional procurement -------------------------------------------
+	# --- the readout --------------------------------------------------------
 
-	def test_procurement_approval_is_provisional_even_over_budget(self):
+	def test_procurement_approval_is_committed_even_over_budget(self):
 		doc = self.request(1400)
 		self.assertEqual(self.used(), 0)
 		summary = budget.request_summary(doc)
-		self.assertEqual(summary["provisional"], 1400)
-		self.assertEqual(summary["available"], 1000)
-		self.assertEqual(summary["projected_available"], -400)
+		self.assertEqual(summary["spent"], 0)
+		self.assertEqual(summary["committed"], 1400)
+		self.assertEqual(summary["remaining"], -400)
+
+	def test_delivery_moves_a_material_request_from_committed_to_spent(self):
+		doc = self.request(400)
+		mr = self.mr(rate=100, qty=4, request=doc)
+		summary = budget.request_summary(doc.reload())
+		self.assertEqual((summary["spent"], summary["committed"]), (0, 400))
+		self.deliver(mr)
+		summary = budget.request_summary(doc.reload())
+		# The same 400, on the other side of the line, so what remains cannot move.
+		self.assertEqual((summary["spent"], summary["committed"]), (400, 0))
+		self.assertEqual(summary["remaining"], 600)
+
+	def test_open_requests_sit_beside_the_subtraction_not_inside_it(self):
+		doc = self.request(400)
+		self.request(500, approve=False).db_set("status", "Pending")
+		summary = budget.request_summary(doc)
+		self.assertEqual(summary["committed"], 400)
+		self.assertEqual(summary["open_requests"], 500)
+		self.assertEqual(summary["remaining"], 600)
+
+	def test_a_request_its_author_has_not_sent_yet_is_not_an_open_request(self):
+		doc = self.request(400)
+		# Straight out of `insert`, so still at `Draft`: nobody but its author has
+		# seen it, and a department readout is not where it should first appear.
+		self.request(500, approve=False)
+		self.assertEqual(budget.request_summary(doc)["open_requests"], 0)
 
 	def test_procurement_approval_does_not_need_an_allocation_or_estimate(self):
 		self.request(0)
@@ -308,24 +339,28 @@ class TestDepartmentBudget(unittest.TestCase):
 		mr = self.mr(rate=150, qty=2, request=doc, department=False)
 		summary = budget.request_summary(doc.reload())
 		self.assertEqual(mr.department, self.department)
-		self.assertEqual(summary["used"], 300)
-		self.assertEqual(summary["provisional"], 200)
-		self.assertEqual(summary["projected_available"], 500)
+		# 300 ordered at the MR rate, 200 of the estimate still uncovered: the
+		# ordered half is counted once, at what it actually cost.
+		self.assertEqual(self.used(), 300)
+		self.assertEqual(summary["committed"], 500)
+		self.assertEqual(summary["remaining"], 500)
 		mr.cancel()
 		summary = budget.request_summary(doc.reload())
-		self.assertEqual(summary["used"], 0)
-		self.assertEqual(summary["provisional"], 400)
+		self.assertEqual(self.used(), 0)
+		self.assertEqual(summary["committed"], 400)
 
-	def test_drafts_rejections_and_cancellations_stay_out_of_the_projection(self):
+	def test_rejections_and_cancellations_stay_out_of_the_readout(self):
 		active = self.request(400)
-		self.request(500, approve=False)
+
 		# A rejection leaves the request a draft, so this is a straight write
 		# rather than a submit -- going through the workflow would need the
 		# approver role, and all this test wants is a request in that state.
 		rejected = self.request(600, approve=False)
 		rejected.db_set("status", "Rejected")
 		self.request(700).cancel()
-		self.assertEqual(budget.request_summary(active)["provisional"], 400)
+		summary = budget.request_summary(active)
+		self.assertEqual(summary["committed"], 400)
+		self.assertEqual(summary["open_requests"], 0)
 
 	def test_uom_conversion_reduces_correct_provisional_quantity(self):
 		item = frappe.get_doc("Item", self.item)
@@ -336,7 +371,10 @@ class TestDepartmentBudget(unittest.TestCase):
 		mr.items[0].update({"uom": "Box", "qty": 1, "conversion_factor": 2})
 		mr.save().submit()
 		self.assertEqual(self.used(), 150)
-		self.assertEqual(budget.request_summary(doc.reload())["provisional"], 200)
+		# Asserted on the split itself: the conversion is what decides how much of
+		# the estimate the Material Request covered, and the readout adds the two
+		# sides together.
+		self.assertEqual(budget.provisional_requests(self.budget.reload()), (200, 0))
 
 	# --- historical attribution ---------------------------------------------
 
