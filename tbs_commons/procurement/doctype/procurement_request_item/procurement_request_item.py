@@ -11,8 +11,9 @@ fact -- and the moment it drifted, the request would quietly under- or
 over-order.
 
 The count is one small indexed query per row, so read a whole request's worth
-through `get_committed_qty_map` (one query for all its rows) rather than looping
-over these properties.
+through `ProcurementRequest.prime_committed_qty`, which fills every row from one
+query, rather than looping over these properties. A request loaded in the desk
+primes itself in `onload`.
 """
 
 from frappe.model.document import Document
@@ -48,7 +49,7 @@ class ProcurementRequestItem(Document):
 		want the same number, and they should all be reading one answer taken
 		at the moment the row was loaded.
 		"""
-		cached = self.__dict__.get("_committed_qty")
+		cached = getattr(self, "_committed_qty", None)
 		if cached is None:
 			from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
 				get_committed_qty_map,
@@ -56,7 +57,7 @@ class ProcurementRequestItem(Document):
 
 			# An unsaved row has no name a Material Request could point at, so
 			# there is nothing to count and nothing to ask the database.
-			cached = self.__dict__["_committed_qty"] = (
+			cached = self._committed_qty = (
 				flt(get_committed_qty_map(self.parent, [self]).get(self.name)) if self.name else 0.0
 			)
 		return cached

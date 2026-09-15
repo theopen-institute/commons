@@ -2,8 +2,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from tbs_commons.procurement.budget import used_amount
-from tbs_commons.procurement.budget_math import number
+from tbs_commons.procurement.budget import number, used_amount
 
 IDENTITY = ("company", "department", "fiscal_year")
 

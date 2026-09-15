@@ -87,12 +87,29 @@ class ProcurementRequest(Document):
 		transaction_date: DF.Date
 	# end: auto-generated types
 
-	@property
-	def open_rows(self) -> list["ProcurementRequestItem"]:
-		"""The rows with something still to order, counted in one query."""
+	def onload(self) -> None:
+		# `committed_qty` and `uncommitted_qty` are virtual, and Frappe resolves a
+		# virtual field by calling its property once per row while serialising the
+		# document. Left to itself that is one aggregate query per row every time
+		# the form is opened, so fill them all from one query first.
+		self.prime_committed_qty()
+
+	def prime_committed_qty(self) -> None:
+		"""Fill every row's committed quantity from one query instead of one each."""
 		committed = get_committed_qty_map(self.name, self.items) if self.name else {}
 		for row in self.items:
-			row.__dict__["_committed_qty"] = flt(committed.get(row.name))
+			row._committed_qty = flt(committed.get(row.name))
+
+	@property
+	def open_rows(self) -> list["ProcurementRequestItem"]:
+		"""The rows with something still to order.
+
+		Primed afresh on every call rather than reused: the cache lives on the row
+		instance, so a request still in memory after a Material Request was
+		submitted against it would otherwise report a balance that has already
+		been spent, and let the same quantity be ordered twice.
+		"""
+		self.prime_committed_qty()
 		return [row for row in self.items if row.uncommitted_qty > 0]
 
 

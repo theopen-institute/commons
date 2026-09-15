@@ -10,11 +10,11 @@ History comes from the documents themselves: `docstatus` and `amended_from` on
 the Material Request, its Version log, and the Department Budget amendment chain.
 """
 
+from decimal import Decimal
+
 import frappe
 from frappe import _
 from frappe.utils import flt
-
-from tbs_commons.procurement.budget_math import number, outstanding_value
 
 BUDGET = "Department Budget"
 MR_TYPES = ("Purchase", "Material Issue")
@@ -22,6 +22,17 @@ MR_TYPES = ("Purchase", "Material Issue")
 # the department has committed but still holds. `Stopped` counts as committed --
 # it is still charged to the allocation until someone cancels it.
 MR_DELIVERED = ("Received", "Issued")
+
+
+# Money is carried as `Decimal`, never the `flt` floats used elsewhere in this
+# module: the provisional estimate multiplies a quantity by a rate, and binary
+# floats make that drift by cents. `test_budget_math` pins that, and needs no site.
+def number(value):
+	return Decimal(str(value or 0))
+
+
+def outstanding_value(qty, covered_qty, rate):
+	return max(number(qty) - number(covered_qty), Decimal(0)) * max(number(rate), Decimal(0))
 
 
 def budget_name(company, department, date, submitted_only=True):

@@ -57,10 +57,6 @@ before_migrate = "tbs_commons.install.before_migrate"
 # Includes in <head>
 # ------------------
 
-# Loaded on the desk only. It stops this app's desk icons from opening a new
-# tab — see the file for why the framework does that.
-app_include_js = "tbs_commons.bundle.js"
-
 # include js, css files in header of desk.html
 # app_include_css = "/assets/tbs_commons/css/tbs_commons.css"
 # app_include_js = "/assets/tbs_commons/js/tbs_commons.js"
@@ -351,7 +347,6 @@ require_type_annotated_api_methods = True
 extend_doctype_class = {
 	"Material Request": ["tbs_commons.procurement.budget.BudgetMaterialRequestMixin"],
 }
-doctype_js = {"Material Request": "public/js/material_request_budget.js"}
 
 # The gate checkbox is drawn next to "Only if Creator" rather than among the
 # rights, because it scopes rows rather than granting a right.
