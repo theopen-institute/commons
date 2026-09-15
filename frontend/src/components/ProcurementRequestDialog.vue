@@ -115,7 +115,7 @@ import {
 	procurementCan,
 	procurementWorkflow,
 	useSaveProcurementRequest,
-	workflowActionTheme,
+	workflowActionButtons,
 	type AvailableWorkflowAction,
 	type ProcurementRequestItemRow,
 	type ProcurementRequestRow,
@@ -273,11 +273,14 @@ const actions = computed<DialogAction[]>(() => {
 	const available = props.request
 		? (props.workflowActions ?? [])
 		: (procurementWorkflow.value?.initial_actions ?? [])
-	const workflowActions = available.map((action): DialogAction => ({
-		label: action.action,
-		variant: 'solid',
-		theme: workflowActionTheme(action, procurementWorkflow.value),
-		onClick: ({ close }) => save(close, action.action),
+	const workflowActions = workflowActionButtons(
+		available,
+		procurementWorkflow.value,
+	).map((button): DialogAction => ({
+		label: button.label,
+		variant: button.variant,
+		theme: button.theme,
+		onClick: ({ close }) => save(close, button.label),
 	}))
 	return [saveDraft, ...workflowActions]
 })

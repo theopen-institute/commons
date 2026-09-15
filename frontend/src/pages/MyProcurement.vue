@@ -157,14 +157,17 @@
 							/>
 							<div class="ml-auto flex items-center gap-2">
 								<Button
-									v-for="action in availableActions(request)"
-									:key="action.action"
-									variant="solid"
-									:theme="workflowActionTheme(action, procurementWorkflow)"
-									:label="action.action"
-									:loading="runningAction === `${request.name}:${action.action}`"
+									v-for="button in workflowActionButtons(
+										availableActions(request),
+										procurementWorkflow,
+									)"
+									:key="button.label"
+									:variant="button.variant"
+									:theme="button.theme"
+									:label="button.label"
+									:loading="runningAction === `${request.name}:${button.label}`"
 									:disabled="Boolean(runningAction)"
-									@click="applyAction(request, action)"
+									@click="applyAction(request, button.action)"
 								/>
 							</div>
 						</div>
@@ -198,7 +201,7 @@ import {
 	useMyProcurementRequests,
 	useProcurementRequestTransitions,
 	useProcurementRequestLines,
-	workflowActionTheme,
+	workflowActionButtons,
 	type AvailableWorkflowAction,
 	type ProcurementRequestRow,
 } from '@/data/procurement'

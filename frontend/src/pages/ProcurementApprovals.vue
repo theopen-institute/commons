@@ -159,9 +159,13 @@
 								:description="request.rejection_reason"
 							/>
 
+							<p class="mt-4 text-p-sm text-ink-gray-5">
+								Requested {{ formatDate(request.transaction_date) }}
+							</p>
+
 							<div
 								v-if="request.can_edit || availableActions(request).length"
-								class="mt-4 flex flex-wrap items-center gap-2"
+								class="mt-3 flex flex-wrap items-center gap-2"
 							>
 								<Button
 									v-if="request.can_edit"
@@ -173,22 +177,19 @@
 								/>
 								<div class="ml-auto flex flex-wrap items-center gap-2">
 									<Button
-										v-for="action in availableActions(request)"
-										:key="action.action"
-										variant="solid"
-										:theme="workflowActionTheme(action, procurementWorkflow)"
-										:label="action.action"
-										:loading="runningAction === `${request.name}:${action.action}`"
+										v-for="button in workflowActionButtons(
+											availableActions(request),
+											procurementWorkflow,
+										)"
+										:key="button.label"
+										:variant="button.variant"
+										:theme="button.theme"
+										:label="button.label"
+										:loading="runningAction === `${request.name}:${button.label}`"
 										:disabled="Boolean(runningAction)"
-										@click="applyAction(request, action)"
+										@click="applyAction(request, button.action)"
 									/>
 								</div>
-								<!-- The action group above carries the row's only auto margin;
-								     a second one here would split the free space between the
-								     two, stranding the buttons mid-row instead of right. -->
-								<span class="text-p-sm text-ink-gray-5">
-									Requested {{ formatDate(request.transaction_date) }}
-								</span>
 							</div>
 						</li>
 					</ul>
@@ -231,7 +232,7 @@ import {
 	useApplyProcurementWorkflow,
 	useProcurementRequestLines,
 	useProcurementWorkflowQueue,
-	workflowActionTheme,
+	workflowActionButtons,
 	type AvailableWorkflowAction,
 	type ProcurementRequestRow,
 } from '@/data/procurement'

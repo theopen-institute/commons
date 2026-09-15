@@ -375,6 +375,39 @@ export function workflowActionTheme(
   return themes[style as keyof typeof themes] ?? 'gray'
 }
 
+export interface WorkflowActionButton {
+  action: AvailableWorkflowAction
+  label: string
+  theme: 'gray' | 'blue' | 'green' | 'red'
+  variant: 'solid' | 'subtle'
+}
+
+/**
+ * How a row of workflow actions is drawn.
+ *
+ * Frappe UI gives a group exactly one solid button: the affirmative next step.
+ * Turning a request down, cancelling it, and any transition the workflow left
+ * unstyled all stay subtle, so the row reads as one call to action instead of
+ * a wall of filled buttons competing with each other.
+ */
+export function workflowActionButtons(
+  actions: AvailableWorkflowAction[],
+  workflow: ProcurementWorkflow | null,
+): WorkflowActionButton[] {
+  let solidTaken = false
+  return actions.map((action) => {
+    const theme = workflowActionTheme(action, workflow)
+    const solid = !solidTaken && (theme === 'green' || theme === 'blue')
+    if (solid) solidTaken = true
+    return {
+      action,
+      label: action.action,
+      theme,
+      variant: solid ? 'solid' : 'subtle',
+    }
+  })
+}
+
 /** What a row is called when nobody typed a title. */
 export function requestLabel(row: ProcurementRequestRow): string {
   return row.title || row.name
