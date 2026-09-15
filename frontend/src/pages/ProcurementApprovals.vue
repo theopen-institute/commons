@@ -73,101 +73,125 @@
 				</p>
 			</div>
 
-			<ul v-else class="space-y-3">
-				<li
-					v-for="request in requestRows"
-					:key="request.name"
-					class="rounded-4 border border-outline-gray-1 p-4"
-				>
-					<div class="flex flex-wrap items-start justify-between gap-3">
-						<div class="flex min-w-0 items-start gap-3">
-							<Avatar :label="requesterName(request)" size="lg" />
-							<div class="min-w-0">
-								<div class="truncate text-base-medium text-ink-gray-8">
-									{{ requestLabel(request) }}
-								</div>
-								<div class="mt-0.5 text-p-sm text-ink-gray-5">
-									{{ requesterName(request) }} · Needed
-									{{ formatDate(request.schedule_date) }}
-									<template v-if="request.department">
-										· {{ request.department }}
-									</template>
-								</div>
-							</div>
-						</div>
-						<div class="text-right">
-							<Badge
-								:theme="procurementStatus(request, procurementWorkflow).theme"
-								variant="subtle"
-							>
-								{{ procurementStatus(request, procurementWorkflow).label }}
-							</Badge>
-							<div
-								v-if="request.total_estimated_cost"
-								class="mt-1 text-base-medium text-ink-gray-8"
-							>
-								{{
-									formatCurrency(request.total_estimated_cost, request.currency)
-								}}
-							</div>
-						</div>
-					</div>
-
-					<p
-						v-if="request.justification"
-						class="mt-3 whitespace-pre-line text-p-base text-ink-gray-7"
-					>
-						{{ request.justification }}
-					</p>
-
-					<DepartmentBudgetCard v-if="request.budget_summary" :summary="request.budget_summary" :request-name="request.name" class="mt-3" />
-
-					<!-- The lines, not a count: what is being bought is the decision. -->
-					<ProcurementLines
-						class="mt-3"
-						:lines="byRequest.get(request.name) ?? []"
-						:currency="request.currency"
-					/>
-
-					<Alert
-						v-if="request.rejection_reason"
-						class="mt-3"
-						theme="red"
-						title="Turned down"
-						:description="request.rejection_reason"
-					/>
-
-					<div
-						v-if="request.can_edit || availableActions(request).length"
-						class="mt-4 flex flex-wrap items-center gap-2"
-					>
-						<Button
-							v-if="request.can_edit"
-							variant="subtle"
-							icon-left="lucide-pencil"
-							label="Edit"
-							:disabled="requestLines.loading || !byRequest.has(request.name)"
-							@click="editRequest(request)"
-						/>
-						<div class="ml-auto flex flex-wrap items-center gap-2">
-							<Button
-								v-for="action in availableActions(request)"
-								:key="action.action"
-								variant="solid"
-								:theme="workflowActionTheme(action, procurementWorkflow)"
-								:label="action.action"
-								:loading="runningAction === `${request.name}:${action.action}`"
-								:disabled="Boolean(runningAction)"
-								@click="applyAction(request, action)"
-							/>
-						</div>
-						<!-- The action group above carries the row's only auto margin;
-						     a second one here would split the free space between the
-						     two, stranding the buttons mid-row instead of right. -->
+			<!-- Grouped by department because that is what a budget belongs to, and
+			     so what an approver is deciding against. -->
+			<ul v-else class="space-y-8">
+				<li v-for="group in departmentGroups" :key="group.key">
+					<div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+						<h2 class="text-base-medium text-ink-gray-8">
+							{{ group.department || 'No department' }}
+						</h2>
 						<span class="text-p-sm text-ink-gray-5">
-							Requested {{ formatDate(request.transaction_date) }}
+							{{ group.requests.length }}
+							{{ group.requests.length === 1 ? 'request' : 'requests' }}
+							<template v-if="group.estimate !== null">
+								· {{ formatCurrency(group.estimate, group.currency) }}
+							</template>
 						</span>
 					</div>
+
+					<!-- Once per department, not once per request: every request below
+					     it is charged to this same allocation. Any of them resolves it,
+					     so the first stands for the group in the drill-down. -->
+					<DepartmentBudgetCard
+						v-if="group.summary"
+						:summary="group.summary"
+						:request-name="group.requests[0].name"
+						class="mt-2"
+					/>
+
+					<ul class="mt-3 space-y-3">
+						<li
+							v-for="request in group.requests"
+							:key="request.name"
+							class="rounded-4 border border-outline-gray-1 p-4"
+						>
+							<div class="flex flex-wrap items-start justify-between gap-3">
+								<div class="flex min-w-0 items-start gap-3">
+									<Avatar :label="requesterName(request)" size="lg" />
+									<div class="min-w-0">
+										<div class="truncate text-base-medium text-ink-gray-8">
+											{{ requestLabel(request) }}
+										</div>
+										<div class="mt-0.5 text-p-sm text-ink-gray-5">
+											{{ requesterName(request) }} · Needed
+											{{ formatDate(request.schedule_date) }}
+										</div>
+									</div>
+								</div>
+								<div class="text-right">
+									<Badge
+										:theme="procurementStatus(request, procurementWorkflow).theme"
+										variant="subtle"
+									>
+										{{ procurementStatus(request, procurementWorkflow).label }}
+									</Badge>
+									<div
+										v-if="request.total_estimated_cost"
+										class="mt-1 text-base-medium text-ink-gray-8"
+									>
+										{{
+											formatCurrency(request.total_estimated_cost, request.currency)
+										}}
+									</div>
+								</div>
+							</div>
+
+							<p
+								v-if="request.justification"
+								class="mt-3 whitespace-pre-line text-p-base text-ink-gray-7"
+							>
+								{{ request.justification }}
+							</p>
+
+							<!-- The lines, not a count: what is being bought is the decision. -->
+							<ProcurementLines
+								class="mt-3"
+								:lines="byRequest.get(request.name) ?? []"
+								:currency="request.currency"
+							/>
+
+							<Alert
+								v-if="request.rejection_reason"
+								class="mt-3"
+								theme="red"
+								title="Turned down"
+								:description="request.rejection_reason"
+							/>
+
+							<div
+								v-if="request.can_edit || availableActions(request).length"
+								class="mt-4 flex flex-wrap items-center gap-2"
+							>
+								<Button
+									v-if="request.can_edit"
+									variant="subtle"
+									icon-left="lucide-pencil"
+									label="Edit"
+									:disabled="requestLines.loading || !byRequest.has(request.name)"
+									@click="editRequest(request)"
+								/>
+								<div class="ml-auto flex flex-wrap items-center gap-2">
+									<Button
+										v-for="action in availableActions(request)"
+										:key="action.action"
+										variant="solid"
+										:theme="workflowActionTheme(action, procurementWorkflow)"
+										:label="action.action"
+										:loading="runningAction === `${request.name}:${action.action}`"
+										:disabled="Boolean(runningAction)"
+										@click="applyAction(request, action)"
+									/>
+								</div>
+								<!-- The action group above carries the row's only auto margin;
+								     a second one here would split the free space between the
+								     two, stranding the buttons mid-row instead of right. -->
+								<span class="text-p-sm text-ink-gray-5">
+									Requested {{ formatDate(request.transaction_date) }}
+								</span>
+							</div>
+						</li>
+					</ul>
 				</li>
 			</ul>
 		</div>
@@ -202,6 +226,7 @@ import {
 	procurementWorkflow,
 	reloadProcurementPermissions,
 	reloadProcurementWorkflow,
+	groupRequestsByDepartment,
 	requestLabel,
 	useApplyProcurementWorkflow,
 	useProcurementRequestLines,
@@ -228,6 +253,9 @@ const hasWorkflowAccess = computed(
 
 const requests = useProcurementWorkflowQueue(() => tab.value === 'decided')
 const requestRows = computed(() => requests.data?.requests ?? [])
+// What the page renders. `requestRows` stays the flat list the line fetch and
+// the empty state are asking about.
+const departmentGroups = computed(() => groupRequestsByDepartment(requestRows.value))
 
 const { lines: requestLines, byRequest } = useProcurementRequestLines(() =>
 	requestRows.value.map((request) => request.name),
