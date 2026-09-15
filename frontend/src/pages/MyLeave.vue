@@ -195,6 +195,7 @@ import {
   myEmployee,
   myEmployeeLoaded,
   reloadLeavePermissions,
+  reloadLeaveWorkflow,
   useLeaveDetails,
   useMyLeaveApplications,
 } from '@/data/leave'
@@ -234,5 +235,7 @@ const balanceRows = computed(() =>
 function refresh() {
   applications.reload()
   if (employee.value?.name) leaveDetails.reload()
+  // A workflow's states are where a row's label and style come from.
+  reloadLeaveWorkflow()
 }
 </script>

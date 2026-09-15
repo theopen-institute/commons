@@ -8,6 +8,7 @@ the approval queue the Workflow defines.
 import frappe
 from frappe.utils import flt
 
+from tbs_commons import workflow as wf
 from tbs_commons.api import roles_with_permission, session_employee
 from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
 	DOCTYPE as PROCUREMENT_REQUEST,
@@ -22,6 +23,11 @@ from tbs_commons.procurement.workflow import state_field as _state_field
 # How many rows either list returns. The badge on the sidebar counts to the same
 # ceiling, so it never promises more than the page will show.
 PAGE_LENGTH = 20
+
+# The link query behind the request form's approver field. Sent to the frontend
+# rather than named there, so a site that wants a different set of candidates
+# changes the query in one place -- see `get_procurement_approvers`.
+APPROVER_QUERY = "tbs_commons.procurement.api.get_procurement_approvers"
 
 # Stored columns both lists select. `total_estimated_cost`, `approver_name` and
 # `requester_name` are deliberately absent: they are virtual, so `get_list` drops
@@ -81,6 +87,8 @@ def get_procurement_permissions() -> dict:
 		"default_department": employee.department if employee else None,
 		"default_approver": _default_procurement_approver(employee),
 		"default_uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
+		"approver_query": APPROVER_QUERY,
+		"page_length": PAGE_LENGTH,
 	}
 
 
@@ -111,64 +119,7 @@ def _default_procurement_approver(employee: frappe._dict | None) -> str | None:
 def get_procurement_workflow() -> dict | None:
 	"""The active Workflow definition, reduced to fields the SPA can render."""
 	frappe.has_permission(PROCUREMENT_REQUEST, "read", throw=True)
-	workflow = _procurement_workflow()
-	if not workflow:
-		return None
-	styles = dict(
-		frappe.get_all(
-			"Workflow State",
-			filters={"name": ["in", [row.state for row in workflow.states]]},
-			fields=["name", "style"],
-			as_list=True,
-		)
-	)
-	return {
-		"name": workflow.name,
-		"workflow_state_field": workflow.workflow_state_field,
-		"initial_actions": _initial_workflow_actions(workflow),
-		"states": [
-			{"state": row.state, "doc_status": int(row.doc_status), "style": styles.get(row.state)}
-			for row in workflow.states
-		],
-		"transitions": [
-			{"state": row.state, "action": row.action, "next_state": row.next_state}
-			for row in workflow.transitions
-		],
-	}
-
-
-def _initial_workflow_actions(workflow) -> list[dict]:
-	"""Actions a document created by this user can take from the initial state."""
-	if not workflow.states:
-		return []
-
-	initial_state = workflow.states[0].state
-	roles = set(frappe.get_roles())
-	return _unique_workflow_actions(
-		row
-		for row in workflow.transitions
-		if row.state == initial_state
-		and row.allowed in roles
-		and (row.allow_self_approval or frappe.session.user == "Administrator")
-	)
-
-
-def _unique_workflow_actions(transitions) -> list[dict]:
-	"""Return one button per action accepted by Frappe's Workflow API.
-
-	A Workflow needs parallel transition rows to grant the same action to
-	different roles. Users who hold more than one of those roles receive every
-	matching row from ``get_transitions``, while ``apply_workflow`` accepts only
-	the action name and therefore exposes a single effective choice.
-	"""
-	actions = []
-	seen = set()
-	for row in transitions:
-		if row.action in seen:
-			continue
-		seen.add(row.action)
-		actions.append({"action": row.action, "next_state": row.next_state})
-	return actions
+	return wf.describe(_procurement_workflow())
 
 
 @frappe.whitelist(methods=["POST"])
@@ -309,23 +260,8 @@ def _replace_cancelled_requests(requests: list[dict]) -> list[dict]:
 
 
 def _transitions_for(names: list[str], workflow=None) -> dict[str, list[dict]]:
-	"""Workflow transitions Frappe currently permits, per already-readable name.
-
-	The workflow is passed in rather than looked up per document: `get_transitions`
-	otherwise resolves it again for every row, and with none at all it raises
-	rather than returning nothing.
-	"""
-	from frappe.model.workflow import get_transitions
-
-	workflow = workflow if workflow is not None else _procurement_workflow()
-	if not workflow or not names:
-		return {}
-	return {
-		name: _unique_workflow_actions(
-			get_transitions(frappe.get_doc(PROCUREMENT_REQUEST, name), workflow)
-		)
-		for name in names
-	}
+	"""Workflow transitions Frappe currently permits, per already-readable name."""
+	return wf.permitted_transitions(PROCUREMENT_REQUEST, names, workflow)
 
 
 def _readable_requests(names: list[str]) -> list[str]:
@@ -377,7 +313,7 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 		names = _requests_awaiting_user(workflow, state_field)
 
 	if not names:
-		return {"requests": [], "actions": {}}
+		return {"requests": [], "actions": {}, "groups": []}
 	requests = frappe.get_list(
 		PROCUREMENT_REQUEST,
 		filters={"name": ["in", names]},
@@ -393,7 +329,65 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 		request.workflow_state = request.get(state_field)
 	if not decided:
 		requests = [row for row in requests if available.get(row.name)]
-	return {"requests": requests, "actions": available}
+	return {
+		"requests": requests,
+		"actions": available,
+		"groups": group_by_department(requests),
+	}
+
+
+def group_by_department(requests: list[dict]) -> list[dict]:
+	"""The queue in the unit the decision is actually made in.
+
+	A budget is a department's, not a request's, so one readout stands over every
+	request charged to it rather than being repeated on each. Grouped here rather
+	than in the page because `estimate` is money: it is weighed against the
+	allocation printed beside it, and the two figures should not be arrived at in
+	different places by different rules.
+
+	Keyed by allocation, not by department name alone. A department's requests can
+	straddle two budget periods and one readout cannot speak for both -- the
+	figures belong to the period a request's transaction date falls in, so requests
+	answering to different allocations are different groups even when the
+	department above them is the same.
+
+	Departments are ordered by name rather than by recency, so acting on a request
+	-- which reloads the queue -- does not shuffle the groups around the approver
+	working through them. Requests keep the query's order within a group, and a
+	group without a department sorts last: it is the exception, not the heading to
+	start from.
+	"""
+	groups: dict[str, dict] = {}
+	for request in requests:
+		summary = request.get("budget_summary") or None
+		department = request.get("department") or (summary or {}).get("department")
+		key = f"{department or ''}::{(summary or {}).get('name') or ''}"
+		group = groups.get(key)
+		if group:
+			group["requests"].append(request.name)
+		else:
+			groups[key] = {
+				"key": key,
+				"department": department,
+				"summary": summary,
+				"requests": [request.name],
+				"currency": request.get("currency"),
+				"estimate": None,
+			}
+
+	by_name = {request.name: request for request in requests}
+	for group in groups.values():
+		rows = [by_name[name] for name in group["requests"]]
+		# Null unless they share one currency: there is no honest single figure to
+		# print over a mixture, and a total nobody can act on is worse than none.
+		if any(row.get("currency") != group["currency"] for row in rows):
+			continue
+		group["estimate"] = float(sum(flt(row.get("total_estimated_cost")) for row in rows))
+
+	return sorted(
+		groups.values(),
+		key=lambda group: (group["department"] is None, group["department"] or ""),
+	)
 
 
 def _pending_workflow_count(workflow) -> int:
@@ -411,36 +405,14 @@ def _pending_workflow_count(workflow) -> int:
 def _requests_awaiting_user(workflow, state_field: str) -> list[str]:
 	"""Readable requests parked in a state one of this user's roles can move.
 
-	Not the open `Workflow Action` rows, which is how Frappe itself answers
-	"what is waiting on me". A Workflow Action records the *roles* a transition
-	is open to, and this workflow decides by *user*: the `Expense Approver`
-	transitions out of `Under Review` are conditioned on `doc.approver ==
-	frappe.session.user`. Frappe evaluates that condition in
-	`process_workflow_actions`, which runs in the session of whoever made the
-	*previous* transition -- the buyer who sent the request for review, never
-	the approver it names. So the condition is false at the moment the action is
-	written, `Expense Approver` is dropped from its `permitted_roles`, and the
-	one person entitled to decide is the one person the queue never shows it to.
-
-	Roles and states are read off the workflow rather than named here, so a
-	transition added or re-pointed later does not have to be remembered twice.
-	Holding the role only makes a request a candidate: which of these rows this
-	user may actually act on is settled afterwards by `get_transitions`, in
-	*their* session, where that condition means what it says.
+	The reason this is not Frappe's own "waiting on me" list is written out in
+	`wf.names_in_movable_states`, and this workflow is the case it describes: the
+	`Expense Approver` transitions out of `Under Review` are conditioned on
+	`doc.approver == frappe.session.user`, which is false at the moment Frappe
+	writes the Workflow Action, so the one person entitled to decide is the one
+	person that list never shows it to.
 	"""
-	if not workflow:
-		return []
-	roles = set(frappe.get_roles())
-	states = {t.state for t in workflow.transitions if t.allowed in roles}
-	if not states:
-		return []
-	return frappe.get_list(
-		PROCUREMENT_REQUEST,
-		filters={state_field: ["in", sorted(states)]},
-		pluck="name",
-		order_by="modified desc",
-		limit_page_length=0,
-	)
+	return wf.names_in_movable_states(PROCUREMENT_REQUEST, workflow, state_field)
 
 
 def _add_procurement_costs(requests: list[dict]) -> None:

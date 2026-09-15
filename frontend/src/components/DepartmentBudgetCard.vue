@@ -27,7 +27,9 @@
         <p v-if="documents.error" class="text-ink-red-4">Could not load supporting documents.</p>
         <ul v-if="documents.data" class="mt-2 space-y-1">
           <li v-for="doc in documents.data" :key="`${doc.doctype}:${doc.name}`">
-            <a :href="`/app/${doc.doctype.toLowerCase().replaceAll(' ', '-')}/${encodeURIComponent(doc.name)}`" target="_blank" rel="noopener noreferrer" class="underline">{{ doc.doctype }} · {{ doc.name }}</a>
+            <!-- The link is the server's: turning a doctype name into a desk
+                 route is core's convention, not this card's to reimplement. -->
+            <a :href="doc.url" target="_blank" rel="noopener noreferrer" class="underline">{{ doc.doctype }} · {{ doc.name }}</a>
             — {{ formatCurrency(doc.amount, summary.currency) }}
           </li>
         </ul>
@@ -46,15 +48,32 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { createResource } from 'frappe-ui'
+import { useCall } from 'frappe-ui'
 import type { DepartmentBudgetSummary } from '@/data/procurement'
 import { formatCurrency } from '@/data/format'
+
+interface BudgetDocument {
+  doctype: string
+  name: string
+  amount: number
+  /** Where it opens in the desk. Built by the server — see `get_budget_documents`. */
+  url: string
+}
+
 const props = defineProps<{ summary: DepartmentBudgetSummary; requestName?: string }>()
-const documents = createResource({ url: 'tbs_commons.procurement.budget.get_budget_documents' })
+
+// `useCall`, like the rest of the app, rather than a bare resource.
+const documents = useCall<BudgetDocument[], { request: string }>({
+  url: '/api/v2/method/tbs_commons.procurement.budget.get_budget_documents',
+  immediate: false,
+})
+
+// Once, not on every toggle: closing and reopening the drawer is not a request
+// for fresher figures, and the card is redrawn whenever the queue reloads.
 function loadDocuments(event: Event) {
-  if ((event.target as HTMLDetailsElement).open && props.requestName) {
-    documents.submit({ request: props.requestName })
-  }
+  if (!(event.target as HTMLDetailsElement).open) return
+  if (!props.requestName || documents.data || documents.loading) return
+  documents.submit({ request: props.requestName })
 }
 const notices = computed(() => props.summary.notices ?? [])
 const warnings = computed(() =>

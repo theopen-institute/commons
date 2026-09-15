@@ -3,7 +3,7 @@
     <div class="flex items-center gap-2">
       <span class="text-lg font-semibold text-ink-gray-8">Approvals</span>
       <Badge v-if="pendingCount" theme="amber" variant="subtle">
-        {{ pendingCount }} waiting
+        {{ pendingCount }}{{ pendingAtCeiling ? '+' : '' }} waiting
       </Badge>
     </div>
     <!-- Nothing to filter or refresh when the list itself is withheld. -->
@@ -133,7 +133,7 @@
                question only the server can settle. -->
           <div v-if="request.can_decide" class="mt-4 flex items-center gap-2">
             <Button
-              v-for="button in decisionButtons"
+              v-for="button in buttonsFor(request)"
               :key="button.decision"
               :variant="button.variant"
               :theme="button.theme"
@@ -141,7 +141,7 @@
               :icon-left="button.icon"
               :loading="deciding === `${request.name}:${button.decision}`"
               :disabled="Boolean(deciding)"
-              @click="decide(request, button.decision)"
+              @click="decide(request, button)"
             />
             <span class="ml-auto text-p-sm text-ink-gray-5">
               Requested {{ formatDate(request.posting_date) }}
@@ -171,14 +171,16 @@ import {
 } from 'frappe-ui'
 import { user } from '@/data/session'
 import {
-  decisionButton,
+  decisionButtons,
   leaveCan,
   leavePermissionsError,
   leavePermissionsLoaded,
   leaveStatus,
   reloadLeavePermissions,
+  reloadLeaveWorkflow,
   useLeaveApprovalQueue,
   useLeaveDecision,
+  type DecisionButton,
   type LeaveApplicationRow,
 } from '@/data/leave'
 import { formatDate, formatDateRange } from '@/data/format'
@@ -199,14 +201,12 @@ const decision = useLeaveDecision()
 // Keyed by request and decision so only the button that was pressed spins.
 const deciding = ref('')
 
-// The outcomes the server accepts, in its order; only the wording and colour
-// are decided here.
-const decisionButtons = computed(() =>
-  leaveCan.value.decisions.map((value) => ({
-    decision: value,
-    ...decisionButton(value),
-  })),
-)
+// The outcomes *this row* accepts, which the server settles per row: a
+// workflow's permitted transitions where one is running, and otherwise the
+// vocabulary less anything HRMS would refuse — self-approval, say.
+function buttonsFor(request: LeaveApplicationRow) {
+  return decisionButtons(request.actions, leaveCan.value.decisions)
+}
 
 const pendingCount = computed(() =>
   tab.value === 'pending'
@@ -214,21 +214,26 @@ const pendingCount = computed(() =>
     : leaveCan.value.pending_approvals,
 )
 
-async function decide(request: LeaveApplicationRow, verdict: string) {
-  const button = decisionButton(verdict)
-  // A confirmation for anything that is not the affirmative outcome: the
-  // application is submitted with that decision on it, and submitting is not
-  // something the page can walk back on the approver's behalf.
-  if (button.variant !== 'solid') {
+// Both numbers stop at the same ceiling, so a queue that is full says so
+// rather than quietly claiming that is all there is.
+const pendingAtCeiling = computed(
+  () => pendingCount.value >= leaveCan.value.page_length,
+)
+
+async function decide(request: LeaveApplicationRow, button: DecisionButton) {
+  // Whether an outcome needs confirming arrives with it. The application is
+  // written with that decision on it, and that is not something the page can
+  // walk back on the approver's behalf.
+  if (button.confirm) {
     dialog.danger({
       title: `${button.label} leave`,
-      message: `${button.label} ${request.employee_name}'s ${request.leave_type} for ${formatDateRange(request.from_date, request.to_date)}? They are notified, and the application is submitted with that decision.`,
+      message: `${button.label} ${request.employee_name}'s ${request.leave_type} for ${formatDateRange(request.from_date, request.to_date)}? They are notified, and the application is settled with that decision.`,
       confirmLabel: `${button.label} leave`,
-      onConfirm: () => submitDecision(request, verdict),
+      onConfirm: () => submitDecision(request, button.decision),
     })
     return
   }
-  await submitDecision(request, verdict)
+  await submitDecision(request, button.decision)
 }
 
 async function submitDecision(request: LeaveApplicationRow, verdict: string) {
@@ -237,8 +242,10 @@ async function submitDecision(request: LeaveApplicationRow, verdict: string) {
     const result = await decision.submit({ name: request.name, decision: verdict })
     // `submit` resolves null on failure; the reason renders above the list.
     if (!result) throw decision.error ?? new Error('Could not save the decision')
+    // The outcome in the server's own words, so a site whose workflow calls it
+    // something else is quoted rather than paraphrased.
     toast.success(
-      `${request.employee_name}'s leave ${decisionButton(verdict).past}`,
+      `${request.employee_name}'s leave is now ${result.status}`,
     )
     refresh()
   } finally {
@@ -248,7 +255,9 @@ async function submitDecision(request: LeaveApplicationRow, verdict: string) {
 
 function refresh() {
   requests.reload()
-  // The sidebar badge counts pending approvals, so it moves too.
+  // The sidebar badge counts pending approvals, so it moves too — and a
+  // workflow's states are what the next row's label and buttons come from.
   reloadLeavePermissions()
+  reloadLeaveWorkflow()
 }
 </script>

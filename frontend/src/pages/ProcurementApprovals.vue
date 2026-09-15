@@ -3,7 +3,7 @@
 		<div class="flex items-center gap-2">
 			<span class="text-lg font-semibold text-ink-gray-8">Approvals</span>
 			<Badge v-if="pendingCount" theme="amber" variant="subtle">
-				{{ pendingCount }} waiting
+				{{ pendingCount }}{{ pendingAtCeiling ? '+' : '' }} waiting
 			</Badge>
 		</div>
 		<!-- Nothing to filter or refresh when the list itself is withheld. -->
@@ -107,13 +107,13 @@
 					<DepartmentBudgetCard
 						v-if="group.summary"
 						:summary="group.summary"
-						:request-name="group.requests[0].name"
+						:request-name="group.requests[0]"
 						class="mt-2"
 					/>
 
 					<ul class="mt-3 space-y-3">
 						<li
-							v-for="request in group.requests"
+							v-for="request in groupRequests(group)"
 							:key="request.name"
 							class="rounded-4 border border-outline-gray-1 p-4"
 						>
@@ -239,13 +239,13 @@ import {
 	procurementWorkflow,
 	reloadProcurementPermissions,
 	reloadProcurementWorkflow,
-	groupRequestsByDepartment,
 	requestLabel,
 	useApplyProcurementWorkflow,
 	useProcurementRequestLines,
 	useProcurementWorkflowQueue,
 	workflowActionButtons,
 	type AvailableWorkflowAction,
+	type DepartmentRequestGroup,
 	type ProcurementRequestRow,
 } from '@/data/procurement'
 import { formatCurrency, formatDate } from '@/data/format'
@@ -266,9 +266,22 @@ const hasWorkflowAccess = computed(
 
 const requests = useProcurementWorkflowQueue(() => tab.value === 'decided')
 const requestRows = computed(() => requests.data?.requests ?? [])
-// What the page renders. `requestRows` stays the flat list the line fetch and
-// the empty state are asking about.
-const departmentGroups = computed(() => groupRequestsByDepartment(requestRows.value))
+// Grouped by the server, which also prices each group against the allocation
+// printed over it. `requestRows` stays the flat list the line fetch and the
+// empty state are asking about.
+const departmentGroups = computed(() => requests.data?.groups ?? [])
+
+// A group carries request names, not rows: the page holds one list of requests
+// and the grouping points into it.
+const rowsByName = computed(
+	() => new Map(requestRows.value.map((request) => [request.name, request])),
+)
+
+function groupRequests(group: DepartmentRequestGroup) {
+	return group.requests
+		.map((name) => rowsByName.value.get(name))
+		.filter((request): request is ProcurementRequestRow => Boolean(request))
+}
 
 const { lines: requestLines, byRequest } = useProcurementRequestLines(() =>
 	requestRows.value.map((request) => request.name),
@@ -283,6 +296,12 @@ const pendingCount = computed(() =>
 	tab.value === 'pending'
 		? requestRows.value.length
 		: procurementCan.value.pending_workflow_actions,
+)
+
+// Both numbers stop at the same ceiling, so a queue that is full says so rather
+// than quietly claiming that is all there is.
+const pendingAtCeiling = computed(
+	() => pendingCount.value >= procurementCan.value.page_length,
 )
 
 function requesterName(request: ProcurementRequestRow) {

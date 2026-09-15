@@ -1,5 +1,11 @@
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useCall } from 'frappe-ui'
+import {
+  buttonTheme,
+  styleTheme,
+  type BadgeTheme,
+  type ButtonTheme,
+} from './workflowStyle'
 
 export interface ProcurementPermissions {
   read: boolean
@@ -17,6 +23,11 @@ export interface ProcurementPermissions {
    *  the field blank rather than guessing. */
   default_approver: string | null
   default_uom: string
+  /** The link query that resolves candidate approvers, named by the server so a
+   *  site can point it somewhere else. */
+  approver_query: string
+  /** How many rows a queue returns. The badge counts to the same ceiling. */
+  page_length: number
 }
 
 /**
@@ -110,6 +121,8 @@ const NO_PERMISSIONS: ProcurementPermissions = {
   default_department: null,
   default_approver: null,
   default_uom: '',
+  approver_query: '',
+  page_length: 0,
 }
 
 export const procurementCan = computed(
@@ -177,16 +190,36 @@ export function useMyProcurementRequests() {
   })
 }
 
+/**
+ * One department's share of an approval queue: the allocation being spent and
+ * every request in front of the approver charged to it.
+ *
+ * Built by the server — see `group_by_department`. `estimate` is money weighed
+ * against the allocation printed beside it, and two figures read together
+ * should not be arrived at in two places by two rules.
+ */
+export interface DepartmentRequestGroup {
+  key: string
+  department: string | null
+  summary: DepartmentBudgetSummary | null
+  /** Request names, in queue order. The rows themselves are in `requests`. */
+  requests: string[]
+  /** What the group's requests would cost together. Null unless they share one
+   *  currency — there is no honest single figure to print otherwise. */
+  estimate: number | null
+  currency: string | null
+}
+
+export interface ProcurementQueue {
+  requests: ProcurementRequestRow[]
+  actions: Record<string, AvailableWorkflowAction[]>
+  groups: DepartmentRequestGroup[]
+}
+
 export function useProcurementWorkflowQueue(
   decided: MaybeRefOrGetter<boolean>,
 ) {
-  const queue = useCall<
-    {
-      requests: ProcurementRequestRow[]
-      actions: Record<string, AvailableWorkflowAction[]>
-    },
-    { decided: number }
-  >({
+  const queue = useCall<ProcurementQueue, { decided: number }>({
     url: '/api/v2/method/tbs_commons.procurement.api.get_procurement_workflow_queue',
     params: () => ({ decided: toValue(decided) ? 1 : 0 }),
     immediate: false,
@@ -197,80 +230,6 @@ export function useProcurementWorkflowQueue(
     { immediate: true },
   )
   return queue
-}
-
-/**
- * One department's share of an approval queue: the allocation being spent and
- * every request in front of the approver charged to it.
- *
- * Keyed by allocation, not by department name alone. A department's requests
- * can straddle two budget periods, and one readout cannot speak for both --
- * the figures belong to the period a request's transaction date falls in, so
- * requests answering to different allocations are different groups even when
- * the department above them is the same.
- */
-export interface DepartmentRequestGroup {
-  key: string
-  department: string | null
-  summary: DepartmentBudgetSummary | null
-  requests: ProcurementRequestRow[]
-  /** What the group's requests would cost together, to weigh against the
-   *  allocation shown beside them. Null unless they share one currency --
-   *  there is no honest single figure to print otherwise. */
-  estimate: number | null
-  currency: string | null
-}
-
-/**
- * The queue reorganised into the unit the decision is actually made in.
- *
- * A budget is a department's, not a request's, so the same readout repeated
- * over every card said nothing about the card it sat on. Grouped, it is stated
- * once and the requests underneath it are what is being charged to it.
- *
- * Departments are ordered by name rather than by recency so that acting on a
- * request -- which reloads the queue -- does not shuffle the groups around the
- * approver working through them. Requests keep the server's order within a
- * group.
- */
-export function groupRequestsByDepartment(
-  rows: ProcurementRequestRow[],
-): DepartmentRequestGroup[] {
-  const groups = new Map<string, DepartmentRequestGroup>()
-  for (const request of rows) {
-    const summary = request.budget_summary ?? null
-    const department = request.department ?? summary?.department ?? null
-    const key = `${department ?? ''}::${summary?.name ?? ''}`
-    const group = groups.get(key)
-    if (group) group.requests.push(request)
-    else
-      groups.set(key, {
-        key,
-        department,
-        summary,
-        requests: [request],
-        estimate: 0,
-        currency: request.currency,
-      })
-  }
-  for (const group of groups.values()) {
-    const mixed = group.requests.some(
-      (request) => request.currency !== group.currency,
-    )
-    group.estimate = mixed
-      ? null
-      : group.requests.reduce(
-          (total, request) => total + (request.total_estimated_cost || 0),
-          0,
-        )
-  }
-  // A missing department sorts last: `localeCompare` cannot order one, and a
-  // group without one is the exception rather than the heading to start from.
-  return [...groups.values()].sort((a, b) =>
-    a.department && b.department
-      ? a.department.localeCompare(b.department)
-      : Number(Boolean(b.department)) - Number(Boolean(a.department)),
-  )
 }
 
 export function useProcurementRequestTransitions(
@@ -352,18 +311,8 @@ export function useSaveProcurementRequest() {
 
 export interface ProcurementStatusDisplay {
   label: string
-  theme: 'gray' | 'blue' | 'green' | 'amber' | 'red'
+  theme: BadgeTheme
 }
-
-const WORKFLOW_STYLE_THEMES: Record<string, ProcurementStatusDisplay['theme']> =
-  {
-    Primary: 'blue',
-    Info: 'blue',
-    Success: 'green',
-    Warning: 'amber',
-    Danger: 'red',
-    Inverse: 'gray',
-  }
 
 /**
  * How a request reads to a person.
@@ -380,30 +329,23 @@ export function procurementStatus(
   )?.style
   return {
     label: row.workflow_state || row.status,
-    theme: WORKFLOW_STYLE_THEMES[style ?? ''] ?? 'gray',
+    theme: styleTheme(style),
   }
 }
 
 export function workflowActionTheme(
   action: AvailableWorkflowAction,
   workflow: ProcurementWorkflow | null,
-): 'gray' | 'blue' | 'green' | 'red' {
-  const style = workflow?.states.find(
-    (state) => state.state === action.next_state,
-  )?.style
-  const themes = {
-    Primary: 'blue',
-    Info: 'blue',
-    Success: 'green',
-    Danger: 'red',
-  } as const
-  return themes[style as keyof typeof themes] ?? 'gray'
+): ButtonTheme {
+  return buttonTheme(
+    workflow?.states.find((state) => state.state === action.next_state)?.style,
+  )
 }
 
 export interface WorkflowActionButton {
   action: AvailableWorkflowAction
   label: string
-  theme: 'gray' | 'blue' | 'green' | 'red'
+  theme: ButtonTheme
   variant: 'solid' | 'subtle'
 }
 

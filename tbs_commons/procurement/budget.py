@@ -11,6 +11,7 @@ the Material Request, its Version log, and the Department Budget amendment chain
 """
 
 from decimal import Decimal
+from urllib.parse import quote
 
 import frappe
 from frappe import _
@@ -641,8 +642,20 @@ def get_budget_documents(request: str) -> list[dict]:
 		if charged
 		else set()
 	)
+	# The link is built here rather than by the page, using the desk's own `slug`:
+	# turning a doctype name into a route is core's convention, not something a
+	# frontend should reimplement. `/app` rather than `/desk` deliberately -- see
+	# `AppSidebar.userDeskUrl`: Frappe has forwarded it across two renames of the
+	# desk, which is more than the current name can promise.
+	from frappe.desk.utils import slug
+
 	return [
-		dict(doctype="Material Request", name=request_name, amount=float(amount))
+		dict(
+			doctype="Material Request",
+			name=request_name,
+			amount=float(amount),
+			url=f"/app/{slug('Material Request')}/{quote(request_name)}",
+		)
 		for request_name, amount in charged.items()
 		if request_name in readable
 	]

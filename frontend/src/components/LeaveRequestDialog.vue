@@ -79,14 +79,14 @@
         v-model="form.leave_approver"
         doctype="User"
         label="Approver"
-        :query="APPROVER_QUERY"
+        :query="leaveCan.approver_query"
         :filters="{ employee: employee.name, doctype: 'Leave Application' }"
         :error="errors.leave_approver"
         description="Set from your employee record. Ask HR if the right person isn't listed."
-        required
+        :required="leaveCan.approver_mandatory"
       />
 
-      <ErrorMessage v-if="newRequest.error" :message="newRequest.error.message" />
+      <ErrorMessage v-if="request.error" :message="request.error.message" />
     </div>
   </Dialog>
 </template>
@@ -100,15 +100,15 @@ import {
   toast,
   type DialogAction,
 } from 'frappe-ui'
-import { useNewDoc } from 'frappe-ui'
 import { useDebounceFn } from '@vueuse/core'
 import LinkControl from './LinkControl.vue'
-import { useLeaveDayCount, type LeaveAllocationSummary, type MyEmployee } from '@/data/leave'
-
-// The desk's own approver query: candidates come from the employee's
-// `leave_approver` and then up the department tree, not from a filter on User.
-const APPROVER_QUERY =
-  'hrms.hr.doctype.department_approver.department_approver.get_approvers'
+import {
+  leaveCan,
+  useLeaveDayCount,
+  useRequestLeave,
+  type LeaveAllocationSummary,
+  type MyEmployee,
+} from '@/data/leave'
 
 const props = defineProps<{
   employee: MyEmployee
@@ -119,10 +119,16 @@ const open = defineModel<boolean>('open', { required: true })
 
 const emit = defineEmits<{ created: [name: string] }>()
 
-/** The payload, not just the visible fields — this is what gets POSTed. */
+/**
+ * What this form collects.
+ *
+ * Not a Leave Application document. `request_leave` takes the fields a request
+ * may set and fills in the rest — the employee from the session, the naming
+ * series, the posting date and the initial state from the doctype — so a site
+ * that customises any of them gets what it configured. A form that posted a
+ * document would be deciding all of that here instead.
+ */
 interface LeaveForm {
-  name?: string
-  employee: string
   leave_type: string
   from_date: string
   to_date: string
@@ -134,24 +140,18 @@ interface LeaveForm {
 
 function blankForm(): LeaveForm {
   return {
-    employee: props.employee.name,
-    // `naming_series` is deliberately absent, like `status` below. Frappe fills
-    // an empty one from the doctype's own options, so a site that customises
-    // the series gets what it configured rather than what this file remembers.
     leave_type: '',
     from_date: '',
     to_date: '',
     half_day: false,
     half_day_date: '',
     description: '',
-    // `status` is deliberately absent: it sits at permlevel 1, so an
-    // employee's value would be reset anyway, and the field defaults to Open.
     leave_approver: props.employee.leave_approver ?? '',
   }
 }
 
 const form = reactive<LeaveForm>(blankForm())
-const newRequest = useNewDoc<LeaveForm>('Leave Application', form)
+const request = useRequestLeave()
 
 const submitAttempted = ref(false)
 
@@ -167,7 +167,11 @@ const problems = computed(() => {
   if (form.from_date && form.to_date && form.to_date < form.from_date) {
     found.to_date = 'The end date is before the start date'
   }
-  if (!form.leave_approver) found.leave_approver = 'Pick an approver'
+  // Mandatory is HR Settings' answer, not this form's: a site that made the
+  // approver optional is one where a blank field has to be allowed through.
+  if (leaveCan.value.approver_mandatory && !form.leave_approver) {
+    found.leave_approver = 'Pick an approver'
+  }
   if (form.half_day && form.from_date !== form.to_date && !form.half_day_date) {
     found.half_day_date = 'Pick which day is the half day'
   }
@@ -185,7 +189,7 @@ const countDays = useDebounceFn(() => {
     return
   }
   dayCount.submit({
-    employee: form.employee,
+    employee: props.employee.name,
     leave_type: form.leave_type,
     from_date: form.from_date,
     to_date: form.to_date,
@@ -226,12 +230,14 @@ async function send(close: () => void) {
   if (Object.keys(problems.value).length) return
 
   try {
-    const created = await newRequest.submit()
+    const created = await request.submit({ doc: JSON.stringify(form) })
+    // `submit` resolves null on failure; the reason renders inline.
+    if (!created) return
     toast.success('Leave requested')
-    emit('created', created.name!)
+    emit('created', created.name)
     close()
   } catch {
-    // `newRequest.error` renders the server's reason inline — an overlapping
+    // `request.error` renders the server's reason inline — an overlapping
     // application or an insufficient balance is worth reading in full.
   }
 }

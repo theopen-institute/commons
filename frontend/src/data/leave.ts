@@ -1,5 +1,12 @@
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useCall } from 'frappe-ui'
+import {
+  buttonTheme,
+  styleTheme,
+  themeIcon,
+  type BadgeTheme,
+  type ButtonTheme,
+} from './workflowStyle'
 
 export interface MyEmployee {
   name: string
@@ -13,15 +20,37 @@ export interface MyEmployee {
   image: string | null
 }
 
+/**
+ * One outcome an approver may be offered.
+ *
+ * All three fields are the server's. `style` is the site's -- a Workflow State's
+ * where a workflow is running, and the app's default otherwise -- and `confirm`
+ * says whether this outcome deserves a second look before it is written. That
+ * used to be inferred here from the button's own colour, which meant a site that
+ * added an outcome silently got whatever the inference happened to decide.
+ */
+export interface LeaveDecision {
+  value: string
+  style: string | null
+  confirm: boolean
+}
+
 export interface LeavePermissions {
   read: boolean
   request: boolean
   approve: boolean
   pending_approvals: number
   /** The outcomes the server will accept, in the order they should be offered. */
-  decisions: string[]
+  decisions: LeaveDecision[]
   /** How many rows a queue returns. The badge counts to the same ceiling. */
   page_length: number
+  /** Whether HR Settings makes the approver mandatory. The form asks rather
+   *  than assuming: a site that made it optional is one where a blank field
+   *  must be allowed through. */
+  approver_mandatory: boolean
+  /** The link query that resolves candidate approvers, named by the server so a
+   *  site can point it somewhere else. */
+  approver_query: string
 }
 
 /** One row of a leave application list. */
@@ -40,9 +69,17 @@ export interface LeaveApplicationRow {
   leave_approver: string | null
   leave_approver_name: string | null
   posting_date: string
+  /** How this row reads, in the server's words and the site's styling. Settled
+   *  there because `status` alone is not the answer -- an unsubmitted
+   *  application is pending whatever its status field says. */
+  status_label: string
+  status_style: string | null
   /** Whether *this* user may decide *this* application. Only the approvals
    *  queue fills it in; the server settles it again before writing anything. */
   can_decide?: boolean
+  /** The outcomes this user may apply to *this* row, named as the server names
+   *  them. Transitions from the active Workflow where a site runs one. */
+  actions?: string[]
 }
 
 const myEmployeeCall = useCall<MyEmployee | null>({
@@ -64,6 +101,8 @@ const NO_LEAVE_PERMISSIONS: LeavePermissions = {
   pending_approvals: 0,
   decisions: [],
   page_length: 0,
+  approver_mandatory: true,
+  approver_query: '',
 }
 
 export const leaveCan = computed(
@@ -173,7 +212,11 @@ export function useLeaveDayCount() {
   })
 }
 
-/** Approve or reject an application, and submit it, in one call. */
+/**
+ * Settle an application, by whatever route the site has configured — a Workflow
+ * transition where one is running, a status change and a submit where none is.
+ * One call either way, because the two halves are one action for the approver.
+ */
 export function useLeaveDecision() {
   return useCall<
     { name: string; status: string; docstatus: number },
@@ -185,62 +228,121 @@ export function useLeaveDecision() {
   })
 }
 
+/**
+ * Raise a leave application for the employee behind this session.
+ *
+ * Through a whitelisted method rather than the document API: which fields a
+ * request may set, and which employee it is for, are the server's to decide —
+ * see `request_leave`. A form that posts a document decides both for itself.
+ */
+export function useRequestLeave() {
+  return useCall<{ name: string }, { doc: string }>({
+    url: '/api/v2/method/tbs_commons.leave.api.request_leave',
+    method: 'POST',
+    immediate: false,
+  })
+}
+
+export interface LeaveWorkflowState {
+  state: string
+  doc_status: number
+  style: string | null
+}
+
+export interface LeaveWorkflow {
+  name: string
+  workflow_state_field: string
+  states: LeaveWorkflowState[]
+  transitions: { state: string; action: string; next_state: string }[]
+}
+
+const workflowCall = useCall<LeaveWorkflow | null>({
+  url: '/api/v2/method/tbs_commons.leave.api.get_leave_workflow',
+})
+
+/** The active Workflow, if the site runs one. The pages need no knowledge of it
+ *  — every row already carries its own label, style and permitted actions — but
+ *  reloading it keeps those answers fresh after a transition. */
+export const leaveWorkflow = computed(() => workflowCall.data ?? null)
+
+export function reloadLeaveWorkflow() {
+  return workflowCall.reload()
+}
+
 export interface LeaveStatusDisplay {
   label: string
-  theme: 'gray' | 'blue' | 'green' | 'amber' | 'red'
+  theme: BadgeTheme
 }
 
 /**
- * How a leave application reads to a person. `status` alone is not the answer:
- * an application is only really decided once it is submitted, so a draft is
- * "Pending" whatever its status field says.
+ * How a leave application reads to a person.
+ *
+ * Both halves arrive: the server settles the label, because `status` alone is
+ * not the answer, and the style, because a site running a Workflow styles its
+ * own states. All that is left here is the mapping from that style to a badge.
  */
 export function leaveStatus(row: {
-  status: string
-  docstatus: number
+  status_label: string
+  status_style: string | null
 }): LeaveStatusDisplay {
-  if (row.docstatus === 2) return { label: 'Cancelled', theme: 'gray' }
-  if (row.docstatus === 0) return { label: 'Pending', theme: 'amber' }
-  if (row.status === 'Approved') return { label: 'Approved', theme: 'green' }
-  if (row.status === 'Rejected') return { label: 'Rejected', theme: 'red' }
-  return { label: row.status, theme: 'gray' }
+  return { label: row.status_label, theme: styleTheme(row.status_style) }
+}
+
+/** Wording, and only wording. An outcome this does not know keeps the server's
+ *  name for it, which is what a site that added one would want it called. */
+const DECISION_LABELS: Record<string, string> = {
+  Approved: 'Approve',
+  Rejected: 'Deny',
+}
+
+export interface DecisionButton {
+  decision: string
+  label: string
+  theme: ButtonTheme
+  variant: 'solid' | 'subtle'
+  icon: string
+  /** Whether to ask again before writing it. The server's answer, not a guess
+   *  read off the variant below. */
+  confirm: boolean
 }
 
 /**
- * How a decision button reads. The set of them comes from the server; only the
- * wording and the colour are the page's, and an outcome this does not know is
- * still offered, named as the server names it.
+ * How a decision button reads.
+ *
+ * Which outcomes exist, how each is styled and which of them needs confirming
+ * are all the server's. The wording is this file's, and the one solid button is
+ * frappe-ui's convention: the affirmative outcome -- the one the server did not
+ * ask to have confirmed -- is the call to action, and everything else stays
+ * subtle so the row reads as one choice rather than a wall of filled buttons.
  */
-export function decisionButton(decision: string): {
-  label: string
-  past: string
-  theme: 'green' | 'red' | 'gray'
-  variant: 'solid' | 'subtle'
-  icon: string
-} {
-  if (decision === 'Approved') {
-    return {
-      label: 'Approve',
-      past: 'approved',
-      theme: 'green',
-      variant: 'solid',
-      icon: 'lucide-check',
-    }
-  }
-  if (decision === 'Rejected') {
-    return {
-      label: 'Deny',
-      past: 'denied',
-      theme: 'red',
-      variant: 'subtle',
-      icon: 'lucide-x',
-    }
-  }
+export function decisionButton(decision: LeaveDecision): DecisionButton {
+  const theme = buttonTheme(decision.style)
   return {
-    label: decision,
-    past: decision.toLowerCase(),
-    theme: 'gray',
-    variant: 'subtle',
-    icon: 'lucide-circle-dot',
+    decision: decision.value,
+    label: DECISION_LABELS[decision.value] ?? decision.value,
+    theme,
+    variant: decision.confirm ? 'subtle' : 'solid',
+    icon: themeIcon(theme),
+    confirm: decision.confirm,
   }
+}
+
+/**
+ * The buttons for one row: the outcomes the server said this row accepts, in
+ * the order the vocabulary offers them, and at most one of them solid.
+ */
+export function decisionButtons(
+  offered: string[] | undefined,
+  vocabulary: LeaveDecision[],
+): DecisionButton[] {
+  let solidTaken = false
+  return vocabulary
+    .filter((decision) => offered?.includes(decision.value))
+    .map((decision) => {
+      const button = decisionButton(decision)
+      if (button.variant !== 'solid') return button
+      if (solidTaken) return { ...button, variant: 'subtle' as const }
+      solidTaken = true
+      return button
+    })
 }

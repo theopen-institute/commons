@@ -98,7 +98,7 @@
 				doctype="User"
 				label="Approver"
 				title-first
-				:query="APPROVER_QUERY"
+				:query="procurementCan.approver_query"
 				required
 			/>
 
@@ -121,8 +121,6 @@ import {
 	type ProcurementRequestRow,
 } from '@/data/procurement'
 import { withScheme } from '@/data/format'
-
-const APPROVER_QUERY = 'tbs_commons.procurement.api.get_procurement_approvers'
 
 const props = defineProps<{
 	request?: ProcurementRequestRow | null
@@ -280,7 +278,10 @@ const actions = computed<DialogAction[]>(() => {
 		label: button.label,
 		variant: button.variant,
 		theme: button.theme,
-		onClick: ({ close }) => save(close, button.label),
+		// The action's own name, not the button's label. They are the same string
+		// today; the label is what a site could rename, and `apply_workflow` would
+		// then be asked for a transition the workflow has never heard of.
+		onClick: ({ close }) => save(close, button.action.action),
 	}))
 	return [saveDraft, ...workflowActions]
 })

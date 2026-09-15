@@ -1,0 +1,160 @@
+"""What an active Frappe Workflow says, read the same way by both sections.
+
+Procurement was written around a Workflow from the start and leave was not.
+Adding one to leave meant either a second copy of this or one module both
+sections read, and a second copy is the thing that drifts: the two would have
+started out agreeing on what an action is and ended up disagreeing about which
+ones a user may take.
+
+Nothing here decides anything. `get_transitions` is Frappe's own answer to "what
+may this user do to this document, right now", asked in that user's session --
+what is here is the shapes around it that both sections needed, and none of them
+names a state, a role or an action.
+"""
+
+import frappe
+
+
+def active_workflow(doctype: str):
+	"""The active Workflow for `doctype`, or None if the site runs without one."""
+	from frappe.model.workflow import get_workflow_name
+
+	name = get_workflow_name(doctype)
+	return frappe.get_cached_doc("Workflow", name) if name else None
+
+
+def state_field(workflow, fallback: str = "status") -> str:
+	"""The column a workflow keeps its state in, or the doctype's own status."""
+	return workflow.workflow_state_field if workflow else fallback
+
+
+def unique_actions(transitions) -> list[dict]:
+	"""Return one button per action accepted by Frappe's Workflow API.
+
+	A Workflow needs parallel transition rows to grant the same action to
+	different roles. Users who hold more than one of those roles receive every
+	matching row from ``get_transitions``, while ``apply_workflow`` accepts only
+	the action name and therefore exposes a single effective choice.
+	"""
+	actions = []
+	seen = set()
+	for row in transitions:
+		if row.action in seen:
+			continue
+		seen.add(row.action)
+		actions.append({"action": row.action, "next_state": row.next_state})
+	return actions
+
+
+def state_styles(workflow) -> dict[str, str | None]:
+	"""Each state of `workflow` mapped to the style its Workflow State carries.
+
+	The style is the site's, set on the Workflow State document, and it is the
+	only thing either frontend colours a badge or a button from. A state a site
+	left unstyled maps to None, which both pages read as "no emphasis".
+	"""
+	if not workflow or not workflow.states:
+		return {}
+	return dict(
+		frappe.get_all(
+			"Workflow State",
+			filters={"name": ["in", [row.state for row in workflow.states]]},
+			fields=["name", "style"],
+			as_list=True,
+		)
+	)
+
+
+def initial_actions(workflow) -> list[dict]:
+	"""Actions a document created by this user can take from the initial state."""
+	if not workflow or not workflow.states:
+		return []
+
+	initial_state = workflow.states[0].state
+	roles = set(frappe.get_roles())
+	return unique_actions(
+		row
+		for row in workflow.transitions
+		if row.state == initial_state
+		and row.allowed in roles
+		and (row.allow_self_approval or frappe.session.user == "Administrator")
+	)
+
+
+def describe(workflow) -> dict | None:
+	"""The Workflow reduced to the fields an SPA can render.
+
+	Both sections send the same shape, so both frontends read a state's style
+	and a transition's target the same way -- there is one styling vocabulary
+	across the app, and it is the site's own.
+	"""
+	if not workflow:
+		return None
+	styles = state_styles(workflow)
+	return {
+		"name": workflow.name,
+		"workflow_state_field": workflow.workflow_state_field,
+		"initial_actions": initial_actions(workflow),
+		"states": [
+			{"state": row.state, "doc_status": int(row.doc_status), "style": styles.get(row.state)}
+			for row in workflow.states
+		],
+		"transitions": [
+			{"state": row.state, "action": row.action, "next_state": row.next_state}
+			for row in workflow.transitions
+		],
+	}
+
+
+def permitted_transitions(doctype: str, names: list[str], workflow=None) -> dict[str, list[dict]]:
+	"""Transitions Frappe currently permits, per already-readable name.
+
+	The workflow is passed in rather than looked up per document: `get_transitions`
+	otherwise resolves it again for every row, and with none at all it raises
+	rather than returning nothing.
+
+	Asked in this user's session on purpose. A transition condition that names
+	the session user -- the usual way a workflow routes a document to one person
+	rather than to a role -- only means what it says here.
+	"""
+	from frappe.model.workflow import get_transitions
+
+	workflow = workflow if workflow is not None else active_workflow(doctype)
+	if not workflow or not names:
+		return {}
+	return {
+		name: unique_actions(get_transitions(frappe.get_doc(doctype, name), workflow))
+		for name in names
+	}
+
+
+def names_in_movable_states(doctype: str, workflow, field: str) -> list[str]:
+	"""Readable documents parked in a state one of this user's roles can move.
+
+	Not the open `Workflow Action` rows, which is how Frappe itself answers
+	"what is waiting on me". A Workflow Action records the *roles* a transition
+	is open to, and it is written by `process_workflow_actions` in the session of
+	whoever made the *previous* transition -- so a transition conditioned on the
+	document's own approver field is evaluated against the wrong user, its role
+	is dropped from `permitted_roles`, and the one person entitled to decide is
+	the one person the queue never shows it to.
+
+	Roles and states are read off the workflow rather than named by a caller, so
+	a transition added or re-pointed later does not have to be remembered twice.
+	Holding the role only makes a document a candidate: which of these rows this
+	user may actually act on is settled afterwards by `permitted_transitions`, in
+	*their* session, where that condition means what it says.
+	"""
+	if not workflow:
+		return []
+	roles = set(frappe.get_roles())
+	states = {row.state for row in workflow.transitions if row.allowed in roles}
+	if not states:
+		return []
+	return frappe.get_list(
+		doctype,
+		filters={field: ["in", sorted(states)]},
+		pluck="name",
+		order_by="modified desc",
+		limit_page_length=0,
+	)
