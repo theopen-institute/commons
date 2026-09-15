@@ -19,10 +19,24 @@ export interface ProcurementPermissions {
   default_uom: string
 }
 
+/**
+ * A line of the budget readout that is worth saying in words.
+ *
+ * Written by the server beside the gate that makes it true — see
+ * `budget.summary_notices`. `severity` is a cue for how loudly to say it, not a
+ * decision of the page's own.
+ */
+export interface BudgetNotice {
+  severity: 'warning' | 'info'
+  message: string
+}
+
 /** One row of a procurement request list. */
 export interface DepartmentBudgetSummary {
   inactive?: boolean
   missing: boolean
+  /** What the figures mean, in the server's words. */
+  notices?: BudgetNotice[]
   department: string
   name?: string
   fiscal_year?: string
@@ -102,8 +116,19 @@ export const procurementCan = computed(
   () => permissionsCall.data ?? NO_PERMISSIONS,
 )
 
+/**
+ * Whether the answer is in — settled or refused, not merely arrived.
+ *
+ * Deliberately not `data != null`: a call that fails never sets `data`, and a
+ * page gating its skeleton on that sits in the skeleton for ever with nothing
+ * to show for it. `procurementPermissionsError` is what it should say instead.
+ */
 export const procurementPermissionsLoaded = computed(
-  () => permissionsCall.data != null,
+  () => permissionsCall.isFinished,
+)
+
+export const procurementPermissionsError = computed(
+  () => permissionsCall.error ?? null,
 )
 
 export function reloadProcurementPermissions() {

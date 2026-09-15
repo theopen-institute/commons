@@ -1,6 +1,5 @@
-import { computed, toValue, type MaybeRefOrGetter } from 'vue'
-import { useCall, useList } from 'frappe-ui'
-import type { Filters } from 'frappe-ui'
+import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import { useCall } from 'frappe-ui'
 
 export interface MyEmployee {
   name: string
@@ -19,6 +18,10 @@ export interface LeavePermissions {
   request: boolean
   approve: boolean
   pending_approvals: number
+  /** The outcomes the server will accept, in the order they should be offered. */
+  decisions: string[]
+  /** How many rows a queue returns. The badge counts to the same ceiling. */
+  page_length: number
 }
 
 /** One row of a leave application list. */
@@ -32,29 +35,15 @@ export interface LeaveApplicationRow {
   total_leave_days: number
   half_day: 0 | 1
   description: string | null
-  status: 'Open' | 'Approved' | 'Rejected' | 'Cancelled'
+  status: string
   docstatus: 0 | 1 | 2
   leave_approver: string | null
   leave_approver_name: string | null
   posting_date: string
+  /** Whether *this* user may decide *this* application. Only the approvals
+   *  queue fills it in; the server settles it again before writing anything. */
+  can_decide?: boolean
 }
-
-const LIST_FIELDS = [
-  'name',
-  'employee',
-  'employee_name',
-  'leave_type',
-  'from_date',
-  'to_date',
-  'total_leave_days',
-  'half_day',
-  'description',
-  'status',
-  'docstatus',
-  'leave_approver',
-  'leave_approver_name',
-  'posting_date',
-] as const
 
 const myEmployeeCall = useCall<MyEmployee | null>({
   url: '/api/v2/method/tbs_commons.leave.api.get_my_employee',
@@ -73,59 +62,65 @@ const NO_LEAVE_PERMISSIONS: LeavePermissions = {
   request: false,
   approve: false,
   pending_approvals: 0,
+  decisions: [],
+  page_length: 0,
 }
 
 export const leaveCan = computed(
   () => leavePermissionsCall.data ?? NO_LEAVE_PERMISSIONS,
 )
 
+/**
+ * Whether the answer is in — settled or refused, not merely arrived.
+ *
+ * Deliberately not `data != null`: a call that fails never sets `data`, and a
+ * page gating its skeleton on that sits in the skeleton for ever with nothing
+ * to show for it. `leavePermissionsError` is what it should say instead.
+ */
 export const leavePermissionsLoaded = computed(
-  () => leavePermissionsCall.data != null,
+  () => leavePermissionsCall.isFinished,
+)
+
+export const leavePermissionsError = computed(
+  () => leavePermissionsCall.error ?? null,
 )
 
 export function reloadLeavePermissions() {
   return leavePermissionsCall.reload()
 }
 
-/** The session user's own leave applications, newest first. */
-export function useMyLeaveApplications(
-  employee: MaybeRefOrGetter<string | undefined>,
-) {
-  return useList<LeaveApplicationRow>({
-    doctype: 'Leave Application',
-    fields: [...LIST_FIELDS],
-    filters: () => {
-      const name = toValue(employee)
-      // An impossible filter rather than none: without it this would list
-      // every application the user can read, which for an approver is
-      // everyone's.
-      return { employee: name || '__none__' } as Filters
-    },
-    orderBy: 'from_date desc',
-    limit: 20,
+/**
+ * The session user's own leave applications, newest first.
+ *
+ * No employee argument: the server resolves the Employee behind the session
+ * itself, so there is no window in which this page could ask for somebody
+ * else's — or, before the employee had loaded, for everybody's.
+ */
+export function useMyLeaveApplications() {
+  return useCall<LeaveApplicationRow[]>({
+    url: '/api/v2/method/tbs_commons.leave.api.get_my_leave_applications',
   })
 }
 
 /**
- * Applications waiting on this user's decision — drafts where they are the
- * named approver. `docstatus: 0` is what "not yet decided" means here: a
- * decision is a status change *and* a submit, so anything submitted is done.
+ * Applications this user has to decide, or ones already decided.
+ *
+ * What counts as either is the server's to say — see `get_leave_approval_queue`.
+ * Building the filters here instead let "waiting on you" mean one thing on this
+ * page and a slightly different thing in the badge counting it.
  */
-export function usePendingApprovals(options: {
-  decided: MaybeRefOrGetter<boolean>
-  approver: MaybeRefOrGetter<string>
-}) {
-  return useList<LeaveApplicationRow>({
-    doctype: 'Leave Application',
-    fields: [...LIST_FIELDS],
-    filters: () => {
-      const filters: Filters = { leave_approver: toValue(options.approver) }
-      filters.docstatus = toValue(options.decided) ? 1 : 0
-      return filters
-    },
-    orderBy: () => (toValue(options.decided) ? 'modified desc' : 'from_date asc'),
-    limit: 20,
+export function useLeaveApprovalQueue(decided: MaybeRefOrGetter<boolean>) {
+  const queue = useCall<LeaveApplicationRow[], { decided: number }>({
+    url: '/api/v2/method/tbs_commons.leave.api.get_leave_approval_queue',
+    params: () => ({ decided: toValue(decided) ? 1 : 0 }),
+    immediate: false,
   })
+  watch(
+    () => toValue(decided),
+    () => queue.reload(),
+    { immediate: true },
+  )
+  return queue
 }
 
 export interface LeaveAllocationSummary {
@@ -182,7 +177,7 @@ export function useLeaveDayCount() {
 export function useLeaveDecision() {
   return useCall<
     { name: string; status: string; docstatus: number },
-    { name: string; decision: 'Approved' | 'Rejected' }
+    { name: string; decision: string }
   >({
     url: '/api/v2/method/tbs_commons.leave.api.decide_leave_application',
     method: 'POST',
@@ -209,4 +204,43 @@ export function leaveStatus(row: {
   if (row.status === 'Approved') return { label: 'Approved', theme: 'green' }
   if (row.status === 'Rejected') return { label: 'Rejected', theme: 'red' }
   return { label: row.status, theme: 'gray' }
+}
+
+/**
+ * How a decision button reads. The set of them comes from the server; only the
+ * wording and the colour are the page's, and an outcome this does not know is
+ * still offered, named as the server names it.
+ */
+export function decisionButton(decision: string): {
+  label: string
+  past: string
+  theme: 'green' | 'red' | 'gray'
+  variant: 'solid' | 'subtle'
+  icon: string
+} {
+  if (decision === 'Approved') {
+    return {
+      label: 'Approve',
+      past: 'approved',
+      theme: 'green',
+      variant: 'solid',
+      icon: 'lucide-check',
+    }
+  }
+  if (decision === 'Rejected') {
+    return {
+      label: 'Deny',
+      past: 'denied',
+      theme: 'red',
+      variant: 'subtle',
+      icon: 'lucide-x',
+    }
+  }
+  return {
+    label: decision,
+    past: decision.toLowerCase(),
+    theme: 'gray',
+    variant: 'subtle',
+    icon: 'lucide-circle-dot',
+  }
 }

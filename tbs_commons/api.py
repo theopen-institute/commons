@@ -15,6 +15,28 @@ EMPLOYEE = "Employee"
 PERMISSION_TYPES = ("read", "write", "create", "delete")
 
 
+def roles_with_permission(doctype: str, **ptypes: int) -> set[str]:
+	"""Roles whose permission rows on `doctype` grant all of `ptypes`.
+
+	Both sections ask a version of "who is allowed to do this", and both want the
+	answer the site's own Role Permission Manager gives rather than a list of
+	role names in Python. `permlevel` 0 unless a caller says otherwise: the
+	higher levels gate individual fields, not the action.
+
+	Custom DocPerm *replaces* the standard rows rather than adding to them, so a
+	doctype with any customisation at all is answered from there alone -- falling
+	back to `DocPerm` for a site that deliberately revoked something would hand
+	back the permission it had just taken away.
+	"""
+	source = (
+		"Custom DocPerm"
+		if frappe.db.exists("Custom DocPerm", {"parent": doctype})
+		else "DocPerm"
+	)
+	ptypes.setdefault("permlevel", 0)
+	return set(frappe.get_all(source, filters={"parent": doctype, **ptypes}, pluck="role"))
+
+
 def session_employee(fieldnames: list[str]) -> frappe._dict | None:
 	"""The active Employee record linked to the session user, or None.
 

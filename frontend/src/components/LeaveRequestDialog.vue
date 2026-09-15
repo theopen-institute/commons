@@ -123,7 +123,6 @@ const emit = defineEmits<{ created: [name: string] }>()
 interface LeaveForm {
   name?: string
   employee: string
-  naming_series: string
   leave_type: string
   from_date: string
   to_date: string
@@ -136,7 +135,9 @@ interface LeaveForm {
 function blankForm(): LeaveForm {
   return {
     employee: props.employee.name,
-    naming_series: 'HR-LAP-.YYYY.-',
+    // `naming_series` is deliberately absent, like `status` below. Frappe fills
+    // an empty one from the doctype's own options, so a site that customises
+    // the series gets what it configured rather than what this file remembers.
     leave_type: '',
     from_date: '',
     to_date: '',

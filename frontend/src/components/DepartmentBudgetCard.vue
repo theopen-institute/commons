@@ -1,18 +1,26 @@
 <template>
   <div class="rounded-3 bg-surface-gray-1 p-3 text-p-sm">
     <p class="font-semibold text-ink-gray-8">{{ summary.department }} budget <span v-if="!summary.missing">· {{ summary.fiscal_year }}</span></p>
-    <p v-if="summary.missing" class="mt-2 text-ink-red-4">No annual budget is configured. Procurement approval can proceed; Finance must create the allocation before Material Request submission.</p>
-    <template v-else>
-      <p v-if="summary.inactive" class="mt-2 text-ink-red-4">This allocation is still a draft. Finance must submit it before Material Requests can be charged against it.</p>
+
+    <!-- What the figures mean is the server's to say: each notice is written
+         beside the gate that makes it true (see `budget.summary_notices`), so a
+         change to what approval actually enforces cannot leave this card
+         promising the old rule. Warnings lead, footnotes follow the figures. -->
+    <p
+      v-for="notice in warnings"
+      :key="notice.message"
+      class="mt-2 text-ink-red-4"
+    >
+      {{ notice.message }}
+    </p>
+
+    <template v-if="!summary.missing">
       <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
         <div v-for="entry in entries" :key="entry.label">
           <dt class="text-ink-gray-6">{{ entry.label }}</dt>
           <dd class="font-medium text-ink-gray-9">{{ formatCurrency(entry.value ?? 0, summary.currency) }}</dd>
         </div>
       </dl>
-      <p v-if="(summary.remaining ?? 0) < 0" class="mt-2 text-ink-red-4">
-        Over budget by {{ formatCurrency(-(summary.remaining ?? 0), summary.currency) }}.
-      </p>
       <details v-if="requestName" class="mt-2" @toggle="loadDocuments">
         <summary class="cursor-pointer text-ink-gray-7">Submitted Material Requests</summary>
         <p v-if="documents.loading">Loading…</p>
@@ -25,7 +33,13 @@
         </ul>
         <p class="mt-1 text-ink-gray-5">Only submitted Material Requests you can read are listed.</p>
       </details>
-      <p class="mt-2 text-ink-gray-5">Open requests are not yet approved, so they are not subtracted from what remains.</p>
+      <p
+        v-for="notice in footnotes"
+        :key="notice.message"
+        class="mt-2 text-ink-gray-5"
+      >
+        {{ notice.message }}
+      </p>
     </template>
   </div>
 </template>
@@ -42,6 +56,13 @@ function loadDocuments(event: Event) {
     documents.submit({ request: props.requestName })
   }
 }
+const notices = computed(() => props.summary.notices ?? [])
+const warnings = computed(() =>
+  notices.value.filter((notice) => notice.severity === 'warning'),
+)
+const footnotes = computed(() =>
+  notices.value.filter((notice) => notice.severity !== 'warning'),
+)
 const entries = computed(() => [
   { label: 'Annual budget', value: props.summary.annual },
   { label: 'Spent', value: props.summary.spent },

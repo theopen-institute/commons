@@ -62,7 +62,13 @@
   </PageHeader>
 
   <div class="px-5 py-4">
-    <PermissionNotice v-if="permissionsLoaded && !can.read" what="see employees" />
+    <!-- A refused permission answer is not a refusal of permission: say which
+         it was, rather than telling someone they lack a right nobody checked. -->
+    <div v-if="permissionsError" class="mx-auto max-w-md text-center">
+      <ErrorMessage :message="permissionsError.message" class="mb-3" />
+      <Button label="Try again" variant="subtle" @click="reloadPermissions()" />
+    </div>
+    <PermissionNotice v-else-if="permissionsLoaded && !can.read" what="see employees" />
 
     <div v-else-if="employee.loading && !employee.doc" class="mx-auto max-w-2xl space-y-4">
       <Skeleton v-for="n in 5" :key="n" class="h-16 w-full rounded-4" />
@@ -133,7 +139,7 @@ import {
   dialog,
   toast,
 } from 'frappe-ui'
-import { can, permissionsLoaded } from '@/data/session'
+import { can, permissionsError, permissionsLoaded, reloadPermissions } from '@/data/session'
 import { useEmployee } from '@/data/employees'
 import {
   allEmployeeFields,

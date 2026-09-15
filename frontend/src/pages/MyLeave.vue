@@ -11,8 +11,15 @@
   </PageHeader>
 
   <div class="px-5 py-4">
+    <!-- The permission answer refused rather than arrived: say so, instead of
+         leaving a skeleton up for a reply that is never coming. -->
+    <div v-if="leavePermissionsError" class="mx-auto max-w-3xl">
+      <ErrorMessage :message="leavePermissionsError.message" class="mb-3" />
+      <Button label="Try again" variant="subtle" @click="reloadLeavePermissions()" />
+    </div>
+
     <div
-      v-if="!myEmployeeLoaded || !leavePermissionsLoaded"
+      v-else-if="!myEmployeeLoaded || !leavePermissionsLoaded"
       class="mx-auto max-w-3xl space-y-3"
     >
       <Skeleton v-for="n in 3" :key="n" class="h-20 w-full rounded-4" />
@@ -182,10 +189,12 @@ import {
 import { user } from '@/data/session'
 import {
   leaveCan,
+  leavePermissionsError,
   leavePermissionsLoaded,
   leaveStatus,
   myEmployee,
   myEmployeeLoaded,
+  reloadLeavePermissions,
   useLeaveDetails,
   useMyLeaveApplications,
 } from '@/data/leave'
@@ -197,7 +206,10 @@ const showRequest = ref(false)
 
 const employee = computed(() => myEmployee.value)
 
-const applications = useMyLeaveApplications(() => employee.value?.name)
+// No employee argument: the server resolves the Employee behind the session
+// itself, so this cannot ask for the wrong one -- or, before the employee has
+// loaded, for everybody's.
+const applications = useMyLeaveApplications()
 const leaveDetails = useLeaveDetails(() => employee.value?.name)
 
 // The employee arrives a beat after the page, so the balance call waits for it

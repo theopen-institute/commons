@@ -8,20 +8,16 @@ the approval queue the Workflow defines.
 import frappe
 from frappe.utils import flt
 
-from tbs_commons.api import session_employee
+from tbs_commons.api import roles_with_permission, session_employee
 from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
 	DOCTYPE as PROCUREMENT_REQUEST,
 )
 from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
 	get_committed_qty_map,
 )
-
-# Whose queue the Approvals page is. The Workflow grants transitions to three
-# roles, but only this one reviews requests here -- Purchase User moves a
-# request along and Purchase Manager overrides, both from the desk. Gating on
-# the role rather than on holding any transition at all is what keeps the page
-# and its sidebar row off everyone else's screen.
-PROCUREMENT_APPROVER_ROLE = "Expense Approver"
+from tbs_commons.procurement.workflow import approver_roles as _approver_roles
+from tbs_commons.procurement.workflow import procurement_workflow as _procurement_workflow
+from tbs_commons.procurement.workflow import state_field as _state_field
 
 # How many rows either list returns. The badge on the sidebar counts to the same
 # ceiling, so it never promises more than the page will show.
@@ -66,7 +62,7 @@ def get_procurement_permissions() -> dict:
 	"""
 	workflow = _procurement_workflow()
 	can_read = bool(frappe.has_permission(PROCUREMENT_REQUEST, "read"))
-	is_approver = PROCUREMENT_APPROVER_ROLE in frappe.get_roles()
+	is_approver = bool(_approver_roles(workflow) & set(frappe.get_roles()))
 	workflow_access = bool(workflow and can_read and is_approver)
 	pending = _pending_workflow_count(workflow) if workflow_access else 0
 
@@ -109,17 +105,6 @@ def _default_procurement_approver(employee: frappe._dict | None) -> str | None:
 		{"parent": employee.department, "parentfield": "expense_approvers", "idx": 1},
 		"approver",
 	)
-
-
-def _procurement_workflow():
-	from frappe.model.workflow import get_workflow_name
-
-	name = get_workflow_name(PROCUREMENT_REQUEST)
-	return frappe.get_cached_doc("Workflow", name) if name else None
-
-
-def _state_field(workflow) -> str:
-	return workflow.workflow_state_field if workflow else "status"
 
 
 @frappe.whitelist()
@@ -593,14 +578,7 @@ def get_procurement_approvers(
 
 def _roles_that_may_approve() -> set[str]:
 	"""Roles whose Frappe DocPerm allows submitting this doctype."""
-	# Custom DocPerm replaces the standard permission rows when present.
-	for source in ("Custom DocPerm", "DocPerm"):
-		roles = frappe.get_all(
-			source, filters={"parent": PROCUREMENT_REQUEST, "submit": 1}, pluck="role"
-		)
-		if roles:
-			return set(roles)
-	return set()
+	return roles_with_permission(PROCUREMENT_REQUEST, submit=1)
 
 
 def _preferred_approvers(employee: str | None) -> set[str]:

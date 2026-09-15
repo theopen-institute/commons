@@ -74,7 +74,14 @@ export const can = computed<EmployeePermissions>(
   () => permissionsCall.data ?? NO_PERMISSIONS,
 )
 
-export const permissionsLoaded = computed(() => permissionsCall.data != null)
+/**
+ * Whether the answer is in — settled or refused, not merely arrived. A call
+ * that fails never sets `data`, so gating a skeleton on that leaves it up for a
+ * reply that is never coming; `permissionsError` is what to say instead.
+ */
+export const permissionsLoaded = computed(() => permissionsCall.isFinished)
+
+export const permissionsError = computed(() => permissionsCall.error ?? null)
 
 export function reloadPermissions() {
   return permissionsCall.reload()

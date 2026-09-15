@@ -16,7 +16,13 @@
   </PageHeader>
 
   <div class="px-5 py-4">
-    <PermissionNotice v-if="permissionsLoaded && !can.read" what="see employees" />
+    <!-- A refused permission answer is not a refusal of permission: say which
+         it was, rather than telling someone they lack a right nobody checked. -->
+    <div v-if="permissionsError" class="mx-auto max-w-md text-center">
+      <ErrorMessage :message="permissionsError.message" class="mb-3" />
+      <Button label="Try again" variant="subtle" @click="reloadPermissions()" />
+    </div>
+    <PermissionNotice v-else-if="permissionsLoaded && !can.read" what="see employees" />
 
     <template v-else>
       <div class="flex flex-wrap items-center gap-2">
@@ -177,7 +183,7 @@ import {
   ListRow,
   ListRows,
 } from 'frappe-ui/list'
-import { can, permissionsLoaded } from '@/data/session'
+import { can, permissionsError, permissionsLoaded, reloadPermissions } from '@/data/session'
 import { useEmployeeList } from '@/data/employees'
 import PermissionNotice from '@/components/PermissionNotice.vue'
 import { formatDate, statusTheme } from '@/data/format'

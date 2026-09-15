@@ -17,6 +17,8 @@ from frappe import _
 from frappe.query_builder.functions import Sum
 from frappe.utils import flt
 
+from tbs_commons.procurement.workflow import open_request_states
+
 BUDGET = "Department Budget"
 REQUEST = "Procurement Request"
 MR_TYPES = ("Purchase", "Material Issue")
@@ -152,15 +154,15 @@ def material_request_department(doc):
 		parent = frappe.db.get_value(
 			"Procurement Request",
 			source.parent,
-			["company", "department", "docstatus", "status"],
+			["company", "department", "docstatus"],
 			as_dict=True,
 		)
-		if (
-			not parent
-			or parent.company != doc.company
-			or parent.docstatus != 1
-			or parent.status not in ("Approved", "Completed")
-		):
+		# `docstatus` 1 *is* the approval -- approving is what submits a request --
+		# so the state it is sitting in has no say here. Asking for its name as
+		# well would refuse every Material Request on a site that renamed a state,
+		# and would let one through on a site that kept the name while meaning
+		# something else by it.
+		if not parent or parent.company != doc.company or parent.docstatus != 1:
 			frappe.throw(
 				_("Material Requests must refer to an approved Procurement Request in the same company.")
 			)
@@ -169,15 +171,10 @@ def material_request_department(doc):
 		parent = frappe.db.get_value(
 			"Procurement Request",
 			doc.procurement_request,
-			["department", "company", "docstatus", "status"],
+			["department", "company", "docstatus"],
 			as_dict=True,
 		)
-		if (
-			not parent
-			or parent.company != doc.company
-			or parent.docstatus != 1
-			or parent.status not in ("Approved", "Completed")
-		):
+		if not parent or parent.company != doc.company or parent.docstatus != 1:
 			frappe.throw(_("Invalid Procurement Request reference."))
 		departments.add(parent.department)
 	if len(departments) > 1:
@@ -324,12 +321,12 @@ def enforce_allocation(current, doc):
 	)
 
 
-# Which undecided requests are an open ask. `Draft` is its author's private
-# working copy and `Rejected` is a decision not to spend, so neither is one.
-# Nothing on the approved side consults a state name: `docstatus` 1 is the
-# approval, and a site running without the Workflow must not slip past the gate
-# by leaving a submitted request at some other status.
-REQUEST_OPEN_STATES = ("Pending", "Under Review")
+# Which undecided requests are an open ask is read off the active Workflow --
+# see `workflow.open_request_states`, which is where the reasoning lives. It is
+# the only place in this module that consults a state name at all, and it only
+# reaches the readout's `open_requests` figure: on the approved side `docstatus`
+# 1 is the approval, so a site running without the Workflow cannot slip past the
+# gate by leaving a submitted request at some other status.
 
 
 def request_rows(budget, approved_only=False, lock=False):
@@ -344,6 +341,14 @@ def request_rows(budget, approved_only=False, lock=False):
 	item = frappe.qb.DocType("Procurement Request Item")
 	request = frappe.qb.DocType("Procurement Request")
 	approved = request.docstatus == 1
+	# A workflow with no open states of its own leaves only the approved half --
+	# and an empty `isin` is not a query the database will accept.
+	open_states = () if approved_only else open_request_states()
+	decided_or_open = (
+		approved | ((request.docstatus == 0) & request.status.isin(open_states))
+		if open_states
+		else approved
+	)
 	query = (
 		frappe.qb.from_(item)
 		.inner_join(request)
@@ -360,11 +365,7 @@ def request_rows(budget, approved_only=False, lock=False):
 		)
 		.where(
 			(item.parenttype == REQUEST)
-			& (
-				approved
-				if approved_only
-				else approved | ((request.docstatus == 0) & request.status.isin(REQUEST_OPEN_STATES))
-			)
+			& decided_or_open
 			& (request.company == budget.company)
 			& (request.department == budget.department)
 			& request.transaction_date.between(budget.start_date, budget.end_date)
@@ -548,19 +549,78 @@ def budget_lines(budget, spent, committed, open_requests):
 	)
 
 
+def summary_notices(lines, department=None):
+	"""What the readout's figures mean for the person about to decide.
+
+	Written here, beside the gates that make them true, rather than in the page
+	that draws them. Each line below is a restatement of code in this module, and
+	a site that changes one of those rules should not have to remember that a
+	frontend somewhere is still promising the old one:
+
+	* no allocation, and a draft allocation, both read as the absence of one --
+	  `enforce_request_allocation` returns without gating, and `find_budget`
+	  refuses the Material Request that comes later;
+	* the overdraft line is `budget_lines`'s own subtraction, said in words;
+	* open requests sit outside that subtraction, which is `budget_lines`'s
+	  docstring.
+
+	`severity` is the page's cue for how loudly to say it, not a decision of its
+	own: "warning" is something Finance has to act on, "info" is a footnote.
+	"""
+	if lines.get("missing"):
+		return [
+			dict(
+				severity="warning",
+				message=_(
+					"No annual budget is configured for {0}. Approval is not gated by an allocation, but Finance must create one before any Material Request can be charged."
+				).format(department or _("this department")),
+			)
+		]
+
+	notices = []
+	if lines.get("inactive"):
+		notices.append(
+			dict(
+				severity="warning",
+				message=_(
+					"This allocation is still a draft. A draft authorises nothing, so approval is not gated by it and Material Requests cannot be charged against it until Finance submits it."
+				),
+			)
+		)
+	if flt(lines.get("remaining")) < 0:
+		notices.append(
+			dict(
+				severity="warning",
+				message=_("Over budget by {0}.").format(
+					frappe.utils.fmt_money(-flt(lines["remaining"]), currency=lines.get("currency"))
+				),
+			)
+		)
+	notices.append(
+		dict(
+			severity="info",
+			message=_("Open requests are not yet approved, so they are not subtracted from what remains."),
+		)
+	)
+	return notices
+
+
 def request_summary(doc, cache=None):
 	if not can_view_summary(doc):
 		return None
 	name = budget_name(doc.company, doc.department, doc.transaction_date, submitted_only=False)
 	if not name:
-		return dict(missing=True, department=doc.department)
+		missing = dict(missing=True, department=doc.department)
+		return dict(missing, notices=summary_notices(missing, doc.department))
 	budget, *position = department_position(name, cache)
+	lines = budget_lines(budget, *position)
 	return dict(
 		missing=False,
 		name=name,
 		department=budget.department,
 		fiscal_year=budget.fiscal_year,
-		**budget_lines(budget, *position),
+		notices=summary_notices(lines, budget.department),
+		**lines,
 	)
 
 

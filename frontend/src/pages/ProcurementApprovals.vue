@@ -26,7 +26,18 @@
 	</PageHeader>
 
 	<div class="px-5 py-4">
-		<div v-if="!procurementPermissionsLoaded" class="mx-auto max-w-3xl space-y-2">
+		<!-- The permission answer refused rather than arrived: say so, instead of
+		     leaving a skeleton up for a reply that is never coming. -->
+		<div v-if="procurementPermissionsError" class="mx-auto max-w-3xl">
+			<ErrorMessage :message="procurementPermissionsError.message" class="mb-3" />
+			<Button
+				label="Try again"
+				variant="subtle"
+				@click="reloadProcurementPermissions()"
+			/>
+		</div>
+
+		<div v-else-if="!procurementPermissionsLoaded" class="mx-auto max-w-3xl space-y-2">
 			<Skeleton v-for="n in 3" :key="n" class="h-40 w-full rounded-4" />
 		</div>
 
@@ -222,6 +233,7 @@ import {
 } from 'frappe-ui'
 import {
 	procurementCan,
+	procurementPermissionsError,
 	procurementPermissionsLoaded,
 	procurementStatus,
 	procurementWorkflow,
@@ -295,9 +307,11 @@ async function applyAction(request: ProcurementRequestRow, action: AvailableWork
 		})
 		if (!result) return
 		toast.success(`${action.action} applied to ${requestLabel(request)}`)
-		refresh()
 	} finally {
-		requests.reload()
+		// Once, here, rather than also on the success path: two overlapping
+		// fetches abort each other, and a failed action still needs the queue
+		// re-read -- the state it was refused from may not be the one it is in.
+		refresh()
 		runningAction.value = ''
 	}
 }

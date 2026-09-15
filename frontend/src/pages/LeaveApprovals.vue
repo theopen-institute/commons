@@ -20,13 +20,26 @@
         icon-left="lucide-refresh-cw"
         label="Refresh"
         :loading="requests.loading"
-        @click="requests.reload()"
+        @click="refresh"
       />
     </div>
   </PageHeader>
 
   <div class="px-5 py-4">
-    <div v-if="!leavePermissionsLoaded" class="mx-auto max-w-3xl space-y-2">
+    <!-- The permission answer refused rather than arrived: say so, instead of
+         leaving a skeleton up for a reply that is never coming. -->
+    <div v-if="leavePermissionsError" class="mx-auto max-w-3xl">
+      <ErrorMessage
+        :message="leavePermissionsError.message"
+        class="mb-3"
+      />
+      <Button label="Try again" variant="subtle" @click="reloadLeavePermissions()" />
+    </div>
+
+    <div
+      v-else-if="!leavePermissionsLoaded"
+      class="mx-auto max-w-3xl space-y-2"
+    >
       <Skeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-4" />
     </div>
 
@@ -104,28 +117,39 @@
             {{ request.description }}
           </p>
 
-          <div v-if="request.docstatus === 0" class="mt-4 flex items-center gap-2">
+          <!-- Whose decision this is, when it is not this user's own queue. -->
+          <p
+            v-if="
+              request.leave_approver && request.leave_approver !== user.name
+            "
+            class="mt-3 text-p-sm text-ink-gray-5"
+          >
+            Assigned to
+            {{ request.leave_approver_name || request.leave_approver }}
+          </p>
+
+          <!-- Drawn from the server's answer for this row, not from its
+               docstatus: whether this user decides this application is a
+               question only the server can settle. -->
+          <div v-if="request.can_decide" class="mt-4 flex items-center gap-2">
             <Button
-              variant="solid"
-              label="Approve"
-              icon-left="lucide-check"
-              :loading="deciding === `${request.name}:Approved`"
+              v-for="button in decisionButtons"
+              :key="button.decision"
+              :variant="button.variant"
+              :theme="button.theme"
+              :label="button.label"
+              :icon-left="button.icon"
+              :loading="deciding === `${request.name}:${button.decision}`"
               :disabled="Boolean(deciding)"
-              @click="decide(request, 'Approved')"
-            />
-            <Button
-              variant="subtle"
-              theme="red"
-              label="Deny"
-              icon-left="lucide-x"
-              :loading="deciding === `${request.name}:Rejected`"
-              :disabled="Boolean(deciding)"
-              @click="decide(request, 'Rejected')"
+              @click="decide(request, button.decision)"
             />
             <span class="ml-auto text-p-sm text-ink-gray-5">
               Requested {{ formatDate(request.posting_date) }}
             </span>
           </div>
+          <p v-else class="mt-4 text-p-sm text-ink-gray-5">
+            Requested {{ formatDate(request.posting_date) }}
+          </p>
         </li>
       </ul>
     </div>
@@ -147,12 +171,14 @@ import {
 } from 'frappe-ui'
 import { user } from '@/data/session'
 import {
+  decisionButton,
   leaveCan,
+  leavePermissionsError,
   leavePermissionsLoaded,
   leaveStatus,
   reloadLeavePermissions,
+  useLeaveApprovalQueue,
   useLeaveDecision,
-  usePendingApprovals,
   type LeaveApplicationRow,
 } from '@/data/leave'
 import { formatDate, formatDateRange } from '@/data/format'
@@ -166,15 +192,21 @@ const canApprove = computed(
   () => leavePermissionsLoaded.value && leaveCan.value.approve,
 )
 
-const requests = usePendingApprovals({
-  decided: () => tab.value === 'decided',
-  approver: () => user.value.name,
-})
+const requests = useLeaveApprovalQueue(() => tab.value === 'decided')
 
 const decision = useLeaveDecision()
 
 // Keyed by request and decision so only the button that was pressed spins.
 const deciding = ref('')
+
+// The outcomes the server accepts, in its order; only the wording and colour
+// are decided here.
+const decisionButtons = computed(() =>
+  leaveCan.value.decisions.map((value) => ({
+    decision: value,
+    ...decisionButton(value),
+  })),
+)
 
 const pendingCount = computed(() =>
   tab.value === 'pending'
@@ -182,15 +214,16 @@ const pendingCount = computed(() =>
     : leaveCan.value.pending_approvals,
 )
 
-async function decide(
-  request: LeaveApplicationRow,
-  verdict: 'Approved' | 'Rejected',
-) {
-  if (verdict === 'Rejected') {
+async function decide(request: LeaveApplicationRow, verdict: string) {
+  const button = decisionButton(verdict)
+  // A confirmation for anything that is not the affirmative outcome: the
+  // application is submitted with that decision on it, and submitting is not
+  // something the page can walk back on the approver's behalf.
+  if (button.variant !== 'solid') {
     dialog.danger({
-      title: 'Deny leave',
-      message: `Deny ${request.employee_name}'s ${request.leave_type} for ${formatDateRange(request.from_date, request.to_date)}? They are notified, and it can't be reopened — they would need to request again.`,
-      confirmLabel: 'Deny leave',
+      title: `${button.label} leave`,
+      message: `${button.label} ${request.employee_name}'s ${request.leave_type} for ${formatDateRange(request.from_date, request.to_date)}? They are notified, and the application is submitted with that decision.`,
+      confirmLabel: `${button.label} leave`,
       onConfirm: () => submitDecision(request, verdict),
     })
     return
@@ -198,23 +231,24 @@ async function decide(
   await submitDecision(request, verdict)
 }
 
-async function submitDecision(
-  request: LeaveApplicationRow,
-  verdict: 'Approved' | 'Rejected',
-) {
+async function submitDecision(request: LeaveApplicationRow, verdict: string) {
   deciding.value = `${request.name}:${verdict}`
   try {
     const result = await decision.submit({ name: request.name, decision: verdict })
     // `submit` resolves null on failure; the reason renders above the list.
     if (!result) throw decision.error ?? new Error('Could not save the decision')
     toast.success(
-      `${request.employee_name}'s leave ${verdict === 'Approved' ? 'approved' : 'denied'}`,
+      `${request.employee_name}'s leave ${decisionButton(verdict).past}`,
     )
-    requests.reload()
-    // The sidebar badge counts pending approvals, so it moves too.
-    reloadLeavePermissions()
+    refresh()
   } finally {
     deciding.value = ''
   }
+}
+
+function refresh() {
+  requests.reload()
+  // The sidebar badge counts pending approvals, so it moves too.
+  reloadLeavePermissions()
 }
 </script>

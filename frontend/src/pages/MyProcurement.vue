@@ -11,7 +11,18 @@
 	</PageHeader>
 
 	<div class="px-5 py-4">
-		<div v-if="!procurementPermissionsLoaded" class="mx-auto max-w-3xl space-y-3">
+		<!-- The permission answer refused rather than arrived: say so, instead of
+		     leaving a skeleton up for a reply that is never coming. -->
+		<div v-if="procurementPermissionsError" class="mx-auto max-w-3xl">
+			<ErrorMessage :message="procurementPermissionsError.message" class="mb-3" />
+			<Button
+				label="Try again"
+				variant="subtle"
+				@click="reloadProcurementPermissions()"
+			/>
+		</div>
+
+		<div v-else-if="!procurementPermissionsLoaded" class="mx-auto max-w-3xl space-y-3">
 			<Skeleton v-for="n in 3" :key="n" class="h-20 w-full rounded-4" />
 		</div>
 
@@ -191,6 +202,7 @@ import { ref } from 'vue'
 import { Alert, Badge, Button, ErrorMessage, PageHeader, Skeleton, toast } from 'frappe-ui'
 import {
 	procurementCan,
+	procurementPermissionsError,
 	procurementPermissionsLoaded,
 	procurementStatus,
 	procurementWorkflow,
