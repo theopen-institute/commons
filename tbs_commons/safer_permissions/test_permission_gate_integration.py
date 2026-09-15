@@ -25,9 +25,12 @@ REPORT = "TBS Gate Test Report"
 
 MINE = "TBS Gate Test Mine"
 THEIRS = "TBS Gate Test Theirs"
+# Owned by the gated user, so an "Only if Creator" role has something to reach.
+OWNED = "TBS Gate Test Owned"
 
 GATED_ROLE = "TBS Gate Test Gated"
 OPEN_ROLE = "TBS Gate Test Open"
+OWNER_ROLE = "TBS Gate Test Owner"
 GATED_USER = "tbs-gate-gated@example.com"
 OPEN_USER = "tbs-gate-open@example.com"
 
@@ -130,6 +133,25 @@ class TestPermissionGate(unittest.TestCase):
 		frappe.clear_cache(user=GATED_USER)
 		self.assertEqual(self.visible(GATED_USER), {MINE, THEIRS})
 
+	def test_an_ungated_only_if_creator_role_does_not_beat_the_gate(self):
+		"""The failure this module was reported for.
+
+		`Employee` grants read on `Procurement Request` with "Only if Creator"
+		ticked. Counted as an unrestricted grant it switched the gate off and
+		showed an approver every request on the site, most of which she had not
+		raised. It reaches her own and nothing else, and that is all it leaves.
+		"""
+		frappe.get_doc("User", GATED_USER).add_roles(OWNER_ROLE)
+		frappe.clear_cache(user=GATED_USER)
+
+		frappe.set_user(GATED_USER)
+		visible = set(
+			frappe.get_list(DOCTYPE, filters={"name": ["in", (MINE, THEIRS, OWNED)]}, pluck="name")
+		)
+		self.assertEqual(visible, {OWNED})
+		self.assertTrue(self.readable(GATED_USER, OWNED))
+		self.assertFalse(self.readable(GATED_USER, THEIRS))
+
 	def test_the_gate_is_configured_entirely_from_the_permission_row(self):
 		"""No second document: the tick on the role is the whole configuration."""
 		from tbs_commons.safer_permissions.permissions import clear_gated_doctypes, gated_doctypes
@@ -140,10 +162,10 @@ class TestPermissionGate(unittest.TestCase):
 
 	def test_a_doctype_nobody_ticked_is_untouched(self):
 		"""The fast path, and the safety: gating is opt-in per role row."""
-		from tbs_commons.safer_permissions.permissions import clear_gated_doctypes, is_blocked
+		from tbs_commons.safer_permissions.permissions import blocked_scope, clear_gated_doctypes
 
 		clear_gated_doctypes()
-		self.assertFalse(is_blocked(GATED_USER, "ToDo"))
+		self.assertIsNone(blocked_scope(GATED_USER, "ToDo"))
 
 	def test_a_gated_role_is_refused_reports(self):
 		from tbs_commons.safer_permissions.permissions import _refuse_gated_report
@@ -168,17 +190,26 @@ def _register_gate():
 	frappe.permissions.update_permission_property(DOCTYPE, GATED_ROLE, 0, GATE, 1)
 	frappe.permissions.add_permission(DOCTYPE, OPEN_ROLE, 0)
 
+	# Ungated, but restricted to its holder's own documents -- the shape that
+	# used to switch the gate off wholesale.
+	frappe.permissions.add_permission(DOCTYPE, OWNER_ROLE, 0)
+	frappe.permissions.update_permission_property(DOCTYPE, OWNER_ROLE, 0, "if_owner", 1)
+
+	# Written straight to the column: `owner` is set from the session at insert
+	# and the fixtures are created by Administrator.
+	frappe.db.set_value(DOCTYPE, OWNED, "owner", GATED_USER, update_modified=False)
+
 	frappe.db.commit()
 	frappe.clear_cache()
 
 
 def _retire_gate(had_custom_perms: bool):
-	stale = {"parent": DOCTYPE} if not had_custom_perms else {"parent": DOCTYPE, "role": ["in", (GATED_ROLE, OPEN_ROLE)]}
+	stale = {"parent": DOCTYPE} if not had_custom_perms else {"parent": DOCTYPE, "role": ["in", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE)]}
 	for name in frappe.get_all("Custom DocPerm", filters=stale, pluck="name"):
 		frappe.delete_doc("Custom DocPerm", name, force=True, ignore_permissions=True)
 
 	_drop_user_permissions()
-	for doctype, names in (("Report", (REPORT,)), (DOCTYPE, (MINE, THEIRS)), ("User", (GATED_USER, OPEN_USER)), ("Role", (GATED_ROLE, OPEN_ROLE))):
+	for doctype, names in (("Report", (REPORT,)), (DOCTYPE, (MINE, THEIRS, OWNED)), ("User", (GATED_USER, OPEN_USER)), ("Role", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE))):
 		for name in names:
 			if frappe.db.exists(doctype, name):
 				frappe.delete_doc(doctype, name, force=True, ignore_permissions=True)
@@ -188,7 +219,7 @@ def _retire_gate(had_custom_perms: bool):
 
 
 def _fixtures():
-	for branch in (MINE, THEIRS):
+	for branch in (MINE, THEIRS, OWNED):
 		if not frappe.db.exists(DOCTYPE, branch):
 			frappe.get_doc({"doctype": DOCTYPE, "branch": branch}).insert(ignore_permissions=True)
 
@@ -205,7 +236,7 @@ def _fixtures():
 
 
 def _roles_and_users():
-	for role in (GATED_ROLE, OPEN_ROLE):
+	for role in (GATED_ROLE, OPEN_ROLE, OWNER_ROLE):
 		if not frappe.db.exists("Role", role):
 			frappe.get_doc({"doctype": "Role", "role_name": role, "desk_access": 1}).insert()
 

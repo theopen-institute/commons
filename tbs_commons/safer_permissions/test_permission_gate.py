@@ -11,13 +11,21 @@ from unittest.mock import patch
 import frappe
 
 from tbs_commons.safer_permissions import permissions
-from tbs_commons.safer_permissions.permissions import GATE
+from tbs_commons.safer_permissions.permissions import GATE, NOTHING, OWN
 
 DOCTYPE = "Salary Slip"
 
 
-def perm(role, gated=False, right="read", permlevel=0):
-	return frappe._dict({"role": role, "permlevel": permlevel, right: 1, GATE: 1 if gated else 0})
+def perm(role, gated=False, right="read", permlevel=0, if_owner=False):
+	return frappe._dict(
+		{
+			"role": role,
+			"permlevel": permlevel,
+			right: 1,
+			GATE: 1 if gated else 0,
+			"if_owner": 1 if if_owner else 0,
+		}
+	)
 
 
 def meta(*perms):
@@ -37,21 +45,21 @@ class GateApplies(TestCase):
 			patch.object(permissions.frappe, "get_roles", return_value=roles),
 			patch.object(permissions.frappe, "get_meta", return_value=meta(*perms)),
 		):
-			return permissions.gate_applies("employee@example.com", DOCTYPE)
+			return permissions.gate_scope("employee@example.com", DOCTYPE)
 
 	def test_doctype_nobody_ticked_is_never_gated(self):
 		"""The fast path: no tick anywhere on the doctype, no gate to apply."""
-		self.assertFalse(self.check(["Employee"], [perm("Employee", gated=True)], ticked=False))
+		self.assertIsNone(self.check(["Employee"], [perm("Employee", gated=True)], ticked=False))
 
 	def test_gated_role_is_held_back(self):
-		self.assertTrue(self.check(["Employee"], [perm("Employee", gated=True)]))
+		self.assertEqual(self.check(["Employee"], [perm("Employee", gated=True)]), NOTHING)
 
 	def test_ungated_role_is_not(self):
-		self.assertFalse(self.check(["Employee"], [perm("Employee")]))
+		self.assertIsNone(self.check(["Employee"], [perm("Employee")]))
 
 	def test_one_ungated_role_beats_a_gated_one(self):
 		"""An HR Manager who also holds Employee is an HR Manager."""
-		self.assertFalse(
+		self.assertIsNone(
 			self.check(
 				["Employee", "HR Manager"],
 				[perm("Employee", gated=True), perm("HR Manager")],
@@ -59,32 +67,80 @@ class GateApplies(TestCase):
 		)
 
 	def test_every_granting_role_must_be_gated(self):
-		self.assertTrue(
+		self.assertEqual(
 			self.check(
 				["Employee", "Intern"],
 				[perm("Employee", gated=True), perm("Intern", gated=True)],
-			)
+			),
+			NOTHING,
 		)
 
 	def test_roles_the_user_does_not_hold_are_ignored(self):
-		self.assertTrue(
-			self.check(["Employee"], [perm("Employee", gated=True), perm("HR Manager")])
+		self.assertEqual(
+			self.check(["Employee"], [perm("Employee", gated=True), perm("HR Manager")]),
+			NOTHING,
 		)
 
 	def test_no_read_access_at_all_is_core_business_not_ours(self):
-		self.assertFalse(self.check(["Sales User"], [perm("Employee", gated=True)]))
+		self.assertIsNone(self.check(["Sales User"], [perm("Employee", gated=True)]))
 
 	def test_select_only_access_is_still_gated(self):
-		self.assertTrue(self.check(["Employee"], [perm("Employee", gated=True, right="select")]))
+		self.assertEqual(
+			self.check(["Employee"], [perm("Employee", gated=True, right="select")]), NOTHING
+		)
 
 	def test_higher_permlevel_rows_do_not_open_the_gate(self):
 		"""Permlevel > 0 governs fields, not rows, so core skips those rows too."""
-		self.assertTrue(
+		self.assertEqual(
 			self.check(
 				["Employee"],
 				[perm("Employee", gated=True), perm("Employee", permlevel=1)],
+			),
+			NOTHING,
+		)
+
+	def test_an_ungated_only_if_creator_role_does_not_beat_the_gate(self):
+		"""The failure this module was reported for.
+
+		`Employee` grants read on `Procurement Request` with "Only if Creator"
+		ticked, so it reaches the holder's own requests and nobody else's. Read
+		as an unrestricted grant it switched the gate off and showed an approver
+		every request on the site -- including, as it happened, all of the ones
+		she had not raised herself.
+		"""
+		self.assertEqual(
+			self.check(
+				["Employee", "Expense Approver"],
+				[perm("Employee", if_owner=True), perm("Expense Approver", gated=True)],
+			),
+			OWN,
+		)
+
+	def test_an_only_if_creator_role_still_keeps_its_own_documents(self):
+		"""It is not read as nothing either: the gate withholds all but the user's own."""
+		self.assertNotEqual(
+			self.check(
+				["Employee", "Expense Approver"],
+				[perm("Employee", if_owner=True), perm("Expense Approver", gated=True)],
+			),
+			NOTHING,
+		)
+
+	def test_an_unrestricted_role_alongside_an_only_if_creator_one_still_wins(self):
+		self.assertIsNone(
+			self.check(
+				["Employee", "Expense Approver", "HR Manager"],
+				[
+					perm("Employee", if_owner=True),
+					perm("Expense Approver", gated=True),
+					perm("HR Manager"),
+				],
 			)
 		)
+
+	def test_an_only_if_creator_role_with_nothing_gated_is_left_alone(self):
+		"""No tick among the roles held: not this module's business at all."""
+		self.assertIsNone(self.check(["Employee"], [perm("Employee", if_owner=True)]))
 
 	def test_administrator_is_never_gated(self):
 		with (
@@ -137,19 +193,47 @@ class GateSatisfied(TestCase):
 class Hooks(TestCase):
 	"""What core is handed once the two questions are answered."""
 
-	def check(self, blocked):
-		with patch.object(permissions, "is_blocked", return_value=blocked):
+	# No site is bound here, so `frappe.db` is an unbound proxy and the escaping
+	# the owner condition needs cannot be patched onto it. The module's whole
+	# view of frappe is stood in for instead; with `blocked_scope` mocked out,
+	# these two are all either hook still reaches for.
+	stub = frappe._dict(
+		db=frappe._dict(escape=lambda value, **kwargs: f"'{value}'"),
+		session=frappe._dict(user="employee@example.com"),
+	)
+
+	def check(self, blocked, owner="someone-else@example.com"):
+		with (
+			patch.object(permissions, "blocked_scope", return_value=blocked),
+			patch.object(permissions, "frappe", self.stub),
+		):
 			return (
 				permissions.permission_query_conditions("employee@example.com", doctype=DOCTYPE),
-				permissions.has_permission(doc=frappe._dict(doctype=DOCTYPE), user="employee@example.com"),
+				permissions.has_permission(
+					doc=frappe._dict(doctype=DOCTYPE, owner=owner), user="employee@example.com"
+				),
 			)
 
 	def test_a_blocked_user_gets_an_empty_list_and_no_document(self):
-		self.assertEqual(self.check(blocked=True), ("1=0", False))
+		self.assertEqual(self.check(blocked=NOTHING), ("1=0", False))
 
 	def test_everyone_else_is_left_alone(self):
 		"""An empty condition, not a permissive one: the hook only ever denies."""
-		self.assertEqual(self.check(blocked=False), ("", True))
+		self.assertEqual(self.check(blocked=None), ("", True))
+
+	def test_an_only_if_creator_grant_survives_the_gate(self):
+		"""Narrowed to the user's own rows rather than emptied: the ungated role
+		granted those, and the gate was never asked to take them back."""
+		self.assertEqual(
+			self.check(blocked=OWN),
+			("`tabSalary Slip`.`owner` = 'employee@example.com'", False),
+		)
+
+	def test_and_the_document_they_own_is_still_readable(self):
+		self.assertEqual(
+			self.check(blocked=OWN, owner="employee@example.com")[1],
+			True,
+		)
 
 	def test_a_doctype_level_check_has_nothing_to_gate(self):
 		self.assertTrue(permissions.has_permission(doc=None, user="employee@example.com"))

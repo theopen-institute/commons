@@ -207,10 +207,6 @@ def make_material_request(
 	source = frappe.get_doc(DOCTYPE, source_name)
 	frappe.has_permission(DOCTYPE, "read", doc=source, throw=True)
 
-	# Approval is the submission, so `docstatus` is the whole test: the states
-	# before a decision and `Rejected` are all drafts, and `Canceled` is 2. The
-	# state name is read here only to say which one it is. A request that has
-	# been ordered in full is turned away by `_selection`.
 	if source.docstatus != 1:
 		frappe.throw(
 			_("Only an approved Procurement Request can become a Material Request. This one is {0}.").format(
@@ -221,13 +217,6 @@ def make_material_request(
 	wanted = _selection(source, selected_items)
 
 	def update_item(source_row, target_row, source_parent) -> None:
-		# The one thing a Procurement Request is allowed to omit is the one
-		# thing a Material Request insists on. The Workflow will not send a
-		# request for review until every row is coded, so this cannot fire while
-		# it is active -- but a site may run with it switched off, and the
-		# failure without this check is a UOM conversion complaining about an
-		# item called None. Only the rows actually being carried over answer for
-		# it, because this runs after the mapper has picked them.
 		if not source_row.item_code:
 			frappe.throw(
 				_("Row {0} has no Item Code, which a Material Request needs on every row. Amend this request to set one, or tick just the coded rows you want to order.").format(

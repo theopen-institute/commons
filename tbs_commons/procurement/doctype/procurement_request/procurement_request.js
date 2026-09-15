@@ -36,6 +36,13 @@ frappe.ui.form.on("Procurement Request", {
 			__("Create")
 		);
 		frm.page.set_inner_btn_group_as_primary(__("Create"));
+
+		// The grid turns read-only on submit, and its refresh disables the row
+		// tick boxes along with it -- but submitted is exactly when this button
+		// runs. The boxes only choose which rows to carry over, they edit
+		// nothing, so turn them back on. This runs after `refresh_fields`, so
+		// it outlasts the grid refresh that disabled them.
+		frm.fields_dict.items.grid.toggle_checkboxes(true);
 	},
 });
 

@@ -27,6 +27,15 @@ document on a form, no report. Roles that should genuinely see everything are
 left unmarked, so `Employee` and `HR Manager` can both hold read on `Salary
 Slip` and mean entirely different things by it.
 
+An unmarked role beats a marked one -- an HR Manager who also holds `Employee`
+is an HR Manager -- but only when it is an unrestricted grant. A role marked
+"Only if Creator" reaches the user's own documents and nobody else's, so it
+cannot stand in for one: `Employee` carries that tick on doctype after doctype
+and is held by nearly everyone a gated approver role would be drawn from, and
+counting it would leave the gate ticked and inert. Such a role keeps exactly
+what it grants -- the gate then withholds every row but the user's own. See
+`gate_scope`.
+
 None of this patches core. The marker is one Check field on `DocPerm`, `Custom
 DocPerm` and `DocShare`, which the Role Permission Manager draws beside "Only if
 Creator" -- see `safer_permissions.install.sync_gate_field`. Enforcement
@@ -59,6 +68,12 @@ opening a gate by accident, which is the failure that actually happens.
 """
 
 import frappe
+
+# `import frappe` alone does not bind the submodule, and `gate_satisfied` calls
+# `frappe.permissions.get_user_permissions`. On a site something else has always
+# imported it first, so the omission never showed; imported here so the gate does
+# not depend on that.
+import frappe.permissions
 from frappe import _
 from frappe.utils import cint
 
@@ -69,6 +84,14 @@ GATE = "require_user_permission"
 # Reaching a document at all. A role that grants neither is not granting
 # access this module could usefully withhold.
 READ_RIGHTS = ("read", "select")
+
+# Core's own row-scoping flag, drawn as "Only if Creator" directly above the
+# gate. A role carrying it reaches the user's own documents and no others.
+IF_OWNER = "if_owner"
+
+# How far the gate holds a user back, once it applies at all.
+NOTHING = "nothing"
+OWN = "own"
 
 
 def gated_doctypes() -> frozenset[str]:
@@ -112,25 +135,14 @@ def clear_gated_doctypes() -> None:
 	frappe.local.tbs_gated_doctypes = None
 
 
-def gate_applies(user: str, doctype: str) -> bool:
-	"""Return True if every role granting `user` read on `doctype` is gated.
+def applicable_perms(user: str, doctype: str) -> list:
+	"""The rows that grant `user` a read right over whole documents of `doctype`.
 
-	One ungated role is enough to see everything: an HR Manager who also holds
-	`Employee` is an HR Manager. This mirrors how core resolves `if_owner`
-	across roles in `get_role_permissions`, where an unrestricted grant beats a
-	restricted one rather than intersecting with it.
+	Permlevel above 0 governs fields rather than rows, so core skips those rows
+	when it decides which documents a user may reach, and so do we.
 	"""
-	if doctype not in gated_doctypes():
-		return False
-
-	# Administrator short-circuits every permission check in core long before
-	# a hook is consulted; saying so here keeps the two consistent rather than
-	# implying this module could hold it back.
-	if user in ("Administrator", "Guest"):
-		return False
-
 	roles = set(frappe.get_roles(user))
-	applicable = [
+	return [
 		perm
 		for perm in frappe.get_meta(doctype).permissions
 		if perm.role in roles
@@ -138,12 +150,58 @@ def gate_applies(user: str, doctype: str) -> bool:
 		and any(perm.get(right) for right in READ_RIGHTS)
 	]
 
+
+def gate_scope(user: str, doctype: str) -> str | None:
+	"""How far the gate holds `user` back on `doctype`.
+
+	`None`     it does not: some ungated role grants unrestricted read.
+	`OWN`      every unrestricted grant is gated, but an ungated "Only if
+	           Creator" row still grants the user their own documents.
+	`NOTHING`  every grant is gated.
+
+	One ungated role is enough to see everything: an HR Manager who also holds
+	`Employee` is an HR Manager. This mirrors how core resolves `if_owner`
+	across roles in `get_role_permissions`, where an unrestricted grant beats a
+	restricted one rather than intersecting with it.
+
+	A role marked "Only if Creator" is not such a grant. It reaches the user's
+	own documents and can never reach anyone else's, so treating it as one
+	would switch the gate off almost everywhere it matters: `Employee` carries
+	that tick on doctype after doctype and is held by nearly every member of
+	staff, which is exactly the population a gated approver role is drawn from.
+	It is honoured for what it does grant instead -- the gate withholds every
+	row but the user's own -- rather than for access it does not confer.
+	"""
+	if doctype not in gated_doctypes():
+		return None
+
+	# Administrator short-circuits every permission check in core long before
+	# a hook is consulted; saying so here keeps the two consistent rather than
+	# implying this module could hold it back.
+	if user in ("Administrator", "Guest"):
+		return None
+
+	applicable = applicable_perms(user, doctype)
+
 	# No read access from any role. Core already denies this; claiming it as a
 	# gate would only produce a misleading permission log.
 	if not applicable:
-		return False
+		return None
 
-	return all(perm.get(GATE) for perm in applicable)
+	# Nothing ticked on any role this user actually holds.
+	if not any(perm.get(GATE) for perm in applicable):
+		return None
+
+	ungated = [perm for perm in applicable if not perm.get(GATE)]
+	if any(not perm.get(IF_OWNER) for perm in ungated):
+		return None
+
+	return OWN if ungated else NOTHING
+
+
+def gate_applies(user: str, doctype: str) -> bool:
+	"""Return True if the gate holds `user` back on `doctype` at all."""
+	return gate_scope(user, doctype) is not None
 
 
 def gate_satisfied(user: str, doctype: str) -> bool:
@@ -162,9 +220,17 @@ def gate_satisfied(user: str, doctype: str) -> bool:
 	)
 
 
-def is_blocked(user: str, doctype: str) -> bool:
-	"""Return True if the gate applies to `user` here and is not satisfied."""
-	return gate_applies(user, doctype) and not gate_satisfied(user, doctype)
+def blocked_scope(user: str, doctype: str) -> str | None:
+	"""What the gate withholds from `user` here, or `None` if it withholds nothing.
+
+	The gate applying and the gate being satisfied are separate questions, and
+	only the pair decides anything: a role can be gated and the user still hold
+	the User Permission that opens it.
+	"""
+	scope = gate_scope(user, doctype)
+	if scope is None or gate_satisfied(user, doctype):
+		return None
+	return scope
 
 
 def constraining_doctypes(doctype: str) -> set[str]:
@@ -193,10 +259,21 @@ def constraining_doctypes(doctype: str) -> set[str]:
 
 
 def permission_query_conditions(user: str, doctype: str | None = None, **kwargs) -> str:
-	"""Empty a list view rather than filter it: the gate allows no rows."""
-	if doctype and is_blocked(user or frappe.session.user, doctype):
-		return "1=0"
-	return ""
+	"""Narrow a list view to what the gate leaves: no rows, or the user's own."""
+	if not doctype:
+		return ""
+
+	user = user or frappe.session.user
+	scope = blocked_scope(user, doctype)
+	if scope is None:
+		return ""
+
+	if scope == OWN:
+		# The shape core builds for "Only if Creator" itself, in
+		# `DatabaseQuery.build_match_conditions`, and ANDed alongside it.
+		return f"`tab{doctype}`.`owner` = {frappe.db.escape(user, percent=False)}"
+
+	return "1=0"
 
 
 def has_permission(doc=None, ptype: str | None = None, user: str | None = None, **kwargs) -> bool:
@@ -208,7 +285,14 @@ def has_permission(doc=None, ptype: str | None = None, user: str | None = None, 
 	"""
 	if doc is None:
 		return True
-	return not is_blocked(user or frappe.session.user, doc.doctype)
+
+	user = user or frappe.session.user
+	scope = blocked_scope(user, doc.doctype)
+	if scope is None:
+		return True
+
+	# An ungated "Only if Creator" role still grants the user their own documents.
+	return scope == OWN and doc.owner == user
 
 
 # Query and Script Reports
