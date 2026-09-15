@@ -14,9 +14,11 @@ from decimal import Decimal
 
 import frappe
 from frappe import _
+from frappe.query_builder.functions import Sum
 from frappe.utils import flt
 
 BUDGET = "Department Budget"
+REQUEST = "Procurement Request"
 MR_TYPES = ("Purchase", "Material Issue")
 # A received or issued request is money gone; every other submitted one is money
 # the department has committed but still holds. `Stopped` counts as committed --
@@ -72,7 +74,10 @@ def find_budget(company, department, date):
 
 
 def lock_budget(name):
-	rows = frappe.db.sql("select * from `tabDepartment Budget` where name=%s for update", name, as_dict=True)
+	budget = frappe.qb.DocType(BUDGET)
+	# Every column, because the callers read the whole allocation off the row
+	# they locked rather than loading it a second time.
+	rows = frappe.qb.from_(budget).select("*").where(budget.name == name).for_update().run(as_dict=True)
 	if not rows:
 		frappe.throw(_("Department budget no longer exists."))
 	return rows[0]
@@ -82,26 +87,26 @@ def usage_rows(budget, lock=False):
 	"""Submitted Purchase/Material Issue rows falling in this budget's department and period.
 
 	Attribution is derived, not stored: a request belongs to whichever allocation
-	covers its department on its transaction date. `for update` is not decoration:
+	covers its department on its transaction date. `for_update` is not decoration:
 	the tally is read inside the Department Budget row lock, and a locking read is
 	what makes it see rows another transaction committed after this one's snapshot.
 	"""
-	return frappe.db.sql(
-		"""select i.name, i.parent, i.amount, mr.status from `tabMaterial Request Item` i
-		inner join `tabMaterial Request` mr on mr.name=i.parent
-		where mr.docstatus=1 and mr.material_request_type in %(types)s
-		and mr.company=%(company)s and mr.department=%(department)s
-		and mr.transaction_date between %(start)s and %(end)s"""
-		+ (" for update" if lock else ""),
-		{
-			"types": MR_TYPES,
-			"company": budget.company,
-			"department": budget.department,
-			"start": budget.start_date,
-			"end": budget.end_date,
-		},
-		as_dict=True,
+	item = frappe.qb.DocType("Material Request Item")
+	request = frappe.qb.DocType("Material Request")
+	query = (
+		frappe.qb.from_(item)
+		.inner_join(request)
+		.on(request.name == item.parent)
+		.select(item.name, item.parent, item.amount, request.status)
+		.where(
+			(request.docstatus == 1)
+			& request.material_request_type.isin(MR_TYPES)
+			& (request.company == budget.company)
+			& (request.department == budget.department)
+			& request.transaction_date.between(budget.start_date, budget.end_date)
+		)
 	)
+	return (query.for_update() if lock else query).run(as_dict=True)
 
 
 def total(rows):
@@ -330,35 +335,42 @@ REQUEST_OPEN_STATES = ("Pending", "Under Review")
 def request_rows(budget, approved_only=False, lock=False):
 	"""Item rows of the requests falling in this budget's department and period.
 
-	Attribution is derived exactly as `usage_rows` derives it, and `for update` is
+	Attribution is derived exactly as `usage_rows` derives it, and `for_update` is
 	there for the same reason: read inside the Department Budget row lock, a
 	locking read is what makes an approval another transaction committed after
 	this one's snapshot visible. Without it two requests that each fit on their
 	own can both be approved, and the allocation holds neither.
 	"""
-	return frappe.db.sql(
-		"""select i.name, i.parent, i.qty, i.item_code, i.uom,
-		i.verified_rate, i.estimated_rate, r.docstatus
-		from `tabProcurement Request Item` i
-		inner join `tabProcurement Request` r on r.name=i.parent
-		where i.parenttype='Procurement Request' and """
-		+ (
-			"r.docstatus = 1"
-			if approved_only
-			else "(r.docstatus = 1 or (r.docstatus = 0 and r.status in %(open_states)s))"
+	item = frappe.qb.DocType("Procurement Request Item")
+	request = frappe.qb.DocType("Procurement Request")
+	approved = request.docstatus == 1
+	query = (
+		frappe.qb.from_(item)
+		.inner_join(request)
+		.on(request.name == item.parent)
+		.select(
+			item.name,
+			item.parent,
+			item.qty,
+			item.item_code,
+			item.uom,
+			item.verified_rate,
+			item.estimated_rate,
+			request.docstatus,
 		)
-		+ """ and r.company=%(company)s and r.department=%(department)s
-		and r.transaction_date between %(start)s and %(end)s"""
-		+ (" for update" if lock else ""),
-		{
-			"open_states": REQUEST_OPEN_STATES,
-			"company": budget.company,
-			"department": budget.department,
-			"start": budget.start_date,
-			"end": budget.end_date,
-		},
-		as_dict=True,
+		.where(
+			(item.parenttype == REQUEST)
+			& (
+				approved
+				if approved_only
+				else approved | ((request.docstatus == 0) & request.status.isin(REQUEST_OPEN_STATES))
+			)
+			& (request.company == budget.company)
+			& (request.department == budget.department)
+			& request.transaction_date.between(budget.start_date, budget.end_date)
+		)
 	)
+	return (query.for_update() if lock else query).run(as_dict=True)
 
 
 def request_values(budget, approved_only=False, lock=False):
@@ -399,13 +411,20 @@ def outstanding_values(names, items):
 	# missed here, which counts that quantity as still outstanding while the
 	# Material Request tally also charges it -- the approval gate errs towards
 	# refusing, never towards letting an overrun through.
-	covered = frappe.db.sql(
-		"""select i.procurement_request_item, sum(i.stock_qty) as stock_qty
-		from `tabMaterial Request Item` i inner join `tabMaterial Request` mr on mr.name=i.parent
-		where mr.docstatus=1 and mr.material_request_type in ('Purchase', 'Material Issue')
-		and i.procurement_request in %(names)s group by i.procurement_request_item""",
-		{"names": tuple(names)},
-		as_dict=True,
+	item = frappe.qb.DocType("Material Request Item")
+	request = frappe.qb.DocType("Material Request")
+	covered = (
+		frappe.qb.from_(item)
+		.inner_join(request)
+		.on(request.name == item.parent)
+		.select(item.procurement_request_item, Sum(item.stock_qty).as_("stock_qty"))
+		.where(
+			(request.docstatus == 1)
+			& request.material_request_type.isin(MR_TYPES)
+			& item.procurement_request.isin(names)
+		)
+		.groupby(item.procurement_request_item)
+		.run(as_dict=True)
 	)
 	by_row = {row.procurement_request_item: number(row.stock_qty) for row in covered}
 	result = dict.fromkeys(names, number(0))
@@ -444,7 +463,7 @@ def enforce_request_allocation(doc, method=None):
 	draft allocation authorises nothing either, and reads here as the absence of
 	one.
 	"""
-	if doc.doctype != "Procurement Request" or doc.docstatus != 1:
+	if doc.doctype != REQUEST or doc.docstatus != 1:
 		return
 	name = budget_name(doc.company, doc.department, doc.transaction_date)
 	if not name:

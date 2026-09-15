@@ -11,7 +11,9 @@ class DepartmentBudget(Document):
 	def validate(self):
 		# Serialize allocation writes per department: the overlap check below is
 		# only sound while no concurrent transaction can insert a rival period.
-		frappe.db.sql("select name from `tabDepartment` where name=%s for update", self.department)
+		# The row itself is not wanted here, only the lock the read takes on it.
+		dept = frappe.qb.DocType("Department")
+		frappe.qb.from_(dept).select(dept.name).where(dept.name == self.department).for_update().run()
 		year = frappe.get_doc("Fiscal Year", self.fiscal_year)
 		if year.disabled or (year.companies and self.company not in [r.company for r in year.companies]):
 			frappe.throw(_("Choose an active fiscal year belonging to this company."))

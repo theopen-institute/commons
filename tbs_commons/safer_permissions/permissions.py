@@ -102,9 +102,11 @@ def gated_doctypes() -> frozenset[str]:
 	answer -- a doctype nobody has gated -- has to cost a set lookup rather than
 	a role scan.
 
-	Read with raw SQL on purpose. `frappe.get_all` would route through
-	`DatabaseQuery`, which consults the very `permission_query_conditions` hook
-	this function exists to serve; the sentinel below closes the same door twice.
+	Read with the query builder on purpose, rather than `frappe.get_all`: that
+	routes through `DatabaseQuery`, which consults the very
+	`permission_query_conditions` hook this function exists to serve. `frappe.qb`
+	builds the statement and runs it, and asks no permission hook on the way; the
+	sentinel below closes the same door twice.
 
 	Not `site_cache`: that cache lives in one worker process and is not shared,
 	so a gate ticked in one worker would stay invisible to the others until a
@@ -119,12 +121,15 @@ def gated_doctypes() -> frozenset[str]:
 
 	gated: set[str] = set()
 	for table in ("Custom DocPerm", "DocPerm"):
+		perm = frappe.qb.DocType(table)
 		try:
-			rows = frappe.db.sql(f"select distinct parent from `tab{table}` where `{GATE}` = 1")
+			# Bracket access, because the column is named by a constant rather
+			# than spelled out here.
+			rows = frappe.qb.from_(perm).select(perm.parent).distinct().where(perm[GATE] == 1).run(pluck="parent")
 		except Exception:
 			# Before this app's first migrate the column is not there yet.
 			continue
-		gated.update(row[0] for row in rows if row[0])
+		gated.update(parent for parent in rows if parent)
 
 	frappe.local.tbs_gated_doctypes = frozenset(gated)
 	return frappe.local.tbs_gated_doctypes
