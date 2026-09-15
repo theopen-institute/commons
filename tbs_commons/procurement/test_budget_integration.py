@@ -116,6 +116,12 @@ class TestDepartmentBudget(unittest.TestCase):
 			doc.submit()
 		return doc
 
+	def approval(self, amount=400):
+		"""A request sitting at the approver, not yet approved."""
+		doc = self.request(amount, approve=False)
+		doc.status = "Approved"
+		return doc
+
 	def mr(self, rate=100, qty=1, kind="Purchase", request=None, submit=True, department=True):
 		if request:
 			from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
@@ -284,15 +290,94 @@ class TestDepartmentBudget(unittest.TestCase):
 			self.assertEqual(budget.request_summary(doc), budget.request_summary(doc, cache))
 		self.assertEqual(len(cache), 1)
 
+	# --- the approval gate --------------------------------------------------
+
+	def test_approval_is_refused_when_the_request_does_not_fit(self):
+		self.request(400)
+		self.refuses(self.approval(700))
+		# Refused, not partially applied: the department is where it was.
+		self.assertEqual(budget.request_summary(self.request(0))["committed"], 400)
+
+	def test_an_approval_that_exactly_fills_the_allocation_is_allowed(self):
+		self.request(400)
+		doc = self.approval(600)
+		doc.submit()
+		self.assertEqual(doc.docstatus, 1)
+		self.assertEqual(budget.request_summary(doc)["remaining"], 0)
+
+	def test_material_requests_already_charged_leave_less_to_approve(self):
+		self.mr(rate=800, qty=1)
+		self.refuses(self.approval(400))
+		self.approval(200).submit()
+
+	def test_ordering_an_approved_request_does_not_charge_it_twice(self):
+		"""The gate counts what is outstanding, not what was estimated.
+
+		Once a Material Request covers a line, the Material Request tally carries
+		it. Were the estimate still counted beside it the allocation would be
+		spent twice over, and the department would be blocked out of money it
+		never committed.
+		"""
+		doc = self.request(400)
+		self.mr(rate=100, qty=4, request=doc)
+		self.assertEqual(self.used(), 400)
+		# 400 charged, nothing left outstanding on it, so 600 is still approvable.
+		self.approval(600).submit()
+
+	def test_undecided_requests_do_not_block_an_approval(self):
+		"""Only a decision to spend holds an allocation. An open ask does not."""
+		self.request(900, approve=False).db_set("status", "Pending")
+		self.request(900, approve=False)
+		self.approval(1000).submit()
+
+	def test_a_request_without_an_estimate_is_never_refused(self):
+		"""An estimate is optional, and what commits nothing cannot overdraw."""
+		self.request(1000)
+		self.approval(0).submit()
+
+	def test_only_a_submitted_allocation_gates_approvals(self):
+		"""No allocation and a draft one both read as nothing to enforce.
+
+		A department Finance has not budgeted yet is not over budget. The control
+		is not lost, only deferred: `find_budget` still refuses to raise a
+		Material Request against a missing or unsubmitted allocation.
+		"""
+		self.budget.reload().cancel()
+		frappe.db.delete(budget.BUDGET, {"name": self.budget.name})
+		self.approval(5000).submit()
+		self.allocation(submit=False)
+		self.approval(5000).submit()
+
+	def test_a_cancelled_approval_releases_what_it_held(self):
+		doc = self.request(700)
+		self.refuses(self.approval(400))
+		doc.reload().cancel()
+		self.approval(400).submit()
+
 	# --- the readout --------------------------------------------------------
 
-	def test_procurement_approval_is_committed_even_over_budget(self):
-		doc = self.request(1400)
+	def test_procurement_approval_is_committed_not_spent(self):
+		doc = self.request(400)
 		self.assertEqual(self.used(), 0)
 		summary = budget.request_summary(doc)
 		self.assertEqual(summary["spent"], 0)
-		self.assertEqual(summary["committed"], 1400)
-		self.assertEqual(summary["remaining"], -400)
+		self.assertEqual(summary["committed"], 400)
+		self.assertEqual(summary["remaining"], 600)
+
+	def test_the_readout_still_shows_an_overdraft_a_cut_allocation_creates(self):
+		"""Approvals can no longer overdraw a budget, but a restatement still can.
+
+		`validate_covers_usage` holds an allocation above what Material Requests
+		have charged, and says nothing about what approvals have committed -- so
+		negative remaining is still reachable, and still has to read as negative.
+		"""
+		doc = self.request(400)
+		cut = self.amendment(100)
+		cut.insert()
+		cut.submit()
+		summary = budget.request_summary(doc.reload())
+		self.assertEqual(summary["committed"], 400)
+		self.assertEqual(summary["remaining"], -300)
 
 	def test_delivery_moves_a_material_request_from_committed_to_spent(self):
 		doc = self.request(400)
@@ -357,7 +442,9 @@ class TestDepartmentBudget(unittest.TestCase):
 		# approver role, and all this test wants is a request in that state.
 		rejected = self.request(600, approve=False)
 		rejected.db_set("status", "Rejected")
-		self.request(700).cancel()
+		# Within the allocation, because approving it is now gated on fitting:
+		# what this test is about is that cancelling takes it back out again.
+		self.request(500).cancel()
 		summary = budget.request_summary(active)
 		self.assertEqual(summary["committed"], 400)
 		self.assertEqual(summary["open_requests"], 0)

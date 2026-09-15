@@ -33,6 +33,13 @@ consult the name of a state to know it. A rejection is not the end of the road
 either -- procurement can `Reopen` a turned-down request, which hands it back to
 them at `Pending` with the old reason cleared off it.
 
+Because approval is the spending decision, it is also where the department's
+allocation has to hold: `on_submit` refuses a request whose outstanding estimate
+no longer fits what the department has left. The arithmetic is the same one the
+approver's budget banner shows, so the refusal never contradicts the readout it
+sits next to. It lives in `tbs_commons.procurement.budget` with everything else
+that knows about allocations -- all this file decides is when to ask.
+
 Once approved, `make_material_request` carries the request -- all of it, or the
 rows and quantities the buyer picks -- onto a draft Material Request. That is
 where the item master, the warehouse and the stock effects finally enter, and it
@@ -54,6 +61,8 @@ from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
 from frappe.query_builder.functions import Sum
 from frappe.utils import flt, getdate
+
+from tbs_commons.procurement.budget import enforce_request_allocation
 
 DOCTYPE = "Procurement Request"
 
@@ -91,6 +100,16 @@ class ProcurementRequest(Document):
 	def validate(self) -> None:
 		self.validate_quantities()
 		self.validate_schedule_date()
+
+	def on_submit(self) -> None:
+		"""Refuse an approval the department's allocation cannot hold.
+
+		Here rather than in `validate` because the check counts this request
+		among the approved ones, which it only is once the submit has been
+		written -- and because a draft is free to exceed a budget it has not yet
+		asked anyone to spend.
+		"""
+		enforce_request_allocation(self)
 
 	def validate_quantities(self) -> None:
 		"""Refuse a row that asks for nothing.

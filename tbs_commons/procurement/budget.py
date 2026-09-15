@@ -319,6 +319,55 @@ def enforce_allocation(current, doc):
 	)
 
 
+# Which undecided requests are an open ask. `Draft` is its author's private
+# working copy and `Rejected` is a decision not to spend, so neither is one.
+# Nothing on the approved side consults a state name: `docstatus` 1 is the
+# approval, and a site running without the Workflow must not slip past the gate
+# by leaving a submitted request at some other status.
+REQUEST_OPEN_STATES = ("Pending", "Under Review")
+
+
+def request_rows(budget, approved_only=False, lock=False):
+	"""Item rows of the requests falling in this budget's department and period.
+
+	Attribution is derived exactly as `usage_rows` derives it, and `for update` is
+	there for the same reason: read inside the Department Budget row lock, a
+	locking read is what makes an approval another transaction committed after
+	this one's snapshot visible. Without it two requests that each fit on their
+	own can both be approved, and the allocation holds neither.
+	"""
+	return frappe.db.sql(
+		"""select i.name, i.parent, i.qty, i.item_code, i.uom,
+		i.verified_rate, i.estimated_rate, r.docstatus
+		from `tabProcurement Request Item` i
+		inner join `tabProcurement Request` r on r.name=i.parent
+		where i.parenttype='Procurement Request' and """
+		+ (
+			"r.docstatus = 1"
+			if approved_only
+			else "(r.docstatus = 1 or (r.docstatus = 0 and r.status in %(open_states)s))"
+		)
+		+ """ and r.company=%(company)s and r.department=%(department)s
+		and r.transaction_date between %(start)s and %(end)s"""
+		+ (" for update" if lock else ""),
+		{
+			"open_states": REQUEST_OPEN_STATES,
+			"company": budget.company,
+			"department": budget.department,
+			"start": budget.start_date,
+			"end": budget.end_date,
+		},
+		as_dict=True,
+	)
+
+
+def request_values(budget, approved_only=False, lock=False):
+	"""Outstanding request value for this department and period, by request name."""
+	rows = request_rows(budget, approved_only=approved_only, lock=lock)
+	names = list({row.parent for row in rows})
+	return outstanding_values(names, rows) if names else {}
+
+
 def provisional_requests(budget):
 	"""Outstanding request value for this department and period, split by decision.
 
@@ -332,27 +381,12 @@ def provisional_requests(budget):
 	counted by the Material Request tally instead, and counting both would spend
 	the allocation twice.
 	"""
-	requests = frappe.get_all(
-		"Procurement Request",
-		filters={
-			"company": budget.company,
-			"department": budget.department,
-			"transaction_date": ["between", [budget.start_date, budget.end_date]],
-			"docstatus": ["<", 2],
-			"status": ["in", ["Pending", "Under Review", "Approved", "Completed"]],
-		},
-		fields=["name", "docstatus"],
-	)
-	if not requests:
+	rows = request_rows(budget)
+	names = list({row.parent for row in rows})
+	if not names:
 		return number(0), number(0)
-	names = [row.name for row in requests]
-	items = frappe.get_all(
-		"Procurement Request Item",
-		filters={"parent": ["in", names]},
-		fields=["name", "parent", "qty", "item_code", "uom", "verified_rate", "estimated_rate"],
-	)
-	values = outstanding_values(names, items)
-	approved = {row.name for row in requests if row.docstatus == 1}
+	values = outstanding_values(names, rows)
+	approved = {row.parent for row in rows if row.docstatus == 1}
 	committed = sum((value for name, value in values.items() if name in approved), number(0))
 	return committed, sum(values.values(), number(0)) - committed
 
@@ -360,6 +394,11 @@ def provisional_requests(budget):
 def outstanding_values(names, items):
 	from erpnext.stock.get_item_details import get_conversion_factor
 
+	# Not a locking read, unlike the tally either side of it. A quantity a
+	# concurrent Material Request covered after this transaction's snapshot is
+	# missed here, which counts that quantity as still outstanding while the
+	# Material Request tally also charges it -- the approval gate errs towards
+	# refusing, never towards letting an overrun through.
 	covered = frappe.db.sql(
 		"""select i.procurement_request_item, sum(i.stock_qty) as stock_qty
 		from `tabMaterial Request Item` i inner join `tabMaterial Request` mr on mr.name=i.parent
@@ -384,6 +423,62 @@ def outstanding_values(names, items):
 			row.qty, qty, number(row.verified_rate) or number(row.estimated_rate)
 		)
 	return result
+
+
+def enforce_request_allocation(doc, method=None):
+	"""on_submit: refuse an approval the department's allocation cannot hold.
+
+	Approval is where the allocation has to hold, because approval is where the
+	department commits. By the time a Material Request is raised the decision has
+	already been taken, and refusing it there refuses the wrong document -- the
+	one gate this adds is the one an approver can still act on.
+
+	What it measures is the readout's own `remaining`: the Material Request tally
+	plus every approved request's outstanding estimate, this one included. So the
+	refusal fires exactly when the approver's own budget banner would have gone
+	negative, and the two can never tell different stories.
+
+	No allocation, no gate. A department Finance has not budgeted is not over
+	budget, and the Material Request stage still refuses to spend against a
+	missing allocation -- so nothing escapes the control, it only lands later. A
+	draft allocation authorises nothing either, and reads here as the absence of
+	one.
+	"""
+	if doc.doctype != "Procurement Request" or doc.docstatus != 1:
+		return
+	name = budget_name(doc.company, doc.department, doc.transaction_date)
+	if not name:
+		return
+	current = lock_budget(name)
+	# Re-read under the lock: the allocation may have been cancelled between
+	# resolving it and here, and a cancelled one is no allocation at all.
+	if current.docstatus != 1:
+		return
+	values = request_values(current, approved_only=True, lock=True)
+	# This request is already at `docstatus` 1 in the database -- `on_submit` runs
+	# after the write -- so it is one of the rows above, and its own share has to
+	# come back out to say what was left before it.
+	own = values.get(doc.name, number(0))
+	if own <= 0:
+		# Nothing to charge. An estimate is not required to approve a request, and a
+		# request that commits nothing cannot be what takes a department over.
+		return
+	committed = sum(values.values(), number(0))
+	available = number(current.annual_amount) - used_amount(current, lock=True) - (committed - own)
+	if own <= available:
+		return
+	frappe.throw(
+		_(
+			"Department {0}: approving this request commits {1} {2}; only {3} remains. Shortfall: {4}."
+		).format(
+			current.department,
+			current.currency,
+			f"{own:,.2f}",
+			f"{available:,.2f}",
+			f"{own - available:,.2f}",
+		),
+		title=_("Department budget exceeded"),
+	)
 
 
 def can_view_summary(doc):
