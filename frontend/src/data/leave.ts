@@ -1,12 +1,15 @@
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useCall } from 'frappe-ui'
 import {
-  buttonTheme,
+  decisionButton as buildDecisionButton,
+  decisionButtons as buildDecisionButtons,
   styleTheme,
-  themeIcon,
   type BadgeTheme,
-  type ButtonTheme,
+  type Decision,
+  type DecisionButton,
 } from './workflowStyle'
+
+export type { DecisionButton }
 
 export interface MyEmployee {
   name: string
@@ -21,19 +24,10 @@ export interface MyEmployee {
 }
 
 /**
- * One outcome an approver may be offered.
- *
- * All three fields are the server's. `style` is the site's -- a Workflow State's
- * where a workflow is running, and the app's default otherwise -- and `confirm`
- * says whether this outcome deserves a second look before it is written. That
- * used to be inferred here from the button's own colour, which meant a site that
- * added an outcome silently got whatever the inference happened to decide.
+ * One outcome an approver may be offered. The shared shape -- see `Decision` in
+ * `workflowStyle`, which procurement's and profile's vocabularies use too.
  */
-export interface LeaveDecision {
-  value: string
-  style: string | null
-  confirm: boolean
-}
+export type LeaveDecision = Decision
 
 export interface LeavePermissions {
   read: boolean
@@ -106,7 +100,7 @@ const NO_LEAVE_PERMISSIONS: LeavePermissions = {
 }
 
 export const leaveCan = computed(
-  () => leavePermissionsCall.data ?? NO_LEAVE_PERMISSIONS,
+  () => leavePermissionsCall.data ?? NO_LEAVE_PERMISSIONS
 )
 
 /**
@@ -117,11 +111,11 @@ export const leaveCan = computed(
  * to show for it. `leavePermissionsError` is what it should say instead.
  */
 export const leavePermissionsLoaded = computed(
-  () => leavePermissionsCall.isFinished,
+  () => leavePermissionsCall.isFinished
 )
 
 export const leavePermissionsError = computed(
-  () => leavePermissionsCall.error ?? null,
+  () => leavePermissionsCall.error ?? null
 )
 
 export function reloadLeavePermissions() {
@@ -157,7 +151,7 @@ export function useLeaveApprovalQueue(decided: MaybeRefOrGetter<boolean>) {
   watch(
     () => toValue(decided),
     () => queue.reload(),
-    { immediate: true },
+    { immediate: true }
   )
   return queue
 }
@@ -182,7 +176,7 @@ export interface LeaveDetails {
  * from the allocation total alone.
  */
 export function useLeaveDetails(
-  employee: MaybeRefOrGetter<string | undefined>,
+  employee: MaybeRefOrGetter<string | undefined>
 ) {
   return useCall<LeaveDetails, { employee: string; date: string }>({
     url: '/api/v2/method/hrms.hr.doctype.leave_application.leave_application.get_leave_details',
@@ -295,54 +289,16 @@ const DECISION_LABELS: Record<string, string> = {
   Rejected: 'Deny',
 }
 
-export interface DecisionButton {
-  decision: string
-  label: string
-  theme: ButtonTheme
-  variant: 'solid' | 'subtle'
-  icon: string
-  /** Whether to ask again before writing it. The server's answer, not a guess
-   *  read off the variant below. */
-  confirm: boolean
-}
-
-/**
- * How a decision button reads.
- *
- * Which outcomes exist, how each is styled and which of them needs confirming
- * are all the server's. The wording is this file's, and the one solid button is
- * frappe-ui's convention: the affirmative outcome -- the one the server did not
- * ask to have confirmed -- is the call to action, and everything else stays
- * subtle so the row reads as one choice rather than a wall of filled buttons.
- */
+/** How a leave decision button reads. The shape and the one-solid-button rule
+ *  are shared (`workflowStyle`); leave supplies only its own wording. */
 export function decisionButton(decision: LeaveDecision): DecisionButton {
-  const theme = buttonTheme(decision.style)
-  return {
-    decision: decision.value,
-    label: DECISION_LABELS[decision.value] ?? decision.value,
-    theme,
-    variant: decision.confirm ? 'subtle' : 'solid',
-    icon: themeIcon(theme),
-    confirm: decision.confirm,
-  }
+  return buildDecisionButton(decision, DECISION_LABELS)
 }
 
-/**
- * The buttons for one row: the outcomes the server said this row accepts, in
- * the order the vocabulary offers them, and at most one of them solid.
- */
+/** The buttons for one row: the outcomes the server said this row accepts. */
 export function decisionButtons(
   offered: string[] | undefined,
-  vocabulary: LeaveDecision[],
+  vocabulary: LeaveDecision[]
 ): DecisionButton[] {
-  let solidTaken = false
-  return vocabulary
-    .filter((decision) => offered?.includes(decision.value))
-    .map((decision) => {
-      const button = decisionButton(decision)
-      if (button.variant !== 'solid') return button
-      if (solidTaken) return { ...button, variant: 'subtle' as const }
-      solidTaken = true
-      return button
-    })
+  return buildDecisionButtons(offered, vocabulary, DECISION_LABELS)
 }

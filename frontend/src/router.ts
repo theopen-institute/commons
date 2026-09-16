@@ -54,6 +54,23 @@ const routes: RouteRecordRaw[] = [
     meta: { app: 'requests' },
   },
   {
+    // The employee's own record, read only. Under `requests` rather than
+    // `employees`: this is something a person does about themselves and waits
+    // on an approver for, which is what that app is, and the directory next
+    // door is the other half -- everyone else's records, for the people who
+    // maintain them.
+    path: '/profile',
+    name: 'MyProfile',
+    component: () => import('@/pages/MyProfile.vue'),
+    meta: { app: 'requests' },
+  },
+  {
+    path: '/profile/approvals',
+    name: 'ProfileChangeApprovals',
+    component: () => import('@/pages/ProfileChangeApprovals.vue'),
+    meta: { app: 'requests' },
+  },
+  {
     path: '/leave',
     name: 'MyLeave',
     component: () => import('@/pages/MyLeave.vue'),

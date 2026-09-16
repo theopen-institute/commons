@@ -55,3 +55,78 @@ const THEME_ICONS: Record<BadgeTheme, string> = {
 export function themeIcon(theme: BadgeTheme): string {
   return THEME_ICONS[theme]
 }
+
+/**
+ * One outcome the server will accept, and how it reads.
+ *
+ * All three fields are the server's. `style` is the site's -- a Workflow State's
+ * where a workflow is running, and the section's default otherwise -- and
+ * `confirm` says whether this outcome deserves a second look before it is
+ * written. Inferring that here from the button's own colour meant a site that
+ * added an outcome silently got whatever the inference happened to decide.
+ */
+export interface Decision {
+  value: string
+  style: string | null
+  confirm: boolean
+}
+
+export interface DecisionButton {
+  decision: string
+  label: string
+  theme: ButtonTheme
+  variant: 'solid' | 'subtle'
+  icon: string
+  /** Whether to ask again before writing it. The server's answer, not a guess
+   *  read off the variant beside it. */
+  confirm: boolean
+}
+
+/**
+ * How one decision button reads.
+ *
+ * Which outcomes exist, how each is styled and which needs confirming are all
+ * the server's. `labels` is the calling section's wording, and only wording: an
+ * outcome it does not know keeps the server's name for it, which is what a site
+ * that added one would want it called.
+ */
+export function decisionButton(
+  decision: Decision,
+  labels: Record<string, string> = {}
+): DecisionButton {
+  const theme = buttonTheme(decision.style)
+  return {
+    decision: decision.value,
+    label: labels[decision.value] ?? decision.value,
+    theme,
+    variant: decision.confirm ? 'subtle' : 'solid',
+    icon: themeIcon(theme),
+    confirm: decision.confirm,
+  }
+}
+
+/**
+ * The buttons for one row: the outcomes the server said this row accepts, in
+ * the order the vocabulary offers them, and at most one of them solid.
+ *
+ * One solid button is frappe-ui's convention: the affirmative outcome -- the one
+ * the server did not ask to have confirmed -- is the call to action, and
+ * everything else stays subtle so a row reads as one choice rather than a wall
+ * of filled buttons.
+ */
+export function decisionButtons(
+  offered: string[] | undefined,
+  vocabulary: Decision[],
+  labels: Record<string, string> = {}
+): DecisionButton[] {
+  let solidTaken = false
+  return vocabulary
+    .filter((decision) => offered?.includes(decision.value))
+    .map((decision) => {
+      const button = decisionButton(decision, labels)
+      if (button.variant !== 'solid') return button
+      if (solidTaken) return { ...button, variant: 'subtle' as const }
+      solidTaken = true
+      return button
+    })
+}

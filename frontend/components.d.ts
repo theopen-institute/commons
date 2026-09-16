@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AppPageHeader: typeof import('./src/components/AppPageHeader.vue')['default']
     AppSidebar: typeof import('./src/components/AppSidebar.vue')['default']
+    ChangeDiff: typeof import('./src/components/ChangeDiff.vue')['default']
     DepartmentBudgetCard: typeof import('./src/components/DepartmentBudgetCard.vue')['default']
     EmployeeField: typeof import('./src/components/EmployeeField.vue')['default']
     FormSection: typeof import('./src/components/FormSection.vue')['default']
@@ -21,6 +22,8 @@ declare module 'vue' {
     PermissionNotice: typeof import('./src/components/PermissionNotice.vue')['default']
     ProcurementLines: typeof import('./src/components/ProcurementLines.vue')['default']
     ProcurementRequestDialog: typeof import('./src/components/ProcurementRequestDialog.vue')['default']
+    ProfileSection: typeof import('./src/components/ProfileSection.vue')['default']
+    ProposeChangesDialog: typeof import('./src/components/ProposeChangesDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }

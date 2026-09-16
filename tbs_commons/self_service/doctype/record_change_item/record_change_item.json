@@ -1,0 +1,70 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-16 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "fieldname",
+  "label",
+  "column_break_field",
+  "current_value",
+  "proposed_value"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "description": "The field this row changes, on the request's referenced doctype. Must be one that doctype's self-service policy marks proposable -- see tbs_commons.self_service.policies.",
+   "fieldname": "fieldname",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Field",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "How the field was labelled when the change was proposed. Kept so a settled request still reads the way it was raised after a relabel.",
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Field Label",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_field",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 3,
+   "description": "What the record said when this request was last saved. Captured by the controller, not typed.",
+   "fieldname": "current_value",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Current Value",
+   "read_only": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "proposed_value",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Proposed Value"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Self Service",
+ "name": "Record Change Item",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

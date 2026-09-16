@@ -2,6 +2,7 @@ import { computed, type ComputedRef } from 'vue'
 import { can, permissionsLoaded } from './session'
 import { leaveCan, leavePermissionsLoaded } from './leave'
 import { procurementCan, procurementPermissionsLoaded } from './procurement'
+import { profileCan, profilePermissionsLoaded } from './profile'
 
 /**
  * The app registry.
@@ -11,11 +12,17 @@ import { procurementCan, procurementPermissionsLoaded } from './procurement'
  * (`meta.app`), and the sidebar shows only that app's navigation. The two
  * halves have to agree on the keys and the landing routes.
  *
- * Leave and procurement are one app here, `requests`: both are something a
- * person raises about themselves and waits on an approver for, and the people
- * who do one mostly do the other. They keep separate routes (`/leave`,
- * `/procurement`) and separate permission checks -- what they share is the
- * sidebar, where each gets its own labelled section.
+ * Leave, procurement and the profile are one app here, `requests`: each is
+ * something a person raises about themselves and waits on an approver for, and
+ * the people who do one mostly do the others. They keep separate routes
+ * (`/leave`, `/procurement`, `/profile`) and separate permission checks -- what
+ * they share is the sidebar, where each gets its own labelled section.
+ *
+ * The profile is in this app rather than in `employees` for that same reason.
+ * `employees` is the directory: everyone's records, for the people whose job is
+ * maintaining them. A person reading their own record and proposing a
+ * correction to it is the self-service side of the same data, and it belongs
+ * with the other things they ask for and wait on.
  */
 
 /**
@@ -57,9 +64,17 @@ export const apps: Record<AppKey, AppDefinition> = {
     // Not a section route: either section may be the one this user can open,
     // so the tile lands on a redirect that picks. See RequestsHome.vue.
     home: '/requests',
-    available: computed(() => leaveCan.value.read || procurementCan.value.read),
+    available: computed(
+      () =>
+        leaveCan.value.read ||
+        procurementCan.value.read ||
+        profileCan.value.read
+    ),
     resolved: computed(
-      () => leavePermissionsLoaded.value && procurementPermissionsLoaded.value,
+      () =>
+        leavePermissionsLoaded.value &&
+        procurementPermissionsLoaded.value &&
+        profilePermissionsLoaded.value
     ),
   },
 }
@@ -68,10 +83,11 @@ export const appList = [apps.employees, apps.requests]
 
 /**
  * Where `/requests` and the apps-screen tile actually land, in sidebar order.
- * Null until both permission answers are in, so nothing redirects early.
+ * Null until every permission answer is in, so nothing redirects early.
  */
 export const firstRequestSection = computed<string | null>(() => {
   if (!apps.requests.resolved.value) return null
+  if (profileCan.value.read) return '/profile'
   if (leaveCan.value.read) return '/leave'
   if (procurementCan.value.read) return '/procurement'
   return null
@@ -79,9 +95,9 @@ export const firstRequestSection = computed<string | null>(() => {
 
 /** Apps this user can actually open — what the switcher offers. */
 export const availableApps = computed(() =>
-  appList.filter((app) => app.available.value),
+  appList.filter((app) => app.available.value)
 )
 
 export const appsResolved = computed(() =>
-  appList.every((app) => app.resolved.value),
+  appList.every((app) => app.resolved.value)
 )

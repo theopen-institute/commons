@@ -7,12 +7,7 @@
 
        Below the desk's own mobile width it is a drawer rather than a narrower
        column, again like the desk: see `shellClass`. -->
-	<Sidebar
-		class="app-sidebar gap-3.5"
-		:class="shellClass"
-		:width="shellWidth"
-		disable-collapse
-	>
+	<Sidebar class="app-sidebar gap-3.5" :class="shellClass" :width="shellWidth" disable-collapse>
 		<!-- The desk's header: a 32px mark, the section over the app it belongs to,
          and one menu built like the desk's own -- same sections in the same
          order, icons from the same family (see `menuItems`). -->
@@ -48,10 +43,10 @@
 		<!-- One app's navigation only; the switcher in the header dropdown is the
          only way across. Employees is a flat list under its header, exactly as
          the desk lists a workspace's items straight under its name. Requests
-         holds two jobs that are read separately -- leave and procurement -- so
-         each gets a label, which is the desk's own pattern for a sidebar that
-         carries more than one group. A section whose permission this user does
-         not have is absent rather than empty. -->
+         holds three jobs that are read separately -- the profile, leave and
+         procurement -- so each gets a label, which is the desk's own pattern
+         for a sidebar that carries more than one group. A section whose
+         permission this user does not have is absent rather than empty. -->
 		<div class="flex-1 overflow-y-auto">
 			<!-- Rows a pixel apart, like the desk's own list of workspace items. -->
 			<div v-if="currentApp.key === 'employees'" class="space-y-px">
@@ -70,21 +65,45 @@
 			</div>
 
 			<!-- `gap-2` on top of the 8px each SidebarSection already carries: the
-           two sections are separate jobs, and the label alone does not read as
+           sections are separate jobs, and the label alone does not read as
            a break at the library's default spacing. No `space-y-*` on this
            container -- its specificity beats the sections' own `mt-2` and
            collapses them back together. -->
 			<div v-else class="flex flex-col gap-2">
 				<!-- A bare row, not a section: one page with nothing under it, and
-             ungated, so it sits above the two jobs rather than beside them. -->
+             ungated, so it sits above the three jobs rather than beside them. -->
 				<SidebarItem
 					label="Announcements"
 					icon="lucide-megaphone"
 					:to="{ name: 'Announcements' }"
 				/>
 
+				<SidebarSection v-if="profileCan.read" label="Profile" collapsible>
+					<SidebarItem
+						label="My profile"
+						icon="lucide-id-card"
+						:to="{ name: 'MyProfile' }"
+					/>
+					<SidebarItem
+						v-if="profileCan.review"
+						label="Change requests"
+						icon="lucide-file-pen-line"
+						:to="{ name: 'ProfileChangeApprovals' }"
+					>
+						<template v-if="profileCan.pending_reviews" #suffix>
+							<Badge theme="amber" variant="subtle">
+								{{ profileCan.pending_reviews }}
+							</Badge>
+						</template>
+					</SidebarItem>
+				</SidebarSection>
+
 				<SidebarSection v-if="leaveCan.read" label="Leave" collapsible>
-					<SidebarItem label="My leave" icon="lucide-palmtree" :to="{ name: 'MyLeave' }" />
+					<SidebarItem
+						label="My leave"
+						icon="lucide-palmtree"
+						:to="{ name: 'MyLeave' }"
+					/>
 					<SidebarItem
 						v-if="leaveCan.approve"
 						label="Approvals"
@@ -175,6 +194,7 @@ import { can, logout, user } from '@/data/session'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
 import { leaveCan } from '@/data/leave'
 import { procurementCan } from '@/data/procurement'
+import { profileCan } from '@/data/profile'
 import { apps, availableApps, SUITE_TITLE, type AppDefinition, type AppKey } from '@/data/apps'
 
 // Two initials, like the desk's `get_abbr`: the first letter of each of the
@@ -186,7 +206,7 @@ const initials = computed(() =>
 		.filter(Boolean)
 		.slice(0, 2)
 		.map((word) => word[0])
-		.join(''),
+		.join('')
 )
 
 // The palette entry is the server's answer; these two variables are the desk's,
@@ -216,7 +236,7 @@ const shellClass = computed(() => {
 // class would beat it. 0 rather than hidden: the panel keeps its place in the
 // layout, so the page beside it is laid out against a column of no width.
 const shellWidth = computed(() =>
-	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)',
+	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)'
 )
 
 const route = useRoute()
@@ -231,6 +251,9 @@ const currentApp = computed<AppDefinition>(() => apps[route.meta.app ?? 'employe
 // desk" should land on the one whose section is on screen.
 const DESK_ROUTES: [prefix: string, deskPath: string][] = [
 	['/employees', '/app/employee'],
+	['/profile/approvals', '/app/employee-profile-change'],
+	// The profile page itself is one employee record, not the list of them.
+	['/profile', '/app/employee'],
 	['/leave', '/app/leave-application'],
 	['/procurement', '/app/procurement-request'],
 ]
