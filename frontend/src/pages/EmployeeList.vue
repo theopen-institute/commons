@@ -1,19 +1,21 @@
 <template>
-  <PageHeader>
+  <AppPageHeader>
     <div class="flex items-center gap-2">
       <span class="text-lg font-semibold text-ink-gray-8">Employees</span>
       <Badge v-if="employees.data" theme="gray" variant="subtle">
         {{ employees.data.length }}{{ employees.hasNextPage ? '+' : '' }}
       </Badge>
     </div>
-    <Button
-      v-if="can.create"
-      variant="solid"
-      icon-left="lucide-plus"
-      label="New employee"
-      @click="router.push({ name: 'NewEmployee' })"
-    />
-  </PageHeader>
+    <template #actions>
+      <Button
+        v-if="can.create"
+        variant="solid"
+        icon-left="lucide-plus"
+        label="New employee"
+        @click="router.push({ name: 'NewEmployee' })"
+      />
+    </template>
+  </AppPageHeader>
 
   <div class="px-5 py-4">
     <!-- A refused permission answer is not a refusal of permission: say which
@@ -170,7 +172,6 @@ import {
   Badge,
   Button,
   ErrorMessage,
-  PageHeader,
   Select,
   Skeleton,
   TextInput,
@@ -185,6 +186,7 @@ import {
 } from 'frappe-ui/list'
 import { can, permissionsError, permissionsLoaded, reloadPermissions } from '@/data/session'
 import { useEmployeeList } from '@/data/employees'
+import AppPageHeader from '@/components/AppPageHeader.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
 import { formatDate, statusTheme } from '@/data/format'
 

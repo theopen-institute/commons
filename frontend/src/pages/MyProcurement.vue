@@ -1,14 +1,16 @@
 <template>
-	<PageHeader>
+	<AppPageHeader>
 		<span class="text-lg font-semibold text-ink-gray-8">My requests</span>
-		<Button
-			v-if="procurementCan.request"
-			variant="solid"
-			icon-left="lucide-plus"
-			label="New request"
-			@click="openNewRequest"
-		/>
-	</PageHeader>
+		<template #actions>
+			<Button
+				v-if="procurementCan.request"
+				variant="solid"
+				icon-left="lucide-plus"
+				label="New request"
+				@click="openNewRequest"
+			/>
+		</template>
+	</AppPageHeader>
 
 	<div class="px-5 py-4">
 		<!-- The permission answer refused rather than arrived: say so, instead of
@@ -80,12 +82,16 @@
 					:key="request.name"
 					class="rounded-4 border border-outline-gray-1"
 				>
+					<!-- Two lines on a phone, one from `sm` up. The status and the
+					     chevron are a fixed ~140px between them; beside a title and a
+					     summary line in 390px of viewport they leave the text about
+					     half the row, which is where the reading actually happens. -->
 					<button
 						type="button"
-						class="flex w-full items-start justify-between gap-3 p-4 text-left"
+						class="flex w-full flex-col items-start gap-2 p-4 text-left sm:flex-row sm:justify-between sm:gap-3"
 						@click="toggle(request.name)"
 					>
-						<div class="min-w-0">
+						<div class="w-full min-w-0 sm:w-auto">
 							<div class="truncate text-base-medium text-ink-gray-8">
 								{{ requestLabel(request) }}
 							</div>
@@ -104,7 +110,12 @@
 								</template>
 							</div>
 						</div>
-						<div class="flex shrink-0 items-center gap-2">
+						<!-- Still hard against the right edge on its own line: the
+						     chevron is the reveal affordance, and it should not move
+						     to the middle of the card when the row wraps. -->
+						<div
+							class="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:justify-end"
+						>
 							<Badge
 								:theme="procurementStatus(request, procurementWorkflow).theme"
 								variant="subtle"
@@ -199,7 +210,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Alert, Badge, Button, ErrorMessage, PageHeader, Skeleton, toast } from 'frappe-ui'
+import { Alert, Badge, Button, ErrorMessage, Skeleton, toast } from 'frappe-ui'
 import {
 	procurementCan,
 	procurementPermissionsError,
@@ -218,6 +229,7 @@ import {
 	type ProcurementRequestRow,
 } from '@/data/procurement'
 import { formatCurrency, formatDate, pluralise } from '@/data/format'
+import AppPageHeader from '@/components/AppPageHeader.vue'
 import ProcurementLines from '@/components/ProcurementLines.vue'
 import ProcurementRequestDialog from '@/components/ProcurementRequestDialog.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'

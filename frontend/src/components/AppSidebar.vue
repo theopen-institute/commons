@@ -3,8 +3,16 @@
        the two all day, and the two panels sit in the same place on the screen.
        Widths, paddings and colors come from the desk's own tokens (see
        index.css); the rows are frappe-ui's, which already match its 28px
-       height, 13px label and 8px selection radius. -->
-	<Sidebar class="app-sidebar gap-3.5 border-r p-2 pb-2.5" width="var(--sidebar-width)">
+       height, 13px label and 8px selection radius.
+
+       Below the desk's own mobile width it is a drawer rather than a narrower
+       column, again like the desk: see `shellClass`. -->
+	<Sidebar
+		class="app-sidebar gap-3.5"
+		:class="shellClass"
+		:width="shellWidth"
+		disable-collapse
+	>
 		<!-- The desk's header: a 32px mark, the section over the app it belongs to,
          and one menu built like the desk's own -- same sections in the same
          order, icons from the same family (see `menuItems`). -->
@@ -164,6 +172,7 @@ import {
 	useColorScheme,
 } from 'frappe-ui'
 import { can, logout, user } from '@/data/session'
+import { isMobile, sidebarOpen } from '@/data/sidebar'
 import { leaveCan } from '@/data/leave'
 import { procurementCan } from '@/data/procurement'
 import { apps, availableApps, SUITE_TITLE, type AppDefinition, type AppKey } from '@/data/apps'
@@ -189,6 +198,26 @@ const avatarStyle = computed(() => {
 		color: `var(--${color}-avatar-color)`,
 	}
 })
+
+// Two shapes, the desk's both: a column in the layout, and -- below 768px --
+// a drawer over it. The desk does not narrow its sidebar on a phone, it takes
+// it out of the layout entirely (`width: 0`) and lays the same full-width
+// panel over the page when the hamburger is pressed
+// (frappe/public/scss/desk/sidebar.scss, `media-breakpoint-down(sm)`), so
+// frappe-ui's own collapse-to-a-rail is turned off.
+const shellClass = computed(() => {
+	if (!isMobile.value) return 'border-r p-2 pb-2.5'
+	return sidebarOpen.value
+		? 'app-sidebar--drawer fixed inset-y-0 left-0 z-[1020] border-r p-2 pb-2.5'
+		: 'app-sidebar--drawer overflow-hidden'
+})
+
+// Inline, because that is where Sidebar puts its own width and nothing in a
+// class would beat it. 0 rather than hidden: the panel keeps its place in the
+// layout, so the page beside it is laid out against a column of no width.
+const shellWidth = computed(() =>
+	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)',
+)
 
 const route = useRoute()
 const router = useRouter()
@@ -360,6 +389,25 @@ const menuItems = computed(() => [
 */
 .app-sidebar {
 	border-color: var(--sidebar-border-color);
+}
+
+/*
+  The desk's `transition-property: none` for the same state. A drawer that is
+  in the layout one frame and over it the next has nothing to animate between,
+  and frappe-ui's 300ms width transition would otherwise play on every open.
+*/
+.app-sidebar--drawer {
+	transition-property: none;
+}
+
+/*
+  `--surface-sidebar` is fully transparent in dark mode -- the sidebar and the
+  base surface are the same colour there, so frappe-ui simply lets the painted
+  body show through. A drawer is not on the body, it is over the page, so in
+  that one state it has to paint the colour it was borrowing.
+*/
+[data-theme='dark'] .app-sidebar--drawer {
+	background-color: var(--surface-base);
 }
 
 .app-sidebar__hover:hover,

@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AppPageHeader: typeof import('./src/components/AppPageHeader.vue')['default']
     AppSidebar: typeof import('./src/components/AppSidebar.vue')['default']
     DepartmentBudgetCard: typeof import('./src/components/DepartmentBudgetCard.vue')['default']
     EmployeeField: typeof import('./src/components/EmployeeField.vue')['default']

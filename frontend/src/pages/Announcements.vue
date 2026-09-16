@@ -1,7 +1,7 @@
 <template>
-	<PageHeader>
+	<AppPageHeader>
 		<span class="text-lg font-semibold text-ink-gray-8">Announcements</span>
-	</PageHeader>
+	</AppPageHeader>
 
 	<div class="px-5 py-4">
 		<div class="mx-auto max-w-3xl">
@@ -19,5 +19,5 @@
 </template>
 
 <script setup lang="ts">
-import { PageHeader } from 'frappe-ui'
+import AppPageHeader from '@/components/AppPageHeader.vue'
 </script>

@@ -1,14 +1,16 @@
 <template>
-  <PageHeader>
+  <AppPageHeader>
     <span class="text-lg font-semibold text-ink-gray-8">My leave</span>
-    <Button
-      v-if="employee && leaveCan.request"
-      variant="solid"
-      icon-left="lucide-plus"
-      label="Request leave"
-      @click="showRequest = true"
-    />
-  </PageHeader>
+    <template #actions>
+      <Button
+        v-if="employee && leaveCan.request"
+        variant="solid"
+        icon-left="lucide-plus"
+        label="Request leave"
+        @click="showRequest = true"
+      />
+    </template>
+  </AppPageHeader>
 
   <div class="px-5 py-4">
     <!-- The permission answer refused rather than arrived: say so, instead of
@@ -175,7 +177,6 @@ import {
   Badge,
   Button,
   ErrorMessage,
-  PageHeader,
   Skeleton,
 } from 'frappe-ui'
 import {
@@ -200,6 +201,7 @@ import {
   useMyLeaveApplications,
 } from '@/data/leave'
 import { formatDate, formatDateRange } from '@/data/format'
+import AppPageHeader from '@/components/AppPageHeader.vue'
 import LeaveRequestDialog from '@/components/LeaveRequestDialog.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
 

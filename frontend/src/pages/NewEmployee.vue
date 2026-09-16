@@ -1,5 +1,5 @@
 <template>
-  <PageHeader>
+  <AppPageHeader>
     <div class="flex items-center gap-2">
       <Button
         variant="ghost"
@@ -9,21 +9,23 @@
       />
       <span class="text-lg font-semibold text-ink-gray-8">New employee</span>
     </div>
-    <div class="flex items-center gap-2">
-      <Button
-        label="Cancel"
-        variant="subtle"
-        @click="router.push({ name: 'EmployeeList' })"
-      />
-      <Button
-        label="Create"
-        variant="solid"
-        :loading="newEmployee.loading"
-        :disabled="!can.create"
-        @click="create"
-      />
-    </div>
-  </PageHeader>
+    <template #actions>
+      <div class="flex items-center gap-2">
+        <Button
+          label="Cancel"
+          variant="subtle"
+          @click="router.push({ name: 'EmployeeList' })"
+        />
+        <Button
+          label="Create"
+          variant="solid"
+          :loading="newEmployee.loading"
+          :disabled="!can.create"
+          @click="create"
+        />
+      </div>
+    </template>
+  </AppPageHeader>
 
   <div class="px-5 py-4">
     <!-- A refused permission answer is not a refusal of permission: say which
@@ -65,10 +67,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Button, ErrorMessage, PageHeader, toast } from 'frappe-ui'
+import { Button, ErrorMessage, toast } from 'frappe-ui'
 import { can, permissionsError, permissionsLoaded, reloadPermissions } from '@/data/session'
 import { useNewEmployee } from '@/data/employees'
 import { createSections, missingRequiredFields } from '@/data/employeeFields'
+import AppPageHeader from '@/components/AppPageHeader.vue'
 import FormSection from '@/components/FormSection.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
 

@@ -1,5 +1,5 @@
 <template>
-  <PageHeader>
+  <AppPageHeader>
     <div class="flex min-w-0 items-center gap-2">
       <Button
         variant="ghost"
@@ -27,39 +27,40 @@
         Unsaved changes
       </Badge>
     </div>
-
-    <div class="flex shrink-0 items-center gap-2">
-      <Dropdown
-        v-if="employee.doc"
-        :options="moreOptions"
-        side="bottom"
-        align="end"
-      >
-        <template #trigger="{ open }">
-          <Button
-            variant="ghost"
-            icon="lucide-ellipsis"
-            aria-label="More actions"
-            :active="open"
-          />
-        </template>
-      </Dropdown>
-      <Button
-        v-if="isDirty"
-        label="Discard"
-        variant="subtle"
-        @click="resetDraft"
-      />
-      <Button
-        v-if="canEdit"
-        label="Save"
-        variant="solid"
-        :loading="employee.setValue.loading"
-        :disabled="!isDirty"
-        @click="save"
-      />
-    </div>
-  </PageHeader>
+    <template #actions>
+      <div class="flex shrink-0 items-center gap-2">
+        <Dropdown
+          v-if="employee.doc"
+          :options="moreOptions"
+          side="bottom"
+          align="end"
+        >
+          <template #trigger="{ open }">
+            <Button
+              variant="ghost"
+              icon="lucide-ellipsis"
+              aria-label="More actions"
+              :active="open"
+            />
+          </template>
+        </Dropdown>
+        <Button
+          v-if="isDirty"
+          label="Discard"
+          variant="subtle"
+          @click="resetDraft"
+        />
+        <Button
+          v-if="canEdit"
+          label="Save"
+          variant="solid"
+          :loading="employee.setValue.loading"
+          :disabled="!isDirty"
+          @click="save"
+        />
+      </div>
+    </template>
+  </AppPageHeader>
 
   <div class="px-5 py-4">
     <!-- A refused permission answer is not a refusal of permission: say which
@@ -134,7 +135,6 @@ import {
   Button,
   Dropdown,
   ErrorMessage,
-  PageHeader,
   Skeleton,
   dialog,
   toast,
@@ -148,6 +148,7 @@ import {
   missingRequiredFields,
 } from '@/data/employeeFields'
 import { formatDate, statusTheme } from '@/data/format'
+import AppPageHeader from '@/components/AppPageHeader.vue'
 import FormSection from '@/components/FormSection.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
 

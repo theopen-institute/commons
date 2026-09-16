@@ -1,29 +1,31 @@
 <template>
-	<PageHeader>
+	<AppPageHeader>
 		<div class="flex items-center gap-2">
 			<span class="text-lg font-semibold text-ink-gray-8">Approvals</span>
 			<Badge v-if="pendingCount" theme="amber" variant="subtle">
 				{{ pendingCount }}{{ pendingAtCeiling ? '+' : '' }} waiting
 			</Badge>
 		</div>
-		<!-- Nothing to filter or refresh when the list itself is withheld. -->
-		<div v-if="hasWorkflowAccess" class="flex items-center gap-2">
-			<TabButtons
-				v-model="tab"
-				:options="[
-					{ label: 'To do', value: 'pending' },
-					{ label: 'History', value: 'decided' },
-				]"
-			/>
-			<Button
-				variant="ghost"
-				icon-left="lucide-refresh-cw"
-				label="Refresh"
-				:loading="requests.loading"
-				@click="refresh"
-			/>
-		</div>
-	</PageHeader>
+		<template #actions>
+			<!-- Nothing to filter or refresh when the list itself is withheld. -->
+			<div v-if="hasWorkflowAccess" class="flex items-center gap-2">
+				<TabButtons
+					v-model="tab"
+					:options="[
+						{ label: 'To do', value: 'pending' },
+						{ label: 'History', value: 'decided' },
+					]"
+				/>
+				<Button
+					variant="ghost"
+					icon-left="lucide-refresh-cw"
+					label="Refresh"
+					:loading="requests.loading"
+					@click="refresh"
+				/>
+			</div>
+		</template>
+	</AppPageHeader>
 
 	<div class="px-5 py-4">
 		<!-- The permission answer refused rather than arrived: say so, instead of
@@ -226,7 +228,6 @@ import {
 	Badge,
 	Button,
 	ErrorMessage,
-	PageHeader,
 	Skeleton,
 	TabButtons,
 	toast,
@@ -249,6 +250,7 @@ import {
 	type ProcurementRequestRow,
 } from '@/data/procurement'
 import { formatCurrency, formatDate } from '@/data/format'
+import AppPageHeader from '@/components/AppPageHeader.vue'
 import DepartmentBudgetCard from '@/components/DepartmentBudgetCard.vue'
 import ProcurementLines from '@/components/ProcurementLines.vue'
 import ProcurementRequestDialog from '@/components/ProcurementRequestDialog.vue'
