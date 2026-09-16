@@ -95,19 +95,22 @@
 							<div class="truncate text-base-medium text-ink-gray-8">
 								{{ requestLabel(request) }}
 							</div>
-							<div class="mt-0.5 text-p-sm text-ink-gray-5">
-								{{ request.name }} ·
-								{{ pluralise(lineCount(request.name), 'line') }} · needed
-								{{ formatDate(request.schedule_date) }}
-								<template v-if="request.total_estimated_cost">
-									· about
-									{{
-										formatCurrency(
-											request.total_estimated_cost,
-											request.currency,
-										)
-									}}
-								</template>
+							<!-- The id names the request; the facts under it answer
+							     separate questions and are read one at a time, so they
+							     are separate elements rather than one run-on line. Each
+							     stays whole when the row wraps, which at 390px it does:
+							     as a single string "about NPR 35" broke across two
+							     lines between the two words that make it a price. -->
+							<div class="mt-0.5 text-p-sm text-ink-gray-5">{{ request.name }}</div>
+							<div
+								class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-p-sm text-ink-gray-5"
+							>
+								<span>{{ pluralise(lineCount(request.name), 'line') }}</span>
+								<span>Needed {{ formatDate(request.schedule_date) }}</span>
+								<span v-if="request.total_estimated_cost">
+									About
+									{{ formatCurrency(request.total_estimated_cost, request.currency) }}
+								</span>
 							</div>
 						</div>
 						<!-- Still hard against the right edge on its own line: the
