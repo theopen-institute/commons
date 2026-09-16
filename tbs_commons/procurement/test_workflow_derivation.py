@@ -54,7 +54,7 @@ class TestApproverRoles(TestCase):
 		self.assertEqual(wf.approver_roles(seeded_workflow()), {"Expense Approver"})
 
 	def test_an_unconditioned_override_is_not_this_pages_queue(self):
-		"""Purchase Manager can approve, but not as a request's named approver."""
+		"""Purchase User can approve, but not as a request's named approver."""
 		roles = wf.approver_roles(
 			workflow(
 				[("Review", 0), ("Done", 1)],

@@ -49,7 +49,7 @@ def approver_roles(workflow=None) -> set[str]:
 
 	Whose queue the SPA's Approvals page is. Holding a transition is not the
 	test: the seeded workflow grants the same Approve and Reject actions to
-	`Purchase Manager` as an override, and gating on any transition at all would
+	`Purchase User` as an override, and gating on any transition at all would
 	put this page -- and its sidebar row -- in front of everyone who moves a
 	request along from the desk.
 

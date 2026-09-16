@@ -75,8 +75,8 @@ WORKFLOW_TRANSITIONS = (
 		"allowed": "Expense Approver",
 		"condition": "doc.approver == frappe.session.user",
 	},
-	{"state": "Under Review", "action": "Approve", "next_state": "Approved", "allowed": "Purchase Manager"},
-	{"state": "Under Review", "action": "Reject", "next_state": "Rejected", "allowed": "Purchase Manager"},
+	{"state": "Under Review", "action": "Approve", "next_state": "Approved", "allowed": "Purchase User"},
+	{"state": "Under Review", "action": "Reject", "next_state": "Rejected", "allowed": "Purchase User"},
 	{"state": "Approved", "action": "Cancel", "next_state": "Canceled", "allowed": "Purchase User"},
 	# A rejection is a decision, not a shredder. Procurement owns the queue, so
 	# they are the ones who decide whether a turned-down request is worth
