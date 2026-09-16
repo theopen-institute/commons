@@ -1,0 +1,10 @@
+{
+	"private": true,
+	"name": "tbs_commons",
+	"description": "Tools for TBS",
+	"scripts": {
+		"postinstall": "cd frontend && yarn install --check-files",
+		"dev": "cd frontend && yarn dev",
+		"build": "cd frontend && yarn build"
+	}
+}
