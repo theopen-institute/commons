@@ -13,12 +13,22 @@ Employee is the first registered record and currently the only page, but nothing
 below names it: adding a second record type is a registry entry and a page, not
 a second copy of this module.
 
-`get_my_record` is the read-only half. It resolves the record from the session
-rather than accepting a name, so there is no request shape that could ask for
-somebody else's. It also returns the fields the policy names rather than the
-document: most doctypes carry fields that have no business on a self-service page
-even for their owner, and an endpoint that returns "the record" returns those too
-the day someone adds one.
+There is deliberately no endpoint here that returns the record itself. The page
+reads it with the ordinary document API, filtered to the caller's own row, so
+every permission the site has configured -- role permissions, User Permissions
+and this app's gate in `tbs_commons.safer_permissions` -- applies to it without
+this module restating any of them. What the server still owns is the *policy*:
+`get_change_permissions` sends the field list, because most doctypes carry fields
+that have no business on a self-service page even for their owner, and a frontend
+choosing them for itself would start showing the next such field the day someone
+adds one.
+
+An earlier version of this file had a `get_my_record` that read the record with
+`frappe.db.get_value`, and so answered to no permission at all. It was scoped --
+it could only ever return the caller's own row, and only the policy's fields --
+but it meant an administrator who gated the `Employee` role still had employees
+reading their own record, which is not what they had configured. Resolving which
+record is mine is not a reason to stop asking whether the answer may be shown.
 
 Everything else is the proposal half, and it follows the same rule leave does:
 what a request may set, which outcomes exist, which of them this user may apply
@@ -109,23 +119,6 @@ def get_change_workflow() -> dict | None:
 	"""The active Workflow definition, reduced to fields the SPA can render."""
 	frappe.has_permission(DOCTYPE, "read", throw=True)
 	return wf.describe(change_workflow())
-
-
-@frappe.whitelist()
-def get_my_record(doctype: str) -> dict | None:
-	"""The one record of `doctype` the session user owns, as this section shows it.
-
-	`None` when they own none. That is a real state with a real fix -- for
-	`Employee`, HR setting `user_id` -- and the page says so rather than rendering
-	an empty profile.
-
-	Resolved through the policy's owner field and filters, so the only record this
-	can return is the caller's own. No permission check on that doctype for
-	exactly that reason: whether someone may read the directory is a different
-	question from whether they may read themselves, and answering the second with
-	the first is what leaves people unable to see their own phone number.
-	"""
-	return registry.session_record(doctype, registry.display_fields(doctype))
 
 
 def _may_review() -> bool:
@@ -264,6 +257,14 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 		"review": can_review,
 		"pending_reviews": _pending_count() if can_review else 0,
 		"proposable": registry.proposable_fields(doctype) if doctype else [],
+		# What the page may show, so the field list stays the server's while the
+		# record itself is fetched through the permission-enforcing document API.
+		"display": registry.display_fields(doctype) if doctype else [],
+		# The filter that finds the caller's own row. Sent rather than assembled
+		# in the page, so `owner_field` is named once -- here -- and a policy that
+		# resolves ownership differently needs no matching edit there.
+		"owner_field": registry.policy(doctype)["owner_field"] if doctype else None,
+		"record_filters": (registry.policy(doctype).get("filters") or {}) if doctype else {},
 		"decisions": decision_vocabulary(workflow),
 		"page_length": PAGE_LENGTH,
 	}

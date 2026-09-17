@@ -20,12 +20,26 @@ instead, and `owner_of` follows that to the same answer. That is what lets a
 second HR record about the same person be added as a registry entry rather than
 as a second idea of what "mine" means -- see `policies`.
 
-The chain is followed with `frappe.db.get_value`, which does no permission check.
-That is the point: whether a record is *yours* and whether you may *read* it are
-different questions, and answering the first with the second is what leaves
-people unable to see their own phone number. Nothing here grants access to
-anything -- it reports who owns a record, and the callers decide what that is
-worth.
+Two functions here read records, and they answer different questions, so they
+reach the database differently.
+
+`session_record` returns record *data* to a caller, so it goes through
+`frappe.get_list` and is subject to every permission the site has configured --
+role permissions, User Permissions, and this app's own gate in
+`tbs_commons.safer_permissions`. It used to use `frappe.db.get_value`, on the
+reasoning that "may I read the directory" and "may I read myself" are different
+questions. They are, but that is an argument for configuring the answer, not for
+a whitelisted endpoint deciding it in spite of the configuration: an
+administrator who gates the `Employee` role has said what they mean, and this
+module is not the place to overrule them. A user whose site denies them their
+own record now gets `None`, and the page says so.
+
+`owner_of` answers only "whose record is this", returns a username and no record
+data, and is what `validate_raiser` consults before deciding whether a proposal
+is yours to raise. That stays a raw read on purpose -- ownership is a fact about
+the row rather than a right over it, and a permission check there would make the
+answer depend on who is asking. It grants nothing: every caller that goes on to
+*return* or *change* anything does its own permission check.
 """
 
 import frappe
@@ -123,7 +137,8 @@ def owner_of(doctype: str, name: str) -> str | None:
 	blank -- an employee with no login yet -- belongs to nobody, and the callers
 	read that as "not yours" rather than as a failure.
 
-	No permission check, deliberately: see the module docstring.
+	A raw read, deliberately and narrowly: it returns a username, never record
+	data, and grants nothing on its own. See the module docstring.
 	"""
 	seen: set[tuple[str, str]] = set()
 	for _ in range(MAX_CHAIN):
@@ -162,16 +177,22 @@ def session_owns(doctype: str, name: str) -> bool:
 
 
 def session_record(doctype: str, fieldnames: list[str] | None = None):
-	"""The one record of `doctype` this session owns, or None.
+	"""The one record of `doctype` this session owns and may read, or None.
 
 	Only meaningful for a policy marked `singular` -- one employee record per
 	login, so "my record" has a single answer and a page can ask for it without
 	naming one. A policy that is not singular has no such answer and says so,
 	rather than returning whichever row the database offered first.
 
-	Resolved through the owner field and the policy's filters, so the only record
-	this can return is the caller's own -- which is what makes it safe to read
-	without a permission check.
+	Through `frappe.get_list`, so the site's permissions decide what comes back.
+	The owner filter narrows it to this user's own row; it is not what makes the
+	read safe, and is not trusted to be. A user the site withholds the record
+	from gets `None` here whether they own it or not -- see the module docstring.
+
+	`None` for a user with no read permission at all, rather than the throw
+	`get_list` would raise: "you have no record here" is the same answer as far
+	as every caller is concerned, and one of them is a permissions endpoint that
+	must not 500 on the way to saying so.
 	"""
 	current = policy(doctype)
 	if not current.get("singular"):
@@ -179,6 +200,9 @@ def session_record(doctype: str, fieldnames: list[str] | None = None):
 			frappe._("There is no single {0} record for a user.").format(doctype),
 			frappe.ValidationError,
 		)
+	if not frappe.has_permission(doctype, "read"):
+		return None
+
 	if current.get("owner_doctype"):
 		# A chained policy's owner field names another record, not a user, so
 		# the lookup starts from whichever record *that* policy calls this
@@ -190,12 +214,13 @@ def session_record(doctype: str, fieldnames: list[str] | None = None):
 	else:
 		match = {current["owner_field"]: frappe.session.user}
 
-	return frappe.db.get_value(
+	rows = frappe.get_list(
 		doctype,
-		{**match, **(current.get("filters") or {})},
-		fieldnames or ["name"],
-		as_dict=True,
+		filters={**match, **(current.get("filters") or {})},
+		fields=fieldnames or ["name"],
+		limit_page_length=1,
 	)
+	return rows[0] if rows else None
 
 
 def clear_cache() -> None:

@@ -145,7 +145,9 @@ def save_procurement_request(doc: str | dict, action: str | None = None) -> dict
 		request = frappe.get_doc(PROCUREMENT_REQUEST, name)
 		if not _can_edit_procurement_request(request, workflow):
 			frappe.throw(
-				frappe._("You are not permitted to edit this Procurement Request in its current workflow state."),
+				frappe._(
+					"You are not permitted to edit this Procurement Request in its current workflow state."
+				),
 				frappe.PermissionError,
 			)
 		values.pop("doctype", None)
@@ -510,7 +512,14 @@ def get_procurement_approvers(
 	approver fields that most sites never fill in. Those preferences are not
 	ignored, just demoted to a sort order: the requester's expense approver and
 	their department's come first when they are in the set at all.
+
+	Gated on read over `Procurement Request`, because the query builder below
+	asks no permission of its own. A link query exists to fill one field on one
+	form, and someone who cannot open that form has no business enumerating the
+	site's approvers through it — which, whitelisted and unguarded, is what this
+	would be.
 	"""
+	frappe.has_permission(PROCUREMENT_REQUEST, "read", throw=True)
 	roles = _roles_that_may_approve()
 	if not roles:
 		return []
@@ -558,9 +567,7 @@ def _preferred_approvers(employee: str | None) -> set[str]:
 	if not employee:
 		return set()
 
-	record = frappe.db.get_value(
-		"Employee", employee, ["department", "expense_approver"], as_dict=True
-	)
+	record = frappe.db.get_value("Employee", employee, ["department", "expense_approver"], as_dict=True)
 	if not record:
 		return set()
 
@@ -578,11 +585,7 @@ def _preferred_approvers(employee: str | None) -> set[str]:
 	ancestors = (
 		frappe.qb.from_(department)
 		.select(department.name)
-		.where(
-			(department.lft <= bounds.lft)
-			& (department.rgt >= bounds.rgt)
-			& (department.disabled == 0)
-		)
+		.where((department.lft <= bounds.lft) & (department.rgt >= bounds.rgt) & (department.disabled == 0))
 	).run(pluck=True)
 
 	if ancestors:

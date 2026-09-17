@@ -1,5 +1,6 @@
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useCall } from 'frappe-ui'
+import { user } from './session'
 import type { Employee } from '@/types/doctypes'
 import {
   decisionButtons as buildDecisionButtons,
@@ -104,6 +105,13 @@ export interface ProfilePermissions {
    *  `employeeFields.ts` knows how to draw, so a field can never be collected
    *  that the save would then refuse. */
   proposable: string[]
+  /** What the page may show. The server's, so a field that has no business on
+   *  a self-service page cannot appear by a frontend choosing for itself. */
+  display: string[]
+  /** How the policy finds the caller's own row, named by the server so this
+   *  page hardcodes no Employee field. */
+  owner_field: string | null
+  record_filters: Record<string, string | number | boolean | null>
   /** Every record type registered for self service. Not used by this page --
    *  it knows it is Employee's -- but it is what a second page would read to
    *  know it has something to show. */
@@ -114,14 +122,59 @@ export interface ProfilePermissions {
   page_length: number
 }
 
-const profileCall = useCall<MyProfile | null, { doctype: string }>({
-  url: '/api/v2/method/tbs_commons.self_service.api.get_my_record',
-  params: { doctype: RECORD },
+/**
+ * The session user's own record, read through the ordinary document API.
+ *
+ * Deliberately not a whitelisted endpoint of this app's. A method that resolved
+ * the record server-side would be a method deciding for itself whether to hand
+ * it over, and the one that used to do this answered to no permission at all --
+ * so an administrator who gated the Employee role still had employees reading
+ * their own record. A list query runs the whole permission stack instead: role
+ * permissions, User Permissions and the app's own gate. A user the site
+ * withholds the record from gets an empty list, and the page says so.
+ *
+ * The filter is the same shape the server's policy describes (`owner_field`,
+ * `record_filters`), and it is here to find the right row -- not to keep anyone
+ * out of the wrong one. That is the permission stack's job, which is the point.
+ */
+const profileCall = useCall<
+  MyProfile[],
+  { filters: string; fields: string; limit: string }
+>({
+  // Frappe's own document API, not a method of this app's. Everything about who
+  // may see what is settled by the framework on the way in.
+  url: `/api/v2/document/${RECORD}`,
+  params: () => ({
+    filters: JSON.stringify({
+      [profileCan.value.owner_field ?? 'user_id']: user.value.name,
+      ...profileCan.value.record_filters,
+    }),
+    fields: JSON.stringify(profileCan.value.display),
+    limit: '1',
+  }),
+  // Nothing to ask for until the policy has arrived with the fields to ask for.
+  immediate: false,
 })
 
-/** The session user's own employee record — `null` when none is linked. */
-export const myProfile = computed(() => profileCall.data ?? null)
-export const myProfileLoaded = computed(() => profileCall.isFinished)
+// The policy answers first; the record is fetched once it has. One extra round
+// trip, in exchange for the field list staying the server's.
+watch(
+  () => profileCan.value.display.length,
+  (ready) => {
+    if (ready) profileCall.reload()
+  },
+  { immediate: true }
+)
+
+/** The session user's own record — `null` when they have none, or when the
+ *  site does not let them read it. */
+export const myProfile = computed(() => profileCall.data?.[0] ?? null)
+
+/** Settled only once the policy is in *and* the record call has finished, so
+ *  the page does not flash "no record" while the fields are still on their way. */
+export const myProfileLoaded = computed(
+  () => profilePermissionsLoaded.value && profileCall.isFinished
+)
 export const myProfileError = computed(() => profileCall.error ?? null)
 
 export function reloadMyProfile() {
@@ -143,6 +196,9 @@ const NO_PROFILE_PERMISSIONS: ProfilePermissions = {
   review: false,
   pending_reviews: 0,
   proposable: [],
+  display: [],
+  owner_field: null,
+  record_filters: {},
   registered: [],
   decisions: [],
   page_length: 0,

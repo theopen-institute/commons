@@ -102,17 +102,29 @@ class RecordChangeRequest(Document):
 	def validate_raiser(self) -> None:
 		"""Whose record this may be raised against.
 
-		Your own, or one you could have edited directly -- HR raising a request on
-		an employee's behalf after a phone call is a real case, and it costs them
-		nothing they did not already have. Anyone else is refused: a self-service
-		form that can name a record is a self-service form that can name the
-		wrong one.
+		Read permission first, and for everyone. A request carries the record's
+		current values -- the controller captures them, and the requester reads them
+		back in the diff -- so being allowed to raise one against a record is being
+		allowed to read that record. Without this check, a user the site withholds a
+		record from could recover its contents a field at a time by proposing changes
+		to it: the same leak as reading it outright, taking one extra step.
+
+		Then whose it is: your own, or one you could have edited directly -- HR
+		raising a request on an employee's behalf after a phone call is a real case,
+		and it costs them nothing they did not already have. Anyone else is refused:
+		a self-service form that can name a record is a self-service form that can
+		name the wrong one.
 
 		Only while the request is still open. At approval this runs in the
 		*approver's* session, where the record is somebody else's and the question
 		being asked is a different one -- whether they may write it, which
-		`apply_to_record` asks directly.
+		`on_submit` asks directly.
 		"""
+		if not frappe.has_permission(self.reference_doctype, "read", doc=self.reference_name):
+			frappe.throw(
+				_("You do not have access to that {0} record.").format(_(self.reference_doctype)),
+				frappe.PermissionError,
+			)
 		if registry.session_owns(self.reference_doctype, self.reference_name):
 			return
 		if frappe.has_permission(self.reference_doctype, "write", doc=self.reference_name):

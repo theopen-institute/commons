@@ -122,7 +122,7 @@ class TestRecordChangeRequest(unittest.TestCase):
 		frappe.db.set_value(RECORD, self.employee, "status", "Left")
 		frappe.set_user(self.user)
 		self.assertFalse(registry.session_owns(RECORD, self.employee))
-		self.assertIsNone(api.get_my_record(RECORD))
+		self.assertIsNone(registry.session_record(RECORD))
 
 	def test_an_unregistered_doctype_cannot_be_requested_against(self):
 		"""Whatever anyone's permissions say."""
@@ -299,12 +299,14 @@ class TestRecordChangeRequest(unittest.TestCase):
 		self.assertEqual([row["name"] for row in api.get_my_changes()], [mine])
 		self.assertTrue(other_employee)
 
-	def test_the_record_is_the_session_users_own_and_carries_no_pay(self):
+	def test_the_policy_never_offers_pay_fields_to_the_page(self):
+		"""The page reads the record itself, so what the server still controls is
+		which fields it may ask for."""
 		frappe.set_user(self.user)
-		record = api.get_my_record(RECORD)
-		self.assertEqual(record["name"], self.employee)
+		display = api.get_change_permissions(RECORD)["display"]
+		self.assertIn("employee_name", display)
 		for fieldname in ("ctc", "salary_mode", "bank_ac_no"):
-			self.assertNotIn(fieldname, record)
+			self.assertNotIn(fieldname, display)
 
 	def test_a_login_with_no_employee_record_is_not_offered_the_section(self):
 		"""And that is ERPNext's answer, not this app's.
@@ -318,7 +320,6 @@ class TestRecordChangeRequest(unittest.TestCase):
 		frappe.set_user("Administrator")
 		stranger = self.new_user()
 		frappe.set_user(stranger)
-		self.assertIsNone(api.get_my_record(RECORD))
 		permissions = api.get_change_permissions(RECORD)
 		self.assertFalse(permissions["read"])
 		self.assertFalse(permissions["has_record"])
@@ -340,7 +341,7 @@ class TestRecordChangeRequest(unittest.TestCase):
 		self.assertTrue(permissions["read"])
 		self.assertFalse(permissions["has_record"])
 		self.assertFalse(permissions["request"])
-		self.assertIsNone(api.get_my_record(RECORD))
+		self.assertIsNone(registry.session_record(RECORD))
 
 	def test_a_reviewer_who_owns_no_record_keeps_their_queue(self):
 		"""The bug the split above fixes: HR staff who are not themselves
