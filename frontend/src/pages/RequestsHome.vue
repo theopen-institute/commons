@@ -6,7 +6,7 @@
 			<span class="text-p-base">Loading…</span>
 		</div>
 		<div v-else class="max-w-md px-5 text-center">
-			<span class="lucide-lock size-8 text-ink-gray-4" />
+			<span class="lucide-lock mx-auto size-8 text-ink-gray-4" />
 			<p class="mt-2 text-base-medium text-ink-gray-7">Nothing to show you</p>
 			<p class="mt-1 text-p-sm text-ink-gray-5">
 				Your account has no profile, leave or procurement to open. Ask an HR Manager or a

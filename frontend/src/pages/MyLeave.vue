@@ -32,7 +32,7 @@
     <!-- Leave is self-service, so it needs an Employee record pointing at this
          login. Nothing on this page works without one, and the fix is HR's. -->
     <div v-else-if="!employee" class="mx-auto mt-16 max-w-md text-center">
-      <span class="lucide-user-x size-8 text-ink-gray-4" />
+      <span class="lucide-user-x mx-auto size-8 text-ink-gray-4" />
       <p class="mt-2 text-base-medium text-ink-gray-7">
         Your login isn't linked to an employee record
       </p>

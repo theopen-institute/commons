@@ -89,7 +89,7 @@
 				>
 					<SidebarItem
 						v-if="profileCan.read"
-						label="My profile"
+						label="Employee"
 						icon="lucide-id-card"
 						:to="{ name: 'MyProfile' }"
 					/>
@@ -215,7 +215,7 @@ const initials = computed(() =>
 		.filter(Boolean)
 		.slice(0, 2)
 		.map((word) => word[0])
-		.join('')
+		.join(''),
 )
 
 // The palette entry is the server's answer; these two variables are the desk's,
@@ -245,7 +245,7 @@ const shellClass = computed(() => {
 // class would beat it. 0 rather than hidden: the panel keeps its place in the
 // layout, so the page beside it is laid out against a column of no width.
 const shellWidth = computed(() =>
-	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)'
+	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)',
 )
 
 const route = useRoute()

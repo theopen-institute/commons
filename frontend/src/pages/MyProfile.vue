@@ -8,7 +8,7 @@
 				size="md"
 			/>
 			<span class="truncate text-lg font-semibold text-ink-gray-8">
-				{{ profile?.employee_name ?? 'My profile' }}
+				{{ profile?.employee_name ?? 'Employee' }}
 			</span>
 			<Badge v-if="profile" :theme="statusTheme(profile.status)" variant="subtle">
 				{{ profile.status }}
@@ -35,16 +35,16 @@
 		     done. -->
 		<div v-else-if="!profile" class="mx-auto mt-16 max-w-md text-center">
 			<span
-				class="size-8 text-ink-gray-4"
+				class="mx-auto size-8 text-ink-gray-4"
 				:class="profileCan.record_access === 'forbidden' ? 'lucide-lock' : 'lucide-user-x'"
 			/>
 			<template v-if="profileCan.record_access === 'forbidden'">
 				<p class="mt-2 text-base-medium text-ink-gray-7">
-					You don't have access to your own record
+					You don't have access to this record
 				</p>
 				<p class="mt-1 text-p-sm text-ink-gray-5">
-					It exists, but your account isn't permitted to open it. Ask a System Manager —
-					this is a permissions setting, not something HR can fix.
+					If you should have access, contact a System Manager and ask for the permissions
+					to be reviewed.
 				</p>
 			</template>
 			<template v-else>
@@ -169,7 +169,7 @@
 							<Button
 								v-for="button in decisionButtons(
 									row.actions,
-									profileCan.decisions
+									profileCan.decisions,
 								)"
 								:key="button.decision"
 								variant="subtle"
@@ -251,8 +251,8 @@ const requests = useMyProfileChanges()
 // record's own status -- the same rule the detail page applies.
 const visibleSections = computed(() =>
 	employeeSections.filter(
-		(section) => !section.visibleWhen || section.visibleWhen(profile.value ?? {})
-	)
+		(section) => !section.visibleWhen || section.visibleWhen(profile.value ?? {}),
+	),
 )
 
 /**

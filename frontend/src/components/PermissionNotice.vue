@@ -1,6 +1,6 @@
 <template>
   <div class="mx-auto mt-16 max-w-md text-center">
-    <span class="lucide-lock size-8 text-ink-gray-4" />
+    <span class="lucide-lock mx-auto size-8 text-ink-gray-4" />
     <p class="mt-2 text-base-medium text-ink-gray-7">
       You don't have permission to {{ what }}
     </p>
