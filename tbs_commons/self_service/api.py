@@ -279,6 +279,12 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 		"review": can_review,
 		"pending_reviews": _pending_count() if can_review else 0,
 		"proposable": registry.proposable_fields(doctype) if doctype else [],
+		# The page's whole field layout: sections in order, each field with the
+		# label, control, options and mandatory flag read from the doctype's own
+		# meta. Sent rather than held in the frontend so adding a field to a
+		# profile is a desk edit, and so a label can never drift from the one the
+		# desk shows.
+		"sections": registry.field_definitions(doctype) if doctype else [],
 		# What the page may show, so the field list stays the server's while the
 		# record itself is fetched through the permission-enforcing document API.
 		"display": registry.display_fields(doctype) if doctype else [],

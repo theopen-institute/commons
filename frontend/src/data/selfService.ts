@@ -20,6 +20,28 @@ import type { Decision } from './workflowStyle'
  * of the wrong ones, and is not trusted to be.
  */
 
+/** One field as the server says it should be drawn. */
+export interface RecordField {
+  fieldname: string
+  label: string
+  /** Control to render. `text` for anything this app has no better idea about,
+   *  which reads as a plain value on a read-only page. */
+  type: string
+  /** `select` only. */
+  options: string[]
+  /** `link` only — the doctype to search. */
+  doctype: string | null
+  required: boolean
+  description: string | null
+  /** Whether the owner may propose a change to this field. */
+  proposable: boolean
+}
+
+export interface RecordSection {
+  title: string
+  fields: RecordField[]
+}
+
 export interface SelfServicePermissions {
   /** Whether this user may use the section at all -- a permission, and what the
    *  navigation offers on. */
@@ -52,6 +74,11 @@ export interface SelfServicePermissions {
   record_filters: Record<string, string | number | boolean | null>
   /** Whether one record is expected or several. */
   singular: boolean
+  /** The page's field layout, in order: which sections, which fields, and for
+   *  each the label, control, options and mandatory flag resolved from the
+   *  doctype's own meta. The page draws from this and names no field of its
+   *  own — see `Self Service Record`. */
+  sections: RecordSection[]
   registered: string[]
   decisions: Decision[]
   page_length: number
@@ -71,6 +98,7 @@ export const NO_PERMISSIONS: SelfServicePermissions = {
   owner_value: null,
   record_filters: {},
   singular: false,
+  sections: [],
   registered: [],
   decisions: [],
   page_length: 0,

@@ -305,7 +305,10 @@ class TestRecordChangeRequest(unittest.TestCase):
 		which fields it may ask for."""
 		frappe.set_user(self.user)
 		display = api.get_change_permissions(RECORD)["display"]
+		# The header needs these; they are added by `display_fields`, not
+		# configured as rows, because they are not facts the page lists.
 		self.assertIn("employee_name", display)
+		self.assertIn("name", display)
 		for fieldname in ("ctc", "salary_mode", "bank_ac_no"):
 			self.assertNotIn(fieldname, display)
 

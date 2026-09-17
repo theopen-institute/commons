@@ -72,12 +72,12 @@
 
 			<div class="mt-6 space-y-8">
 				<ProfileSection
-					v-for="section in visibleSections"
+					v-for="section in profileCan.sections"
 					:key="section.title"
 					:section="section"
 					:doc="profile"
 					:pending="pendingByField"
-					:proposable="profileCan.request ? profileCan.proposable : []"
+					:can-propose="profileCan.request"
 					@propose="editing = $event"
 				/>
 			</div>
@@ -218,8 +218,8 @@ import {
 	type DecisionButton,
 	type ProfileChangeRequest,
 } from '@/data/profile'
-import { employeeSections, type EmployeeField } from '@/data/employeeFields'
 import { formatDate, pluralise, statusTheme } from '@/data/format'
+import type { RecordField } from '@/data/selfService'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import ChangeDiff from '@/components/ChangeDiff.vue'
 import ProfileSection from '@/components/ProfileSection.vue'
@@ -228,7 +228,7 @@ import ProposeFieldDialog from '@/components/ProposeFieldDialog.vue'
 // Which field the propose dialog is open on, or null when it is closed. One
 // nullable ref rather than a field plus a visibility flag, so the two cannot
 // disagree about what is being asked.
-const editing = ref<EmployeeField | null>(null)
+const editing = ref<RecordField | null>(null)
 
 const profile = computed(() => myProfile.value)
 
@@ -246,14 +246,6 @@ function retry() {
 }
 
 const requests = useMyProfileChanges()
-
-// Exit details are noise on an active employee, so the section follows the
-// record's own status -- the same rule the detail page applies.
-const visibleSections = computed(() =>
-	employeeSections.filter(
-		(section) => !section.visibleWhen || section.visibleWhen(profile.value ?? {}),
-	),
-)
 
 /**
  * The proposed value for every field sitting in an undecided request.

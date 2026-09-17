@@ -1,0 +1,72 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-09-17 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section",
+  "fieldname",
+  "column_break_field",
+  "viewable",
+  "proposable"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "description": "Heading this field appears under on the self-service page. Rows sharing a section are grouped in the order they appear here.",
+   "fieldname": "section",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Section",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "description": "Fieldname on the parent record's Document Type. Its label, type, options and mandatory flag are read from that doctype, never restated here.",
+   "fieldname": "fieldname",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Field",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_field",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "default": "1",
+   "description": "Shown on the page. Clear this to keep a field out of self service entirely.",
+   "fieldname": "viewable",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Viewable"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "The owner may propose a change to this field. Proposals still go to whoever reviews them; this only decides what can be asked.",
+   "fieldname": "proposable",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Proposable"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Self Service",
+ "name": "Self Service Field",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

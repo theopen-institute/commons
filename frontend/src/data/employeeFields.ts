@@ -12,13 +12,7 @@
  */
 
 export type EmployeeFieldType =
-  | 'text'
-  | 'email'
-  | 'tel'
-  | 'select'
-  | 'date'
-  | 'link'
-  | 'textarea'
+  'text' | 'email' | 'tel' | 'select' | 'date' | 'link' | 'textarea'
 
 export interface SelectOption {
   label: string
@@ -162,8 +156,6 @@ export const employeeSections: EmployeeSection[] = [
   },
   {
     title: 'Access & approvals',
-    description:
-      'What this employee can do in the system, and who signs off their leave.',
     fields: [
       {
         fieldname: 'user_id',
@@ -179,7 +171,7 @@ export const employeeSections: EmployeeSection[] = [
         type: 'link',
         doctype: 'User',
         description:
-          'The supervisor who approves this employee\'s leave. Needs the Leave Approver role.',
+          "The supervisor who approves this employee's leave. Needs the Leave Approver role.",
       },
     ],
   },

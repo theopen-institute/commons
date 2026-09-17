@@ -187,25 +187,6 @@ before_migrate = "tbs_commons.install.sync_module_defs"
 # route: ["List", "ToDo"], "/desk/docs/some/page", or "https://example.com"
 # awesomebar_search = ["tbs_commons.search.awesomebar_results"]
 
-# Self-service records
-# --------------------
-# Which doctypes people may read their own record of and propose corrections to,
-# one dotted path per policy dict. `Record Change Request` is generic -- it names
-# a doctype and a document -- and this hook is what gives that genericity
-# meaning: a doctype with no policy here is one nobody can raise a request
-# against, whatever their permissions.
-#
-# A dotted path rather than an inline dict so a policy lives with the reasoning
-# for it (see `tbs_commons.self_service.policies`) instead of putting forty field
-# names in this file. Another app registers its own record type by appending to
-# this hook; a later entry for the same doctype replaces an earlier one, so a
-# site can narrow or widen this app's Employee policy by installing an app rather
-# than editing it.
-self_service_records = [
-	"tbs_commons.self_service.policies.EMPLOYEE",
-	"tbs_commons.self_service.policies.BANK_ACCOUNT",
-]
-
 # Permissions
 # -----------
 # Role Permissions grant access to a whole doctype and User Permissions take

@@ -26,10 +26,7 @@
 
 		<!-- Three endings, and which one it is decides who to ask. Withheld
 		     records are a permissions question; none at all is payroll's. -->
-		<div
-			v-else-if="!bankAccounts.length"
-			class="mx-auto mt-16 max-w-md text-center"
-		>
+		<div v-else-if="!bankAccounts.length" class="mx-auto mt-16 max-w-md text-center">
 			<span
 				class="mx-auto size-8 text-ink-gray-4"
 				:class="bankCan.record_access === 'forbidden' ? 'lucide-lock' : 'lucide-landmark'"
@@ -39,18 +36,17 @@
 					You don't have access to these records
 				</p>
 				<p class="mt-1 text-p-sm text-ink-gray-5">
-					Your account isn't permitted to open bank accounts, so there is
-					nothing to show here either way. If you should be able to see yours,
-					ask a System Manager to review the permissions.
+					Your account isn't permitted to open bank accounts, so there is nothing to show
+					here either way. If you should be able to see yours, ask a System Manager to
+					review the permissions.
 				</p>
 			</template>
 			<template v-else>
 				<p class="mt-2 text-base-medium text-ink-gray-7">
-					No bank accounts are registered against you
+					No bank accounts are registered for your employee ID
 				</p>
 				<p class="mt-1 text-p-sm text-ink-gray-5">
-					This is where the accounts payroll pays you into would appear. Ask
-					whoever runs payroll if you expected one here.
+					If you need to add a new account, contact a System Manager
 				</p>
 			</template>
 		</div>

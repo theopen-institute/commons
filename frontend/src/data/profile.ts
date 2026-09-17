@@ -1,6 +1,7 @@
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useCall } from 'frappe-ui'
 import { user } from './session'
+import { NO_PERMISSIONS, type SelfServicePermissions } from './selfService'
 import type { Employee } from '@/types/doctypes'
 import {
   decisionButtons as buildDecisionButtons,
@@ -87,43 +88,14 @@ export interface ProfileChangeRequest {
   actions?: string[]
 }
 
-export interface ProfilePermissions {
-  /** Whether this user may use the section at all -- a permission, the way
-   *  `leaveCan.read` is, and what the navigation offers on. Deliberately not
-   *  conditioned on owning a record: a section that vanishes leaves someone
-   *  unable to tell a missing feature from a missing permission, and it would
-   *  take the review queue with it for a reviewer who is not an employee. */
-  read: boolean
-  /** Whether this user actually owns a record of this type, and may see it. */
-  has_record: boolean
-  /** Why there is nothing to show, when there is nothing. `forbidden` means the
-   *  record is there and the site is withholding it -- which sends the reader to
-   *  whoever administers permissions, not to HR. */
-  record_access: 'visible' | 'forbidden' | 'missing'
-  request: boolean
-  review: boolean
-  pending_reviews: number
-  /** Fieldnames the server will accept a proposal for, from this record type's
-   *  policy. The form offers the intersection of this and what
-   *  `employeeFields.ts` knows how to draw, so a field can never be collected
-   *  that the save would then refuse. */
-  proposable: string[]
-  /** What the page may show. The server's, so a field that has no business on
-   *  a self-service page cannot appear by a frontend choosing for itself. */
-  display: string[]
-  /** How the policy finds the caller's own row, named by the server so this
-   *  page hardcodes no Employee field. */
-  owner_field: string | null
-  record_filters: Record<string, string | number | boolean | null>
-  /** Every record type registered for self service. Not used by this page --
-   *  it knows it is Employee's -- but it is what a second page would read to
-   *  know it has something to show. */
-  registered: string[]
-  /** The outcomes the server will accept, in the order they should be offered. */
-  decisions: Decision[]
-  /** How many rows a queue returns. The badge counts to the same ceiling. */
-  page_length: number
-}
+/**
+ * What this user may do with their profile.
+ *
+ * The shared shape -- see `SelfServicePermissions`. It used to be restated here,
+ * which is how it came to be missing the field layout the server had started
+ * sending.
+ */
+export type ProfilePermissions = SelfServicePermissions
 
 // Declared before the record call below, and that order is load-bearing: the
 // watch that kicks that call off is `immediate`, so it reads `profileCan` while
@@ -137,24 +109,8 @@ const permissionsCall = useCall<ProfilePermissions, { doctype: string }>({
   params: { doctype: RECORD },
 })
 
-const NO_PROFILE_PERMISSIONS: ProfilePermissions = {
-  read: false,
-  has_record: false,
-  record_access: 'missing',
-  request: false,
-  review: false,
-  pending_reviews: 0,
-  proposable: [],
-  display: [],
-  owner_field: null,
-  record_filters: {},
-  registered: [],
-  decisions: [],
-  page_length: 0,
-}
-
 export const profileCan = computed(
-  () => permissionsCall.data ?? NO_PROFILE_PERMISSIONS
+  () => permissionsCall.data ?? NO_PERMISSIONS
 )
 
 /**

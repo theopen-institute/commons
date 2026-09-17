@@ -95,12 +95,24 @@ class TestRegistry(TestCase):
 		with patch.object(registry.frappe, "get_meta", return_value=meta):
 			self.assertEqual(registry.proposable_fields("Thing"), ["kept"])
 
-	def test_display_always_carries_the_name(self):
-		"""A page that could not identify the record it is showing is no use."""
+	def test_display_carries_what_the_page_needs_beyond_the_configured_fields(self):
+		"""The id and the modified stamp are the header's and the footer's, not
+		rows anyone configured -- so a page never asks for a field an
+		administrator would have had to know to add."""
 		with_policies(self, {"Thing": {"doctype": "Thing", "display": ("label",)}})
 		meta = SimpleNamespace(has_field=lambda _field: True)
 		with patch.object(registry.frappe, "get_meta", return_value=meta):
-			self.assertEqual(registry.display_fields("Thing"), ["name", "label"])
+			self.assertEqual(registry.display_fields("Thing"), ["name", "modified", "label"])
+
+	def test_display_never_repeats_a_field(self):
+		"""A title field that is also a configured row is asked for once."""
+		with_policies(
+			self,
+			{"Thing": {"doctype": "Thing", "title_field": "label", "display": ("label",)}},
+		)
+		meta = SimpleNamespace(has_field=lambda _field: True)
+		with patch.object(registry.frappe, "get_meta", return_value=meta):
+			self.assertEqual(registry.display_fields("Thing"), ["name", "label", "modified"])
 
 	def test_a_direct_owner_field_names_the_user(self):
 		with_policies(self, {"Employee": {"doctype": "Employee", "owner_field": "user_id"}})
@@ -346,23 +358,33 @@ class TestRequestFields(TestCase):
 			self.assertNotIn(fieldname, api.REQUEST_FIELDS)
 
 
-class TestEmployeePolicy(TestCase):
-	"""The one registered policy, checked as policy rather than as code."""
+class TestSeededConfiguration(TestCase):
+	"""The configuration this app ships, checked as policy rather than as code.
+
+	These are assertions about the seed -- what a fresh site starts with. A site
+	that has since edited its `Self Service Record` documents is not bound by
+	them, which is the point of holding the configuration as documents.
+	"""
 
 	def setUp(self):
-		from tbs_commons.self_service.policies import EMPLOYEE
+		from tbs_commons.self_service.policies import SEED
 
-		self.policy = EMPLOYEE
+		self.seed = {entry["document_type"]: entry for entry in SEED}
 
-	def test_the_profile_never_returns_pay(self):
-		"""The read half names its fields rather than handing back the document,
-		so a salary field added to Employee upstream does not appear here."""
+	def viewable(self, doctype):
+		return {row[1] for row in self.seed[doctype]["fields"]}
+
+	def proposable(self, doctype):
+		return {row[1] for row in self.seed[doctype]["fields"] if row[2]}
+
+	def test_pay_is_not_in_the_employee_profile_at_all(self):
+		"""Not merely un-proposable: never sent."""
 		for fieldname in ("ctc", "salary_mode", "bank_ac_no", "salary_currency"):
-			self.assertNotIn(fieldname, self.policy["display"])
+			self.assertNotIn(fieldname, self.viewable("Employee"))
 
-	def test_employment_and_access_fields_are_shown_but_not_proposable(self):
-		"""They are decisions the organisation made, not facts an employee corrects
-		-- and you cannot check your own record without seeing them."""
+	def test_employment_and_identity_are_shown_but_not_proposable(self):
+		"""They are decisions the organisation made, or documents-in-hand facts --
+		and you cannot check your own record without seeing them."""
 		for fieldname in (
 			"company",
 			"status",
@@ -374,13 +396,26 @@ class TestEmployeePolicy(TestCase):
 			"first_name",
 			"date_of_birth",
 		):
-			self.assertNotIn(fieldname, self.policy["proposable"])
-			self.assertIn(fieldname, self.policy["display"])
+			self.assertIn(fieldname, self.viewable("Employee"))
+			self.assertNotIn(fieldname, self.proposable("Employee"))
 
-	def test_everything_proposable_is_also_shown(self):
-		"""A field you can change but cannot see is a form with no context."""
-		for fieldname in self.policy["proposable"]:
-			self.assertIn(fieldname, self.policy["display"])
+	def test_the_details_an_employee_is_the_authority_on_are_proposable(self):
+		for fieldname in ("cell_number", "current_address", "person_to_be_contacted"):
+			self.assertIn(fieldname, self.proposable("Employee"))
 
 	def test_a_leavers_record_stops_being_theirs(self):
-		self.assertEqual(self.policy["filters"], {"status": "Active"})
+		self.assertEqual(self.seed["Employee"]["record_filters"], '{"status": "Active"}')
+
+	def test_bank_accounts_are_read_only_and_carry_no_credentials(self):
+		self.assertEqual(self.proposable("Bank Account"), set())
+		for fieldname in ("statement_password", "integration_id"):
+			self.assertNotIn(fieldname, self.viewable("Bank Account"))
+
+	def test_bank_accounts_chain_ownership_and_pin_the_party_type(self):
+		"""`party` is a Dynamic Link, so without the filter this would claim any
+		party whose id happened to match an employee's."""
+		entry = self.seed["Bank Account"]
+		self.assertEqual(entry["owner_field"], "party")
+		self.assertEqual(entry["owner_doctype"], "Employee")
+		self.assertEqual(entry["record_filters"], '{"party_type": "Employee"}')
+		self.assertFalse(entry["is_singular"])

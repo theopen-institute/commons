@@ -1,0 +1,148 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 0,
+ "autoname": "field:document_type",
+ "creation": "2026-09-17 00:00:00",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "record_section",
+  "document_type",
+  "enabled",
+  "column_break_record",
+  "title_field",
+  "is_singular",
+  "ownership_section",
+  "owner_field",
+  "owner_doctype",
+  "column_break_ownership",
+  "record_filters",
+  "fields_section",
+  "fields"
+ ],
+ "fields": [
+  {
+   "fieldname": "record_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "The doctype people may read their own records of. A doctype with no enabled record here is not self-service, whatever anyone's permissions say.",
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Document Type",
+   "options": "DocType",
+   "reqd": 1,
+   "set_only_once": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "description": "Turn off to withdraw this record type from self service without deleting how it was configured.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_record",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Field to read as the record's name in a list or a queue. Defaults to the record's id.",
+   "fieldname": "title_field",
+   "fieldtype": "Data",
+   "label": "Title Field"
+  },
+  {
+   "default": "0",
+   "description": "One record per owner, so a page can ask for \"mine\" without naming it -- an employee record. Leave clear where an owner may have several, such as bank accounts, and the page lists them.",
+   "fieldname": "is_singular",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "One Per Owner"
+  },
+  {
+   "fieldname": "ownership_section",
+   "fieldtype": "Section Break",
+   "label": "Ownership"
+  },
+  {
+   "description": "Field on this doctype that says whose record it is. A Link to User names the owner outright; anything else names a record of Owner Document Type, and ownership follows that.",
+   "fieldname": "owner_field",
+   "fieldtype": "Data",
+   "label": "Owner Field",
+   "reqd": 1
+  },
+  {
+   "description": "Set when Owner Field points at another self-service record rather than at a User -- a bank account names its Employee. Leave blank when the field names a User.",
+   "fieldname": "owner_doctype",
+   "fieldtype": "Link",
+   "label": "Owner Document Type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "column_break_ownership",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Extra conditions a record must meet before it counts as somebody's, as JSON -- {\"status\": \"Active\"} stops a leaver's record being theirs to read. Leave blank for none.",
+   "fieldname": "record_filters",
+   "fieldtype": "Code",
+   "label": "Record Filters",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "fields_section",
+   "fieldtype": "Section Break",
+   "label": "Fields"
+  },
+  {
+   "description": "What the page shows and what may be proposed. Order here is the order on the page.",
+   "fieldname": "fields",
+   "fieldtype": "Table",
+   "label": "Fields",
+   "options": "Self Service Field",
+   "reqd": 1
+  }
+ ],
+ "icon": "fa fa-id-card",
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Self Service",
+ "name": "Self Service Record",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager"
+  }
+ ],
+ "row_format": "Dynamic",
+ "search_fields": "document_type",
+ "sort_field": "document_type",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

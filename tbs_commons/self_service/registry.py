@@ -2,37 +2,31 @@
 
 The layer that makes `Record Change Request` generic mean something. The request
 document names a doctype and a document; everything that turns that pair into
-"your record, and these are the fields you may propose" is here, and it is
-assembled from the `self_service_records` hook rather than written into the
-request doctype.
+"your record, and these are the fields you may propose" is here, and it is read
+from `Self Service Record` documents rather than written into the app.
 
 Two consequences worth being explicit about.
 
-A doctype with no policy is not self-service, whatever anyone's permissions say.
-`policy()` throws rather than falling back to something permissive: the default
-for a doctype nobody has thought about is that its fields are not an employee's
-to propose, and a registry that guessed otherwise would turn every new doctype on
-the site into a self-service form.
+A doctype with no enabled record is not self-service, whatever anyone's
+permissions say. `policy()` throws rather than falling back to something
+permissive: the default for a doctype nobody has configured is that its fields
+are not an employee's to propose, and a registry that guessed otherwise would
+turn every new doctype on the site into a self-service form.
 
 Ownership can chain. `Employee` names its owner directly through `user_id`; a
 record that hangs off the employee rather than off the login names its `Employee`
 instead, and `owner_of` follows that to the same answer. That is what lets a
-second HR record about the same person be added as a registry entry rather than
-as a second idea of what "mine" means -- see `policies`.
+second record type be added as a document rather than as a second idea of what
+"mine" means.
 
 Two functions here read records, and they answer different questions, so they
 reach the database differently.
 
-`session_record` returns record *data* to a caller, so it goes through
+`session_records` returns record *data* to a caller, so it goes through
 `frappe.get_list` and is subject to every permission the site has configured --
-role permissions, User Permissions, and this app's own gate in
-`tbs_commons.safer_permissions`. It used to use `frappe.db.get_value`, on the
-reasoning that "may I read the directory" and "may I read myself" are different
-questions. They are, but that is an argument for configuring the answer, not for
-a whitelisted endpoint deciding it in spite of the configuration: an
-administrator who gates the `Employee` role has said what they mean, and this
-module is not the place to overrule them. A user whose site denies them their
-own record now gets `None`, and the page says so.
+role permissions, User Permissions, and this app's gate in
+`tbs_commons.safer_permissions`. An administrator who gates a doctype has said
+what they mean, and this module is not the place to overrule them.
 
 `owner_of` answers only "whose record is this", returns a username and no record
 data, and is what `validate_raiser` consults before deciding whether a proposal
@@ -42,43 +36,167 @@ answer depend on who is asking. It grants nothing: every caller that goes on to
 *return* or *change* anything does its own permission check.
 """
 
+import json
+
 import frappe
 
-HOOK = "self_service_records"
+CONFIG = "Self Service Record"
 
 # How deep an ownership chain may run before it is treated as a cycle. Chains are
 # a configuration, so a mistake in one is a hang rather than an error unless
 # something counts -- and a real chain is one or two links.
 MAX_CHAIN = 5
 
+# How a stored field type reads as a form control. The frontend draws from this
+# rather than from a fieldtype it would have to know Frappe's vocabulary for, and
+# a type absent here is shown read-only rather than guessed at.
+CONTROL_TYPES = {
+	"Data": "text",
+	"Select": "select",
+	"Link": "link",
+	"Date": "date",
+	"Small Text": "textarea",
+	"Text": "textarea",
+	"Long Text": "textarea",
+	"Text Editor": "textarea",
+	"Check": "check",
+	"Int": "number",
+	"Float": "number",
+	"Currency": "number",
+	"Phone": "tel",
+}
+
+# `Data` fields carry their flavour in `options`, which is where an email or a
+# phone number is distinguished from any other short string.
+DATA_CONTROL_TYPES = {"Email": "email", "Phone": "tel", "URL": "url"}
+
 
 def policies() -> dict[str, dict]:
-	"""Every registered policy, keyed by the doctype it governs.
+	"""Every enabled configuration, keyed by the doctype it governs.
 
-	Cached for the request. The hook is resolved through `frappe.get_attr` so an
-	app registers a dotted path to its policy dict rather than inlining forty
-	field names in its `hooks.py`.
+	Cached for the site and dropped whenever a `Self Service Record` is saved or
+	deleted (see `SelfServiceRecord.clear_registry_cache`), because this answer
+	sits on the path of every self-service permission check.
 
-	A later entry for a doctype replaces an earlier one, which is Frappe's usual
-	hook precedence and makes overriding this app's `Employee` policy -- to widen
-	or narrow the proposable list for one site -- a matter of adding an app.
+	Read with `frappe.get_all` and an explicit field list rather than by loading
+	each document: this runs before a page renders anything, and the child rows
+	are the only part that needs a second query.
 	"""
 
 	def build() -> dict[str, dict]:
 		found: dict[str, dict] = {}
-		for path in frappe.get_hooks(HOOK) or []:
-			policy = frappe.get_attr(path)
-			if not isinstance(policy, dict) or not policy.get("doctype"):
-				frappe.throw(frappe._("{0} is not a self-service policy: it needs a `doctype`.").format(path))
-			found[policy["doctype"]] = policy
+		parents = frappe.get_all(
+			CONFIG,
+			filters={"enabled": 1},
+			fields=[
+				"name",
+				"document_type",
+				"owner_field",
+				"owner_doctype",
+				"title_field",
+				"is_singular",
+				"record_filters",
+			],
+		)
+		if not parents:
+			return found
+		rows = frappe.get_all(
+			"Self Service Field",
+			filters={"parent": ["in", [p.name for p in parents]], "parenttype": CONFIG},
+			fields=["parent", "section", "fieldname", "viewable", "proposable", "idx"],
+			order_by="parent asc, idx asc",
+			parent_doctype=CONFIG,
+		)
+		by_parent: dict[str, list] = {}
+		for row in rows:
+			by_parent.setdefault(row.parent, []).append(row)
+
+		for parent in parents:
+			fields = by_parent.get(parent.name) or []
+			found[parent.document_type] = {
+				"doctype": parent.document_type,
+				"owner_field": parent.owner_field,
+				"owner_doctype": parent.owner_doctype or None,
+				"title_field": parent.title_field or None,
+				"singular": bool(parent.is_singular),
+				"filters": _parse_filters(parent.record_filters),
+				"fields": fields,
+				"display": tuple(row.fieldname for row in fields if row.viewable),
+				"proposable": tuple(row.fieldname for row in fields if row.viewable and row.proposable),
+			}
 		return found
 
 	return frappe.cache.get_value("tbs_commons_self_service_policies", build, shared=True)
 
 
+def _parse_filters(raw: str | None) -> dict:
+	"""Stored JSON, or nothing. Never an error: the document validated it on the
+	way in, and a page is not the place to discover that it did not."""
+	if not (raw or "").strip():
+		return {}
+	try:
+		parsed = json.loads(raw)
+	except ValueError:
+		return {}
+	return parsed if isinstance(parsed, dict) else {}
+
+
 def registered() -> list[str]:
 	"""The doctypes that are self-service here, in no particular order."""
 	return sorted(policies())
+
+
+def field_definitions(doctype: str) -> list[dict]:
+	"""Every viewable field, grouped into sections, as the page should draw it.
+
+	The configuration says which fields and how they are grouped; everything
+	else -- the label, the control, a select's options, a link's target, whether
+	it is mandatory -- is read from the doctype's own meta here. Restating any of
+	that in the configuration would mean a label that drifts from the one the
+	desk shows and a select whose options are a year out of date.
+
+	A field the doctype no longer has is dropped rather than trusted: an upstream
+	rename shows up as a field quietly leaving the page, not as a read that
+	throws.
+	"""
+	meta = frappe.get_meta(doctype)
+	sections: list[dict] = []
+	index: dict[str, dict] = {}
+
+	for row in policy(doctype)["fields"]:
+		if not row.viewable or not meta.has_field(row.fieldname):
+			continue
+		field = meta.get_field(row.fieldname)
+		section = index.get(row.section)
+		if section is None:
+			section = {"title": row.section, "fields": []}
+			index[row.section] = section
+			sections.append(section)
+		section["fields"].append(
+			{
+				"fieldname": row.fieldname,
+				"label": frappe._(field.label) if field.label else row.fieldname,
+				"type": _control_type(field),
+				"options": _select_options(field),
+				"doctype": field.options if field.fieldtype == "Link" else None,
+				"required": bool(field.reqd),
+				"description": frappe._(field.description) if field.description else None,
+				"proposable": bool(row.proposable),
+			}
+		)
+	return sections
+
+
+def _control_type(field) -> str:
+	if field.fieldtype == "Data":
+		return DATA_CONTROL_TYPES.get(field.options or "", "text")
+	return CONTROL_TYPES.get(field.fieldtype, "text")
+
+
+def _select_options(field) -> list[str]:
+	if field.fieldtype != "Select":
+		return []
+	return [option.strip() for option in (field.options or "").split("\n") if option.strip()]
 
 
 def policy(doctype: str) -> dict:
@@ -91,7 +209,7 @@ def policy(doctype: str) -> dict:
 	found = policies().get(doctype)
 	if not found:
 		frappe.throw(
-			frappe._("{0} records cannot be changed through a request.").format(doctype),
+			frappe._("{0} is not set up for self service.").format(frappe._(doctype)),
 			frappe.PermissionError,
 		)
 	return found
@@ -111,15 +229,36 @@ def proposable_fields(doctype: str) -> list[str]:
 
 
 def display_fields(doctype: str) -> list[str]:
-	"""What a read-only page may show, `name` always included.
+	"""Every field the page needs to fetch, not only the ones it lays out.
 
-	Same filtering as `proposable_fields`, and for the same reason: a page that
-	asks for a field the doctype no longer has fails the whole read rather than
-	quietly showing one row fewer.
+	The configured fields are what the sections render. A page needs a little
+	more than that to draw itself -- the record's id, the title it is known by,
+	its image where the doctype has one, and when it was last touched -- and none
+	of those belong in the configuration as rows, because they are not facts the
+	page lists. They are added here instead, so an administrator configuring a
+	record type never has to know that a header exists.
+
+	Same filtering as the section fields, and for the same reason: a field the
+	doctype no longer has is dropped rather than requested, since asking for one
+	fails the whole read instead of quietly showing one row fewer.
 	"""
+	current = policy(doctype)
 	meta = frappe.get_meta(doctype)
-	fields = [fieldname for fieldname in policy(doctype).get("display") or () if meta.has_field(fieldname)]
-	return ["name", *fields]
+	essentials = [
+		"name",
+		current.get("title_field"),
+		getattr(meta, "image_field", None),
+		"modified",
+	]
+
+	seen: list[str] = []
+	for fieldname in [*essentials, *current["display"]]:
+		if not fieldname or fieldname in seen:
+			continue
+		if fieldname != "name" and not meta.has_field(fieldname):
+			continue
+		seen.append(fieldname)
+	return seen
 
 
 def title_of(doctype: str, name: str) -> str:
@@ -266,5 +405,10 @@ def record_exists(doctype: str) -> bool:
 
 
 def clear_cache() -> None:
-	"""Drop the resolved registry. Called when an app is installed or removed."""
+	"""Drop the resolved registry.
+
+	Called whenever a `Self Service Record` is saved or deleted, and on migrate.
+	Without it a configuration change would appear to do nothing until something
+	else happened to clear the cache.
+	"""
 	frappe.cache.delete_value("tbs_commons_self_service_policies", shared=True)

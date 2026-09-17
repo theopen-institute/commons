@@ -78,11 +78,55 @@ WORKFLOW_TRANSITIONS = (
 
 def sync_self_service() -> None:
 	"""Everything the self-service section asserts on both install and migrate."""
-	# The resolved registry is cached across requests, and installing or removing
-	# an app is exactly when the `self_service_records` hook changes. Dropped here
-	# rather than left to `frappe.clear_cache`, which does not know about this key.
+	seed_records()
+	# The resolved registry is cached across requests and keyed by nothing that
+	# changes on deploy, so a migrate that seeds or alters configuration has to
+	# drop it. `frappe.clear_cache` does not know about this key.
 	registry.clear_cache()
 	sync_change_workflow()
+
+
+def seed_records() -> None:
+	"""Create the configuration this app ships, once, for record types with none.
+
+	Never rewrites an existing record, and never recreates a deleted one it can
+	tell apart from a new install -- the configuration is the administrator's
+	once the app is on the site. A site that removed a field, added one, or
+	turned a record type off keeps what it decided, and this quietly does
+	nothing on every migrate after the first.
+
+	A record whose doctype is not installed is skipped rather than failing the
+	migrate: `Bank Account` is ERPNext's, and an app that lost that dependency
+	should degrade to "no bank accounts here", not to a broken deploy.
+	"""
+	from tbs_commons.self_service.policies import SEED
+
+	for entry in SEED:
+		doctype = entry["document_type"]
+		if frappe.db.exists(registry.CONFIG, doctype):
+			continue
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		record = frappe.new_doc(registry.CONFIG)
+		record.update({key: value for key, value in entry.items() if key != "fields"})
+		meta = frappe.get_meta(doctype)
+		for section, fieldname, proposable in entry["fields"]:
+			# A field the site's version of the doctype does not have is dropped
+			# rather than seeded, so the first save does not fail validation on
+			# something upstream renamed.
+			if not meta.has_field(fieldname):
+				continue
+			record.append(
+				"fields",
+				{
+					"section": section,
+					"fieldname": fieldname,
+					"viewable": 1,
+					"proposable": 1 if proposable else 0,
+				},
+			)
+		if record.fields:
+			record.insert(ignore_permissions=True)
 
 
 def sync_change_workflow() -> None:

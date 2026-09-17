@@ -24,7 +24,7 @@
 				</div>
 			</div>
 
-			<EmployeeField v-model="draft" :field="field" :error="error" />
+			<EmployeeField v-if="control" v-model="draft" :field="control" :error="error" />
 
 			<FormControl
 				v-model="reason"
@@ -57,6 +57,7 @@ import { Alert, Dialog, ErrorMessage, FormControl, toast, type DialogAction } fr
 import EmployeeField from './EmployeeField.vue'
 import { displayValue, recordType, useRequestProfileChange, type MyProfile } from '@/data/profile'
 import { isFieldFilled, type EmployeeField as Field } from '@/data/employeeFields'
+import type { RecordField } from '@/data/selfService'
 import { formatDate } from '@/data/format'
 
 const props = defineProps<{
@@ -64,7 +65,7 @@ const props = defineProps<{
 	/** The field being proposed against, or null when nothing is. Held as one
 	 *  nullable prop rather than a field plus a flag, so the dialog cannot render
 	 *  half a question. */
-	field: Field | null
+	field: RecordField | null
 	/** Proposed values from open requests, by fieldname — see `MyProfile.vue`. */
 	pending: Record<string, string | null>
 }>()
@@ -72,6 +73,23 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; created: [name: string] }>()
 
 const request = useRequestProfileChange()
+
+// The server describes the field; `EmployeeField` draws it. Adapted here rather
+// than by widening that component, which the Employees app's own forms share and
+// which has no business knowing about this section's payload.
+const control = computed<Field | null>(() =>
+	props.field
+		? {
+				fieldname: props.field.fieldname,
+				label: props.field.label,
+				type: props.field.type as Field['type'],
+				required: props.field.required,
+				options: props.field.options.length ? props.field.options : undefined,
+				doctype: props.field.doctype ?? undefined,
+				description: props.field.description ?? undefined,
+			}
+		: null,
+)
 
 const open = computed({
 	get: () => props.field !== null,
