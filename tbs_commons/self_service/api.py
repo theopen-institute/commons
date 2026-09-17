@@ -228,10 +228,23 @@ def status_display(row, workflow, styles: dict) -> tuple[str, str | None]:
 def get_change_permissions(doctype: str | None = None) -> dict:
 	"""What the session user may do in this section, plus any review backlog.
 
-	`read` is whether there is a record to show at all, which is a question about
-	the record and not about a role: a login that owns none has no profile, and no
-	amount of permission gives it one. Asked only when a `doctype` is named --
-	the review queue spans every registered doctype and needs no such answer.
+	`read` and `has_record` are deliberately two answers rather than one, because
+	they drive two different things and conflating them hides the section from
+	the people it exists to help.
+
+	`read` is whether this user may use the section at all -- a permission, the
+	way `leaveCan.read` is -- and so whether the navigation should offer it. It is
+	not conditioned on owning a record: a login with no employee record behind it
+	still needs to be told that, and a section that simply vanishes leaves them
+	unable to tell a missing feature from a missing permission. It also has to
+	stay true for a reviewer who is not themselves an employee, or the review
+	queue goes with it.
+
+	`has_record` is whether they actually own one, which is the page's question:
+	it decides between the profile and the "your login isn't linked" notice, and
+	it gates the button that raises a request. Asked only when a `doctype` is
+	named -- the review queue spans every registered doctype and needs no such
+	answer.
 
 	`proposable` is the field allowlist for that doctype, sent so the form offers
 	exactly what the save would accept. `decisions` is here so a reviewer's
@@ -245,7 +258,8 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 	return {
 		"doctype": doctype,
 		"registered": registry.registered(),
-		"read": owns,
+		"read": bool(frappe.has_permission(DOCTYPE, "read")),
+		"has_record": owns,
 		"request": owns and bool(frappe.has_permission(DOCTYPE, "create")),
 		"review": can_review,
 		"pending_reviews": _pending_count() if can_review else 0,

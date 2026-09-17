@@ -78,8 +78,17 @@
 					:to="{ name: 'Announcements' }"
 				/>
 
-				<SidebarSection v-if="profileCan.read" label="Profile" collapsible>
+				<!-- Visible to anyone who may use the section, not only to those who
+					     own a record: the page explains an unlinked login far better
+					     than an absent row does, and a reviewer who is not themselves
+					     an employee still needs the queue below. -->
+				<SidebarSection
+					v-if="profileCan.read || profileCan.review"
+					label="Profile"
+					collapsible
+				>
 					<SidebarItem
+						v-if="profileCan.read"
 						label="My profile"
 						icon="lucide-id-card"
 						:to="{ name: 'MyProfile' }"

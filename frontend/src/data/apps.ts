@@ -87,9 +87,14 @@ export const appList = [apps.employees, apps.requests]
  */
 export const firstRequestSection = computed<string | null>(() => {
   if (!apps.requests.resolved.value) return null
-  if (profileCan.value.read) return '/profile'
+  // A section they can actually use first. `profileCan.read` is a permission and
+  // is true for nearly everyone, so landing on it unconditionally would drop a
+  // user whose login has no employee record on a page that can only apologise --
+  // while the leave they do have sat one row down.
+  if (profileCan.value.has_record) return '/profile'
   if (leaveCan.value.read) return '/leave'
   if (procurementCan.value.read) return '/procurement'
+  if (profileCan.value.read) return '/profile'
   return null
 })
 

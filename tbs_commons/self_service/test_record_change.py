@@ -37,23 +37,33 @@ class TestRecordChangeRequest(unittest.TestCase):
 		self.employee = self.new_employee(self.user)
 
 	def new_user(self) -> str:
-		"""A fresh login with the Employee role and nothing else.
+		"""A fresh login with no roles of its own.
 
 		Deliberately not one of the site's existing users: Administrator holds
 		every role, so a rule that only bites people *without* HR's roles would
 		pass against it while being broken for everyone it applies to.
+
+		No `add_roles("Employee")` here, because it would be a no-op that read
+		like a precondition. ERPNext owns that role: `validate_employee_role`
+		strips it from any login with no employee record behind it, and creating
+		the record grants it back. So a user made here holds it only after
+		`new_employee` links them -- which is the real sequence, and the reason
+		`test_a_login_with_no_employee_record_is_not_offered_the_section` gets the
+		answer it does.
 		"""
-		user = frappe.get_doc(
-			dict(
-				doctype="User",
-				email=f"self-service-{frappe.generate_hash(length=8)}@example.com",
-				first_name="Self",
-				last_name="Service",
-				send_welcome_email=0,
+		return (
+			frappe.get_doc(
+				dict(
+					doctype="User",
+					email=f"self-service-{frappe.generate_hash(length=8)}@example.com",
+					first_name="Self",
+					last_name="Service",
+					send_welcome_email=0,
+				)
 			)
-		).insert(ignore_permissions=True)
-		user.add_roles("Employee")
-		return user.name
+			.insert(ignore_permissions=True)
+			.name
+		)
 
 	def new_employee(self, user: str) -> str:
 		company = frappe.db.get_value("Company", "_Test Company", "name") or frappe.db.get_value(
@@ -296,13 +306,51 @@ class TestRecordChangeRequest(unittest.TestCase):
 		for fieldname in ("ctc", "salary_mode", "bank_ac_no"):
 			self.assertNotIn(fieldname, record)
 
-	def test_a_login_that_owns_no_record_has_no_profile(self):
+	def test_a_login_with_no_employee_record_is_not_offered_the_section(self):
+		"""And that is ERPNext's answer, not this app's.
+
+		`validate_employee_role` removes the `Employee` role from any login with
+		no employee record behind it, so such a user holds no permission on the
+		request doctype either. `read` follows that rather than second-guessing
+		it: the site has already said this login is not an employee, and offering
+		them a profile section would be this app disagreeing.
+		"""
 		frappe.set_user("Administrator")
 		stranger = self.new_user()
 		frappe.set_user(stranger)
 		self.assertIsNone(api.get_my_record(RECORD))
-		self.assertFalse(api.get_change_permissions(RECORD)["read"])
+		permissions = api.get_change_permissions(RECORD)
+		self.assertFalse(permissions["read"])
+		self.assertFalse(permissions["has_record"])
+		self.assertFalse(permissions["request"])
 		self.assertEqual(api.get_my_changes(), [])
+
+	def test_a_leaver_keeps_the_section_and_is_told_why_it_is_empty(self):
+		"""The case the "your login isn't linked" notice actually exists for.
+
+		A leaver keeps the `Employee` role -- the record still exists -- so `read`
+		stays true and the section stays in the sidebar, while `has_record` goes
+		false because the policy's filters no longer claim the record for them.
+		That split is what lets the page explain itself instead of vanishing.
+		"""
+		frappe.set_user("Administrator")
+		frappe.db.set_value(RECORD, self.employee, "status", "Left")
+		frappe.set_user(self.user)
+		permissions = api.get_change_permissions(RECORD)
+		self.assertTrue(permissions["read"])
+		self.assertFalse(permissions["has_record"])
+		self.assertFalse(permissions["request"])
+		self.assertIsNone(api.get_my_record(RECORD))
+
+	def test_a_reviewer_who_owns_no_record_keeps_their_queue(self):
+		"""The bug the split above fixes: HR staff who are not themselves
+		employees were losing the review queue with the section."""
+		name = self.propose(cell_number="0799 999 999")
+		frappe.set_user("Administrator")
+		permissions = api.get_change_permissions(RECORD)
+		self.assertFalse(permissions["has_record"])
+		self.assertTrue(permissions["review"])
+		self.assertIn(name, [row["name"] for row in api.get_change_queue()])
 
 
 def run():

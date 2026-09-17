@@ -87,9 +87,15 @@ export interface ProfileChangeRequest {
 }
 
 export interface ProfilePermissions {
-  /** Whether there is a profile to show -- a question about the employee
-   *  record, not about a role. */
+  /** Whether this user may use the section at all -- a permission, the way
+   *  `leaveCan.read` is, and what the navigation offers on. Deliberately not
+   *  conditioned on owning a record: a section that vanishes leaves someone
+   *  unable to tell a missing feature from a missing permission, and it would
+   *  take the review queue with it for a reviewer who is not an employee. */
   read: boolean
+  /** Whether this user actually owns a record of this type. The page's
+   *  question: profile, or the "your login isn't linked" notice. */
+  has_record: boolean
   request: boolean
   review: boolean
   pending_reviews: number
@@ -132,6 +138,7 @@ const permissionsCall = useCall<ProfilePermissions, { doctype: string }>({
 
 const NO_PROFILE_PERMISSIONS: ProfilePermissions = {
   read: false,
+  has_record: false,
   request: false,
   review: false,
   pending_reviews: 0,
