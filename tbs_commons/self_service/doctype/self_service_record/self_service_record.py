@@ -78,13 +78,24 @@ class SelfServiceRecord(Document):
 	def clear_registry_cache(self) -> None:
 		"""Drop the resolved registry so the next request reads this change.
 
-		The registry caches every enabled record for the site, which is what
-		keeps a permission check off the database. A configuration change that
-		did not clear it would appear to do nothing until something else did.
+		The registry caches every enabled record for the site, which is what keeps
+		a permission check off the database. A configuration change that did not
+		clear it would appear to do nothing until something else did.
+
+		Cleared again after a rollback, and that is not belt and braces. This runs
+		in `on_update`, before the transaction commits, so a save that later fails
+		-- a validation error further down the request, a raised exception, an
+		explicit rollback -- would otherwise leave the cache holding a
+		configuration the database no longer contains. The window is small and the
+		symptom is baffling: a page rendering fields nobody can find in the desk.
+
+		A rollback to a savepoint does not run these callbacks, so a test that
+		saves configuration inside one still has to clear the cache itself.
 		"""
 		from tbs_commons.self_service import registry
 
 		registry.clear_cache()
+		frappe.db.after_rollback.add(registry.clear_cache)
 
 	def meta_for(self):
 		return frappe.get_meta(self.document_type)
