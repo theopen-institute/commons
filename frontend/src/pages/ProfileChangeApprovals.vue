@@ -184,7 +184,6 @@ import {
 	type DecisionButton,
 } from '@/data/selfService'
 import {
-	reloadChangeWorkflow,
 	reloadReviewPermissions,
 	reviewCan,
 	reviewPermissionsError,
@@ -288,9 +287,7 @@ async function submitDecision(row: ChangeRequest, button: DecisionButton, note: 
 
 function refresh() {
 	requests.reload()
-	// The sidebar badge counts pending reviews, so it moves too -- and a
-	// workflow's states are what the next row's label and buttons come from.
+	// The sidebar badge counts pending reviews, so it moves too.
 	reloadReviewPermissions()
-	reloadChangeWorkflow()
 }
 </script>

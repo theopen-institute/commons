@@ -54,19 +54,67 @@ def session_employee(fieldnames: list[str]) -> frappe._dict | None:
 	`safer_permissions` module docstring for why a blanket one does not count.
 
 	`None` for a user with no read permission at all, rather than the throw
-	`get_list` would raise: "you have no employee record here" is the same answer
-	as far as every caller is concerned, and several of them are permission
-	endpoints that must not 500 on the way to saying so.
+	`get_list` would raise: several callers are permission endpoints that must
+	not 500 on the way to saying what a user may do.
+
+	`None` is therefore two answers in one -- "there is no record" and "there is
+	one and you may not see it" -- which is fine for a caller that only wants the
+	record and wrong for one that has to explain its absence. `session_employee_access`
+	is that explanation; a page that renders an empty state should ask it.
 	"""
 	if not frappe.has_permission(EMPLOYEE, "read"):
 		return None
 	rows = frappe.get_list(
 		EMPLOYEE,
-		filters={"user_id": frappe.session.user, "status": "Active"},
+		filters=session_employee_filters(),
 		fields=fieldnames,
 		limit_page_length=1,
 	)
 	return rows[0] if rows else None
+
+
+def session_employee_filters() -> dict:
+	"""What makes an Employee row this session's own.
+
+	One definition, because `session_employee` and `session_employee_access` have
+	to agree: a discriminator that looked for a different row than the read did
+	would report `forbidden` for a record that was never a candidate.
+	"""
+	return {"user_id": frappe.session.user, "status": "Active"}
+
+
+def session_employee_access() -> str:
+	"""Why there is no employee record to show, when there is not one.
+
+	`visible`, `forbidden` or `missing`. The same three answers self-service
+	settled on for the same reason -- see `self_service.api._record_access`,
+	whose docstring is the argument for all of this: "you have no record" and
+	"you may not see your record" send the reader to different people, HR for the
+	first and whoever administers permissions for the second, and a page that
+	cannot tell them apart has to guess.
+
+	Leave had exactly the failure that docstring warns about. `session_employee`
+	returns `None` for both, so a user whose `Employee` read was revoked -- or who
+	is caught by this app's own gate in `tbs_commons.safer_permissions` -- was
+	told their login was not linked to an employee record and sent to HR to
+	create one that already exists and already names them.
+
+	The existence test is a raw read, and deliberately so: it returns a boolean,
+	never record data, so the only thing it can disclose is that somebody has
+	created a row against the caller's own login. That is the same bounded
+	disclosure `registry.record_exists` makes, and it is the whole point -- a
+	permission-checked test cannot distinguish the two cases, because being
+	refused is one of them.
+
+	An employee marked `Left` reads as `missing` rather than `forbidden`, because
+	the filters apply to both halves. That is the honest answer: nothing is
+	withholding the record, it has stopped being theirs.
+	"""
+	if frappe.has_permission(EMPLOYEE, "read") and frappe.get_list(
+		EMPLOYEE, filters=session_employee_filters(), pluck="name", limit_page_length=1
+	):
+		return "visible"
+	return "forbidden" if frappe.db.exists(EMPLOYEE, session_employee_filters()) else "missing"
 
 
 @frappe.whitelist()

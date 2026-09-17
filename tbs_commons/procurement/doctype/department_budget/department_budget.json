@@ -104,6 +104,12 @@
    "amend": 1,
    "report": 1,
    "export": 1
+  },
+  {
+   "role": "Purchase Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1
   }
  ],
  "track_changes": 1,

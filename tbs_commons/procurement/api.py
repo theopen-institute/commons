@@ -62,9 +62,14 @@ def _list_fields(state_field: str, *extra: str) -> list[str]:
 def get_procurement_permissions() -> dict:
 	"""What the session user may do with procurement, plus their backlog.
 
-	Carries the server-owned defaults a new request needs as well. They are cheap, and
-	the alternative is the request form making its own round trips for a
-	company and a unit before it can render a single blank line.
+	Capabilities only. The blank-request defaults used to ride along here, which
+	meant every page load resolved a company, an employee, a department approver
+	and a stock UOM for a form most visits never open -- see
+	`get_procurement_request_defaults`, which answers that when the form asks.
+
+	`workflow` does ride along, because it is not form state: every page that
+	reads it also reads this, and refreshed one without the other after acting on
+	a request. `None` on a site running no Workflow, which the pages handle.
 	"""
 	workflow = _procurement_workflow()
 	can_read = bool(frappe.has_permission(PROCUREMENT_REQUEST, "read"))
@@ -72,23 +77,49 @@ def get_procurement_permissions() -> dict:
 	workflow_access = bool(workflow and can_read and is_approver)
 	pending = _pending_workflow_count(workflow) if workflow_access else 0
 
+	return {
+		"read": can_read,
+		"request": bool(frappe.has_permission(PROCUREMENT_REQUEST, "create")),
+		"workflow": wf.describe(workflow) if can_read else None,
+		"workflow_access": workflow_access,
+		"pending_workflow_actions": pending,
+		"approver_query": APPROVER_QUERY,
+		"page_length": PAGE_LENGTH,
+	}
+
+
+@frappe.whitelist()
+def get_procurement_request_defaults() -> dict:
+	"""What a blank request opens with, before the requester touches anything.
+
+	Asked by the form rather than sent with the permissions, because that is what
+	it is: form state, wanted by the one page that draws a blank request and by
+	none of the pages that merely list them. Four queries -- a company, the
+	employee behind the session, their department's approver, the stock UOM --
+	that used to run on every visit to the section.
+
+	Gated on `create` for the same reason `get_procurement_approvers` is: someone
+	who cannot raise a request has no blank form to fill, and each of these
+	answers is a small fact about the site or about the caller's own employee
+	record.
+
+	Every value may be `None`. A default nobody has configured is left out rather
+	than guessed at, and Frappe then applies the user's own default or says it
+	cannot decide -- which is better than a form that quietly picked one.
+	"""
+	frappe.has_permission(PROCUREMENT_REQUEST, "create", throw=True)
+
 	company = _default_company()
 	employee = session_employee(["name", "department", "expense_approver"])
 
 	return {
-		"read": can_read,
-		"request": bool(frappe.has_permission(PROCUREMENT_REQUEST, "create")),
-		"workflow_access": workflow_access,
-		"pending_workflow_actions": pending,
-		"default_company": company,
-		"default_currency": (
+		"company": company,
+		"currency": (
 			frappe.db.get_value("Company", company, "default_currency") if company else None
 		),
-		"default_department": employee.department if employee else None,
-		"default_approver": _default_procurement_approver(employee),
-		"default_uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
-		"approver_query": APPROVER_QUERY,
-		"page_length": PAGE_LENGTH,
+		"department": employee.department if employee else None,
+		"approver": _default_procurement_approver(employee),
+		"uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
 	}
 
 
@@ -113,13 +144,6 @@ def _default_procurement_approver(employee: frappe._dict | None) -> str | None:
 		{"parent": employee.department, "parentfield": "expense_approvers", "idx": 1},
 		"approver",
 	)
-
-
-@frappe.whitelist()
-def get_procurement_workflow() -> dict | None:
-	"""The active Workflow definition, reduced to fields the SPA can render."""
-	frappe.has_permission(PROCUREMENT_REQUEST, "read", throw=True)
-	return wf.describe(_procurement_workflow())
 
 
 @frappe.whitelist(methods=["POST"])
@@ -513,13 +537,17 @@ def get_procurement_approvers(
 	ignored, just demoted to a sort order: the requester's expense approver and
 	their department's come first when they are in the set at all.
 
-	Gated on read over `Procurement Request`, because the query builder below
-	asks no permission of its own. A link query exists to fill one field on one
-	form, and someone who cannot open that form has no business enumerating the
-	site's approvers through it — which, whitelisted and unguarded, is what this
-	would be.
+	Gated on `create` over `Procurement Request`, because the query builder below
+	asks no permission of its own: it joins `User` to `Has Role` directly and so
+	enumerates people, with their full names, for anyone who can reach it.
+
+	`create` rather than `read` deliberately. This exists to fill one field on
+	one form, and that form is only ever open to someone raising a request --
+	whereas read is held by everyone who can so much as see a queue, which is a
+	wide door to a directory query. Narrowing it costs nothing: a user who cannot
+	raise a request has no field to fill.
 	"""
-	frappe.has_permission(PROCUREMENT_REQUEST, "read", throw=True)
+	frappe.has_permission(PROCUREMENT_REQUEST, "create", throw=True)
 	roles = _roles_that_may_approve()
 	if not roles:
 		return []

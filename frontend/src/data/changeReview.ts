@@ -58,13 +58,7 @@ export function useReviewQueue(decided: MaybeRefOrGetter<boolean>) {
   return queue
 }
 
-const workflowCall = useCall<unknown>({
-  url: '/api/v2/method/tbs_commons.self_service.api.get_change_workflow',
-})
-
-/** The active Workflow, if the site runs one. The pages need no knowledge of it
- *  — every row carries its own label, style and permitted actions — but
- *  reloading it keeps those answers fresh after a transition. */
-export function reloadChangeWorkflow() {
-  return workflowCall.reload()
-}
+// No workflow description is fetched here, deliberately. Every row arrives
+// carrying its own label, style and permitted actions, so nothing on this page
+// ever read the workflow itself — the call existed only to be reloaded, and
+// reloading it refreshed nothing. Reloading the queue is what moves the labels.

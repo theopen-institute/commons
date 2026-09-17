@@ -503,10 +503,32 @@ def enforce_request_allocation(doc, method=None):
 
 
 def can_view_summary(doc):
+	"""Whether the allocation behind this request may be summarised to this user.
+
+	Two ways in, and both are the site's configuration rather than a role named
+	here. Read on `Department Budget` is the general one: whoever the Role
+	Permission Manager lets open an allocation may see its position stated beside
+	a request charged to it. The narrower one is the approver this request names,
+	who is about to commit against that allocation and has to see what is left --
+	a grant tied to the decision in front of them rather than to the doctype, so
+	it survives a site that keeps budgets away from approvers generally.
+
+	This was a hardcoded `{"Accounts Manager", "Purchase Manager", "System
+	Manager"}` -- the one place in this app where who may see something was
+	decided in Python rather than in the Role Permission Manager. A site that
+	renamed a finance role lost the readout silently; one that created an
+	`Accounts Manager` for an unrelated reason gained it. `Purchase Manager` now
+	holds read on `Department Budget` in that doctype's own permission rows,
+	which is both where the grant belongs and where a site can take it back.
+
+	`has_permission` rather than a role scan, so User Permissions and this app's
+	own gate in `tbs_commons.safer_permissions` narrow it as well.
+	"""
 	frappe.has_permission(doc.doctype, "read", doc=doc, throw=True)
+	if frappe.has_permission(BUDGET, "read"):
+		return True
 	return bool(
-		(doc.approver == frappe.session.user and frappe.has_permission(doc.doctype, "submit", doc=doc))
-		or set(frappe.get_roles()) & {"Accounts Manager", "Purchase Manager", "System Manager"}
+		doc.approver == frappe.session.user and frappe.has_permission(doc.doctype, "submit", doc=doc)
 	)
 
 
@@ -637,8 +659,12 @@ def get_budget_documents(request: str) -> list[dict]:
 	for row in usage_rows(frappe.get_doc(BUDGET, name)):
 		charged[row.parent] = charged.get(row.parent, number(0)) + number(row.amount)
 	# One permission-filtered query, rather than loading every request to ask.
+	# `get_list`, never `get_all`: the tally above is raw SQL by necessity -- an
+	# allocation has to count rows the reader cannot see -- so this is the only
+	# thing standing between that tally and a list of documents. `get_all` skips
+	# permissions entirely, which made the filter below a no-op.
 	readable = (
-		set(frappe.get_all("Material Request", filters={"name": ["in", list(charged)]}, pluck="name"))
+		set(frappe.get_list("Material Request", filters={"name": ["in", list(charged)]}, pluck="name"))
 		if charged
 		else set()
 	)
@@ -659,31 +685,6 @@ def get_budget_documents(request: str) -> list[dict]:
 		for request_name, amount in charged.items()
 		if request_name in readable
 	]
-
-
-@frappe.whitelist()
-def get_material_request_budget(name: str) -> dict | None:
-	doc = frappe.get_doc("Material Request", name)
-	frappe.has_permission(doc.doctype, "read", doc=doc, throw=True)
-	if not (
-		frappe.has_permission(doc.doctype, "submit", doc=doc)
-		or set(frappe.get_roles()) & {"Accounts Manager", "System Manager"}
-	):
-		return None
-	if doc.material_request_type not in MR_TYPES:
-		return None
-	department = doc.get("department") or material_request_department(doc)
-	name = budget_name(doc.company, department, doc.transaction_date, submitted_only=False)
-	if not name:
-		return dict(missing=True)
-	budget, *position = department_position(name)
-	return dict(
-		missing=False,
-		# Not a line of the readout: the form colours its banner with it, so a
-		# draft that would not fit what is left says so before it is submitted.
-		amount=float(sum((number(row.qty) * number(row.rate) for row in doc.items), number(0))),
-		**budget_lines(budget, *position),
-	)
 
 
 class BudgetMaterialRequestMixin:

@@ -178,7 +178,6 @@ import {
   leavePermissionsLoaded,
   leaveStatus,
   reloadLeavePermissions,
-  reloadLeaveWorkflow,
   useLeaveApprovalQueue,
   useLeaveDecision,
   type DecisionButton,
@@ -257,9 +256,7 @@ async function submitDecision(request: LeaveApplicationRow, verdict: string) {
 
 function refresh() {
   requests.reload()
-  // The sidebar badge counts pending approvals, so it moves too — and a
-  // workflow's states are what the next row's label and buttons come from.
+  // The sidebar badge counts pending approvals, so it moves too.
   reloadLeavePermissions()
-  reloadLeaveWorkflow()
 }
 </script>

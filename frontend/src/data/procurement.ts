@@ -10,19 +10,12 @@ import {
 export interface ProcurementPermissions {
   read: boolean
   request: boolean
+  /** The active Workflow, if the site runs one. Carried here rather than
+   *  fetched on its own: every page that reads it reads these permissions too,
+   *  and the two were always reloaded together after acting on a request. */
+  workflow: ProcurementWorkflow | null
   workflow_access: boolean
   pending_workflow_actions: number
-  /** What a new request is raised against. Null when the site has several
-   *  companies and this user has no default — the form then leaves it to
-   *  Frappe, which says so if it cannot decide either. */
-  default_company: string | null
-  default_currency: string | null
-  default_department: string | null
-  /** The employee's own expense approver, or failing that the first one their
-   *  department lists. Null when neither names anyone — the form opens with
-   *  the field blank rather than guessing. */
-  default_approver: string | null
-  default_uom: string
   /** The link query that resolves candidate approvers, named by the server so a
    *  site can point it somewhere else. */
   approver_query: string
@@ -114,15 +107,35 @@ const permissionsCall = useCall<ProcurementPermissions>({
 const NO_PERMISSIONS: ProcurementPermissions = {
   read: false,
   request: false,
+  workflow: null,
   workflow_access: false,
   pending_workflow_actions: 0,
-  default_company: null,
-  default_currency: null,
-  default_department: null,
-  default_approver: null,
-  default_uom: '',
   approver_query: '',
   page_length: 0,
+}
+
+/**
+ * What a blank request opens with.
+ *
+ * Its own call, made when the form opens, rather than part of the permissions
+ * every page load fetches: these are four queries for a form most visits to the
+ * section never draw. Every value may be null — a default nobody configured is
+ * omitted rather than guessed, and Frappe applies the user's own or says it
+ * cannot decide.
+ */
+export interface ProcurementRequestDefaults {
+  company: string | null
+  currency: string | null
+  department: string | null
+  approver: string | null
+  uom: string | null
+}
+
+export function useProcurementRequestDefaults() {
+  return useCall<ProcurementRequestDefaults>({
+    url: '/api/v2/method/tbs_commons.procurement.api.get_procurement_request_defaults',
+    immediate: false,
+  })
 }
 
 export const procurementCan = computed(
@@ -173,15 +186,17 @@ export interface AvailableWorkflowAction {
   next_state: string
 }
 
-const workflowCall = useCall<ProcurementWorkflow | null>({
-  url: '/api/v2/method/tbs_commons.procurement.api.get_procurement_workflow',
-})
-
-export const procurementWorkflow = computed(() => workflowCall.data ?? null)
-
-export function reloadProcurementWorkflow() {
-  return workflowCall.reload()
-}
+/**
+ * The active Workflow, if the site runs one.
+ *
+ * Read off the permissions payload rather than fetched separately. It is one
+ * configuration, every page needed both halves of it, and a second call meant a
+ * second thing to remember to reload — `reloadProcurementPermissions` now
+ * refreshes this too.
+ */
+export const procurementWorkflow = computed(
+  () => permissionsCall.data?.workflow ?? null,
+)
 
 /** Own requests, with amendments displayed in their cancelled ancestor's place. */
 export function useMyProcurementRequests() {

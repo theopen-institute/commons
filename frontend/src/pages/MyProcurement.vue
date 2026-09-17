@@ -221,7 +221,6 @@ import {
 	procurementStatus,
 	procurementWorkflow,
 	reloadProcurementPermissions,
-	reloadProcurementWorkflow,
 	requestLabel,
 	useApplyProcurementWorkflow,
 	useMyProcurementRequests,
@@ -296,7 +295,7 @@ async function applyAction(request: ProcurementRequestRow, action: AvailableWork
 
 function refresh() {
 	requests.reload()
+	// Refreshes the workflow description too -- it rides along on the payload.
 	reloadProcurementPermissions()
-	reloadProcurementWorkflow()
 }
 </script>

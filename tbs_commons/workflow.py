@@ -116,16 +116,28 @@ def permitted_transitions(doctype: str, names: list[str], workflow=None) -> dict
 	Asked in this user's session on purpose. A transition condition that names
 	the session user -- the usual way a workflow routes a document to one person
 	rather than to a role -- only means what it says here.
+
+	Every caller reaches this with names a `get_list` has already settled, and
+	each of them says so where it calls. The check below is not a second opinion
+	on that -- `get_transitions` read-checks the document itself -- it is about
+	what happens when one slips through: core *throws*, so a single unreadable
+	name takes the whole queue down with it rather than costing it one row.
+	Dropping it is the answer a queue wants, because a queue is a list of what
+	you may act on and an empty entry says exactly that. It also stops the
+	invariant living only in four call sites across three modules.
 	"""
 	from frappe.model.workflow import get_transitions
 
 	workflow = workflow if workflow is not None else active_workflow(doctype)
 	if not workflow or not names:
 		return {}
-	return {
-		name: unique_actions(get_transitions(frappe.get_doc(doctype, name), workflow))
-		for name in names
-	}
+	permitted = {}
+	for name in names:
+		doc = frappe.get_doc(doctype, name)
+		if not doc.has_permission("read"):
+			continue
+		permitted[name] = unique_actions(get_transitions(doc, workflow))
+	return permitted
 
 
 def names_in_movable_states(doctype: str, workflow, field: str) -> list[str]:

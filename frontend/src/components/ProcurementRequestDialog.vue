@@ -114,6 +114,7 @@ import LinkControl from './LinkControl.vue'
 import {
 	procurementCan,
 	procurementWorkflow,
+	useProcurementRequestDefaults,
 	useSaveProcurementRequest,
 	workflowActionButtons,
 	type AvailableWorkflowAction,
@@ -157,6 +158,10 @@ interface RequestForm {
 	items: LineForm[]
 }
 
+// Fetched when the form opens rather than with the section's permissions: they
+// are four queries for a blank request, and most visits never draw one.
+const defaults = useProcurementRequestDefaults()
+
 let nextKey = 0
 
 function blankLine(): LineForm {
@@ -165,7 +170,7 @@ function blankLine(): LineForm {
 		item_name: '',
 		reference_url: '',
 		qty: 1,
-		uom: procurementCan.value.default_uom ?? '',
+		uom: defaults.data?.uom ?? '',
 		estimated_rate: 0,
 	}
 }
@@ -196,12 +201,12 @@ function blankForm(): RequestForm {
 	return {
 		// Omitted rather than guessed when the server had no answer: Frappe then
 		// applies the user's own default, and says so if there isn't one.
-		company: procurementCan.value.default_company ?? undefined,
+		company: defaults.data?.company ?? undefined,
 		schedule_date: '',
-		department: procurementCan.value.default_department ?? '',
+		department: defaults.data?.department ?? '',
 		// Workflow state is deliberately absent. Frappe applies the doctype or
 		// active Workflow's initial value.
-		approver: procurementCan.value.default_approver ?? '',
+		approver: defaults.data?.approver ?? '',
 		items: [blankLine()],
 	}
 }
@@ -209,7 +214,7 @@ function blankForm(): RequestForm {
 const form = reactive<RequestForm>(blankForm())
 const saveRequest = useSaveProcurementRequest()
 
-const currency = computed(() => procurementCan.value.default_currency)
+const currency = computed(() => defaults.data?.currency ?? null)
 
 // The code, not a symbol: the company currency can be one the viewer's locale
 // has no symbol for, and a bare number is the thing an approver misreads.
@@ -221,9 +226,17 @@ function addLine() {
 	form.items.push(blankLine())
 }
 
-// Rebuild when opening and whenever an edited request's lines finish loading.
+// Fresh on every open: a user's default company or department approver can have
+// changed since the section was loaded, and this is the moment it matters.
+watch(open, (isOpen) => {
+	if (isOpen) defaults.reload()
+})
+
+// Rebuild when opening, when an edited request's lines finish loading, and when
+// the defaults land — all three are the same event as far as the form is
+// concerned: what it should be showing has arrived.
 watch(
-	[open, () => props.request, () => props.lines],
+	[open, () => props.request, () => props.lines, () => defaults.data],
 	([isOpen]) => {
 		if (!isOpen) return
 		Object.assign(form, blankForm())

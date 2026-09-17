@@ -293,6 +293,9 @@ class TestDecideGuard(TestCase):
 			patch.object(api.frappe, "get_meta", return_value=meta),
 			patch.object(api.frappe, "has_permission", return_value=False),
 			patch.object(api.frappe, "db", SimpleNamespace(get_single_value=lambda *a: 1)),
+			# Not what this pins, and it reaches the database of its own accord.
+			patch.object(api, "session_employee_access", return_value="visible"),
+			patch.object(api, "session_employee_filters", return_value={}),
 			patch.object(api, "leave_admin_roles", return_value=set()),
 			patch.object(api.frappe, "get_roles", return_value=[]),
 		):
@@ -311,10 +314,35 @@ class TestDecideGuard(TestCase):
 				patch.object(
 					api.frappe, "db", SimpleNamespace(get_single_value=lambda *a: setting)
 				),
+				patch.object(api, "session_employee_access", return_value="visible"),
+				patch.object(api, "session_employee_filters", return_value={}),
+			patch.object(api, "session_employee_filters", return_value={}),
 				patch.object(api, "leave_admin_roles", return_value=set()),
 				patch.object(api.frappe, "get_roles", return_value=[]),
 			):
 				self.assertIs(api.get_leave_permissions()["approver_mandatory"], expected)
+
+	def test_the_page_is_told_why_there_is_no_employee_record(self):
+		"""Carried through to the page, which says different things about each.
+
+		`missing` sends the reader to HR and `forbidden` to whoever administers
+		permissions. The page said the first to both until this was here, so a
+		user whose access had been revoked was asked to have HR create a record
+		that already named them -- see `session_employee_access`.
+		"""
+		meta = SimpleNamespace(get_field=lambda _name: status_field())
+		for access in ("visible", "forbidden", "missing"):
+			with (
+				patch.object(api, "leave_workflow", return_value=None),
+				patch.object(api.frappe, "get_meta", return_value=meta),
+				patch.object(api.frappe, "has_permission", return_value=False),
+				patch.object(api.frappe, "db", SimpleNamespace(get_single_value=lambda *a: 0)),
+				patch.object(api, "session_employee_access", return_value=access),
+				patch.object(api, "session_employee_filters", return_value={}),
+				patch.object(api, "leave_admin_roles", return_value=set()),
+				patch.object(api.frappe, "get_roles", return_value=[]),
+			):
+				self.assertEqual(api.get_leave_permissions()["employee_access"], access)
 
 
 class TestRequestLeave(TestCase):

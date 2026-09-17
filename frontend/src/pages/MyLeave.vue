@@ -30,7 +30,24 @@
     <PermissionNotice v-else-if="!leaveCan.read" what="see leave requests" />
 
     <!-- Leave is self-service, so it needs an Employee record pointing at this
-         login. Nothing on this page works without one, and the fix is HR's. -->
+         login. Nothing on this page works without one — but who to ask depends
+         on why it is absent, which is why the server distinguishes the two.
+         See `session_employee_access`. -->
+    <div
+      v-else-if="!employee && leaveCan.employee_access === 'forbidden'"
+      class="mx-auto mt-16 max-w-md text-center"
+    >
+      <span class="lucide-lock mx-auto size-8 text-ink-gray-4" />
+      <p class="mt-2 text-base-medium text-ink-gray-7">
+        Your employee record isn't available to you
+      </p>
+      <p class="mt-1 text-p-sm text-ink-gray-5">
+        It exists and it's yours, but your account can't read it — so leave
+        can't be requested against it. Ask whoever administers permissions
+        here, not HR.
+      </p>
+    </div>
+
     <div v-else-if="!employee" class="mx-auto mt-16 max-w-md text-center">
       <span class="lucide-user-x mx-auto size-8 text-ink-gray-4" />
       <p class="mt-2 text-base-medium text-ink-gray-7">
@@ -196,7 +213,6 @@ import {
   myEmployee,
   myEmployeeLoaded,
   reloadLeavePermissions,
-  reloadLeaveWorkflow,
   useLeaveDetails,
   useMyLeaveApplications,
 } from '@/data/leave'
@@ -237,7 +253,5 @@ const balanceRows = computed(() =>
 function refresh() {
   applications.reload()
   if (employee.value?.name) leaveDetails.reload()
-  // A workflow's states are where a row's label and style come from.
-  reloadLeaveWorkflow()
 }
 </script>

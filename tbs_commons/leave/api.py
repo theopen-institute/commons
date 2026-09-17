@@ -22,7 +22,12 @@ has a state name or a role name behind it in this file.
 import frappe
 
 from tbs_commons import workflow as wf
-from tbs_commons.api import roles_with_permission, session_employee
+from tbs_commons.api import (
+	roles_with_permission,
+	session_employee,
+	session_employee_access,
+	session_employee_filters,
+)
 
 LEAVE_APPLICATION = "Leave Application"
 
@@ -74,19 +79,6 @@ REQUEST_FIELDS = (
 	"leave_approver",
 )
 
-# What the leave pages render for the employee behind the session user.
-# `expense_approver` is procurement's, borrowed here because one query is
-# cheaper than two -- see `tbs_commons.procurement.api.get_procurement_approvers`.
-MY_EMPLOYEE_FIELDS = [
-	"name",
-	"employee_name",
-	"department",
-	"company",
-	"leave_approver",
-	"expense_approver",
-	"image",
-]
-
 # What a queue row carries. Server-owned, so a field that turns out to need a
 # permlevel or a rename is changed in one place.
 LIST_FIELDS = [
@@ -110,30 +102,6 @@ LIST_FIELDS = [
 def leave_workflow():
 	"""The active Workflow for `Leave Application`, or None."""
 	return wf.active_workflow(LEAVE_APPLICATION)
-
-
-@frappe.whitelist()
-def get_leave_workflow() -> dict | None:
-	"""The active Workflow definition, reduced to fields the SPA can render."""
-	frappe.has_permission(LEAVE_APPLICATION, "read", throw=True)
-	return wf.describe(leave_workflow())
-
-
-@frappe.whitelist()
-def get_my_employee() -> dict | None:
-	"""Return the Employee record linked to the session user, or None.
-
-	Every leave page starts from "which employee am I". A user with no linked
-	Employee (`user_id`) cannot request leave — the page says so rather than
-	failing at submit.
-	"""
-	employee = session_employee(MY_EMPLOYEE_FIELDS)
-	if not employee:
-		return None
-
-	if employee.leave_approver:
-		employee["leave_approver_name"] = frappe.utils.get_fullname(employee.leave_approver)
-	return employee
 
 
 def leave_admin_roles() -> set[str]:
@@ -330,6 +298,31 @@ def get_leave_permissions() -> dict:
 	actually accept, styled as the site styles them. `approver_mandatory` is
 	HR Settings' answer rather than the form's assumption: a site that makes the
 	approver optional is one where the form must let it through.
+
+	`employee_filters` is what makes an Employee row this session's own. Sent
+	rather than assembled in the page, because the page fetches that record --
+	and its own applications -- through Frappe's document API, where every
+	permission the site has configured applies without this module restating
+	any of them. What stays the server's is the *predicate*: `user_id` names the
+	login and `status` rules out a leaver, and a frontend writing that filter
+	for itself would be the second place the rule lived. The same split
+	self-service settled on -- see `get_change_permissions`, which sends
+	`owner_field` and `owner_value` and lets the document API do the rest.
+
+	`employee_access` is why there is no employee record, when that read comes
+	back empty -- `visible`, `forbidden` or `missing`. Leave is requested against
+	an employee record, so a page with no employee has to say something, and it
+	used to say the same thing either way: ask HR to link your login. For a user
+	whose `Employee` read was revoked that sent them to the wrong person about a
+	record that already names them. It costs nothing on the common path: the raw
+	existence check runs only once the permission-checked read has come back
+	empty. It doubles as the page's cue not to attempt the read at all.
+
+	`workflow` rides along because the page now labels its own rows. The states
+	and their styling are still the site's -- what a badge says and what colour
+	it is are read from here, not decided there. The approvals queue is
+	unaffected: those rows are still labelled server-side by `status_display`,
+	because which outcomes a row accepts is a permission question and has to be.
 	"""
 	workflow = leave_workflow()
 	can_read = bool(frappe.has_permission(LEAVE_APPLICATION, "read"))
@@ -339,6 +332,9 @@ def get_leave_permissions() -> dict:
 	return {
 		"read": can_read,
 		"request": bool(frappe.has_permission(LEAVE_APPLICATION, "create")),
+		"employee_filters": session_employee_filters(),
+		"employee_access": session_employee_access(),
+		"workflow": wf.describe(workflow) if can_read else None,
 		"approve": can_approve,
 		"pending_approvals": _pending_count(admin, workflow) if can_approve else 0,
 		"decisions": decision_vocabulary(workflow),
@@ -443,36 +439,6 @@ def _workflow_queue(workflow, decided: bool) -> list[dict]:
 		application._transitions = available.get(application.name) or []
 	if not decided:
 		applications = [row for row in applications if row._transitions]
-	return applications
-
-
-@frappe.whitelist()
-def get_my_leave_applications() -> list[dict]:
-	"""The session user's own applications, newest first.
-
-	Filtered on the employee this login is linked to rather than on the login,
-	because leave is requested against an employee record. A user with none has
-	no leave of their own — an empty list, not everyone else's, which is what an
-	unfiltered read would give an approver.
-	"""
-	employee = session_employee(["name"])
-	if not employee:
-		return []
-	workflow = leave_workflow()
-	state_field = wf.state_field(workflow)
-	fields = LIST_FIELDS if state_field in LIST_FIELDS else [*LIST_FIELDS, state_field]
-	applications = frappe.get_list(
-		LEAVE_APPLICATION,
-		filters={"employee": employee.name},
-		fields=fields,
-		order_by="from_date desc",
-		limit_page_length=PAGE_LENGTH,
-	)
-	styles = wf.state_styles(workflow)
-	for application in applications:
-		application.status_label, application.status_style = status_display(
-			application, workflow, styles
-		)
 	return applications
 
 

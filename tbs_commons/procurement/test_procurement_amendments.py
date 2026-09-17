@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
+from tbs_commons import workflow as wf
 from tbs_commons.procurement import api
 
 
@@ -19,7 +20,7 @@ class TestProcurementAmendments(TestCase):
 			SimpleNamespace(action="Return", next_state="Draft", allowed="Role B"),
 		]
 		self.assertEqual(
-			api._unique_workflow_actions(transitions),
+			wf.unique_actions(transitions),
 			[
 				{"action": "Decide", "next_state": "Done"},
 				{"action": "Return", "next_state": "Draft"},
@@ -83,9 +84,9 @@ class TestProcurementAmendments(TestCase):
 				),
 			],
 		)
-		with patch.object(api.frappe, "get_roles", return_value=["Current Role"]):
+		with patch.object(wf.frappe, "get_roles", return_value=["Current Role"]):
 			self.assertEqual(
-				api._initial_workflow_actions(workflow),
+				wf.initial_actions(workflow),
 				[{"action": "Continue", "next_state": "Second"}],
 			)
 
