@@ -55,19 +55,28 @@ class SelfServiceRecord(Document):
 		)
 
 		document_type: DF.Link
+		empty_notice: DF.SmallText | None
 		enabled: DF.Check
+		icon: DF.Data | None
+		label: DF.Data
 		fields: DF.Table[SelfServiceField]
+		allow_new: DF.Check
 		is_singular: DF.Check
+		nav_order: DF.Int
 		owner_doctype: DF.Link | None
 		owner_field: DF.Data
+		read_only_notice: DF.SmallText | None
 		record_filters: DF.Code | None
+		route_slug: DF.Data
 		title_field: DF.Data | None
 	# end: auto-generated types
 
 	def validate(self) -> None:
+		self.validate_slug()
 		self.validate_owner()
 		self.validate_filters()
 		self.validate_fields()
+		self.validate_new_records()
 
 	def on_update(self) -> None:
 		self.clear_registry_cache()
@@ -96,6 +105,33 @@ class SelfServiceRecord(Document):
 
 		registry.clear_cache()
 		frappe.db.after_rollback.add(registry.clear_cache)
+
+	# Paths under /profile that the app itself owns, so a record cannot take one
+	# and make a page unreachable. Short list on purpose: a slug that collides
+	# with a future route is a bug this check would not have caught anyway, and
+	# the fix is to rename the route rather than to reserve the dictionary.
+	RESERVED_SLUGS = ("approvals",)
+
+	def validate_slug(self) -> None:
+		"""The slug is a URL, and has to be one.
+
+		Checked rather than scrubbed: silently rewriting what somebody typed
+		means the address they go on to share is not the one they entered.
+		"""
+		import re
+
+		if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", self.route_slug or ""):
+			frappe.throw(
+				_(
+					"Route Slug must be lowercase letters, digits and single hyphens -- {0}, for instance."
+				).format(frappe.bold("bank-accounts"))
+			)
+		if self.route_slug in self.RESERVED_SLUGS:
+			frappe.throw(
+				_("{0} is a page this app already has. Choose another slug.").format(
+					frappe.bold(self.route_slug)
+				)
+			)
 
 	def meta_for(self):
 		return frappe.get_meta(self.document_type)
@@ -158,6 +194,31 @@ class SelfServiceRecord(Document):
 						frappe.bold(fieldname), _(self.document_type)
 					)
 				)
+
+	def validate_new_records(self) -> None:
+		"""`allow_new` only means something for a shape that can have more of them.
+
+		A singular record type already has exactly one per owner, and the answer to
+		"create another" is no. And a new record is built from the proposable
+		fields -- they are the only ones a request may set -- so allowing new
+		records with none of them would offer a form that could submit nothing.
+		"""
+		if not self.allow_new:
+			return
+		if self.is_singular:
+			frappe.throw(
+				_(
+					"A record type with one record per owner cannot take new ones. "
+					"Clear One Per Owner, or clear this."
+				)
+			)
+		if not any(row.proposable for row in self.fields):
+			frappe.throw(
+				_(
+					"Mark at least one field proposable first: those are the fields a "
+					"new record is allowed to set."
+				)
+			)
 
 	def validate_fields(self) -> None:
 		"""Every row names a real field, once, and nothing dangerous is proposable.

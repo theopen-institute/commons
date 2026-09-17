@@ -352,10 +352,23 @@ class TestRequestFields(TestCase):
 		"before" that was never true."""
 		self.assertNotIn("current_value", api.CHANGE_ROW_FIELDS)
 
-	def test_a_request_may_not_name_its_own_record_or_status(self):
-		"""The record comes from the session and the status from the doctype."""
-		for fieldname in ("reference_doctype", "reference_name", "reference_title", "status"):
+	def test_a_request_may_not_name_its_doctype_title_owner_or_status(self):
+		"""The doctype is the endpoint's argument, the title and owner are the
+		controller's to resolve, and the status is the workflow's."""
+		for fieldname in ("reference_doctype", "reference_title", "record_owner", "status"):
 			self.assertNotIn(fieldname, api.REQUEST_FIELDS)
+
+	def test_a_request_may_name_the_record_it_is_about(self):
+		"""It has to: an owner with several bank accounts is saying which one.
+
+		The safety is not that the field cannot be sent -- it is that
+		`request_change` checks ownership of whatever was sent rather than
+		trusting it. A `New` request has nothing to name, and the endpoint strips
+		the field so one cannot be raised against somebody else's record by
+		naming them.
+		"""
+		self.assertIn("reference_name", api.REQUEST_FIELDS)
+		self.assertIn("request_type", api.REQUEST_FIELDS)
 
 
 class TestSeededConfiguration(TestCase):

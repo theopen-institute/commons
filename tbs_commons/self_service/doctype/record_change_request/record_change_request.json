@@ -9,9 +9,11 @@
  "field_order": [
   "request_section",
   "naming_series",
+  "request_type",
   "reference_doctype",
   "reference_name",
   "reference_title",
+  "record_owner",
   "column_break_request",
   "posting_date",
   "requested_by",
@@ -43,7 +45,7 @@
    "set_only_once": 1
   },
   {
-   "description": "The doctype whose record this request changes. Must have a self-service policy -- see tbs_commons.self_service.policies.",
+   "description": "The doctype this request concerns. Must have a Self Service Record.",
    "fieldname": "reference_doctype",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -54,12 +56,13 @@
    "search_index": 1
   },
   {
+   "description": "The record being changed. Empty on a New request until approval creates one.",
    "fieldname": "reference_name",
    "fieldtype": "Dynamic Link",
    "in_list_view": 1,
    "label": "Record",
    "options": "reference_doctype",
-   "reqd": 1,
+   "reqd": 0,
    "search_index": 1
   },
   {
@@ -106,12 +109,13 @@
    "label": "Proposed Changes"
   },
   {
-   "description": "One row per field. Only fields the referenced doctype's policy marks proposable are accepted.",
+   "depends_on": "eval:doc.request_type!='Delete'",
+   "description": "One row per field. Only fields the referenced doctype's policy marks proposable are accepted. Empty on a Delete request, which proposes no values.",
    "fieldname": "changes",
    "fieldtype": "Table",
    "label": "Changes",
    "options": "Record Change Item",
-   "reqd": 1
+   "reqd": 0
   },
   {
    "fieldname": "reason_section",
@@ -171,6 +175,26 @@
    "no_copy": 1,
    "options": "Record Change Request",
    "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "default": "Change",
+   "description": "Change corrects an existing record. New asks for one to be created. Delete asks for one to be removed. Nothing happens until the request is approved.",
+   "fieldname": "request_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Request Type",
+   "options": "Change\nNew\nDelete",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "description": "For a New request, the owner the created record will belong to -- resolved from whoever raised it, not from whoever approves it.",
+   "fieldname": "record_owner",
+   "fieldtype": "Data",
+   "label": "Record Owner",
+   "no_copy": 1,
    "read_only": 1
   }
  ],

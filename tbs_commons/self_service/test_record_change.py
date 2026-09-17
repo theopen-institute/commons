@@ -544,13 +544,215 @@ class TestBankAccountPolicy(unittest.TestCase):
 		self.assertFalse(permissions["has_record"])
 
 
+class TestRequestModes(unittest.TestCase):
+	"""Creating and deleting a record through the same request document.
+
+	A `Change` corrects a record that exists. A `New` asks for one to be created
+	and creates nothing until it is approved. A `Delete` asks for one to be
+	removed. They share the allowlist, the reviewers and the workflow -- what
+	these pin is that the two new shapes cannot be used to reach past any of it.
+	"""
+
+	def setUp(self):
+		frappe.db.savepoint("modes_test")
+		self.addCleanup(self.restore)
+		frappe.set_user("Administrator")
+
+		self.config = frappe.get_doc("Self Service Record", RECORD_BANK)
+		self.config.allow_new = 1
+		self.config.allow_delete = 1
+		for row in self.config.fields:
+			if row.fieldname in ("account_name", "bank"):
+				row.proposable = 1
+		self.config.save()
+		registry.clear_cache()
+
+		self.user = frappe.get_doc(
+			dict(
+				doctype="User",
+				email=f"modes-{frappe.generate_hash(length=8)}@example.com",
+				first_name="Modes",
+				send_welcome_email=0,
+			)
+		).insert(ignore_permissions=True)
+		company = frappe.db.get_value("Company", "_Test Company", "name") or frappe.db.get_value(
+			"Company", {}, "name"
+		)
+		self.employee = (
+			frappe.get_doc(
+				dict(
+					doctype="Employee",
+					first_name="Modes",
+					gender=frappe.db.get_value("Gender", {}, "name"),
+					date_of_birth="1990-01-01",
+					date_of_joining="2020-01-01",
+					status="Active",
+					company=company,
+					user_id=self.user.name,
+				)
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+		self.user.reload()
+		self.user.add_roles("Accounts User")
+		self.bank = (
+			frappe.db.get_value("Bank", {}, "name")
+			or frappe.get_doc(dict(doctype="Bank", bank_name=f"Bank {frappe.generate_hash(length=6)}"))
+			.insert(ignore_permissions=True)
+			.name
+		)
+
+	def restore(self):
+		"""A savepoint rollback does not run the cache callbacks, so the
+		configuration this suite saved has to be dropped by hand -- see
+		`SelfServiceRecord.clear_registry_cache`."""
+		frappe.db.rollback(save_point="modes_test")
+		registry.clear_cache()
+		frappe.set_user("Administrator")
+
+	def raise_request(self, **values):
+		frappe.set_user(self.user.name)
+		return api.request_change(RECORD_BANK, json.dumps(values))["name"]
+
+	def accounts(self):
+		return frappe.get_all("Bank Account", filters={"party": self.employee}, pluck="name")
+
+	# -- new ---------------------------------------------------------------
+
+	def test_a_new_request_creates_nothing_until_it_is_approved(self):
+		self.raise_request(
+			request_type="New",
+			changes=[
+				{"fieldname": "account_name", "proposed_value": "Fresh"},
+				{"fieldname": "bank", "proposed_value": self.bank},
+			],
+		)
+		self.assertEqual(self.accounts(), [])
+
+	def test_approving_a_new_request_creates_it_owned_by_whoever_asked(self):
+		"""The owner comes from the requester, not the approver -- resolving it at
+		approval would attach the record to the wrong person, silently."""
+		name = self.raise_request(
+			request_type="New",
+			changes=[
+				{"fieldname": "account_name", "proposed_value": "Fresh"},
+				{"fieldname": "bank", "proposed_value": self.bank},
+			],
+		)
+		self.assertEqual(frappe.db.get_value(api.DOCTYPE, name, "record_owner"), self.employee)
+		frappe.set_user("Administrator")
+		api.decide_change(name, "Approve")
+		created = self.accounts()
+		self.assertEqual(len(created), 1)
+		row = frappe.db.get_value(
+			"Bank Account", created[0], ["party", "party_type", "account_name"], as_dict=True
+		)
+		self.assertEqual(row.party, self.employee)
+		# The policy's filters are applied too, or the record would not be one this
+		# policy ever claims back.
+		self.assertEqual(row.party_type, "Employee")
+		self.assertEqual(row.account_name, "Fresh")
+		# The request stops being about a hypothetical record.
+		self.assertEqual(frappe.db.get_value(api.DOCTYPE, name, "reference_name"), created[0])
+
+	def test_a_new_request_may_not_set_a_field_that_is_not_proposable(self):
+		"""The creation form is not a way around the allowlist."""
+		with self.assertRaises(frappe.PermissionError):
+			self.raise_request(
+				request_type="New",
+				changes=[{"fieldname": "iban", "proposed_value": "GB00"}],
+			)
+
+	def test_a_new_request_with_nothing_filled_in_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			self.raise_request(request_type="New", changes=[])
+
+	# -- delete ------------------------------------------------------------
+
+	def test_a_delete_request_removes_nothing_until_it_is_approved(self):
+		account = self.new_account()
+		self.raise_request(request_type="Delete", reference_name=account)
+		self.assertEqual(self.accounts(), [account])
+
+	def test_approving_a_delete_request_removes_the_record(self):
+		account = self.new_account()
+		name = self.raise_request(request_type="Delete", reference_name=account)
+		# A deletion proposes no values; naming the record is the request.
+		self.assertEqual(frappe.get_doc(api.DOCTYPE, name).changes, [])
+		frappe.set_user("Administrator")
+		api.decide_change(name, "Approve")
+		self.assertEqual(self.accounts(), [])
+		# The settled request still says what it was about, which is why the title
+		# is captured rather than looked up.
+		self.assertTrue(frappe.db.get_value(api.DOCTYPE, name, "reference_title"))
+
+	def test_a_delete_request_cannot_name_somebody_elses_record(self):
+		frappe.set_user("Administrator")
+		other = (
+			frappe.get_doc(
+				dict(
+					doctype="Bank Account",
+					account_name="Not Yours",
+					bank=self.bank,
+					party_type="Employee",
+					party=frappe.db.get_value("Employee", {"name": ["!=", self.employee]}, "name"),
+				)
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+		with self.assertRaises(frappe.PermissionError):
+			self.raise_request(request_type="Delete", reference_name=other)
+
+	# -- the switches ------------------------------------------------------
+
+	def test_both_shapes_are_refused_when_the_configuration_says_so(self):
+		frappe.set_user("Administrator")
+		self.config.reload()
+		self.config.allow_new = 0
+		self.config.allow_delete = 0
+		self.config.save()
+		registry.clear_cache()
+		account = self.new_account()
+		with self.assertRaises(frappe.PermissionError):
+			self.raise_request(
+				request_type="New",
+				changes=[{"fieldname": "account_name", "proposed_value": "Nope"}],
+			)
+		with self.assertRaises(frappe.PermissionError):
+			self.raise_request(request_type="Delete", reference_name=account)
+
+	def test_permissions_report_both_switches(self):
+		frappe.set_user(self.user.name)
+		permissions = api.get_change_permissions(RECORD_BANK)
+		self.assertTrue(permissions["allow_new"])
+		self.assertTrue(permissions["allow_delete"])
+
+	def new_account(self, name="Existing"):
+		frappe.set_user("Administrator")
+		return (
+			frappe.get_doc(
+				dict(
+					doctype="Bank Account",
+					account_name=name,
+					bank=self.bank,
+					party_type="Employee",
+					party=self.employee,
+				)
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+
+
 def run():
 	original_user = frappe.session.user
 	frappe.set_user("Administrator")
 	try:
 		suite = unittest.TestSuite(
 			unittest.defaultTestLoader.loadTestsFromTestCase(case)
-			for case in (TestRecordChangeRequest, TestBankAccountPolicy)
+			for case in (TestRecordChangeRequest, TestBankAccountPolicy, TestRequestModes)
 		)
 		result = unittest.TextTestRunner(verbosity=2).run(suite)
 		if not result.wasSuccessful():

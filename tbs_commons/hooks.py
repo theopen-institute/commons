@@ -284,8 +284,15 @@ override_whitelisted_methods = {
 
 # Ignore links to specified DocTypes when deleting documents
 # -----------------------------------------------------------
-
-# ignore_links_on_delete = ["Communication", "ToDo"]
+# A `Record Change Request` points at the record it was about, and after a `New`
+# request is approved it points at the record it created. That link would
+# otherwise make the record undeletable by its own history -- including through
+# the `Delete` requests this app offers, which is the shape that found it.
+#
+# Safe because the link is a record *about* the document rather than a dependency
+# on it: every request captures `reference_title` when it is raised, so a settled
+# request still says what it was about once the record is gone.
+ignore_links_on_delete = ["Record Change Request"]
 
 # Request Events
 # ----------------

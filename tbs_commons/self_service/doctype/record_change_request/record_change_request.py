@@ -34,6 +34,8 @@ before-and-after rather than whatever the field said when the request was first
 raised.
 """
 
+from typing import ClassVar
+
 import frappe
 from frappe import _
 from frappe.model.document import Document
@@ -88,16 +90,71 @@ class RecordChangeRequest(Document):
 		status: DF.Data
 	# end: auto-generated types
 
+	# What a request can ask for. `Change` corrects a record that exists, `New`
+	# asks for one to be created, `Delete` asks for one to be removed. They share
+	# everything that matters -- the same field allowlist, the same reviewers and
+	# the same workflow -- and differ only in what exists at each end.
+	CHANGE = "Change"
+	NEW = "New"
+	DELETE = "Delete"
+
+	# Which configuration switch each mode answers to. `Change` has none: a record
+	# type with proposable fields is already saying its owners may correct them.
+	MODE_SWITCH: ClassVar[dict[str, str]] = {NEW: "allow_new", DELETE: "allow_delete"}
+
+	@property
+	def is_new_record(self) -> bool:
+		return self.request_type == self.NEW
+
+	@property
+	def is_deletion(self) -> bool:
+		return self.request_type == self.DELETE
+
 	def validate(self) -> None:
 		# Refuses an unregistered doctype outright, and does it before anything
 		# else reads a policy that does not exist.
-		registry.policy(self.reference_doctype)
+		policy = registry.policy(self.reference_doctype)
+		self.validate_mode_allowed(policy)
 		if self.docstatus == 0:
 			self.validate_raiser()
-		self.reference_title = registry.title_of(self.reference_doctype, self.reference_name)
+		self.set_reference_title()
 		self.validate_rows()
 		self.capture_current_values()
-		self.validate_something_changed()
+		self.validate_something_proposed()
+
+	def validate_mode_allowed(self, policy: dict) -> None:
+		"""Creating and deleting are off unless the configuration turns them on.
+
+		Correcting is not, because a record type with proposable fields is already
+		saying its owners may correct them. Creating a record and destroying one
+		are different powers, and a site should grant each on purpose -- see
+		`Self Service Record`.
+		"""
+		switch = self.MODE_SWITCH.get(self.request_type)
+		if switch and not policy.get(switch):
+			frappe.throw(
+				_("{0} records cannot be {1} through a request here.").format(
+					_(self.reference_doctype),
+					_("created") if self.is_new_record else _("deleted"),
+				),
+				frappe.PermissionError,
+			)
+
+	def set_reference_title(self) -> None:
+		"""How the request reads in a queue.
+
+		A new record has nothing to name yet, so it says what it will be. The
+		others name the record they are about, captured now so a queue need not
+		load every referenced document -- and, for a deletion, so the request
+		still says what it removed once the record is gone.
+		"""
+		if self.is_new_record:
+			self.reference_name = None
+			self.reference_title = _("New {0}").format(_(self.reference_doctype))
+			return
+		if not self.reference_name:
+			frappe.throw(_("A {0} request has to name the record it is about.").format(_(self.request_type)))
+		self.reference_title = registry.title_of(self.reference_doctype, self.reference_name)
 
 	def validate_raiser(self) -> None:
 		"""Whose record this may be raised against.
@@ -120,6 +177,20 @@ class RecordChangeRequest(Document):
 		being asked is a different one -- whether they may write it, which
 		`on_submit` asks directly.
 		"""
+		if self.is_new_record:
+			# There is no record to read or own yet, so the question is whether
+			# this user owns anything of the type that would own it -- an employee,
+			# for a bank account. Resolved now rather than at approval, because by
+			# then the session is the approver's and resolving it there would
+			# attach the new record to the wrong person.
+			owner = registry.owner_value(self.reference_doctype)
+			if not owner:
+				frappe.throw(
+					_("You have nothing for a new {0} to belong to.").format(_(self.reference_doctype)),
+					frappe.PermissionError,
+				)
+			self.record_owner = owner
+			return
 		if not frappe.has_permission(self.reference_doctype, "read", doc=self.reference_name):
 			frappe.throw(
 				_("You do not have access to that {0} record.").format(_(self.reference_doctype)),
@@ -142,6 +213,15 @@ class RecordChangeRequest(Document):
 		-- not the approver meeting the error days later on somebody else's behalf,
 		with nothing to do about it but turn the request down.
 		"""
+		if self.is_deletion:
+			# A deletion is about the record, not its fields. Rows are cleared
+			# rather than refused: a form that collected some before the mode was
+			# switched should not have to be rebuilt to submit.
+			self.changes = []
+			return
+		# The same allowlist either way: a new record may set exactly the fields an
+		# existing one may have corrected, which is what stops a creation form
+		# being a way around it.
 		allowed = registry.proposable_fields(self.reference_doctype)
 		meta = frappe.get_meta(self.reference_doctype)
 		seen: set[str] = set()
@@ -198,6 +278,13 @@ class RecordChangeRequest(Document):
 		"""
 		if not self.changes:
 			return
+		if self.is_new_record:
+			# Nothing precedes a record that does not exist. Said explicitly rather
+			# than left to a lookup returning nothing, so the diff reads as "blank
+			# to something" on purpose.
+			for row in self.changes:
+				row.current_value = None
+			return
 		fieldnames = list({row.fieldname for row in self.changes})
 		current = (
 			frappe.db.get_value(self.reference_doctype, self.reference_name, fieldnames, as_dict=True) or {}
@@ -205,32 +292,99 @@ class RecordChangeRequest(Document):
 		for row in self.changes:
 			row.current_value = normalized(current.get(row.fieldname))
 
-	def validate_something_changed(self) -> None:
+	def validate_something_proposed(self) -> None:
 		"""Refuse a request that asks for nothing.
 
 		A form that lets you press Send without editing anything produces requests
 		that cost an approver a decision and change nothing -- and, once approved,
-		a history of changes that did not happen.
+		a history of changes that did not happen. A deletion is exempt: naming the
+		record *is* the request.
 		"""
+		if self.is_deletion:
+			return
 		if any(normalized(row.proposed_value) != normalized(row.current_value) for row in self.changes):
 			return
-		frappe.throw(_("Nothing is being changed. Edit at least one field before sending this."))
+		frappe.throw(
+			_("Fill in at least one field before sending this.")
+			if self.is_new_record
+			else _("Nothing is being changed. Edit at least one field before sending this.")
+		)
 
 	def on_submit(self) -> None:
-		"""Approval: write the proposed values onto the referenced record.
+		"""Approval: do the thing the request asked for.
 
-		The only place in this section that writes to anything but the request
-		itself, and it does it as an ordinary permission-checked save in the
-		approver's own session. `check_permission` first so the refusal names the
-		right rather than the document, and `save()` rather than `db_set` so the
-		doctype's own validation -- email formats, select options, whatever a site
-		has added -- runs on the values exactly as it would have if the
-		responsible team had typed them in the desk.
+		The only place in this section that touches the referenced doctype, and it
+		does it as an ordinary permission-checked save in the approver's own
+		session. `check_permission` first so a refusal names the right rather than
+		the document, and `save()`/`insert()`/`delete_doc()` rather than raw writes
+		so the doctype's own validation runs on the values exactly as it would
+		have if the responsible team had typed them in the desk.
+		"""
+		if self.is_deletion:
+			self.delete_record()
+		elif self.is_new_record:
+			self.insert_record()
+		else:
+			self.apply_to_record()
+
+		# Who settled it, and -- for a site running no Workflow, where submitting
+		# *is* approving -- a status that says so. `db_set` because the document
+		# has already been written by the time `on_submit` runs; a second `save()`
+		# here would recurse through submit.
+		self.db_set("reviewed_by", frappe.session.user, update_modified=False)
+		if self.status == PENDING:
+			self.db_set("status", APPROVED, update_modified=False)
+
+	def insert_record(self) -> None:
+		"""Create the record this request asked for, owned by whoever asked.
+
+		The owner comes from `record_owner`, captured when the request was raised.
+		Resolving it here would resolve it in the approver's session and attach
+		the record to them, which is the one mistake that would be silent.
+
+		Permission is checked against the doctype rather than a document, because
+		there is no document yet -- `insert()` checks it again anyway, and this
+		makes the refusal name creating rather than writing.
+		"""
+		policy = registry.policy(self.reference_doctype)
+		record = frappe.new_doc(self.reference_doctype)
+		record.update(
+			{
+				policy["owner_field"]: self.record_owner,
+				**(policy.get("filters") or {}),
+				**{row.fieldname: normalized(row.proposed_value) for row in self.changes},
+			}
+		)
+		record.insert()
+		# The request stops being about a hypothetical record and starts being the
+		# history of a real one.
+		self.db_set("reference_name", record.name, update_modified=False)
+		self.db_set(
+			"reference_title",
+			registry.title_of(self.reference_doctype, record.name),
+			update_modified=False,
+		)
+		frappe.msgprint(_("Created {0}.").format(record.name), alert=True)
+
+	def delete_record(self) -> None:
+		"""Remove the record this request asked to have removed.
+
+		No force and no cascade. A record something else links to refuses to go,
+		and that refusal is the right answer -- it means the record is still in
+		use, which is precisely what the person asking could not see. The approver
+		gets Frappe's own link-exists message and can act on it.
+		"""
+		name = self.reference_name
+		frappe.delete_doc(self.reference_doctype, name)
+		frappe.msgprint(_("Deleted {0}.").format(self.reference_title or name), alert=True)
+
+	def apply_to_record(self) -> None:
+		"""Write the proposed values onto the referenced record.
 
 		Rows that no longer change anything are skipped rather than written. The
-		usual cause is the correction having already been applied by hand while the
-		request sat in the queue, and re-writing an identical value would put a
-		meaningless entry in the record's change history.
+		usual cause is the correction having already been applied by hand while
+		the request sat in the queue, and re-writing an identical value would put
+		a meaningless entry in the record's change history.
 		"""
 		record = frappe.get_doc(self.reference_doctype, self.reference_name)
 		record.check_permission("write")
@@ -245,14 +399,6 @@ class RecordChangeRequest(Document):
 
 		if applied:
 			record.save()
-
-		# Who settled it, and -- for a site running no Workflow, where submitting
-		# *is* approving -- a status that says so. `db_set` because the document
-		# has already been written by the time `on_submit` runs; a second `save()`
-		# here would recurse through submit.
-		self.db_set("reviewed_by", frappe.session.user, update_modified=False)
-		if self.status == PENDING:
-			self.db_set("status", APPROVED, update_modified=False)
 
 		frappe.msgprint(
 			_("Updated {0} on {1}.").format(", ".join(applied), self.reference_title or self.reference_name)
@@ -278,4 +424,9 @@ class RecordChangeRequest(Document):
 		workflow runs, `docstatus` is what says this was cancelled -- see
 		`status_display` in `tbs_commons.self_service.api`, which reads it rather
 		than the status field for exactly this case.
+
+		A cancelled creation does not delete what it created, and a cancelled
+		deletion cannot bring anything back. Both for the same reason as a
+		cancelled change: the world has moved on since approval, and undoing it
+		silently would be a second unreviewed act.
 		"""

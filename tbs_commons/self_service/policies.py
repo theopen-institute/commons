@@ -81,6 +81,15 @@ BANK_ACCOUNT_FIELDS = (
 SEED = (
 	{
 		"document_type": "Employee",
+		"label": "My profile",
+		"route_slug": "employee",
+		"icon": "lucide-id-card",
+		"nav_order": 10,
+		"read_only_notice": (
+			"Your details are held by HR. Fields you can correct have a pencil beside "
+			"them — your change goes to HR as a proposal."
+		),
+		"empty_notice": ("There's no profile to show until HR links an employee record to your login."),
 		# `user_id` is a Link to User, so it names the owner outright.
 		"owner_field": "user_id",
 		"title_field": "employee_name",
@@ -92,6 +101,18 @@ SEED = (
 	},
 	{
 		"document_type": "Bank Account",
+		"label": "Bank accounts",
+		"route_slug": "bank-accounts",
+		"icon": "lucide-landmark",
+		"nav_order": 20,
+		"read_only_notice": (
+			"Bank details are held by payroll. To change where you're paid, talk to "
+			"them directly — this isn't something to send through a form."
+		),
+		"empty_notice": (
+			"This is where the accounts payroll pays you into would appear. Ask "
+			"whoever runs payroll if you expected one here."
+		),
 		# `party` is a Dynamic Link, so the doctype it points at is a field on the
 		# row rather than a property of the schema -- which is why the filters pin
 		# `party_type` as well. Without it this would claim every bank account

@@ -91,10 +91,18 @@ def policies() -> dict[str, dict]:
 			fields=[
 				"name",
 				"document_type",
+				"label",
+				"route_slug",
+				"icon",
+				"nav_order",
+				"read_only_notice",
+				"empty_notice",
 				"owner_field",
 				"owner_doctype",
 				"title_field",
 				"is_singular",
+				"allow_new",
+				"allow_delete",
 				"record_filters",
 			],
 		)
@@ -115,10 +123,18 @@ def policies() -> dict[str, dict]:
 			fields = by_parent.get(parent.name) or []
 			found[parent.document_type] = {
 				"doctype": parent.document_type,
+				"label": parent.label,
+				"slug": parent.route_slug,
+				"icon": parent.icon or None,
+				"nav_order": parent.nav_order or 0,
+				"read_only_notice": parent.read_only_notice or None,
+				"empty_notice": parent.empty_notice or None,
 				"owner_field": parent.owner_field,
 				"owner_doctype": parent.owner_doctype or None,
 				"title_field": parent.title_field or None,
 				"singular": bool(parent.is_singular),
+				"allow_new": bool(parent.allow_new),
+				"allow_delete": bool(parent.allow_delete),
 				"filters": _parse_filters(parent.record_filters),
 				"fields": fields,
 				"display": tuple(row.fieldname for row in fields if row.viewable),
@@ -142,8 +158,26 @@ def _parse_filters(raw: str | None) -> dict:
 
 
 def registered() -> list[str]:
-	"""The doctypes that are self-service here, in no particular order."""
-	return sorted(policies())
+	"""The doctypes that are self-service here, in the order they should be offered."""
+	return [
+		current["doctype"]
+		for current in sorted(policies().values(), key=lambda row: (row["nav_order"], row["label"]))
+	]
+
+
+def by_slug(slug: str) -> dict:
+	"""The configuration a page address refers to, or a refusal.
+
+	Throwing rather than returning None: a slug nobody configured is not a page,
+	and every caller needs the answer rather than a `None` to check for.
+	"""
+	for current in policies().values():
+		if current["slug"] == slug:
+			return current
+	frappe.throw(
+		frappe._("There is no self-service page at {0}.").format(slug),
+		frappe.DoesNotExistError,
+	)
 
 
 def field_definitions(doctype: str) -> list[dict]:

@@ -79,11 +79,50 @@ WORKFLOW_TRANSITIONS = (
 def sync_self_service() -> None:
 	"""Everything the self-service section asserts on both install and migrate."""
 	seed_records()
+	backfill_presentation()
 	# The resolved registry is cached across requests and keyed by nothing that
 	# changes on deploy, so a migrate that seeds or alters configuration has to
 	# drop it. `frappe.clear_cache` does not know about this key.
 	registry.clear_cache()
 	sync_change_workflow()
+
+
+# Fields added to `Self Service Record` after it first shipped. A record seeded
+# before they existed has them empty, and two of them are mandatory -- so the
+# next save of an untouched record would fail on something nobody had ever been
+# asked for. Backfilled from the seed rather than guessed at.
+PRESENTATION_FIELDS = (
+	"label",
+	"route_slug",
+	"icon",
+	"nav_order",
+	"read_only_notice",
+	"empty_notice",
+)
+
+
+def backfill_presentation() -> None:
+	"""Fill presentation fields that predate their own introduction.
+
+	Only where empty, so a site that has renamed a page or rewritten a notice
+	keeps what it wrote. Written with `db_set` rather than a save: this runs on
+	every migrate, the values are the ones the document would have validated
+	against anyway, and a save here would fire `on_update` for every record on
+	every deploy.
+	"""
+	from tbs_commons.self_service.policies import SEED
+
+	for entry in SEED:
+		name = entry["document_type"]
+		if not frappe.db.exists(registry.CONFIG, name):
+			continue
+		missing = {
+			field: entry[field]
+			for field in PRESENTATION_FIELDS
+			if field in entry and not frappe.db.get_value(registry.CONFIG, name, field)
+		}
+		if missing:
+			frappe.db.set_value(registry.CONFIG, name, missing, update_modified=False)
 
 
 def seed_records() -> None:

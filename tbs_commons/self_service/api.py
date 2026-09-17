@@ -56,7 +56,7 @@ PAGE_LENGTH = 20
 # everything absent here -- the naming series, the posting date, the record
 # title, the captured current values, the initial state -- is the doctype's to
 # fill in.
-REQUEST_FIELDS = ("changes", "reason")
+REQUEST_FIELDS = ("changes", "reason", "request_type", "reference_name")
 
 # What a `changes` row may carry. `current_value` is deliberately absent: it is
 # captured from the referenced record by the controller, and a request that could
@@ -218,6 +218,37 @@ def status_display(row, workflow, styles: dict) -> tuple[str, str | None]:
 
 
 @frappe.whitelist()
+def get_self_service_nav() -> list[dict]:
+	"""Every self-service page this user could open, in sidebar order.
+
+	The navigation is configuration now, so the sidebar reads it rather than
+	naming pages. `can_read` is permission on the record doctype, and the rows
+	are not filtered by it: a page that vanishes leaves someone unable to tell a
+	missing feature from a missing permission, and the page itself explains which
+	it is. What *is* filtered is anything this user could never open -- nothing,
+	currently, since every enabled record is offered and the page does the rest.
+
+	Deliberately cheap. It runs on every page load, so it answers from the cached
+	registry plus one permission check per record, and asks nothing about whether
+	the user actually owns anything.
+	"""
+	rows = []
+	for doctype in registry.registered():
+		current = registry.policy(doctype)
+		rows.append(
+			{
+				"doctype": doctype,
+				"label": current["label"],
+				"slug": current["slug"],
+				"icon": current["icon"],
+				"singular": current["singular"],
+				"can_read": bool(frappe.has_permission(doctype, "read")),
+			}
+		)
+	return rows
+
+
+@frappe.whitelist()
 def get_change_permissions(doctype: str | None = None) -> dict:
 	"""What the session user may do in this section, plus any review backlog.
 
@@ -301,6 +332,18 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 		# Whether one record is expected or several. The page renders a profile
 		# for the first and a list for the second.
 		"singular": bool(registry.policy(doctype).get("singular")) if doctype else False,
+		# Whether an owner may ask for a record of this type to be created or
+		# removed. Both off unless the configuration turns them on, and both
+		# meaningless for a record type with one record per owner.
+		"allow_new": bool(registry.policy(doctype).get("allow_new")) if doctype else False,
+		"allow_delete": bool(registry.policy(doctype).get("allow_delete")) if doctype else False,
+		# How this record type introduces and excuses itself. Configuration, so a
+		# site can say "talk to payroll" where a generic line would send somebody
+		# to the wrong place -- see `Self Service Record`.
+		"label": registry.policy(doctype)["label"] if doctype else None,
+		"slug": registry.policy(doctype)["slug"] if doctype else None,
+		"read_only_notice": registry.policy(doctype)["read_only_notice"] if doctype else None,
+		"empty_notice": registry.policy(doctype)["empty_notice"] if doctype else None,
 		"decisions": decision_vocabulary(workflow),
 		"page_length": PAGE_LENGTH,
 	}
@@ -465,12 +508,18 @@ def get_change_queue(decided: int = 0, doctype: str | None = None) -> list[dict]
 def request_change(doctype: str, doc: str | dict) -> dict:
 	"""Raise a change request against the `doctype` record behind this session.
 
+	Three shapes share this door. A `Change` names a record and carries the
+	values to correct; a `New` names none and carries the values to start it
+	with; a `Delete` names one and carries nothing. Which of them a record type
+	allows is configuration -- the controller refuses the rest -- and which
+	record a request may be about is settled here by ownership rather than by
+	what the caller sent.
+
 	Through here rather than straight at the document API so the fields a request
-	may set are the server's, and so the record is resolved from the session
-	instead of accepted. Everything `REQUEST_FIELDS` leaves out -- the naming
+	may set are the server's. Everything `REQUEST_FIELDS` leaves out -- the naming
 	series, the posting date, the record title, the captured current values, the
-	workflow's initial state -- is filled in by the doctype, so a site that
-	customises any of them gets what it configured.
+	resolved owner, the workflow's initial state -- is filled in by the doctype,
+	so a site that customises any of them gets what it configured.
 
 	Which fieldnames the rows may name is not checked here either. That is
 	`RecordChangeRequest.validate_rows`, which runs on every save from any route,
@@ -485,25 +534,35 @@ def request_change(doctype: str, doc: str | dict) -> dict:
 
 	# Refuses an unregistered doctype before anything is resolved against it.
 	registry.policy(doctype)
-	record = registry.session_record(doctype)
-	if not record:
-		frappe.throw(
-			frappe._("You do not have a {0} record, so there is nothing to change.").format(
-				frappe._(doctype)
-			),
-			frappe.ValidationError,
-		)
-	named = values.get("reference_name")
-	if named and named != record.name:
-		frappe.throw(
-			frappe._("You can only propose changes to your own record here."),
-			frappe.PermissionError,
-		)
 
 	request = {field: values[field] for field in REQUEST_FIELDS if field in values}
 	request["doctype"] = DOCTYPE
 	request["reference_doctype"] = doctype
-	request["reference_name"] = record.name
+	request.setdefault("request_type", "Change")
+
+	if request["request_type"] == "New":
+		# Nothing to name yet. The owner is resolved by the controller from this
+		# session, so a creation request cannot be raised on somebody else's behalf
+		# by naming them here.
+		request.pop("reference_name", None)
+	else:
+		named = request.get("reference_name")
+		if not named:
+			# A singular record type has one answer, so the page need not send it.
+			# Anything else has to say which record it means.
+			owned = registry.session_records(doctype, ["name"], limit=1)
+			if not owned:
+				frappe.throw(
+					frappe._("You have no {0} record for this request.").format(frappe._(doctype)),
+					frappe.ValidationError,
+				)
+			named = owned[0].name
+			request["reference_name"] = named
+		if not registry.session_owns(doctype, named):
+			frappe.throw(
+				frappe._("You can only raise requests about your own records here."),
+				frappe.PermissionError,
+			)
 	# Rows reduced to what a request may state. `current_value` is the
 	# controller's to capture, and `label` the meta's to supply.
 	request["changes"] = [
