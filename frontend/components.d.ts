@@ -23,7 +23,7 @@ declare module 'vue' {
     ProcurementLines: typeof import('./src/components/ProcurementLines.vue')['default']
     ProcurementRequestDialog: typeof import('./src/components/ProcurementRequestDialog.vue')['default']
     ProfileSection: typeof import('./src/components/ProfileSection.vue')['default']
-    ProposeChangesDialog: typeof import('./src/components/ProposeChangesDialog.vue')['default']
+    ProposeFieldDialog: typeof import('./src/components/ProposeFieldDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }

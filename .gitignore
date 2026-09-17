@@ -58,3 +58,10 @@ jspm_packages/
 # frontend/, the same way hrms and helpdesk keep theirs out of git.
 tbs_commons/public/frontend
 tbs_commons/www/tbs_commons.html
+
+# A symlink to ../../node_modules that bench's build drops into every app's
+# public folder. The `node_modules/` rule above cannot catch it: the trailing
+# slash matches directories, and git sees a symlink as a file — so without this
+# line it shows up untracked in every `git status` and a `git add -A` sweeps it
+# in. Named without a trailing slash for that same reason.
+tbs_commons/public/node_modules
