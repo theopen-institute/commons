@@ -1,7 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import { leaveCan, leavePermissionsLoaded } from './leave'
 import { procurementCan, procurementPermissionsLoaded } from './procurement'
-import { profileCan, profilePermissionsLoaded } from './profile'
+import { navLoaded, navRecords } from './selfService'
 
 /**
  * The app registry.
@@ -57,15 +57,15 @@ export const apps: Record<AppKey, AppDefinition> = {
     home: '/requests',
     available: computed(
       () =>
+        navRecords.value.length > 0 ||
         leaveCan.value.read ||
-        procurementCan.value.read ||
-        profileCan.value.read
+        procurementCan.value.read
     ),
     resolved: computed(
       () =>
+        navLoaded.value &&
         leavePermissionsLoaded.value &&
-        procurementPermissionsLoaded.value &&
-        profilePermissionsLoaded.value
+        procurementPermissionsLoaded.value
     ),
   },
 }
@@ -78,14 +78,12 @@ export const appList = [apps.requests]
  */
 export const firstRequestSection = computed<string | null>(() => {
   if (!apps.requests.resolved.value) return null
-  // A section they can actually use first. `profileCan.read` is a permission and
-  // is true for nearly everyone, so landing on it unconditionally would drop a
-  // user whose login has no employee record on a page that can only apologise --
-  // while the leave they do have sat one row down.
-  if (profileCan.value.has_record) return '/profile'
+  // The self-service pages first when there are any: `/profile` itself works out
+  // which one this user can open, so landing there costs nothing when they can
+  // open none.
+  if (navRecords.value.length) return '/profile'
   if (leaveCan.value.read) return '/leave'
   if (procurementCan.value.read) return '/procurement'
-  if (profileCan.value.read) return '/profile'
   return null
 })
 

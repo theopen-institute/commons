@@ -30,16 +30,16 @@
 	<div class="px-5 py-4">
 		<!-- The permission answer refused rather than arrived: say so, instead of
          leaving a skeleton up for a reply that is never coming. -->
-		<div v-if="profilePermissionsError" class="mx-auto max-w-3xl">
-			<ErrorMessage :message="profilePermissionsError.message" class="mb-3" />
-			<Button label="Try again" variant="subtle" @click="reloadProfilePermissions()" />
+		<div v-if="reviewPermissionsError" class="mx-auto max-w-3xl">
+			<ErrorMessage :message="reviewPermissionsError.message" class="mb-3" />
+			<Button label="Try again" variant="subtle" @click="reloadReviewPermissions()" />
 		</div>
 
-		<div v-else-if="!profilePermissionsLoaded" class="mx-auto max-w-3xl space-y-2">
+		<div v-else-if="!reviewPermissionsLoaded" class="mx-auto max-w-3xl space-y-2">
 			<Skeleton v-for="n in 3" :key="n" class="h-32 w-full rounded-4" />
 		</div>
 
-		<PermissionNotice v-else-if="!profileCan.review" what="review profile changes" />
+		<PermissionNotice v-else-if="!reviewCan.review" what="review profile changes" />
 
 		<div v-else class="mx-auto max-w-3xl">
 			<ErrorMessage v-if="requests.error" :message="requests.error.message" class="mb-3" />
@@ -92,8 +92,8 @@
 								</div>
 							</div>
 						</div>
-						<Badge :theme="profileStatus(row).theme" variant="subtle">
-							{{ profileStatus(row).label }}
+						<Badge :theme="requestStatus(row).theme" variant="subtle">
+							{{ requestStatus(row).label }}
 						</Badge>
 					</div>
 
@@ -120,7 +120,7 @@
                only the server can answer. -->
 					<div v-if="row.can_decide" class="mt-4 flex flex-wrap items-center gap-2">
 						<Button
-							v-for="button in decisionButtons(row.actions, profileCan.decisions)"
+							v-for="button in decisionButtons(row.actions, reviewCan.decisions)"
 							:key="button.decision"
 							:variant="button.variant"
 							:theme="button.theme"
@@ -178,17 +178,19 @@ import {
 } from 'frappe-ui'
 import {
 	decisionButtons,
-	profileCan,
-	profilePermissionsError,
-	profilePermissionsLoaded,
-	profileStatus,
-	reloadProfilePermissions,
-	reloadProfileWorkflow,
-	useProfileDecision,
-	useProfileReviewQueue,
+	requestStatus,
+	useDecision,
+	type ChangeRequest,
 	type DecisionButton,
-	type ProfileChangeRequest,
-} from '@/data/profile'
+} from '@/data/selfService'
+import {
+	reloadChangeWorkflow,
+	reloadReviewPermissions,
+	reviewCan,
+	reviewPermissionsError,
+	reviewPermissionsLoaded,
+	useReviewQueue,
+} from '@/data/changeReview'
 import { formatDate, pluralise } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import ChangeDiff from '@/components/ChangeDiff.vue'
@@ -198,21 +200,21 @@ const tab = ref<'pending' | 'settled'>('pending')
 
 // Held back until the answer arrives, so the page never flashes controls (or a
 // refusal) it then takes away.
-const canReview = computed(() => profilePermissionsLoaded.value && profileCan.value.review)
+const canReview = computed(() => reviewPermissionsLoaded.value && reviewCan.value.review)
 
-const requests = useProfileReviewQueue(() => tab.value === 'settled')
-const decision = useProfileDecision()
+const requests = useReviewQueue(() => tab.value === 'settled')
+const decision = useDecision()
 
 // Keyed by request and decision so only the button that was pressed spins.
 const deciding = ref('')
 
 const pendingCount = computed(() =>
-	tab.value === 'pending' ? requests.data?.length ?? 0 : profileCan.value.pending_reviews
+	tab.value === 'pending' ? requests.data?.length ?? 0 : reviewCan.value.pending_reviews
 )
 
 // Both numbers stop at the same ceiling, so a queue that is full says so rather
 // than quietly claiming that is all there is.
-const pendingAtCeiling = computed(() => pendingCount.value >= profileCan.value.page_length)
+const pendingAtCeiling = computed(() => pendingCount.value >= reviewCan.value.page_length)
 
 /**
  * What the declining path is asking for.
@@ -220,7 +222,7 @@ const pendingAtCeiling = computed(() => pendingCount.value >= profileCan.value.p
  * Null when nothing is being asked. Held as one object rather than a row and a
  * button in separate refs so the dialog cannot render half of a question.
  */
-const asked = ref<{ row: ProfileChangeRequest; button: DecisionButton } | null>(null)
+const asked = ref<{ row: ChangeRequest; button: DecisionButton } | null>(null)
 const note = ref('')
 
 const noteOpen = computed({
@@ -230,7 +232,7 @@ const noteOpen = computed({
 	},
 })
 
-async function decide(row: ProfileChangeRequest, button: DecisionButton) {
+async function decide(row: ChangeRequest, button: DecisionButton) {
 	// Whether an outcome needs confirming arrives with it. Applying one writes
 	// the values onto the employee record, and declining one is the answer the
 	// employee reads -- neither is something the page can walk back for them.
@@ -265,11 +267,7 @@ const noteActions = computed<DialogAction[]>(() =>
 		: []
 )
 
-async function submitDecision(
-	row: ProfileChangeRequest,
-	button: DecisionButton,
-	note: string | null
-) {
+async function submitDecision(row: ChangeRequest, button: DecisionButton, note: string | null) {
 	deciding.value = `${row.name}:${button.decision}`
 	try {
 		const result = await decision.submit({
@@ -292,7 +290,7 @@ function refresh() {
 	requests.reload()
 	// The sidebar badge counts pending reviews, so it moves too -- and a
 	// workflow's states are what the next row's label and buttons come from.
-	reloadProfilePermissions()
-	reloadProfileWorkflow()
+	reloadReviewPermissions()
+	reloadChangeWorkflow()
 }
 </script>

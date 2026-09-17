@@ -1,22 +1,22 @@
 <template>
-  <FrappeUIProvider>
-    <DesktopShell>
-      <template #sidebar>
-        <AppSidebar />
-        <!-- The desk's overlay, to the numbers: it starts where the drawer
+	<FrappeUIProvider>
+		<DesktopShell>
+			<template #sidebar>
+				<AppSidebar />
+				<!-- The desk's overlay, to the numbers: it starts where the drawer
              ends rather than lying under it, which is why it can sit a layer
              above (`z-index: 1021` over the drawer's 1020) and still leave the
              panel clickable. Tapping it closes, the desk's only way back out
              on a touch screen. -->
-        <div
-          v-if="isMobile && sidebarOpen"
-          class="app-overlay fixed inset-y-0 z-[1021]"
-          @click="closeSidebar"
-        />
-      </template>
-      <router-view />
-    </DesktopShell>
-  </FrappeUIProvider>
+				<div
+					v-if="isMobile && sidebarOpen"
+					class="app-overlay fixed inset-y-0 z-[1021]"
+					@click="closeSidebar"
+				/>
+			</template>
+			<router-view />
+		</DesktopShell>
+	</FrappeUIProvider>
 </template>
 
 <script setup lang="ts">
@@ -43,8 +43,8 @@ onKeyStroke('Escape', () => closeSidebar())
   own -- not a themed token, in either app.
 */
 .app-overlay {
-  left: var(--sidebar-width);
-  width: calc(100vw - var(--sidebar-width));
-  background-color: rgba(128, 128, 128, 0.5);
+	left: var(--sidebar-width);
+	width: calc(100vw - var(--sidebar-width));
+	background-color: rgba(128, 128, 128, 0.5);
 }
 </style>

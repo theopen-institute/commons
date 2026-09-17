@@ -1,7 +1,13 @@
-import { computed, watch } from 'vue'
+import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useCall } from 'frappe-ui'
+import {
+  decisionButtons as buildDecisionButtons,
+  styleTheme,
+  type BadgeTheme,
+  type Decision,
+  type DecisionButton,
+} from './workflowStyle'
 import { user } from './session'
-import type { Decision } from './workflowStyle'
 
 /**
  * One self-service record type, read the way every one of them is read.
@@ -74,6 +80,17 @@ export interface SelfServicePermissions {
   record_filters: Record<string, string | number | boolean | null>
   /** Whether one record is expected or several. */
   singular: boolean
+  /** Whether an owner may ask for a record of this type to be created, or one
+   *  of theirs removed. Both off unless the configuration turns them on. */
+  allow_new: boolean
+  allow_delete: boolean
+  /** How this record type introduces and excuses itself. Configuration, so a
+   *  page can send somebody to payroll where a generic line would send them to
+   *  the wrong place. */
+  label: string | null
+  slug: string | null
+  read_only_notice: string | null
+  empty_notice: string | null
   /** The page's field layout, in order: which sections, which fields, and for
    *  each the label, control, options and mandatory flag resolved from the
    *  doctype's own meta. The page draws from this and names no field of its
@@ -108,6 +125,12 @@ export const NO_PERMISSIONS: SelfServicePermissions = {
   owner_value: null,
   record_filters: {},
   singular: false,
+  allow_new: false,
+  allow_delete: false,
+  label: null,
+  slug: null,
+  read_only_notice: null,
+  empty_notice: null,
   sections: [],
   registered: [],
   decisions: [],
@@ -121,29 +144,54 @@ export const NO_PERMISSIONS: SelfServicePermissions = {
  * `immediate`, so it runs while this function is still executing. Everything it
  * touches is declared above it.
  */
-export function useSelfServiceRecords<T>(doctype: string, limit = 20) {
+export function useSelfServiceRecords<T>(
+  doctype: MaybeRefOrGetter<string>,
+  limit = 20
+) {
+  // A getter, not a string: a page addressed by slug does not know its record
+  // type until the navigation has loaded, and creating the calls twice -- once
+  // empty, once for real -- is worse than letting them wait.
+  const target = computed(() => toValue(doctype))
   // Deliberately uncached, for the reason `session.ts` gives: a persisted cache
   // is keyed by the browser rather than the user, so the next person to log in
   // on this machine would get a stale-first render of someone else's answer.
   const permissionsCall = useCall<SelfServicePermissions, { doctype: string }>({
     url: '/api/v2/method/tbs_commons.self_service.api.get_change_permissions',
-    params: { doctype },
+    params: () => ({ doctype: target.value }),
+    immediate: false,
   })
+
+  watch(
+    target,
+    (name) => {
+      if (name) permissionsCall.reload()
+    },
+    { immediate: true }
+  )
 
   const can = computed(() => permissionsCall.data ?? NO_PERMISSIONS)
 
   /** Settled or refused, not merely arrived: a call that fails never sets
    *  `data`, and a page gating its skeleton on that waits for ever. */
-  const permissionsLoaded = computed(() => permissionsCall.isFinished)
+  const permissionsLoaded = computed(
+    () => Boolean(target.value) && permissionsCall.isFinished
+  )
   const permissionsError = computed(() => permissionsCall.error ?? null)
 
-  const recordsCall = useCall<T[], { filters: string; fields: string; limit: string }>({
+  const recordsCall = useCall<
+    T[],
+    { filters: string; fields: string; limit: string }
+  >({
     // Frappe's own document API. Everything about who may see what is settled by
     // the framework on the way in.
-    url: `/api/v2/document/${doctype}`,
+    // A computed ref, not a string: the doctype arrives with the navigation, and
+    // a URL built at call time would be `/api/v2/document/` -- which answers with
+    // a 404 page that the client then tries to parse as JSON.
+    url: computed(() => `/api/v2/document/${target.value}`),
     params: () => ({
       filters: JSON.stringify({
-        [can.value.owner_field ?? 'name']: can.value.owner_value ?? user.value.name,
+        [can.value.owner_field ?? 'name']:
+          can.value.owner_value ?? user.value.name,
         ...can.value.record_filters,
       }),
       fields: JSON.stringify(can.value.display),
@@ -166,7 +214,7 @@ export function useSelfServiceRecords<T>(doctype: string, limit = 20) {
     ([mayRead, fields, owner]) => {
       if (mayRead && fields && owner) recordsCall.reload()
     },
-    { immediate: true },
+    { immediate: true }
   )
 
   const records = computed(() => recordsCall.data ?? [])
@@ -180,7 +228,7 @@ export function useSelfServiceRecords<T>(doctype: string, limit = 20) {
       // filter on, so there is nothing to wait for either.
       (recordsCall.isFinished ||
         !can.value.can_read_records ||
-        !can.value.owner_value),
+        !can.value.owner_value)
   )
   const recordsError = computed(() => recordsCall.error ?? null)
 
@@ -200,4 +248,151 @@ export function useSelfServiceRecords<T>(doctype: string, limit = 20) {
     reloadRecords: () => recordsCall.reload(),
     reload,
   }
+}
+
+/** One self-service page, as the sidebar should offer it. */
+export interface NavRecord {
+  doctype: string
+  label: string
+  slug: string
+  icon: string | null
+  singular: boolean
+  /** Read permission on the record doctype. The row is offered either way --
+   *  a page that vanishes leaves someone unable to tell a missing feature from
+   *  a missing permission, and the page itself says which. */
+  can_read: boolean
+}
+
+const navCall = useCall<NavRecord[]>({
+  url: '/api/v2/method/tbs_commons.self_service.api.get_self_service_nav',
+})
+
+/** Every self-service page, in configured order. The sidebar reads this rather
+ *  than naming pages, so a new record type is a desk entry and nothing else. */
+export const navRecords = computed(() => navCall.data ?? [])
+export const navLoaded = computed(() => navCall.isFinished)
+
+export function reloadNav() {
+  return navCall.reload()
+}
+
+export function navBySlug(slug: string) {
+  return navRecords.value.find((row) => row.slug === slug) ?? null
+}
+
+/** One field a request proposes to change. */
+export interface ChangeRow {
+  fieldname: string
+  label: string | null
+  current_value: string | null
+  proposed_value: string | null
+}
+
+/** One row of a change request list. */
+export interface ChangeRequest {
+  name: string
+  request_type: 'Change' | 'New' | 'Delete'
+  reference_doctype: string
+  reference_name: string | null
+  reference_title: string
+  requested_by: string
+  reason: string | null
+  review_note: string | null
+  reviewed_by: string | null
+  status: string
+  docstatus: 0 | 1 | 2
+  posting_date: string
+  modified: string
+  changes: ChangeRow[]
+  status_label: string
+  status_style: string | null
+  /** Whether this request is still awaiting a decision. Server-owned:
+   *  `docstatus` cannot answer it, since a declined or withdrawn request stays
+   *  at 0 so it can be amended. */
+  open: boolean
+  can_decide?: boolean
+  actions?: string[]
+}
+
+/** This user's own requests about one record type, newest first. */
+export function useMyChanges(doctype: MaybeRefOrGetter<string>) {
+  const target = computed(() => toValue(doctype))
+  const call = useCall<ChangeRequest[], { doctype: string }>({
+    url: '/api/v2/method/tbs_commons.self_service.api.get_my_changes',
+    params: () => ({ doctype: target.value }),
+    immediate: false,
+  })
+  watch(
+    target,
+    (name) => {
+      if (name) call.reload()
+    },
+    { immediate: true }
+  )
+  return call
+}
+
+/**
+ * Raise a request. Which of the three shapes it is travels in the payload --
+ * see `request_change`, which settles which record it may be about.
+ */
+export function useRaiseRequest() {
+  return useCall<{ name: string }, { doctype: string; doc: string }>({
+    url: '/api/v2/method/tbs_commons.self_service.api.request_change',
+    method: 'POST',
+    immediate: false,
+  })
+}
+
+/** Settle a request, by whatever route the site has configured. */
+export function useDecision() {
+  return useCall<
+    { name: string; status: string; docstatus: number },
+    { name: string; decision: string; note?: string }
+  >({
+    url: '/api/v2/method/tbs_commons.self_service.api.decide_change',
+    method: 'POST',
+    immediate: false,
+  })
+}
+
+/**
+ * How a request reads to a person. Both halves arrive: the server settles the
+ * label, because `status` alone is not the answer, and the style, because a site
+ * running a Workflow styles its own states.
+ */
+export function requestStatus(row: {
+  status_label: string
+  status_style: string | null
+}): { label: string; theme: BadgeTheme } {
+  return { label: row.status_label, theme: styleTheme(row.status_style) }
+}
+
+/** Wording, and only wording. Covers both routes the server can take: a
+ *  Workflow sends action names, a site running none sends the target status. */
+const DECISION_LABELS: Record<string, string> = {
+  Approve: 'Apply',
+  Approved: 'Apply',
+  Reject: 'Decline',
+  Rejected: 'Decline',
+  Withdraw: 'Withdraw',
+  Withdrawn: 'Withdraw',
+  Reverse: 'Reverse',
+  Reversed: 'Reverse',
+}
+
+export function decisionButtons(
+  offered: string[] | undefined,
+  vocabulary: Decision[]
+): DecisionButton[] {
+  return buildDecisionButtons(offered, vocabulary, DECISION_LABELS)
+}
+
+export type { Decision, DecisionButton }
+
+/** A stored value as a person reads it. Frappe's empty is `null` or `''`; both
+ *  mean the same thing on screen, and it is not "null". */
+export function displayValue(value: unknown): string {
+  const text = value == null ? '' : String(value)
+  return text.trim() || '—'
 }

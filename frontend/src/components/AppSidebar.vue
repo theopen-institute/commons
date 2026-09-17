@@ -64,35 +64,30 @@
 					     own a record: the page explains an unlinked login far better
 					     than an absent row does, and a reviewer who is not themselves
 					     an employee still needs the queue below. -->
+				<!-- The rows are configuration: one per `Self Service Record`, in the
+				     order and with the label and icon it was given. A record type is
+				     added in the desk and appears here, with no code to change. -->
 				<SidebarSection
-					v-if="profileCan.read || profileCan.review || bankCan.read"
+					v-if="navRecords.length || reviewCan.review"
 					label="Profile"
 					collapsible
 				>
 					<SidebarItem
-						v-if="profileCan.read"
-						label="Employee"
-						icon="lucide-id-card"
-						:to="{ name: 'MyProfile' }"
-					/>
-					<!-- Gated on `read`, the permission, not on owning an account: the
-					     page explains an empty or withheld list far better than an absent
-					     row does. -->
-					<SidebarItem
-						v-if="bankCan.read"
-						label="Bank accounts"
-						icon="lucide-landmark"
-						:to="{ name: 'MyBankAccounts' }"
+						v-for="row in navRecords"
+						:key="row.slug"
+						:label="row.label"
+						:icon="row.icon || 'lucide-file-text'"
+						:to="`/profile/${row.slug}`"
 					/>
 					<SidebarItem
-						v-if="profileCan.review"
+						v-if="reviewCan.review"
 						label="Change requests"
 						icon="lucide-file-pen-line"
 						:to="{ name: 'ProfileChangeApprovals' }"
 					>
-						<template v-if="profileCan.pending_reviews" #suffix>
+						<template v-if="reviewCan.pending_reviews" #suffix>
 							<Badge theme="amber" variant="subtle">
-								{{ profileCan.pending_reviews }}
+								{{ reviewCan.pending_reviews }}
 							</Badge>
 						</template>
 					</SidebarItem>
@@ -194,8 +189,8 @@ import { logout, user } from '@/data/session'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
 import { leaveCan } from '@/data/leave'
 import { procurementCan } from '@/data/procurement'
-import { bankCan } from '@/data/bankAccounts'
-import { profileCan } from '@/data/profile'
+import { navRecords } from '@/data/selfService'
+import { reviewCan } from '@/data/changeReview'
 import { apps, availableApps, SUITE_TITLE, type AppDefinition, type AppKey } from '@/data/apps'
 
 // Two initials, like the desk's `get_abbr`: the first letter of each of the
@@ -207,7 +202,7 @@ const initials = computed(() =>
 		.filter(Boolean)
 		.slice(0, 2)
 		.map((word) => word[0])
-		.join(''),
+		.join('')
 )
 
 // The palette entry is the server's answer; these two variables are the desk's,
@@ -237,7 +232,7 @@ const shellClass = computed(() => {
 // class would beat it. 0 rather than hidden: the panel keeps its place in the
 // layout, so the page beside it is laid out against a column of no width.
 const shellWidth = computed(() =>
-	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)',
+	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)'
 )
 
 const route = useRoute()
@@ -251,7 +246,6 @@ const currentApp = computed<AppDefinition>(() => apps[route.meta.app ?? 'request
 // Keyed by route prefix, not by app: Requests spans two doctypes, and "Open in
 // desk" should land on the one whose section is on screen.
 const DESK_ROUTES: [prefix: string, deskPath: string][] = [
-	['/profile/bank-accounts', '/app/bank-account'],
 	['/profile/approvals', '/app/record-change-request'],
 	// The profile page itself is one employee record, not the list of them.
 	['/profile', '/app/employee'],

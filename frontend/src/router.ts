@@ -33,28 +33,27 @@ const routes: RouteRecordRaw[] = [
     meta: { app: 'requests' },
   },
   {
-    // The employee's own record, read only: something a person does about
-    // themselves and waits on an approver for, which is what this app is.
+    // Every self-service page, addressed by the slug its configuration gives it.
+    // `/profile` alone lands on the first one this user can open, which is a
+    // permission answer away -- so a component redirects, not a route.
     path: '/profile',
-    name: 'MyProfile',
-    component: () => import('@/pages/MyProfile.vue'),
-    meta: { app: 'requests' },
-  },
-  {
-    // The accounts payroll holds against this employee. Its own page rather
-    // than a section of the profile: they hang off the employee record instead
-    // of living on it, there may be several, and they are read-only for a
-    // reason the profile's fields are not -- see `BANK_ACCOUNT` in
-    // `tbs_commons.self_service.policies`.
-    path: '/profile/bank-accounts',
-    name: 'MyBankAccounts',
-    component: () => import('@/pages/MyBankAccounts.vue'),
+    name: 'SelfServiceHome',
+    component: () => import('@/pages/SelfServiceHome.vue'),
     meta: { app: 'requests' },
   },
   {
     path: '/profile/approvals',
     name: 'ProfileChangeApprovals',
     component: () => import('@/pages/ProfileChangeApprovals.vue'),
+    meta: { app: 'requests' },
+  },
+  {
+    // Declared after `approvals`, which is a page this app owns rather than a
+    // record slug -- `SelfServiceRecord` refuses that slug for the same reason.
+    path: '/profile/:slug',
+    name: 'SelfServiceRecord',
+    component: () => import('@/pages/SelfServiceRecord.vue'),
+    props: true,
     meta: { app: 'requests' },
   },
   {

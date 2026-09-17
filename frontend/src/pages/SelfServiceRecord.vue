@@ -1,0 +1,273 @@
+<template>
+	<AppPageHeader>
+		<div class="flex min-w-0 items-center gap-2">
+			<span class="truncate text-lg font-semibold text-ink-gray-8">
+				{{ can.label || nav?.label || 'Records' }}
+			</span>
+			<Badge v-if="pendingCount" theme="amber" variant="subtle">
+				{{ pluralise(pendingCount, 'request') }} pending
+			</Badge>
+		</div>
+		<template #actions>
+			<div class="flex items-center gap-2">
+				<Button
+					v-if="can.allow_new && can.request"
+					variant="solid"
+					icon-left="lucide-plus"
+					:label="`Propose new`"
+					@click="showNew = true"
+				/>
+				<Button
+					variant="ghost"
+					icon-left="lucide-refresh-cw"
+					label="Refresh"
+					:loading="!recordsLoaded"
+					@click="refresh"
+				/>
+			</div>
+		</template>
+	</AppPageHeader>
+
+	<div class="px-5 py-4">
+		<div v-if="loadError" class="mx-auto max-w-3xl">
+			<ErrorMessage :message="loadError.message" class="mb-3" />
+			<Button label="Try again" variant="subtle" @click="refresh" />
+		</div>
+
+		<div v-else-if="!recordsLoaded" class="mx-auto max-w-3xl space-y-4">
+			<Skeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-4" />
+		</div>
+
+		<!-- Nothing to show, and which nothing it is decides who to ask. The
+		     wording is the record type's own -- see `Self Service Record` -- so a
+		     page can send somebody to payroll rather than to HR. -->
+		<div v-else-if="!records.length" class="mx-auto mt-16 max-w-md text-center">
+			<span
+				class="mx-auto size-8 text-ink-gray-4"
+				:class="
+					can.record_access === 'forbidden' ? 'lucide-lock' : nav?.icon || 'lucide-inbox'
+				"
+			/>
+			<p class="mt-2 text-base-medium text-ink-gray-7">
+				{{
+					can.record_access === 'forbidden'
+						? "You don't have access to these records"
+						: `Nothing here yet`
+				}}
+			</p>
+			<p class="mt-1 text-p-sm text-ink-gray-5">
+				{{
+					can.record_access === 'forbidden'
+						? "Your account isn't permitted to open them. If you should be able to see yours, ask a System Manager to review the permissions."
+						: can.empty_notice || 'There is nothing of this kind against your name.'
+				}}
+			</p>
+			<Button
+				v-if="can.allow_new && can.request"
+				class="mt-4"
+				variant="subtle"
+				icon-left="lucide-plus"
+				label="Propose new"
+				@click="showNew = true"
+			/>
+		</div>
+
+		<div v-else class="mx-auto max-w-3xl">
+			<Alert
+				theme="gray"
+				title="This page is read only"
+				:description="
+					can.read_only_notice ||
+					'These details are held for you. Use the pencils to propose a correction — someone reviews it before anything changes.'
+				"
+			/>
+
+			<!-- One record, or several. The shape is the record type's, not this
+			     page's: `singular` says whether an owner has one of these. -->
+			<div v-for="record in records" :key="record.name" class="mt-6">
+				<div
+					v-if="!can.singular"
+					class="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-outline-gray-1 pb-2"
+				>
+					<h2 class="truncate text-lg font-semibold text-ink-gray-9">
+						{{ titleOf(record) }}
+					</h2>
+					<Button
+						v-if="can.allow_delete && can.request"
+						variant="ghost"
+						theme="red"
+						size="sm"
+						icon-left="lucide-trash-2"
+						label="Propose removal"
+						:loading="deleting === record.name"
+						@click="proposeRemoval(record)"
+					/>
+				</div>
+
+				<div class="space-y-8">
+					<ProfileSection
+						v-for="section in can.sections"
+						:key="section.title"
+						:section="section"
+						:doc="record"
+						:pending="pendingFor(record)"
+						:can-propose="can.request"
+						@propose="(field) => startEdit(record, field)"
+					/>
+				</div>
+			</div>
+
+			<ChangeRequestHistory
+				v-if="can.proposable.length || can.allow_new || can.allow_delete"
+				class="mt-10"
+				:requests="changes.data ?? []"
+				:loading="changes.loading && !changes.data"
+				:decisions="can.decisions"
+				@refresh="refresh"
+			/>
+		</div>
+
+		<ProposeFieldDialog
+			v-if="editing"
+			:record="editing.record"
+			:field="editing.field"
+			:pending="pendingFor(editing.record)"
+			:doctype="doctype"
+			:reference-name="editing.record.name"
+			@close="editing = null"
+			@created="refresh"
+		/>
+
+		<ProposeRecordDialog
+			v-if="can.allow_new"
+			v-model:open="showNew"
+			:doctype="doctype"
+			:label="can.label || nav?.label || 'record'"
+			:fields="proposableFields"
+			@created="refresh"
+		/>
+	</div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { Alert, Badge, Button, ErrorMessage, Skeleton, dialog, toast } from 'frappe-ui'
+import {
+	navBySlug,
+	useMyChanges,
+	useRaiseRequest,
+	useSelfServiceRecords,
+	type RecordField,
+} from '@/data/selfService'
+import { pluralise } from '@/data/format'
+import AppPageHeader from '@/components/AppPageHeader.vue'
+import ChangeRequestHistory from '@/components/ChangeRequestHistory.vue'
+import ProfileSection from '@/components/ProfileSection.vue'
+import ProposeFieldDialog from '@/components/ProposeFieldDialog.vue'
+import ProposeRecordDialog from '@/components/ProposeRecordDialog.vue'
+
+/**
+ * One self-service page, for whichever record type the address names.
+ *
+ * There is nothing about employees or bank accounts here. Which fields to show,
+ * how they are grouped, what the page is called, what it says when there is
+ * nothing, and whether an owner may add or remove records are all the server's
+ * answers -- see `Self Service Record`. Adding a third record type is a desk
+ * entry and no code at all.
+ */
+const props = defineProps<{ slug: string }>()
+
+const nav = computed(() => navBySlug(props.slug))
+const doctype = computed(() => nav.value?.doctype ?? '')
+
+// Created once, with getters. The record type arrives with the navigation and
+// changes again when the address does; a composable called inside a computed
+// would build a fresh set of calls on every read and none of them would settle.
+const source = useSelfServiceRecords<Record<string, any>>(() => doctype.value)
+const changes = useMyChanges(() => doctype.value)
+
+const can = source.can
+const records = source.records
+const recordsLoaded = computed(() => Boolean(doctype.value) && source.recordsLoaded.value)
+const loadError = computed(
+	() => source.permissionsError.value ?? source.recordsError.value
+)
+const request = useRaiseRequest()
+
+const showNew = ref(false)
+const editing = ref<{ record: Record<string, any>; field: RecordField } | null>(null)
+const deleting = ref('')
+
+const proposableFields = computed(() =>
+	can.value.sections.flatMap((section) => section.fields.filter((f) => f.proposable))
+)
+
+function titleOf(record: Record<string, any>) {
+	const [first] = can.value.sections.flatMap((s) => s.fields)
+	return record[first?.fieldname ?? 'name'] || record.name
+}
+
+function startEdit(record: Record<string, any>, field: RecordField) {
+	editing.value = { record, field }
+}
+
+/**
+ * Proposals still awaiting a decision, by fieldname, for one record.
+ *
+ * `open` is the server's answer rather than `docstatus`: a declined or withdrawn
+ * request stays at 0 so it can be amended, so reading the docstatus would mark
+ * fields as pending long after they were settled.
+ */
+function pendingFor(record: Record<string, any>) {
+	const pending: Record<string, string | null> = {}
+	for (const row of changes.data ?? []) {
+		if (!row.open || row.reference_name !== record.name) continue
+		for (const change of row.changes) pending[change.fieldname] = change.proposed_value
+	}
+	return pending
+}
+
+const pendingCount = computed(() => (changes.data ?? []).filter((row) => row.open).length)
+
+function proposeRemoval(record: Record<string, any>) {
+	const label = titleOf(record)
+	dialog.danger({
+		title: 'Propose removal',
+		message: `Ask for ${label} to be removed? Nothing is deleted until someone approves it.`,
+		confirmLabel: 'Send for review',
+		onConfirm: async () => {
+			deleting.value = record.name
+			try {
+				const created = await request.submit({
+					doctype: doctype.value,
+					doc: JSON.stringify({
+						request_type: 'Delete',
+						reference_name: record.name,
+					}),
+				})
+				// Throwing keeps the dialog open and renders the reason inline.
+				if (!created) throw request.error ?? new Error('Could not send the request')
+				toast.success('Sent for review')
+				refresh()
+			} finally {
+				deleting.value = ''
+			}
+		},
+	})
+}
+
+function refresh() {
+	source.reload()
+	changes.reload()
+}
+
+// A different record type is a different page; nothing from the last one should
+// survive the navigation.
+watch(
+	() => props.slug,
+	() => {
+		editing.value = null
+		showNew.value = false
+	}
+)
+</script>

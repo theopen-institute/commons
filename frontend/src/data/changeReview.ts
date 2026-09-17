@@ -1,0 +1,70 @@
+import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import { useCall } from 'frappe-ui'
+import {
+  NO_PERMISSIONS,
+  type ChangeRequest,
+  type SelfServicePermissions,
+} from './selfService'
+
+/**
+ * The reviewer's half of the self-service section.
+ *
+ * Separate from `selfService` because it is not about a record type. A reviewer
+ * has one queue spanning every registered doctype, and one badge counting it --
+ * asking the permissions endpoint per record type to find that out would be
+ * three calls to answer one question.
+ *
+ * It names a doctype anyway, because the endpoint takes one and the answer to
+ * "may I review" is the same whichever is named. `Employee` is the one every
+ * site has.
+ */
+const ANY_RECORD = 'Employee'
+
+const permissionsCall = useCall<SelfServicePermissions, { doctype: string }>({
+  url: '/api/v2/method/tbs_commons.self_service.api.get_change_permissions',
+  params: { doctype: ANY_RECORD },
+})
+
+export const reviewCan = computed(() => permissionsCall.data ?? NO_PERMISSIONS)
+export const reviewPermissionsLoaded = computed(
+  () => permissionsCall.isFinished
+)
+export const reviewPermissionsError = computed(
+  () => permissionsCall.error ?? null
+)
+
+export function reloadReviewPermissions() {
+  return permissionsCall.reload()
+}
+
+/**
+ * Requests waiting on a decision, or ones already settled.
+ *
+ * What counts as either is the server's to say — see `get_change_queue`.
+ * Building the filters here would let "waiting" mean one thing on the page and
+ * a slightly different thing in the badge counting it.
+ */
+export function useReviewQueue(decided: MaybeRefOrGetter<boolean>) {
+  const queue = useCall<ChangeRequest[], { decided: number }>({
+    url: '/api/v2/method/tbs_commons.self_service.api.get_change_queue',
+    params: () => ({ decided: toValue(decided) ? 1 : 0 }),
+    immediate: false,
+  })
+  watch(
+    () => toValue(decided),
+    () => queue.reload(),
+    { immediate: true }
+  )
+  return queue
+}
+
+const workflowCall = useCall<unknown>({
+  url: '/api/v2/method/tbs_commons.self_service.api.get_change_workflow',
+})
+
+/** The active Workflow, if the site runs one. The pages need no knowledge of it
+ *  — every row carries its own label, style and permitted actions — but
+ *  reloading it keeps those answers fresh after a transition. */
+export function reloadChangeWorkflow() {
+  return workflowCall.reload()
+}

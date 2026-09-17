@@ -3,9 +3,7 @@
 		<!-- A heading that reads as a break in the page rather than as a slightly
 		     bolder row of its own: the sections are what make a long record
 		     scannable, so they carry weight and a rule under them. -->
-		<h2
-			class="border-b border-outline-gray-1 pb-2 text-lg font-semibold text-ink-gray-9"
-		>
+		<h2 class="border-b border-outline-gray-1 pb-2 text-lg font-semibold text-ink-gray-9">
 			{{ section.title }}
 		</h2>
 		<!-- A description list, not a form of disabled inputs. The page is read
@@ -67,7 +65,7 @@
 
 <script setup lang="ts">
 import { Badge, Tooltip } from 'frappe-ui'
-import { displayValue } from '@/data/profile'
+import { displayValue } from '@/data/selfService'
 import { isFilled, type RecordField, type RecordSection } from '@/data/selfService'
 import { formatDate } from '@/data/format'
 

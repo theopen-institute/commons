@@ -55,23 +55,27 @@
 import { computed, ref, watch } from 'vue'
 import { Alert, Dialog, ErrorMessage, FormControl, toast, type DialogAction } from 'frappe-ui'
 import RecordFieldControl from './RecordFieldControl.vue'
-import { displayValue, recordType, useRequestProfileChange, type MyProfile } from '@/data/profile'
+import { displayValue, useRaiseRequest } from '@/data/selfService'
 import { isFilled, type RecordField } from '@/data/selfService'
 import { formatDate } from '@/data/format'
 
 const props = defineProps<{
-	profile: MyProfile
+	/** The record being corrected, and which doctype it belongs to. Generic on
+	 *  purpose: this dialog is the same for every self-service record type. */
+	doctype: string
+	referenceName: string
+	record: Record<string, any>
 	/** The field being proposed against, or null when nothing is. Held as one
 	 *  nullable prop rather than a field plus a flag, so the dialog cannot render
 	 *  half a question. */
 	field: RecordField | null
-	/** Proposed values from open requests, by fieldname — see `MyProfile.vue`. */
+	/** Proposed values from open requests, by fieldname. */
 	pending: Record<string, string | null>
 }>()
 
 const emit = defineEmits<{ close: []; created: [name: string] }>()
 
-const request = useRequestProfileChange()
+const request = useRaiseRequest()
 
 const open = computed({
 	get: () => props.field !== null,
@@ -80,9 +84,7 @@ const open = computed({
 	},
 })
 
-const current = computed(() =>
-	props.field ? (props.profile as Record<string, any>)[props.field.fieldname] : null
-)
+const current = computed(() => (props.field ? props.record[props.field.fieldname] : null))
 
 const currentLabel = computed(() => {
 	if (!props.field) return ''
@@ -140,8 +142,10 @@ async function send() {
 	if (!props.field || !changed.value) return
 
 	const created = await request.submit({
-		doctype: recordType,
+		doctype: props.doctype,
 		doc: JSON.stringify({
+			request_type: 'Change',
+			reference_name: props.referenceName,
 			reason: reason.value,
 			// `current_value` is deliberately not sent. The server captures it from
 			// the employee record, so a request cannot state a "before" that was

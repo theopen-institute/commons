@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { displayValue, type ProfileChangeRow } from '@/data/profile'
+import { displayValue, type ChangeRow } from '@/data/selfService'
 
-defineProps<{ changes: ProfileChangeRow[] }>()
+defineProps<{ changes: ChangeRow[] }>()
 </script>
