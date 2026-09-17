@@ -117,33 +117,41 @@ def session_employee_access() -> str:
 	return "forbidden" if frappe.db.exists(EMPLOYEE, session_employee_filters()) else "missing"
 
 
+def department_head(department: str | None) -> str | None:
+	"""The first approver a department lists -- its head, as far as spending goes.
+
+	A disabled department is not an answer, and neither is a department with an
+	empty table: the caller gets `None` and the form opens blank so the requester
+	picks.
+	"""
+	if not department:
+		return None
+	if frappe.db.get_value("Department", department, "disabled"):
+		return None
+	return frappe.db.get_value(
+		"Department Approver",
+		{"parent": department, "parentfield": "expense_approvers", "idx": 1},
+		"approver",
+	)
+
+
 def default_expense_approver(employee: frappe._dict | None) -> str | None:
-	"""Who an expense-shaped request should name, before the requester touches the field.
+	"""Who an expense claim should name, before the requester touches the field.
 
-	The employee's own expense approver first; failing that the first approver
-	their department lists, which is how the desk's own Expense Claim decides it
-	too -- see `hrms.api.get_expense_approval_details`. A disabled department is
-	not an answer, and neither is a department with an empty table: the form then
-	opens blank and the requester picks.
+	The employee's own expense approver first; failing that their department's
+	head, which is how the desk's own Expense Claim decides it too -- see
+	`hrms.api.get_expense_approval_details`.
 
-	Shared by expense claims, whose field this is, and by procurement, which
-	routes its requests to the same person for the same reason -- a department's
-	spending is approved by whoever approves that department's spending. One
-	answer, so the two sections cannot start disagreeing about who that is.
+	Expense claims only. Procurement deliberately names the department head and
+	nothing else: a request spends the department's budget, so it is the
+	department's head who decides it, whoever happens to sign off the requester's
+	personal expenses.
 	"""
 	if not employee:
 		return None
 	if employee.expense_approver:
 		return employee.expense_approver
-	if not employee.department:
-		return None
-	if frappe.db.get_value("Department", employee.department, "disabled"):
-		return None
-	return frappe.db.get_value(
-		"Department Approver",
-		{"parent": employee.department, "parentfield": "expense_approvers", "idx": 1},
-		"approver",
-	)
+	return department_head(employee.department)
 
 
 @frappe.whitelist()

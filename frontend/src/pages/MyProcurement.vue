@@ -1,6 +1,9 @@
 <template>
 	<AppPageHeader>
-		<span class="text-lg font-semibold text-ink-gray-8">My requests</span>
+		<div class="flex min-w-0 items-center gap-3">
+			<span class="text-lg font-semibold text-ink-gray-8">Procurement Request</span>
+			<RequestTabs section="procurement" />
+		</div>
 		<template #actions>
 			<Button
 				v-if="procurementCan.request"
@@ -235,6 +238,7 @@ import AppPageHeader from '@/components/AppPageHeader.vue'
 import ProcurementLines from '@/components/ProcurementLines.vue'
 import ProcurementRequestDialog from '@/components/ProcurementRequestDialog.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
+import RequestTabs from '@/components/RequestTabs.vue'
 
 const showRequest = ref(false)
 const editingRequest = ref<ProcurementRequestRow | null>(null)

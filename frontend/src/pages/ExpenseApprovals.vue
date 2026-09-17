@@ -1,10 +1,8 @@
 <template>
   <AppPageHeader>
-    <div class="flex items-center gap-2">
-      <span class="text-lg font-semibold text-ink-gray-8">Approvals</span>
-      <Badge v-if="pendingCount" theme="amber" variant="subtle">
-        {{ pendingCount }}{{ pendingAtCeiling ? '+' : '' }} waiting
-      </Badge>
+    <div class="flex min-w-0 items-center gap-3">
+      <span class="text-lg font-semibold text-ink-gray-8">Expense Claim</span>
+      <RequestTabs section="expense" />
     </div>
     <template #actions>
       <!-- Nothing to filter or refresh when the list itself is withheld. -->
@@ -202,6 +200,7 @@ import { formatCurrency, formatDate, pluralise } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import ExpenseClaimLines from '@/components/ExpenseClaimLines.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
+import RequestTabs from '@/components/RequestTabs.vue'
 
 const tab = ref<'pending' | 'decided'>('pending')
 
@@ -267,18 +266,6 @@ function allowedTotal(claim: ExpenseClaimRow) {
     0,
   )
 }
-
-const pendingCount = computed(() =>
-  tab.value === 'pending'
-    ? (claims.data?.length ?? 0)
-    : expenseCan.value.pending_approvals,
-)
-
-// Both numbers stop at the same ceiling, so a queue that is full says so rather
-// than quietly claiming that is all there is.
-const pendingAtCeiling = computed(
-  () => pendingCount.value >= expenseCan.value.page_length,
-)
 
 async function decide(claim: ExpenseClaimRow, button: DecisionButton) {
   // Whether an outcome needs confirming arrives with it. The claim is written

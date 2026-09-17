@@ -1,10 +1,8 @@
 <template>
 	<AppPageHeader>
-		<div class="flex items-center gap-2">
-			<span class="text-lg font-semibold text-ink-gray-8">Approvals</span>
-			<Badge v-if="pendingCount" theme="amber" variant="subtle">
-				{{ pendingCount }}{{ pendingAtCeiling ? '+' : '' }} waiting
-			</Badge>
+		<div class="flex min-w-0 items-center gap-3">
+			<span class="text-lg font-semibold text-ink-gray-8">Procurement Request</span>
+			<RequestTabs section="procurement" />
 		</div>
 		<template #actions>
 			<!-- Nothing to filter or refresh when the list itself is withheld. -->
@@ -254,6 +252,7 @@ import DepartmentBudgetCard from '@/components/DepartmentBudgetCard.vue'
 import ProcurementLines from '@/components/ProcurementLines.vue'
 import ProcurementRequestDialog from '@/components/ProcurementRequestDialog.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
+import RequestTabs from '@/components/RequestTabs.vue'
 
 const tab = ref<'pending' | 'decided'>('pending')
 const showEdit = ref(false)
@@ -292,18 +291,6 @@ const workflowAction = useApplyProcurementWorkflow()
 
 // Keyed by request and decision so only the button that was pressed spins.
 const runningAction = ref('')
-
-const pendingCount = computed(() =>
-	tab.value === 'pending'
-		? requestRows.value.length
-		: procurementCan.value.pending_workflow_actions,
-)
-
-// Both numbers stop at the same ceiling, so a queue that is full says so rather
-// than quietly claiming that is all there is.
-const pendingAtCeiling = computed(
-	() => pendingCount.value >= procurementCan.value.page_length,
-)
 
 function requesterName(request: ProcurementRequestRow) {
 	return request.requester_name || request.requested_by || 'Someone'

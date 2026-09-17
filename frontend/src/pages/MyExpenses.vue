@@ -1,6 +1,9 @@
 <template>
   <AppPageHeader>
-    <span class="text-lg font-semibold text-ink-gray-8">My expenses</span>
+    <div class="flex min-w-0 items-center gap-3">
+      <span class="text-lg font-semibold text-ink-gray-8">Expense Claim</span>
+      <RequestTabs section="expense" />
+    </div>
     <template #actions>
       <Button
         v-if="employee && expenseCan.request"
@@ -254,6 +257,7 @@ import AppPageHeader from '@/components/AppPageHeader.vue'
 import ExpenseClaimDialog from '@/components/ExpenseClaimDialog.vue'
 import ExpenseClaimLines from '@/components/ExpenseClaimLines.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
+import RequestTabs from '@/components/RequestTabs.vue'
 
 const showClaim = ref(false)
 const expanded = ref('')

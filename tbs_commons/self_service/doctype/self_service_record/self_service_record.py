@@ -73,6 +73,7 @@ class SelfServiceRecord(Document):
 
 	def validate(self) -> None:
 		self.validate_slug()
+		self.validate_icon()
 		self.validate_owner()
 		self.validate_filters()
 		self.validate_fields()
@@ -130,6 +131,22 @@ class SelfServiceRecord(Document):
 			frappe.throw(
 				_("{0} is a page this app already has. Choose another slug.").format(
 					frappe.bold(self.route_slug)
+				)
+			)
+
+	def validate_icon(self) -> None:
+		"""An icon the frontend cannot draw is refused, not stored.
+
+		The classes are compiled from the list in `self_service.icons`, so a name
+		outside it has no CSS and the sidebar row renders an empty square. Saying
+		so here is the only place anyone finds out before the sidebar does.
+		"""
+		from tbs_commons.self_service.icons import NAV_ICONS
+
+		if self.icon and self.icon not in NAV_ICONS:
+			frappe.throw(
+				_("{0} is not an icon this sidebar can draw. Choose one of: {1}.").format(
+					frappe.bold(self.icon), ", ".join(sorted(NAV_ICONS))
 				)
 			)
 

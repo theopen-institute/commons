@@ -9,7 +9,7 @@ import frappe
 from frappe.utils import flt
 
 from tbs_commons import workflow as wf
-from tbs_commons.api import default_expense_approver, roles_with_permission, session_employee
+from tbs_commons.api import department_head, roles_with_permission, session_employee
 from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
 	DOCTYPE as PROCUREMENT_REQUEST,
 )
@@ -110,7 +110,7 @@ def get_procurement_request_defaults() -> dict:
 	frappe.has_permission(PROCUREMENT_REQUEST, "create", throw=True)
 
 	company = _default_company()
-	employee = session_employee(["name", "department", "expense_approver"])
+	employee = session_employee(["name", "department"])
 
 	return {
 		"company": company,
@@ -118,7 +118,10 @@ def get_procurement_request_defaults() -> dict:
 			frappe.db.get_value("Company", company, "default_currency") if company else None
 		),
 		"department": employee.department if employee else None,
-		"approver": default_expense_approver(employee),
+		# The department's head, and only the department's head. A request spends
+		# the department's budget, so the requester's own expense approver -- who
+		# signs off their personal claims -- is not an answer here.
+		"approver": department_head(employee.department if employee else None),
 		"uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
 	}
 

@@ -29,9 +29,10 @@ import { navLoaded, navRecords } from './selfService'
  * What the apps are sections of.
  *
  * The desk sidebar names a workspace over the app it belongs to -- "Budget"
- * over "ERPNext" -- and the header here does the same with `title` over this.
+ * over "ERPNext" -- and the header here does the same with `title` over this:
+ * TBS Commons, read by a member of staff about themselves.
  */
-export const SUITE_TITLE = 'TBS Commons'
+export const SUITE_TITLE = 'Staff Member'
 
 export type AppKey = 'requests'
 
@@ -51,7 +52,7 @@ export interface AppDefinition {
 export const apps: Record<AppKey, AppDefinition> = {
   requests: {
     key: 'requests',
-    title: 'Requests',
+    title: 'TBS Commons',
     logo: '/assets/tbs_commons/images/tbs_commons-procurement-logo.svg',
     // Not a section route: either section may be the one this user can open,
     // so the tile lands on a redirect that picks. See RequestsHome.vue.

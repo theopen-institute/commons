@@ -27,6 +27,7 @@ declare module 'vue' {
     ProposeFieldDialog: typeof import('./src/components/ProposeFieldDialog.vue')['default']
     ProposeRecordDialog: typeof import('./src/components/ProposeRecordDialog.vue')['default']
     RecordFieldControl: typeof import('./src/components/RecordFieldControl.vue')['default']
+    RequestTabs: typeof import('./src/components/RequestTabs.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }

@@ -40,11 +40,11 @@
 			</button>
 		</Dropdown>
 
-		<!-- One app's navigation. It holds jobs that are read separately -- the
-         profile, leave and procurement -- so each gets a label, which is the
-         desk's own pattern for a sidebar that carries more than one group. A
-         section whose permission this user does not have is absent rather than
-         empty. -->
+		<!-- One app's navigation. It holds two jobs that are read separately --
+         what is held about me, and what I have asked for -- so each gets a
+         label, which is the desk's own pattern for a sidebar that carries more
+         than one group. A section whose permission this user does not have is
+         absent rather than empty. -->
 		<div class="flex-1 overflow-y-auto">
 			<!-- `gap-2` on top of the 8px each SidebarSection already carries: the
            sections are separate jobs, and the label alone does not read as
@@ -53,7 +53,7 @@
            collapses them back together. -->
 			<div class="flex flex-col gap-2">
 				<!-- A bare row, not a section: one page with nothing under it, and
-             ungated, so it sits above the three jobs rather than beside them. -->
+             ungated, so it sits above the groups rather than beside them. -->
 				<SidebarItem
 					label="Announcements"
 					icon="lucide-megaphone"
@@ -99,61 +99,24 @@
 					</SidebarItem>
 				</SidebarSection>
 
-				<SidebarSection v-if="leaveCan.read" label="Leave" collapsible>
+				<!-- One row per thing a person raises, and one page behind each: what
+				     I raised and what I have to decide are tabs on it rather than two
+				     rows here, so the row is the subject and the tabs are the view of
+				     it. The badge stays in both places -- an approver should see the
+				     number without opening anything, and again on the tab that acts on
+				     it. See `data/requestSections.ts`, which both read. -->
+				<SidebarSection v-if="visibleRequestSections.length" label="Requests" collapsible>
 					<SidebarItem
-						label="My leave"
-						icon="lucide-palmtree"
-						:to="{ name: 'MyLeave' }"
-					/>
-					<SidebarItem
-						v-if="leaveCan.approve"
-						label="Approvals"
-						icon="lucide-check-check"
-						:to="{ name: 'LeaveApprovals' }"
+						v-for="section in visibleRequestSections"
+						:key="section.key"
+						:label="section.label"
+						:icon="section.icon"
+						:to="{ name: section.mineRoute }"
+						:active="isCurrentSection(section)"
 					>
-						<template v-if="leaveCan.pending_approvals" #suffix>
+						<template v-if="section.canApprove.value && section.pending.value" #suffix>
 							<Badge theme="amber" variant="subtle">
-								{{ leaveCan.pending_approvals }}
-							</Badge>
-						</template>
-					</SidebarItem>
-				</SidebarSection>
-
-				<SidebarSection v-if="expenseCan.read" label="Expenses" collapsible>
-					<SidebarItem
-						label="My expenses"
-						icon="lucide-receipt"
-						:to="{ name: 'MyExpenses' }"
-					/>
-					<SidebarItem
-						v-if="expenseCan.approve"
-						label="Approvals"
-						icon="lucide-check-check"
-						:to="{ name: 'ExpenseApprovals' }"
-					>
-						<template v-if="expenseCan.pending_approvals" #suffix>
-							<Badge theme="amber" variant="subtle">
-								{{ expenseCan.pending_approvals }}
-							</Badge>
-						</template>
-					</SidebarItem>
-				</SidebarSection>
-
-				<SidebarSection v-if="procurementCan.read" label="Procurement" collapsible>
-					<SidebarItem
-						label="My requests"
-						icon="lucide-shopping-cart"
-						:to="{ name: 'MyProcurement' }"
-					/>
-					<SidebarItem
-						v-if="procurementCan.workflow_access"
-						label="Approvals"
-						icon="lucide-check-check"
-						:to="{ name: 'ProcurementApprovals' }"
-					>
-						<template v-if="procurementCan.pending_workflow_actions" #suffix>
-							<Badge theme="amber" variant="subtle">
-								{{ procurementCan.pending_workflow_actions }}
+								{{ section.pending.value }}{{ section.atCeiling.value ? '+' : '' }}
 							</Badge>
 						</template>
 					</SidebarItem>
@@ -213,10 +176,8 @@ import {
 } from 'frappe-ui'
 import { logout, user } from '@/data/session'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
-import { expenseCan } from '@/data/expense'
-import { leaveCan } from '@/data/leave'
-import { procurementCan } from '@/data/procurement'
 import { navRecords } from '@/data/selfService'
+import { requestSections, type RequestSection } from '@/data/requestSections'
 import { reviewCan } from '@/data/changeReview'
 import { apps, availableApps, SUITE_TITLE, type AppDefinition, type AppKey } from '@/data/apps'
 
@@ -264,6 +225,19 @@ const shellWidth = computed(() =>
 
 const route = useRoute()
 const router = useRouter()
+
+// Only the sections this user has. An empty list takes the whole group with it
+// rather than leaving a labelled gap.
+const visibleRequestSections = computed(() =>
+	requestSections.filter((section) => section.visible.value),
+)
+
+// Explicitly, because a section is two routes: the row stays lit while the
+// approvals tab is the one open. SidebarItem's own inference compares the
+// resolved route to `to`, which is the other tab.
+function isCurrentSection(section: RequestSection) {
+	return route.name === section.mineRoute || route.name === section.approvalsRoute
+}
 const { colorScheme, setColorScheme } = useColorScheme()
 
 // The route says which app we are in. Every route that renders declares one;

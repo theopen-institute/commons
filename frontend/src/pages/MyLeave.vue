@@ -1,6 +1,9 @@
 <template>
   <AppPageHeader>
-    <span class="text-lg font-semibold text-ink-gray-8">My leave</span>
+    <div class="flex min-w-0 items-center gap-3">
+      <span class="text-lg font-semibold text-ink-gray-8">Leave Request</span>
+      <RequestTabs section="leave" />
+    </div>
     <template #actions>
       <Button
         v-if="employee && leaveCan.request"
@@ -220,6 +223,7 @@ import { formatDate, formatDateRange } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import LeaveRequestDialog from '@/components/LeaveRequestDialog.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
+import RequestTabs from '@/components/RequestTabs.vue'
 
 const showRequest = ref(false)
 

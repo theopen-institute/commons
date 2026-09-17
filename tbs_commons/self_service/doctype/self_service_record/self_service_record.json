@@ -144,7 +144,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "A lucide icon class for the sidebar row, such as lucide-id-card. Blank falls back to a generic mark.",
+   "description": "A lucide icon class for the sidebar row, such as lucide-id-card. One of the set in tbs_commons/self_service/icons.py -- anything else has no CSS and would draw blank, so it is refused. Blank falls back to a generic mark.",
    "fieldname": "icon",
    "fieldtype": "Data",
    "label": "Icon"

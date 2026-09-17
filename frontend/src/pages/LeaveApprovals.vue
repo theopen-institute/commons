@@ -1,10 +1,8 @@
 <template>
   <AppPageHeader>
-    <div class="flex items-center gap-2">
-      <span class="text-lg font-semibold text-ink-gray-8">Approvals</span>
-      <Badge v-if="pendingCount" theme="amber" variant="subtle">
-        {{ pendingCount }}{{ pendingAtCeiling ? '+' : '' }} waiting
-      </Badge>
+    <div class="flex min-w-0 items-center gap-3">
+      <span class="text-lg font-semibold text-ink-gray-8">Leave Request</span>
+      <RequestTabs section="leave" />
     </div>
     <template #actions>
       <!-- Nothing to filter or refresh when the list itself is withheld. -->
@@ -186,6 +184,7 @@ import {
 import { formatDate, formatDateRange } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import PermissionNotice from '@/components/PermissionNotice.vue'
+import RequestTabs from '@/components/RequestTabs.vue'
 
 const tab = ref<'pending' | 'decided'>('pending')
 
@@ -208,18 +207,6 @@ const deciding = ref('')
 function buttonsFor(request: LeaveApplicationRow) {
   return decisionButtons(request.actions, leaveCan.value.decisions)
 }
-
-const pendingCount = computed(() =>
-  tab.value === 'pending'
-    ? (requests.data?.length ?? 0)
-    : leaveCan.value.pending_approvals,
-)
-
-// Both numbers stop at the same ceiling, so a queue that is full says so
-// rather than quietly claiming that is all there is.
-const pendingAtCeiling = computed(
-  () => pendingCount.value >= leaveCan.value.page_length,
-)
 
 async function decide(request: LeaveApplicationRow, button: DecisionButton) {
   // Whether an outcome needs confirming arrives with it. The application is
