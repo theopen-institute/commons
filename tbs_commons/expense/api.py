@@ -74,7 +74,9 @@ AFFIRMATIVE_STYLE = "Success"
 # sends `{"employee": ..., "doctype": "Expense Claim"}` with it. Named here
 # rather than there, so a site that wants a different set of candidates changes
 # the query in one place.
-APPROVER_QUERY = "hrms.hr.doctype.department_approver.department_approver.get_approvers"
+# HRMS's own approver query, wrapped so the picker reads a name rather than a
+# comma-separated one -- see `tbs_commons.api.get_approvers`.
+APPROVER_QUERY = "tbs_commons.api.get_approvers"
 
 # How many rows the approvals queue returns. The badge counts to the same
 # ceiling, so it never promises more than the page will show.

@@ -1,5 +1,5 @@
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
-import { useCall } from 'frappe-ui'
+import { upload, useCall } from 'frappe-ui'
 import {
   decisionButton as buildDecisionButton,
   decisionButtons as buildDecisionButtons,
@@ -408,6 +408,56 @@ export function useRequestExpenseClaim() {
     method: 'POST',
     immediate: false,
   })
+}
+
+/** A file that did not make it onto the claim, and the server's reason. */
+export interface FailedAttachment {
+  file: string
+  message: string
+}
+
+/**
+ * Attach files to a claim that already exists.
+ *
+ * Frappe's own upload endpoint, not an endpoint of ours: it writes the `File`,
+ * links it to the document, and — the part worth going through it for — refuses
+ * unless the caller may write to that document. Whose claim this is, is already
+ * a question the site has an answer to; asking it again here would be a second
+ * answer to maintain.
+ *
+ * Private, because a receipt is a record of what somebody bought and where they
+ * were. A public file in Frappe is readable by its URL alone, by anyone holding
+ * it.
+ *
+ * Only after the claim is inserted, because an attachment needs something to
+ * hang on. That ordering is why a failure here is reported rather than thrown:
+ * the claim is raised by the time we get here, and telling the claimant it
+ * failed would be a lie that costs them a duplicate claim. Each file is
+ * attempted, and what failed comes back with its reason.
+ */
+export async function attachToExpenseClaim(
+  claim: string,
+  files: File[],
+): Promise<FailedAttachment[]> {
+  const failed: FailedAttachment[] = []
+  // One at a time: a phone camera's worth of receipts uploaded at once is a
+  // burst of large requests, and nothing here is waiting on the next one.
+  for (const file of files) {
+    try {
+      await upload(file, {
+        doctype: 'Expense Claim',
+        docname: claim,
+        private: true,
+        folder: 'Home/Attachments',
+      })
+    } catch (error) {
+      failed.push({
+        file: file.name,
+        message: error instanceof Error ? error.message : 'Upload failed',
+      })
+    }
+  }
+  return failed
 }
 
 /**

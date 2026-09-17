@@ -101,6 +101,59 @@
         placeholder="Optional context for the person settling this."
       />
 
+      <!-- Receipts. Held here and uploaded once the claim exists, because an
+           attachment needs a document to hang on and there is none until the
+           claim is raised. -->
+      <section>
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-ink-gray-5">Receipts</span>
+          <Button
+            variant="subtle"
+            icon-left="lucide-paperclip"
+            label="Attach files"
+            @click="pickFiles"
+          />
+        </div>
+
+        <!-- `hidden` rather than a styled input: the button above is the
+             control, and a file input cannot be restyled into one. -->
+        <input
+          ref="fileInput"
+          type="file"
+          multiple
+          class="hidden"
+          :accept="ACCEPTED_FILE_TYPES"
+          @change="onFilesPicked"
+        />
+
+        <ul v-if="attachments.length" class="mt-2 space-y-1">
+          <li
+            v-for="(file, index) in attachments"
+            :key="`${file.name}:${file.lastModified}:${index}`"
+            class="flex items-center gap-2 rounded-4 border border-outline-gray-1 px-3 py-2"
+          >
+            <span class="lucide-paperclip size-4 shrink-0 text-ink-gray-5" />
+            <span class="min-w-0 flex-1 truncate text-base text-ink-gray-8">
+              {{ file.name }}
+            </span>
+            <span class="shrink-0 text-p-sm text-ink-gray-5">
+              {{ formatFileSize(file.size) }}
+            </span>
+            <Button
+              variant="ghost"
+              icon="lucide-x"
+              :label="`Remove ${file.name}`"
+              @click="removeAttachment(index)"
+            />
+          </li>
+        </ul>
+
+        <p v-else class="mt-1.5 text-p-sm text-ink-gray-5">
+          Optional. Photos or PDFs of what you are claiming for, attached to the
+          claim where your approver and Accounts can read them.
+        </p>
+      </section>
+
       <LinkControl
         v-model="form.expense_approver"
         doctype="User"
@@ -131,11 +184,12 @@ import {
 } from 'frappe-ui'
 import LinkControl from './LinkControl.vue'
 import {
+  attachToExpenseClaim,
   expenseCan,
   useExpenseClaimDefaults,
   useRequestExpenseClaim,
 } from '@/data/expense'
-import { formatCurrency } from '@/data/format'
+import { formatCurrency, formatFileSize, pluralise } from '@/data/format'
 
 defineProps<{
   /** The employee this claim is for. Only the approver query reads it — the
@@ -180,6 +234,12 @@ const request = useRequestExpenseClaim()
 
 const today = new Date().toISOString().slice(0, 10)
 
+// Declared before `blankLine`, which reads it -- and `blankLine` runs during
+// setup, through the `blankForm()` the form is built from. A `const` below its
+// own first use is a dead zone rather than an undefined: the dialog threw
+// before it could render, taking the button that opens it with it.
+const expenseTypes = computed(() => defaults.data?.expense_types ?? [])
+
 let nextKey = 0
 
 function blankLine(): ExpenseLineForm {
@@ -208,7 +268,32 @@ const form = reactive<ClaimForm>(blankForm())
 
 const submitAttempted = ref(false)
 
-const expenseTypes = computed(() => defaults.data?.expense_types ?? [])
+// What the file picker offers by default. Frappe refuses anything outside its
+// own list for a user without desk access, and receipts are photos and PDFs
+// anyway -- this steers rather than enforces, and the server is the authority.
+const ACCEPTED_FILE_TYPES = 'image/*,application/pdf'
+
+// Chosen now, uploaded after the claim is inserted. `File` objects, not
+// uploads: nothing is written to the site until there is a claim to attach it
+// to, so a dialog that is closed again leaves nothing behind.
+const attachments = ref<File[]>([])
+const fileInput = ref<HTMLInputElement | null>(null)
+
+function pickFiles() {
+  fileInput.value?.click()
+}
+
+function onFilesPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  attachments.value = [...attachments.value, ...Array.from(input.files ?? [])]
+  // Cleared so the same file can be picked again after being removed --
+  // an input holding the value fires no `change` when it is reselected.
+  input.value = ''
+}
+
+function removeAttachment(index: number) {
+  attachments.value.splice(index, 1)
+}
 
 const typeOptions = computed(() => [
   { label: 'Select a type', value: '' },
@@ -268,6 +353,7 @@ watch([open, () => defaults.data], ([isOpen]) => {
     return
   }
   Object.assign(form, blankForm())
+  attachments.value = []
   submitAttempted.value = false
 })
 
@@ -291,7 +377,23 @@ async function send(close: () => void) {
     const created = await request.submit({ doc: JSON.stringify(claimDocument()) })
     // `submit` resolves null on failure; the reason renders inline.
     if (!created) return
-    toast.success('Expenses claimed')
+
+    // After the insert, because the files are attached to the claim it
+    // returns. A file that would not upload does not undo a claim that is
+    // already raised, so it is reported rather than thrown: the claimant is
+    // told which receipts to add, not told to claim again.
+    const failed = attachments.value.length
+      ? await attachToExpenseClaim(created.name, attachments.value)
+      : []
+    if (failed.length) {
+      toast.error(
+        `Expenses claimed, but ${pluralise(failed.length, 'receipt')} did not attach: ` +
+          `${failed.map((f) => f.file).join(', ')}. Add them to the claim in the desk.`,
+      )
+    } else {
+      toast.success('Expenses claimed')
+    }
+
     emit('created', created.name)
     close()
   } catch {

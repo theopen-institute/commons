@@ -117,6 +117,33 @@ def session_employee_access() -> str:
 	return "forbidden" if frappe.db.exists(EMPLOYEE, session_employee_filters()) else "missing"
 
 
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_approvers(
+	doctype: str, txt: str, searchfield: str, start: int, page_len: int, filters: dict
+) -> list[tuple[str, str]]:
+	"""HRMS's own approver query, with the approver's name in one column.
+
+	Who may approve is HRMS's answer and stays HRMS's answer -- the employee's
+	own approver, then every approver named up their department tree. This adds
+	nothing to that and takes nothing away.
+
+	What it changes is the shape. HRMS returns `(user, first_name, last_name)`,
+	and Frappe joins every column after the first with a comma to make a link
+	option's description (see `build_for_autosuggest`), so a picker offered
+	"Alice, Art-Head" -- a person's own name read as a list of two things. One
+	column, one name, no comma.
+	"""
+	from hrms.hr.doctype.department_approver.department_approver import (
+		get_approvers as hrms_approvers,
+	)
+
+	rows = hrms_approvers(doctype, txt, searchfield, start, page_len, filters)
+	# Sorted, because HRMS answers with a set: the picker would otherwise put
+	# the same candidates in a different order on every keystroke.
+	return sorted((row[0], " ".join(part for part in row[1:] if part)) for row in rows)
+
+
 def department_head(department: str | None) -> str | None:
 	"""The first approver a department lists -- its head, as far as spending goes.
 

@@ -95,6 +95,23 @@ export function pluralise(count: number, singular: string, plural?: string) {
 }
 
 /**
+ * "412 KB" — a file's size, at the precision a person reading a list of
+ * receipts cares about: whether this is the photo or the thumbnail.
+ *
+ * Powers of 1024 with the short units, which is what every file manager the
+ * reader has ever used shows them.
+ */
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const power = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const size = bytes / 1024 ** power
+  // Whole numbers above a kilobyte: a receipt is not more legible for being
+  // 412.3 KB rather than 412 KB.
+  return `${power === 0 || size >= 10 ? Math.round(size) : size.toFixed(1)} ${units[power]}`
+}
+
+/**
  * Prefix a bare host with `https`, so a link pasted from the address bar is
  * accepted as typed.
  *
