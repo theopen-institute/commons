@@ -79,8 +79,7 @@ const controlType = computed<ControlType>(() => CONTROLS[props.field.type] ?? 't
 
 // A free-form field looks like any other text box, so it has to say why it is
 // one -- otherwise it reads as a field somebody forgot to make searchable.
-const FREE_TEXT_HINT =
-	"Type it out. If it isn't on file yet, whoever reviews this will add it."
+const FREE_TEXT_HINT = ''
 
 const description = computed(() => {
 	const own = props.field.description ?? ''
