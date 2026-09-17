@@ -122,6 +122,54 @@ export interface ProfilePermissions {
   page_length: number
 }
 
+// Declared before the record call below, and that order is load-bearing: the
+// watch that kicks that call off is `immediate`, so it reads `profileCan` while
+// this module is still evaluating. Below this point that is a const in its
+// temporal dead zone, and the page dies on load rather than misbehaving later.
+// Deliberately uncached, for the reason `session.ts` gives: a persisted cache is
+// keyed by the browser rather than the user, so the next person to log in on
+// this machine would get a stale-first render of someone else's answer.
+const permissionsCall = useCall<ProfilePermissions, { doctype: string }>({
+  url: '/api/v2/method/tbs_commons.self_service.api.get_change_permissions',
+  params: { doctype: RECORD },
+})
+
+const NO_PROFILE_PERMISSIONS: ProfilePermissions = {
+  read: false,
+  has_record: false,
+  request: false,
+  review: false,
+  pending_reviews: 0,
+  proposable: [],
+  display: [],
+  owner_field: null,
+  record_filters: {},
+  registered: [],
+  decisions: [],
+  page_length: 0,
+}
+
+export const profileCan = computed(
+  () => permissionsCall.data ?? NO_PROFILE_PERMISSIONS
+)
+
+/**
+ * Whether the answer is in — settled or refused, not merely arrived. A call that
+ * fails never sets `data`, so gating a skeleton on that leaves it up for a reply
+ * that is never coming; `profilePermissionsError` is what to say instead.
+ */
+export const profilePermissionsLoaded = computed(
+  () => permissionsCall.isFinished
+)
+
+export const profilePermissionsError = computed(
+  () => permissionsCall.error ?? null
+)
+
+export function reloadProfilePermissions() {
+  return permissionsCall.reload()
+}
+
 /**
  * The session user's own record, read through the ordinary document API.
  *
@@ -179,50 +227,6 @@ export const myProfileError = computed(() => profileCall.error ?? null)
 
 export function reloadMyProfile() {
   return profileCall.reload()
-}
-
-// Deliberately uncached, for the reason `session.ts` gives: a persisted cache is
-// keyed by the browser rather than the user, so the next person to log in on
-// this machine would get a stale-first render of someone else's answer.
-const permissionsCall = useCall<ProfilePermissions, { doctype: string }>({
-  url: '/api/v2/method/tbs_commons.self_service.api.get_change_permissions',
-  params: { doctype: RECORD },
-})
-
-const NO_PROFILE_PERMISSIONS: ProfilePermissions = {
-  read: false,
-  has_record: false,
-  request: false,
-  review: false,
-  pending_reviews: 0,
-  proposable: [],
-  display: [],
-  owner_field: null,
-  record_filters: {},
-  registered: [],
-  decisions: [],
-  page_length: 0,
-}
-
-export const profileCan = computed(
-  () => permissionsCall.data ?? NO_PROFILE_PERMISSIONS
-)
-
-/**
- * Whether the answer is in — settled or refused, not merely arrived. A call that
- * fails never sets `data`, so gating a skeleton on that leaves it up for a reply
- * that is never coming; `profilePermissionsError` is what to say instead.
- */
-export const profilePermissionsLoaded = computed(
-  () => permissionsCall.isFinished
-)
-
-export const profilePermissionsError = computed(
-  () => permissionsCall.error ?? null
-)
-
-export function reloadProfilePermissions() {
-  return permissionsCall.reload()
 }
 
 /**
