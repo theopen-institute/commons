@@ -94,9 +94,12 @@ export interface ProfilePermissions {
    *  unable to tell a missing feature from a missing permission, and it would
    *  take the review queue with it for a reviewer who is not an employee. */
   read: boolean
-  /** Whether this user actually owns a record of this type. The page's
-   *  question: profile, or the "your login isn't linked" notice. */
+  /** Whether this user actually owns a record of this type, and may see it. */
   has_record: boolean
+  /** Why there is nothing to show, when there is nothing. `forbidden` means the
+   *  record is there and the site is withholding it -- which sends the reader to
+   *  whoever administers permissions, not to HR. */
+  record_access: 'visible' | 'forbidden' | 'missing'
   request: boolean
   review: boolean
   pending_reviews: number
@@ -137,6 +140,7 @@ const permissionsCall = useCall<ProfilePermissions, { doctype: string }>({
 const NO_PROFILE_PERMISSIONS: ProfilePermissions = {
   read: false,
   has_record: false,
+  record_access: 'missing',
   request: false,
   review: false,
   pending_reviews: 0,

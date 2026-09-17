@@ -253,6 +253,13 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 		"registered": registry.registered(),
 		"read": bool(frappe.has_permission(DOCTYPE, "read")),
 		"has_record": owns,
+		# Why there is no record to show, when there is not one. Three answers,
+		# because "you have no record" and "you may not see your record" send the
+		# reader to different people -- HR for the first, whoever administers
+		# permissions for the second -- and a page that cannot tell them apart has
+		# to guess, which is how it ends up telling an employee their record does
+		# not exist while they are looking at their own payslip.
+		"record_access": _record_access(doctype) if doctype else "missing",
 		"request": owns and bool(frappe.has_permission(DOCTYPE, "create")),
 		"review": can_review,
 		"pending_reviews": _pending_count() if can_review else 0,
@@ -268,6 +275,21 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 		"decisions": decision_vocabulary(workflow),
 		"page_length": PAGE_LENGTH,
 	}
+
+
+def _record_access(doctype: str) -> str:
+	"""Whether this user's record is `visible`, `forbidden`, or `missing`.
+
+	`visible` and `missing` are the ordinary answers. `forbidden` is the one worth
+	having: a row exists that the policy claims for this user, and the site is not
+	letting them read it -- a permissions question, not an HR one.
+
+	The existence test is a raw count of the caller's own row and discloses
+	nothing but its existence; see `registry.record_exists`.
+	"""
+	if registry.session_record(doctype):
+		return "visible"
+	return "forbidden" if registry.record_exists(doctype) else "missing"
 
 
 def _decorate(requests: list, workflow) -> list:

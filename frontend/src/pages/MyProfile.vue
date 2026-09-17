@@ -28,18 +28,35 @@
 			<Skeleton v-for="n in 5" :key="n" class="h-20 w-full rounded-4" />
 		</div>
 
-		<!-- A profile is an employee record, so it needs one pointing at this
-         login. Nothing on this page works without one, and the fix is HR's. -->
+		<!-- Nothing to show, and which nothing it is decides who to ask. The
+		     server tells the page apart from guessing: a record that exists and is
+		     being withheld is a permissions question, and telling that person their
+		     record does not exist sends them to HR to fix something HR has already
+		     done. -->
 		<div v-else-if="!profile" class="mx-auto mt-16 max-w-md text-center">
-			<span class="lucide-user-x size-8 text-ink-gray-4" />
-			<p class="mt-2 text-base-medium text-ink-gray-7">
-				Your login isn't linked to an employee record
-			</p>
-			<p class="mt-1 text-p-sm text-ink-gray-5">
-				There's no profile to show until there is one. Ask HR to set the
-				<span class="text-ink-gray-7">User account</span> field on yours to
-				{{ user.name }}.
-			</p>
+			<span
+				class="size-8 text-ink-gray-4"
+				:class="profileCan.record_access === 'forbidden' ? 'lucide-lock' : 'lucide-user-x'"
+			/>
+			<template v-if="profileCan.record_access === 'forbidden'">
+				<p class="mt-2 text-base-medium text-ink-gray-7">
+					You don't have access to your own record
+				</p>
+				<p class="mt-1 text-p-sm text-ink-gray-5">
+					It exists, but your account isn't permitted to open it. Ask a System Manager —
+					this is a permissions setting, not something HR can fix.
+				</p>
+			</template>
+			<template v-else>
+				<p class="mt-2 text-base-medium text-ink-gray-7">
+					No active employee record is linked to your login
+				</p>
+				<p class="mt-1 text-p-sm text-ink-gray-5">
+					There's no profile to show until there is one. Ask HR to set the
+					<span class="text-ink-gray-7">User account</span> field on yours to
+					{{ user.name }}.
+				</p>
+			</template>
 		</div>
 
 		<div v-else class="mx-auto max-w-3xl">

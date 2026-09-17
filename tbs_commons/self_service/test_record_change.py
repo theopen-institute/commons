@@ -308,6 +308,18 @@ class TestRecordChangeRequest(unittest.TestCase):
 		for fieldname in ("ctc", "salary_mode", "bank_ac_no"):
 			self.assertNotIn(fieldname, display)
 
+	def test_a_visible_record_says_so(self):
+		frappe.set_user(self.user)
+		self.assertEqual(api.get_change_permissions(RECORD)["record_access"], "visible")
+
+	def test_a_leaver_reads_as_missing_rather_than_forbidden(self):
+		"""Nothing is withholding it -- it has stopped being theirs, which is why
+		the policy's filters apply to the existence test too."""
+		frappe.set_user("Administrator")
+		frappe.db.set_value(RECORD, self.employee, "status", "Left")
+		frappe.set_user(self.user)
+		self.assertEqual(api.get_change_permissions(RECORD)["record_access"], "missing")
+
 	def test_a_login_with_no_employee_record_is_not_offered_the_section(self):
 		"""And that is ERPNext's answer, not this app's.
 
@@ -324,6 +336,7 @@ class TestRecordChangeRequest(unittest.TestCase):
 		self.assertFalse(permissions["read"])
 		self.assertFalse(permissions["has_record"])
 		self.assertFalse(permissions["request"])
+		self.assertEqual(permissions["record_access"], "missing")
 		self.assertEqual(api.get_my_changes(), [])
 
 	def test_a_leaver_keeps_the_section_and_is_told_why_it_is_empty(self):

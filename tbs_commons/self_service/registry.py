@@ -223,6 +223,33 @@ def session_record(doctype: str, fieldnames: list[str] | None = None):
 	return rows[0] if rows else None
 
 
+def record_exists(doctype: str) -> bool:
+	"""Whether a record of `doctype` this user owns exists at all.
+
+	A raw read, and the second one in this module -- see `owner_of` for the first
+	and the reasoning both share. It returns a boolean and never record data, so
+	the only thing it can disclose is that somebody has created a row against the
+	caller's own login. That is a bounded disclosure and a useful one: it is the
+	difference between "nobody has set your record up" and "your record is there
+	and you are not allowed to see it", and those two have different people to
+	ask about them.
+
+	The policy's filters apply, so a record the policy no longer claims -- an
+	employee marked Left -- reads as absent rather than as forbidden. That is the
+	honest answer: nothing is withholding it from them, it has stopped being
+	theirs.
+	"""
+	current = policy(doctype)
+	if current.get("owner_doctype"):
+		parent = session_record(current["owner_doctype"], ["name"])
+		if not parent:
+			return False
+		match = {current["owner_field"]: parent.name}
+	else:
+		match = {current["owner_field"]: frappe.session.user}
+	return bool(frappe.db.exists(doctype, {**match, **(current.get("filters") or {})}))
+
+
 def clear_cache() -> None:
 	"""Drop the resolved registry. Called when an app is installed or removed."""
 	frappe.cache.delete_value("tbs_commons_self_service_policies", shared=True)

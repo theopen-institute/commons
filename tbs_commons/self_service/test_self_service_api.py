@@ -266,6 +266,37 @@ class TestDecisionVocabulary(TestCase):
 			self.assertEqual([row["value"] for row in api.decision_vocabulary(active)], ["Approve"])
 
 
+class TestRecordAccess(TestCase):
+	"""Why there is nothing to show, which decides who the reader is sent to.
+
+	Unit-tested rather than driven through a real gate: `Custom DocPerm` rows
+	cannot live inside a rollback-only suite (see
+	`safer_permissions.test_permission_gate_integration`), and what matters here
+	is the decision, not the mechanism that produces it.
+	"""
+
+	def test_a_readable_record_is_visible(self):
+		with patch.object(api.registry, "session_record", return_value={"name": "HR-EMP-1"}):
+			self.assertEqual(api._record_access("Employee"), "visible")
+
+	def test_a_withheld_record_is_forbidden_not_missing(self):
+		"""The one worth having. Telling someone their record does not exist, when
+		it does and the site is withholding it, sends them to HR to fix something
+		HR has already done."""
+		with (
+			patch.object(api.registry, "session_record", return_value=None),
+			patch.object(api.registry, "record_exists", return_value=True),
+		):
+			self.assertEqual(api._record_access("Employee"), "forbidden")
+
+	def test_no_row_at_all_is_missing(self):
+		with (
+			patch.object(api.registry, "session_record", return_value=None),
+			patch.object(api.registry, "record_exists", return_value=False),
+		):
+			self.assertEqual(api._record_access("Employee"), "missing")
+
+
 class TestStatusDisplay(TestCase):
 	"""How a row reads -- which `status` alone does not answer."""
 

@@ -95,6 +95,13 @@ const currentLabel = computed(() => {
 // The form edits a draft seeded from the record, never the record: this dialog
 // must not be able to write to the employee at all, and a draft makes that
 // structural rather than a rule someone has to remember.
+// Declared before the watch below, and that order is load-bearing: the watch is
+// `immediate`, so it runs while setup is still executing and writes to both of
+// these. Below that point they are consts in their temporal dead zone, and the
+// component throws on open rather than misbehaving later.
+const reason = ref('')
+const submitAttempted = ref(false)
+
 const draft = ref<unknown>('')
 
 // Seeded on open rather than on mount -- the dialog outlives any one field, so
@@ -109,9 +116,6 @@ watch(
 	},
 	{ immediate: true }
 )
-
-const reason = ref('')
-const submitAttempted = ref(false)
 
 // Frappe stores an empty field as '' or null and the form only ever produces
 // '', so treat the two as equal rather than as a change.
