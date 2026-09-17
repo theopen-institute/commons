@@ -276,7 +276,7 @@ class TestRecordAccess(TestCase):
 	"""
 
 	def test_a_readable_record_is_visible(self):
-		with patch.object(api.registry, "session_record", return_value={"name": "HR-EMP-1"}):
+		with patch.object(api.registry, "session_records", return_value=[{"name": "HR-EMP-1"}]):
 			self.assertEqual(api._record_access("Employee"), "visible")
 
 	def test_a_withheld_record_is_forbidden_not_missing(self):
@@ -284,14 +284,14 @@ class TestRecordAccess(TestCase):
 		it does and the site is withholding it, sends them to HR to fix something
 		HR has already done."""
 		with (
-			patch.object(api.registry, "session_record", return_value=None),
+			patch.object(api.registry, "session_records", return_value=[]),
 			patch.object(api.registry, "record_exists", return_value=True),
 		):
 			self.assertEqual(api._record_access("Employee"), "forbidden")
 
 	def test_no_row_at_all_is_missing(self):
 		with (
-			patch.object(api.registry, "session_record", return_value=None),
+			patch.object(api.registry, "session_records", return_value=[]),
 			patch.object(api.registry, "record_exists", return_value=False),
 		):
 			self.assertEqual(api._record_access("Employee"), "missing")

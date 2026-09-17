@@ -83,7 +83,7 @@
 					     than an absent row does, and a reviewer who is not themselves
 					     an employee still needs the queue below. -->
 				<SidebarSection
-					v-if="profileCan.read || profileCan.review"
+					v-if="profileCan.read || profileCan.review || bankCan.read"
 					label="Profile"
 					collapsible
 				>
@@ -92,6 +92,15 @@
 						label="Employee"
 						icon="lucide-id-card"
 						:to="{ name: 'MyProfile' }"
+					/>
+					<!-- Gated on `read`, the permission, not on owning an account: the
+					     page explains an empty or withheld list far better than an absent
+					     row does. -->
+					<SidebarItem
+						v-if="bankCan.read"
+						label="Bank accounts"
+						icon="lucide-landmark"
+						:to="{ name: 'MyBankAccounts' }"
 					/>
 					<SidebarItem
 						v-if="profileCan.review"
@@ -203,6 +212,7 @@ import { can, logout, user } from '@/data/session'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
 import { leaveCan } from '@/data/leave'
 import { procurementCan } from '@/data/procurement'
+import { bankCan } from '@/data/bankAccounts'
 import { profileCan } from '@/data/profile'
 import { apps, availableApps, SUITE_TITLE, type AppDefinition, type AppKey } from '@/data/apps'
 

@@ -65,6 +65,17 @@ const routes: RouteRecordRaw[] = [
     meta: { app: 'requests' },
   },
   {
+    // The accounts payroll holds against this employee. Its own page rather
+    // than a section of the profile: they hang off the employee record instead
+    // of living on it, there may be several, and they are read-only for a
+    // reason the profile's fields are not -- see `BANK_ACCOUNT` in
+    // `tbs_commons.self_service.policies`.
+    path: '/profile/bank-accounts',
+    name: 'MyBankAccounts',
+    component: () => import('@/pages/MyBankAccounts.vue'),
+    meta: { app: 'requests' },
+  },
+  {
     path: '/profile/approvals',
     name: 'ProfileChangeApprovals',
     component: () => import('@/pages/ProfileChangeApprovals.vue'),

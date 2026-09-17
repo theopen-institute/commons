@@ -24,6 +24,7 @@ import frappe
 from tbs_commons.self_service import api, registry
 
 RECORD = "Employee"
+RECORD_BANK = "Bank Account"
 
 
 class TestRecordChangeRequest(unittest.TestCase):
@@ -367,13 +368,188 @@ class TestRecordChangeRequest(unittest.TestCase):
 		self.assertIn(name, [row["name"] for row in api.get_change_queue()])
 
 
+class TestBankAccountPolicy(unittest.TestCase):
+	"""The registry's second shape: many records per owner, owned through a chain.
+
+	`Employee` is one record named by a login. A bank account is one of several,
+	and it names no login at all -- it names its employee, and whoever owns that
+	employee owns it. Those are the two cases the registry was built to tell
+	apart, and only one of them had ever been exercised.
+	"""
+
+	def setUp(self):
+		frappe.db.savepoint("bank_test")
+		self.addCleanup(lambda: frappe.db.rollback(save_point="bank_test"))
+		self.addCleanup(frappe.set_user, "Administrator")
+		frappe.set_user("Administrator")
+
+		self.user = frappe.get_doc(
+			dict(
+				doctype="User",
+				email=f"bank-{frappe.generate_hash(length=8)}@example.com",
+				first_name="Bank",
+				last_name="Tester",
+				send_welcome_email=0,
+			)
+		).insert(ignore_permissions=True)
+		company = frappe.db.get_value("Company", "_Test Company", "name") or frappe.db.get_value(
+			"Company", {}, "name"
+		)
+		self.company = company
+		self.employee = (
+			frappe.get_doc(
+				dict(
+					doctype="Employee",
+					first_name="Bank",
+					last_name="Tester",
+					gender=frappe.db.get_value("Gender", {}, "name"),
+					date_of_birth="1990-01-01",
+					date_of_joining="2020-01-01",
+					status="Active",
+					company=company,
+					user_id=self.user.name,
+				)
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+		# Reading bank accounts is an accounts right, not an employee one -- see
+		# the note in `policies`. Granted here so the *policy* is what is under
+		# test rather than the site's permission configuration.
+		self.user.reload()
+		self.user.add_roles("Accounts User")
+
+	def new_account(self, name: str, **extra) -> str:
+		bank = (
+			frappe.db.get_value("Bank", {}, "name")
+			or frappe.get_doc(dict(doctype="Bank", bank_name=f"Bank {frappe.generate_hash(length=6)}"))
+			.insert(ignore_permissions=True)
+			.name
+		)
+		return (
+			frappe.get_doc(
+				dict(
+					doctype="Bank Account",
+					account_name=name,
+					bank=bank,
+					party_type="Employee",
+					party=self.employee,
+					**extra,
+				)
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+
+	def test_ownership_chains_from_the_account_to_the_login(self):
+		"""The account names its employee; the employee names the login."""
+		account = self.new_account("Salary")
+		self.assertEqual(registry.owner_of(RECORD_BANK, account), self.user.name)
+		frappe.set_user(self.user.name)
+		self.assertTrue(registry.session_owns(RECORD_BANK, account))
+
+	def test_every_account_is_listed_not_just_one(self):
+		"""The whole reason this policy is not `singular`."""
+		self.new_account("Salary", is_default=1)
+		self.new_account("Expenses")
+		frappe.set_user(self.user.name)
+		rows = registry.session_records(RECORD_BANK, ["name", "account_name"])
+		self.assertEqual(sorted(r.account_name for r in rows), ["Expenses", "Salary"])
+
+	def test_there_is_no_single_bank_account_for_a_user(self):
+		"""Asking for one is a caller with a bug, and gets told so rather than
+		handed whichever row the database offered first."""
+		self.new_account("Salary")
+		frappe.set_user(self.user.name)
+		with self.assertRaises(frappe.ValidationError):
+			registry.session_record(RECORD_BANK)
+
+	def test_somebody_elses_accounts_are_not_mine(self):
+		self.new_account("Salary")
+		frappe.set_user("Administrator")
+		other_user = frappe.get_doc(
+			dict(
+				doctype="User",
+				email=f"other-{frappe.generate_hash(length=8)}@example.com",
+				first_name="Other",
+				send_welcome_email=0,
+			)
+		).insert(ignore_permissions=True)
+		frappe.get_doc(
+			dict(
+				doctype="Employee",
+				first_name="Other",
+				gender=frappe.db.get_value("Gender", {}, "name"),
+				date_of_birth="1990-01-01",
+				date_of_joining="2020-01-01",
+				status="Active",
+				company=self.company,
+				user_id=other_user.name,
+			)
+		).insert(ignore_permissions=True)
+		other_user.reload()
+		other_user.add_roles("Accounts User")
+		frappe.set_user(other_user.name)
+		self.assertEqual(registry.session_records(RECORD_BANK), [])
+
+	def test_a_non_employee_party_is_not_claimed_by_this_policy(self):
+		"""`party` is a Dynamic Link, so `party_type` has to be pinned or the
+		policy would claim any party whose id happened to match an employee's."""
+		self.assertEqual(registry.policy(RECORD_BANK)["filters"]["party_type"], "Employee")
+
+	def test_the_policy_offers_no_proposals_and_no_credentials(self):
+		"""Read-only by policy, and two fields kept out of `display` entirely."""
+		policy = registry.policy(RECORD_BANK)
+		self.assertEqual(tuple(policy["proposable"]), ())
+		for fieldname in ("statement_password", "integration_id"):
+			self.assertNotIn(fieldname, policy["display"])
+
+	def test_permissions_report_the_list_shape(self):
+		self.new_account("Salary")
+		frappe.set_user(self.user.name)
+		permissions = api.get_change_permissions(RECORD_BANK)
+		self.assertFalse(permissions["singular"])
+		self.assertTrue(permissions["can_read_records"])
+		self.assertTrue(permissions["has_record"])
+		self.assertEqual(permissions["record_access"], "visible")
+		self.assertEqual(permissions["owner_field"], "party")
+		self.assertEqual(permissions["owner_value"], self.employee)
+		self.assertEqual(permissions["record_filters"], {"party_type": "Employee"})
+		self.assertFalse(permissions["request"])
+
+	def test_an_account_you_may_not_read_is_forbidden_not_empty(self):
+		"""Existence is the discriminator: a row is there and the site is
+		withholding it, which is a permissions question rather than an empty
+		page."""
+		self.new_account("Salary")
+		frappe.set_user("Administrator")
+		self.user.reload()
+		self.user.remove_roles("Accounts User")
+		frappe.clear_cache(user=self.user.name)
+		frappe.set_user(self.user.name)
+		permissions = api.get_change_permissions(RECORD_BANK)
+		self.assertFalse(permissions["can_read_records"])
+		self.assertEqual(permissions["record_access"], "forbidden")
+		self.assertEqual(registry.session_records(RECORD_BANK), [])
+
+	def test_no_accounts_at_all_reads_as_missing(self):
+		"""Nothing is being withheld -- there is nothing. Said this way round so
+		the page sends the reader to payroll rather than to a System Manager."""
+		frappe.set_user(self.user.name)
+		permissions = api.get_change_permissions(RECORD_BANK)
+		self.assertEqual(permissions["record_access"], "missing")
+		self.assertFalse(permissions["has_record"])
+
+
 def run():
 	original_user = frappe.session.user
 	frappe.set_user("Administrator")
 	try:
-		result = unittest.TextTestRunner(verbosity=2).run(
-			unittest.defaultTestLoader.loadTestsFromTestCase(TestRecordChangeRequest)
+		suite = unittest.TestSuite(
+			unittest.defaultTestLoader.loadTestsFromTestCase(case)
+			for case in (TestRecordChangeRequest, TestBankAccountPolicy)
 		)
+		result = unittest.TextTestRunner(verbosity=2).run(suite)
 		if not result.wasSuccessful():
 			raise RuntimeError("Record change integration tests failed")
 		return dict(tests=result.testsRun, success=True)

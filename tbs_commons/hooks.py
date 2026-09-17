@@ -201,7 +201,10 @@ before_migrate = "tbs_commons.install.sync_module_defs"
 # this hook; a later entry for the same doctype replaces an earlier one, so a
 # site can narrow or widen this app's Employee policy by installing an app rather
 # than editing it.
-self_service_records = ["tbs_commons.self_service.policies.EMPLOYEE"]
+self_service_records = [
+	"tbs_commons.self_service.policies.EMPLOYEE",
+	"tbs_commons.self_service.policies.BANK_ACCOUNT",
+]
 
 # Permissions
 # -----------

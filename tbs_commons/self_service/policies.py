@@ -132,3 +132,51 @@ EMPLOYEE = {
 	"proposable": EMPLOYEE_PROPOSABLE,
 	"display": EMPLOYEE_DISPLAY,
 }
+
+
+# What an employee may see of a bank account registered against them.
+#
+# Read-only: `proposable` is empty, deliberately. Payroll destination details are
+# the classic payment-diversion target -- a request to change them is exactly
+# what an attacker with a session would raise -- so routing them through a form
+# an employee can submit is a decision to be taken on purpose, with its own
+# verification, rather than inherited from the profile page because the
+# machinery happened to be there. Until then this section shows what payroll
+# holds and says who to talk to.
+#
+# `statement_password` and `integration_id` are absent from `display` and would
+# be even if this were writable: the first is a Password field and the second is
+# a credential for whatever feed imports the statements. Neither is a fact about
+# the employee.
+BANK_ACCOUNT_DISPLAY = (
+	"account_name",
+	"bank",
+	"account_type",
+	"account_subtype",
+	"bank_account_no",
+	"iban",
+	"branch_code",
+	"is_default",
+	"disabled",
+	"is_company_account",
+	"party_type",
+	"party",
+	"modified",
+)
+
+BANK_ACCOUNT = {
+	"doctype": "Bank Account",
+	# `party` is a Dynamic Link, so the doctype it points at is a field on the
+	# row rather than a property of the schema -- which is why `filters` pins
+	# `party_type` as well. Without it this policy would claim every bank account
+	# whose party id happened to match an employee id.
+	"owner_field": "party",
+	"owner_doctype": "Employee",
+	"filters": {"party_type": "Employee"},
+	"title_field": "account_name",
+	# The reason this policy exists as a second shape: one employee, several
+	# accounts. There is no "my bank account" to resolve, so the page lists them.
+	"singular": False,
+	"proposable": (),
+	"display": BANK_ACCOUNT_DISPLAY,
+}

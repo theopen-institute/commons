@@ -246,12 +246,20 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 	"""
 	workflow = change_workflow()
 	can_review = _may_review()
-	owns = bool(doctype) and bool(registry.session_record(doctype))
+	# `session_records`, not `session_record`: a policy may be one-per-owner
+	# (an employee record) or many (their bank accounts), and this endpoint
+	# answers for both. "Do they have any" is the question either way.
+	owns = bool(doctype) and bool(registry.session_records(doctype, limit=1))
 
 	return {
 		"doctype": doctype,
 		"registered": registry.registered(),
 		"read": bool(frappe.has_permission(DOCTYPE, "read")),
+		# Read permission on the *record* doctype, which `read` above is not --
+		# that one is about change requests. A page that fetches the records
+		# through the document API has to know, or it fires a call the framework
+		# answers with a bare 403 where an explanation belongs.
+		"can_read_records": bool(frappe.has_permission(doctype, "read")) if doctype else False,
 		"has_record": owns,
 		# Why there is no record to show, when there is not one. Three answers,
 		# because "you have no record" and "you may not see your record" send the
@@ -260,7 +268,14 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 		# to guess, which is how it ends up telling an employee their record does
 		# not exist while they are looking at their own payslip.
 		"record_access": _record_access(doctype) if doctype else "missing",
-		"request": owns and bool(frappe.has_permission(DOCTYPE, "create")),
+		# `proposable` as well as `create`: a record type this section only reads
+		# has no fields to propose, and a page told it may request against one
+		# would draw a control that can produce nothing the server would accept.
+		"request": (
+			owns
+			and bool(registry.proposable_fields(doctype) if doctype else [])
+			and bool(frappe.has_permission(DOCTYPE, "create"))
+		),
 		"review": can_review,
 		"pending_reviews": _pending_count() if can_review else 0,
 		"proposable": registry.proposable_fields(doctype) if doctype else [],
@@ -271,7 +286,15 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 		# in the page, so `owner_field` is named once -- here -- and a policy that
 		# resolves ownership differently needs no matching edit there.
 		"owner_field": registry.policy(doctype)["owner_field"] if doctype else None,
+		# What that field should equal: the login for a policy that names its
+		# owner directly, the owning record's name for one that chains. Resolved
+		# here so a page filtering through the document API asks the same
+		# question the server would, without knowing which shape it is.
+		"owner_value": registry.owner_value(doctype) if doctype else None,
 		"record_filters": (registry.policy(doctype).get("filters") or {}) if doctype else {},
+		# Whether one record is expected or several. The page renders a profile
+		# for the first and a list for the second.
+		"singular": bool(registry.policy(doctype).get("singular")) if doctype else False,
 		"decisions": decision_vocabulary(workflow),
 		"page_length": PAGE_LENGTH,
 	}
@@ -287,8 +310,14 @@ def _record_access(doctype: str) -> str:
 	The existence test is a raw count of the caller's own row and discloses
 	nothing but its existence; see `registry.record_exists`.
 	"""
-	if registry.session_record(doctype):
+	if registry.session_records(doctype, limit=1):
 		return "visible"
+	# Existence is the discriminator, not permission -- which is why the raw
+	# check exists. Lacking read and having no rows are indistinguishable from
+	# where the reader sits, and "there are none" is the more useful of the two:
+	# for `Employee` the missing role *is* the missing record, so telling a
+	# non-employee they lack access would send them to the wrong person. The
+	# moment a row does appear, this flips to `forbidden` and names the right one.
 	return "forbidden" if registry.record_exists(doctype) else "missing"
 
 
@@ -378,6 +407,10 @@ def _my_records(doctype: str | None) -> set[tuple[str, str]]:
 	"""
 	owned: set[tuple[str, str]] = set()
 	for name in [doctype] if doctype else registry.registered():
+		# Change requests are raised against a record the user can name, and only
+		# a singular policy has one that resolves without naming. A many-per-owner
+		# policy's requests are found by ownership when somebody asks for one, not
+		# by enumerating them here.
 		if not registry.policy(name).get("singular"):
 			continue
 		record = registry.session_record(name)

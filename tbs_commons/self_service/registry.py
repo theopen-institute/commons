@@ -176,50 +176,69 @@ def session_owns(doctype: str, name: str) -> bool:
 	return owner_of(doctype, name) == frappe.session.user
 
 
-def session_record(doctype: str, fieldnames: list[str] | None = None):
-	"""The one record of `doctype` this session owns and may read, or None.
+def owner_value(doctype: str):
+	"""The value this policy's `owner_field` should equal for the session user.
 
-	Only meaningful for a policy marked `singular` -- one employee record per
-	login, so "my record" has a single answer and a page can ask for it without
-	naming one. A policy that is not singular has no such answer and says so,
-	rather than returning whichever row the database offered first.
+	The session user for a policy that names its owner directly, and the name of
+	the owning record for one that chains -- an employee's bank accounts are
+	found by their employee id, not by their login. `None` when the chain does
+	not reach a record this user owns, which every caller reads as "nothing to
+	look for".
+
+	Sent to the frontend as well, so a page that lists these rows through the
+	document API filters on the same value the server would, without knowing
+	whether the policy chains.
+	"""
+	current = policy(doctype)
+	if not current.get("owner_doctype"):
+		return frappe.session.user
+	parent = session_record(current["owner_doctype"], ["name"])
+	return parent.name if parent else None
+
+
+def session_records(doctype: str, fieldnames: list[str] | None = None, limit: int = 0) -> list:
+	"""The records of `doctype` this session owns and may read.
 
 	Through `frappe.get_list`, so the site's permissions decide what comes back.
-	The owner filter narrows it to this user's own row; it is not what makes the
-	read safe, and is not trusted to be. A user the site withholds the record
-	from gets `None` here whether they own it or not -- see the module docstring.
+	The owner filter narrows it to this user's own rows; it is not what makes the
+	read safe, and is not trusted to be. A user the site withholds these records
+	from gets an empty list whether they own them or not.
 
-	`None` for a user with no read permission at all, rather than the throw
-	`get_list` would raise: "you have no record here" is the same answer as far
-	as every caller is concerned, and one of them is a permissions endpoint that
+	Empty for a user with no read permission at all, rather than the throw
+	`get_list` would raise: "you have none here" is the same answer as far as
+	every caller is concerned, and one of them is a permissions endpoint that
 	must not 500 on the way to saying so.
 	"""
 	current = policy(doctype)
-	if not current.get("singular"):
+	if not frappe.has_permission(doctype, "read"):
+		return []
+	value = owner_value(doctype)
+	if value is None:
+		return []
+	return frappe.get_list(
+		doctype,
+		filters={current["owner_field"]: value, **(current.get("filters") or {})},
+		fields=fieldnames or ["name"],
+		limit_page_length=limit,
+	)
+
+
+def session_record(doctype: str, fieldnames: list[str] | None = None):
+	"""The one record of `doctype` this session owns and may read, or None.
+
+	Only for a policy marked `singular` -- one employee record per login, so "my
+	record" has a single answer and a page can ask for it without naming one. A
+	policy that is not singular has no such answer and says so, rather than
+	returning whichever row the database offered first: an employee with three
+	bank accounts has no "my bank account", and a caller that wanted one is a
+	caller with a bug.
+	"""
+	if not policy(doctype).get("singular"):
 		frappe.throw(
 			frappe._("There is no single {0} record for a user.").format(doctype),
 			frappe.ValidationError,
 		)
-	if not frappe.has_permission(doctype, "read"):
-		return None
-
-	if current.get("owner_doctype"):
-		# A chained policy's owner field names another record, not a user, so
-		# the lookup starts from whichever record *that* policy calls this
-		# session's -- and a singular chained record is one row against it.
-		parent = session_record(current["owner_doctype"], ["name"])
-		if not parent:
-			return None
-		match = {current["owner_field"]: parent.name}
-	else:
-		match = {current["owner_field"]: frappe.session.user}
-
-	rows = frappe.get_list(
-		doctype,
-		filters={**match, **(current.get("filters") or {})},
-		fields=fieldnames or ["name"],
-		limit_page_length=1,
-	)
+	rows = session_records(doctype, fieldnames, limit=1)
 	return rows[0] if rows else None
 
 
@@ -240,14 +259,10 @@ def record_exists(doctype: str) -> bool:
 	theirs.
 	"""
 	current = policy(doctype)
-	if current.get("owner_doctype"):
-		parent = session_record(current["owner_doctype"], ["name"])
-		if not parent:
-			return False
-		match = {current["owner_field"]: parent.name}
-	else:
-		match = {current["owner_field"]: frappe.session.user}
-	return bool(frappe.db.exists(doctype, {**match, **(current.get("filters") or {})}))
+	value = owner_value(doctype)
+	if value is None:
+		return False
+	return bool(frappe.db.exists(doctype, {current["owner_field"]: value, **(current.get("filters") or {})}))
 
 
 def clear_cache() -> None:
