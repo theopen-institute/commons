@@ -76,7 +76,7 @@ class SelfServiceRecord(Document):
 		self.validate_owner()
 		self.validate_filters()
 		self.validate_fields()
-		self.validate_new_records()
+		self.validate_extra_shapes()
 
 	def on_update(self) -> None:
 		self.clear_registry_cache()
@@ -195,24 +195,32 @@ class SelfServiceRecord(Document):
 					)
 				)
 
-	def validate_new_records(self) -> None:
-		"""`allow_new` only means something for a shape that can have more of them.
+	def validate_extra_shapes(self) -> None:
+		"""`allow_new` and `allow_delete` only mean something where owners have several.
 
-		A singular record type already has exactly one per owner, and the answer to
-		"create another" is no. And a new record is built from the proposable
-		fields -- they are the only ones a request may set -- so allowing new
-		records with none of them would offer a form that could submit nothing.
+		A singular record type has exactly one record per owner, so "create
+		another" has no answer and "delete it" leaves the owner with none and the
+		page with nothing to show. An employee removing their own employee record
+		is the case that makes this obvious.
+
+		A new record is built from the proposable fields -- they are the only ones
+		a request may set -- so allowing new records with none of them would offer
+		a form that could submit nothing. A deletion needs no fields at all:
+		naming the record is the request.
 		"""
-		if not self.allow_new:
-			return
 		if self.is_singular:
-			frappe.throw(
-				_(
-					"A record type with one record per owner cannot take new ones. "
-					"Clear One Per Owner, or clear this."
-				)
-			)
-		if not any(row.proposable for row in self.fields):
+			for field, label in (
+				("allow_new", _("propose new records")),
+				("allow_delete", _("propose deletions")),
+			):
+				if self.get(field):
+					frappe.throw(
+						_(
+							"A record type with one record per owner cannot let owners "
+							"{0}. Clear One Per Owner, or clear that."
+						).format(label)
+					)
+		if self.allow_new and not any(row.proposable for row in self.fields):
 			frappe.throw(
 				_(
 					"Mark at least one field proposable first: those are the fields a "

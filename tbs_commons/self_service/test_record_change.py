@@ -729,6 +729,43 @@ class TestRequestModes(unittest.TestCase):
 		self.assertTrue(permissions["allow_new"])
 		self.assertTrue(permissions["allow_delete"])
 
+	def test_a_pending_deletion_is_visible_to_whoever_asked(self):
+		"""The page marks the record somebody wants removed, so it has to come back.
+
+		Both halves were missing: a many-per-owner record type resolved no
+		ownership at all, so its requests were invisible, and `request_type` was
+		not carried on a list row, so nothing could tell a deletion from a
+		correction.
+		"""
+		account = self.new_account()
+		name = self.raise_request(request_type="Delete", reference_name=account)
+		mine = {row["name"]: row for row in api.get_my_changes(RECORD_BANK)}
+		self.assertIn(name, mine)
+		self.assertEqual(mine[name]["request_type"], "Delete")
+		self.assertEqual(mine[name]["reference_name"], account)
+		self.assertTrue(mine[name]["open"])
+
+	def test_a_pending_new_request_is_visible_before_it_names_anything(self):
+		"""It names no record until approval, so ownership cannot find it -- it is
+		theirs because they raised it."""
+		frappe.set_user(self.user.name)
+		name = self.raise_request(
+			request_type="New",
+			changes=[{"fieldname": "account_name", "proposed_value": "Pending"}],
+		)
+		mine = {row["name"]: row for row in api.get_my_changes(RECORD_BANK)}
+		self.assertIn(name, mine)
+		self.assertIsNone(mine[name]["reference_name"])
+
+	def test_every_owned_record_contributes_its_requests(self):
+		"""An owner with several has several histories, not the first one's."""
+		first = self.new_account("First")
+		second = self.new_account("Second")
+		a = self.raise_request(request_type="Delete", reference_name=first)
+		b = self.raise_request(request_type="Delete", reference_name=second)
+		names = {row["name"] for row in api.get_my_changes(RECORD_BANK)}
+		self.assertEqual({a, b} - names, set())
+
 	def new_account(self, name="Existing"):
 		frappe.set_user("Administrator")
 		return (

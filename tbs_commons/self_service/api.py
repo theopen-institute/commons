@@ -67,6 +67,9 @@ CHANGE_ROW_FIELDS = ("fieldname", "proposed_value")
 # permlevel or a rename is changed in one place.
 LIST_FIELDS = [
 	"name",
+	# What the request asked for. Without it a queue cannot tell a deletion from
+	# a correction, and a page cannot mark the record somebody wants removed.
+	"request_type",
 	"reference_doctype",
 	"reference_name",
 	"reference_title",
@@ -424,47 +427,68 @@ def _with_state_field(workflow) -> list[str]:
 def get_my_changes(doctype: str | None = None) -> list[dict]:
 	"""The session user's own requests, newest first.
 
-	Filtered on the records this login owns rather than on the login itself, so
-	one raised by HR on their behalf is theirs to follow too. A user who owns no
-	registered record has none -- an empty list, not everybody else's, which is
+	Two ways a request is theirs, and both are needed.
+
+	It is *about* a record they own -- which is what makes one HR raised on their
+	behalf theirs to follow. Ownership is resolved per record type rather than
+	assumed singular: an owner with three bank accounts has three, and an earlier
+	version of this resolved only one, so a page listing several showed no
+	history at all.
+
+	Or they *raised* it -- the only way a `New` request can be theirs, because it
+	names no record until it is approved. Without this a creation request was
+	invisible to the person who made it until somebody approved it.
+
+	A user with neither has none: an empty list, not everybody else's, which is
 	what an unfiltered read would hand a reviewer.
 	"""
-	owned = _my_records(doctype)
-	if not owned:
+	# `get_list` throws for a user with no read on the request doctype, and one of
+	# the callers is a page working out whether it has anything to show. "You have
+	# none" is the same answer as far as it is concerned.
+	if not frappe.has_permission(DOCTYPE, "read"):
 		return []
+	owned = _my_records(doctype)
+	user = frappe.session.user
 	workflow = change_workflow()
+	filters = {"reference_doctype": doctype} if doctype else {}
 	requests = frappe.get_list(
 		DOCTYPE,
-		filters=[["Record Change Request", "reference_name", "in", sorted({n for _d, n in owned})]],
+		filters=filters,
+		or_filters=[
+			# `or_filters` with an empty `in` list matches nothing, which is the
+			# wrong answer for a user who owns no records but has raised requests.
+			["reference_name", "in", sorted({name for _d, name in owned}) or [""]],
+			["requested_by", "=", user],
+		],
 		fields=_with_state_field(workflow),
 		order_by="creation desc",
 		limit_page_length=PAGE_LENGTH,
 	)
 	# `reference_name` alone could collide across doctypes, so the pair is what
-	# actually decides -- filtered here rather than in SQL because the set is one
-	# record per registered doctype, not a table.
-	requests = [row for row in requests if (row.reference_doctype, row.reference_name) in owned]
-	return _decorate(requests, workflow)
+	# decides -- filtered here rather than in SQL because the set is a handful of
+	# records, not a table. A request this user raised is theirs whatever it
+	# points at, including nothing yet.
+	return _decorate(
+		[
+			row
+			for row in requests
+			if row.requested_by == user or (row.reference_doctype, row.reference_name) in owned
+		],
+		workflow,
+	)
 
 
 def _my_records(doctype: str | None) -> set[tuple[str, str]]:
-	"""Every singular registered record this session owns, as (doctype, name).
+	"""Every registered record this session owns, as (doctype, name).
 
-	A policy that is not singular has no "my record" to resolve and is skipped:
-	its requests are found by ownership at the point somebody asks for one, not
-	by enumerating them here.
+	Both shapes: one record per owner, or several. `session_records` answers for
+	either, and goes through `get_list`, so a record the site withholds is not
+	counted as theirs here.
 	"""
 	owned: set[tuple[str, str]] = set()
 	for name in [doctype] if doctype else registry.registered():
-		# Change requests are raised against a record the user can name, and only
-		# a singular policy has one that resolves without naming. A many-per-owner
-		# policy's requests are found by ownership when somebody asks for one, not
-		# by enumerating them here.
-		if not registry.policy(name).get("singular"):
-			continue
-		record = registry.session_record(name)
-		if record:
-			owned.add((name, record.name))
+		for row in registry.session_records(name, ["name"]):
+			owned.add((name, row.name))
 	return owned
 
 

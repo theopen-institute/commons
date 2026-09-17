@@ -89,29 +89,39 @@
 					v-if="!can.singular"
 					class="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-outline-gray-1 pb-2"
 				>
-					<h2 class="truncate text-lg font-semibold text-ink-gray-9">
-						{{ titleOf(record) }}
-					</h2>
+					<div class="flex min-w-0 items-center gap-2">
+						<h2 class="truncate text-lg font-semibold text-ink-gray-9">
+							{{ titleOf(record) }}
+						</h2>
+						<!-- A record somebody has asked to have removed still shows its
+						     details, because nothing has happened to it yet -- but reading it
+						     as ordinary would be wrong, and the pencils beside its fields
+						     would invite corrections to something on its way out. -->
+						<Badge v-if="removalPending(record)" theme="red" variant="subtle">
+							Removal pending
+						</Badge>
+					</div>
 					<Button
 						v-if="can.allow_delete && can.request"
 						variant="ghost"
 						theme="red"
 						size="sm"
-						icon-left="lucide-trash-2"
-						label="Propose removal"
+						:icon-left="removalPending(record) ? 'lucide-clock' : 'lucide-trash-2'"
+						:label="removalPending(record) ? 'Removal requested' : 'Propose removal'"
+						:disabled="removalPending(record)"
 						:loading="deleting === record.name"
 						@click="proposeRemoval(record)"
 					/>
 				</div>
 
-				<div class="space-y-8">
+				<div class="space-y-8" :class="removalPending(record) ? 'opacity-60' : ''">
 					<ProfileSection
 						v-for="section in can.sections"
 						:key="section.title"
 						:section="section"
 						:doc="record"
 						:pending="pendingFor(record)"
-						:can-propose="can.request"
+						:can-propose="can.request && !removalPending(record)"
 						@propose="(field) => startEdit(record, field)"
 					/>
 				</div>
@@ -225,6 +235,21 @@ function pendingFor(record: Record<string, any>) {
 		for (const change of row.changes) pending[change.fieldname] = change.proposed_value
 	}
 	return pending
+}
+
+/**
+ * Whether somebody has asked for this record to be removed and nobody has
+ * decided yet.
+ *
+ * `open` is the server's answer rather than `docstatus`: a declined or withdrawn
+ * request stays at 0 so it can be amended, so reading the docstatus would leave
+ * a record marked for removal long after the request was turned down.
+ */
+function removalPending(record: Record<string, any>): boolean {
+	return (changes.data ?? []).some(
+		(row) =>
+			row.open && row.request_type === 'Delete' && row.reference_name === record.name,
+	)
 }
 
 const pendingCount = computed(() => (changes.data ?? []).filter((row) => row.open).length)
