@@ -40,36 +40,18 @@
 			</button>
 		</Dropdown>
 
-		<!-- One app's navigation only; the switcher in the header dropdown is the
-         only way across. Employees is a flat list under its header, exactly as
-         the desk lists a workspace's items straight under its name. Requests
-         holds three jobs that are read separately -- the profile, leave and
-         procurement -- so each gets a label, which is the desk's own pattern
-         for a sidebar that carries more than one group. A section whose
-         permission this user does not have is absent rather than empty. -->
+		<!-- One app's navigation. It holds jobs that are read separately -- the
+         profile, leave and procurement -- so each gets a label, which is the
+         desk's own pattern for a sidebar that carries more than one group. A
+         section whose permission this user does not have is absent rather than
+         empty. -->
 		<div class="flex-1 overflow-y-auto">
-			<!-- Rows a pixel apart, like the desk's own list of workspace items. -->
-			<div v-if="currentApp.key === 'employees'" class="space-y-px">
-				<SidebarItem
-					label="Employees"
-					icon="lucide-users"
-					:to="{ name: 'EmployeeList' }"
-					:active="route.name === 'EmployeeList' || route.name === 'Employee'"
-				/>
-				<SidebarItem
-					v-if="can.create"
-					label="New employee"
-					icon="lucide-user-plus"
-					:to="{ name: 'NewEmployee' }"
-				/>
-			</div>
-
 			<!-- `gap-2` on top of the 8px each SidebarSection already carries: the
            sections are separate jobs, and the label alone does not read as
            a break at the library's default spacing. No `space-y-*` on this
            container -- its specificity beats the sections' own `mt-2` and
            collapses them back together. -->
-			<div v-else class="flex flex-col gap-2">
+			<div class="flex flex-col gap-2">
 				<!-- A bare row, not a section: one page with nothing under it, and
              ungated, so it sits above the three jobs rather than beside them. -->
 				<SidebarItem
@@ -208,7 +190,7 @@ import {
 	useCall,
 	useColorScheme,
 } from 'frappe-ui'
-import { can, logout, user } from '@/data/session'
+import { logout, user } from '@/data/session'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
 import { leaveCan } from '@/data/leave'
 import { procurementCan } from '@/data/procurement'
@@ -264,13 +246,13 @@ const { colorScheme, setColorScheme } = useColorScheme()
 
 // The route says which app we are in. Every route that renders declares one;
 // the fallback is only for the bare landing path, which redirects before it.
-const currentApp = computed<AppDefinition>(() => apps[route.meta.app ?? 'employees'])
+const currentApp = computed<AppDefinition>(() => apps[route.meta.app ?? 'requests'])
 
 // Keyed by route prefix, not by app: Requests spans two doctypes, and "Open in
 // desk" should land on the one whose section is on screen.
 const DESK_ROUTES: [prefix: string, deskPath: string][] = [
-	['/employees', '/app/employee'],
-	['/profile/approvals', '/app/employee-profile-change'],
+	['/profile/bank-accounts', '/app/bank-account'],
+	['/profile/approvals', '/app/record-change-request'],
 	// The profile page itself is one employee record, not the list of them.
 	['/profile', '/app/employee'],
 	['/leave', '/app/leave-application'],
@@ -287,7 +269,6 @@ function openDesk() {
 // The marks each app carries in the switcher -- the same ones its navigation
 // rows use, so a submenu entry reads as the section it opens.
 const APP_ICONS: Record<AppKey, string> = {
-	employees: 'lucide-users',
 	requests: 'lucide-inbox',
 }
 

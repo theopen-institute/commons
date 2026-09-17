@@ -84,6 +84,16 @@ export interface SelfServicePermissions {
   page_length: number
 }
 
+/**
+ * Whether a stored value counts as filled.
+ *
+ * Frappe writes an empty field as `null` from Python and `''` from a form, and
+ * a page that treated those differently would show one of them as a change.
+ */
+export function isFilled(value: unknown): boolean {
+  return value !== null && value !== undefined && value !== ''
+}
+
 export const NO_PERMISSIONS: SelfServicePermissions = {
   read: false,
   can_read_records: false,

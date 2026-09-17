@@ -1,18 +1,15 @@
-"""Session-level endpoints for the TBS Commons frontend.
+"""Session-level endpoints and shared helpers for the TBS Commons frontend.
 
 Domain endpoints live with their domain: `tbs_commons.procurement.api` and
 `tbs_commons.procurement.budget` for procurement, `tbs_commons.leave.api` for
-leave. What is left here is what belongs to no one section -- who is logged in,
-and what they may do with the Employee directory.
+leave, `tbs_commons.self_service.api` for the profile. What is left here is what
+belongs to no one section -- who is logged in, which employee record is theirs,
+and which roles a doctype's own permission rows grant something to.
 """
 
 import frappe
 
 EMPLOYEE = "Employee"
-
-# What the frontend gates on. `submit`/`cancel` are absent because Employee is
-# not a submittable doctype.
-PERMISSION_TYPES = ("read", "write", "create", "delete")
 
 
 def roles_with_permission(doctype: str, **ptypes: int) -> set[str]:
@@ -70,17 +67,6 @@ def session_employee(fieldnames: list[str]) -> frappe._dict | None:
 		limit_page_length=1,
 	)
 	return rows[0] if rows else None
-
-
-@frappe.whitelist()
-def get_employee_permissions() -> dict[str, bool]:
-	"""Return the session user's doctype-level permissions on Employee.
-
-	The frontend uses this to decide what to render — a create button, an
-	editable form, a delete action. It is a UI hint only: every write still
-	goes through the REST API, which runs the same checks server-side.
-	"""
-	return {ptype: bool(frappe.has_permission(EMPLOYEE, ptype)) for ptype in PERMISSION_TYPES}
 
 
 @frappe.whitelist()

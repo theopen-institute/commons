@@ -17,14 +17,14 @@
 					class="mt-0.5 text-p-base"
 					:class="[
 						field.type === 'textarea' ? 'whitespace-pre-line' : '',
-						isFieldFilled(current) ? 'text-ink-gray-8' : 'text-ink-gray-4',
+						isFilled(current) ? 'text-ink-gray-8' : 'text-ink-gray-4',
 					]"
 				>
 					{{ currentLabel }}
 				</div>
 			</div>
 
-			<EmployeeField v-if="control" v-model="draft" :field="control" :error="error" />
+			<RecordFieldControl v-model="draft" :field="field" :error="error" />
 
 			<FormControl
 				v-model="reason"
@@ -54,10 +54,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Alert, Dialog, ErrorMessage, FormControl, toast, type DialogAction } from 'frappe-ui'
-import EmployeeField from './EmployeeField.vue'
+import RecordFieldControl from './RecordFieldControl.vue'
 import { displayValue, recordType, useRequestProfileChange, type MyProfile } from '@/data/profile'
-import { isFieldFilled, type EmployeeField as Field } from '@/data/employeeFields'
-import type { RecordField } from '@/data/selfService'
+import { isFilled, type RecordField } from '@/data/selfService'
 import { formatDate } from '@/data/format'
 
 const props = defineProps<{
@@ -74,23 +73,6 @@ const emit = defineEmits<{ close: []; created: [name: string] }>()
 
 const request = useRequestProfileChange()
 
-// The server describes the field; `EmployeeField` draws it. Adapted here rather
-// than by widening that component, which the Employees app's own forms share and
-// which has no business knowing about this section's payload.
-const control = computed<Field | null>(() =>
-	props.field
-		? {
-				fieldname: props.field.fieldname,
-				label: props.field.label,
-				type: props.field.type as Field['type'],
-				required: props.field.required,
-				options: props.field.options.length ? props.field.options : undefined,
-				doctype: props.field.doctype ?? undefined,
-				description: props.field.description ?? undefined,
-			}
-		: null,
-)
-
 const open = computed({
 	get: () => props.field !== null,
 	set: (isOpen: boolean) => {
@@ -104,7 +86,7 @@ const current = computed(() =>
 
 const currentLabel = computed(() => {
 	if (!props.field) return ''
-	if (!isFieldFilled(current.value)) return 'Not set'
+	if (!isFilled(current.value)) return 'Not set'
 	return props.field.type === 'date'
 		? formatDate(current.value as string)
 		: displayValue(current.value)
@@ -139,7 +121,7 @@ watch(
 // '', so treat the two as equal rather than as a change.
 const changed = computed(() => {
 	if (!props.field) return false
-	if (!isFieldFilled(current.value) && !isFieldFilled(draft.value)) return false
+	if (!isFilled(current.value) && !isFilled(draft.value)) return false
 	return String(current.value ?? '') !== String(draft.value ?? '')
 })
 

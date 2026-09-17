@@ -1,5 +1,4 @@
 import { computed, type ComputedRef } from 'vue'
-import { can, permissionsLoaded } from './session'
 import { leaveCan, leavePermissionsLoaded } from './leave'
 import { procurementCan, procurementPermissionsLoaded } from './procurement'
 import { profileCan, profilePermissionsLoaded } from './profile'
@@ -12,17 +11,17 @@ import { profileCan, profilePermissionsLoaded } from './profile'
  * (`meta.app`), and the sidebar shows only that app's navigation. The two
  * halves have to agree on the keys and the landing routes.
  *
- * Leave, procurement and the profile are one app here, `requests`: each is
- * something a person raises about themselves and waits on an approver for, and
- * the people who do one mostly do the others. They keep separate routes
- * (`/leave`, `/procurement`, `/profile`) and separate permission checks -- what
- * they share is the sidebar, where each gets its own labelled section.
+ * There is one app, `requests`, and everything in it is something a person
+ * raises about themselves and waits on an approver for: their profile, their
+ * bank accounts, their leave, their purchases. Each keeps its own route and its
+ * own permission check; what they share is the sidebar, where each gets a
+ * labelled section.
  *
- * The profile is in this app rather than in `employees` for that same reason.
- * `employees` is the directory: everyone's records, for the people whose job is
- * maintaining them. A person reading their own record and proposing a
- * correction to it is the self-service side of the same data, and it belongs
- * with the other things they ask for and wait on.
+ * The registry stays a registry with one entry rather than being dissolved into
+ * the router. It is what `meta.app` points at, what the header names, and what
+ * `hooks.py` mirrors on the desk apps screen -- and a second app would be an
+ * entry here rather than that structure being rebuilt. The `Employees`
+ * directory used to be the other one.
  */
 
 /**
@@ -33,7 +32,7 @@ import { profileCan, profilePermissionsLoaded } from './profile'
  */
 export const SUITE_TITLE = 'TBS Commons'
 
-export type AppKey = 'employees' | 'requests'
+export type AppKey = 'requests'
 
 export interface AppDefinition {
   key: AppKey
@@ -49,14 +48,6 @@ export interface AppDefinition {
 }
 
 export const apps: Record<AppKey, AppDefinition> = {
-  employees: {
-    key: 'employees',
-    title: 'Employees',
-    logo: '/assets/tbs_commons/images/tbs_commons-employees-logo.svg',
-    home: '/employees',
-    available: computed(() => can.value.read),
-    resolved: computed(() => permissionsLoaded.value),
-  },
   requests: {
     key: 'requests',
     title: 'Requests',
@@ -79,7 +70,7 @@ export const apps: Record<AppKey, AppDefinition> = {
   },
 }
 
-export const appList = [apps.employees, apps.requests]
+export const appList = [apps.requests]
 
 /**
  * Where `/requests` and the apps-screen tile actually land, in sidebar order.

@@ -68,7 +68,7 @@
 <script setup lang="ts">
 import { Badge, Tooltip } from 'frappe-ui'
 import { displayValue } from '@/data/profile'
-import type { RecordField, RecordSection } from '@/data/selfService'
+import { isFilled, type RecordField, type RecordSection } from '@/data/selfService'
 import { formatDate } from '@/data/format'
 
 const props = defineProps<{
@@ -88,8 +88,7 @@ const props = defineProps<{
 const emit = defineEmits<{ propose: [field: RecordField] }>()
 
 function filled(field: RecordField): boolean {
-	const value = props.doc[field.fieldname]
-	return value !== null && value !== undefined && value !== ''
+	return isFilled(props.doc[field.fieldname])
 }
 
 // Dates are stored as YYYY-MM-DD and would otherwise read as the raw string;

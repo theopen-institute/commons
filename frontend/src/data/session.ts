@@ -11,13 +11,6 @@ export interface UserInfo {
   avatar_color: string | null
 }
 
-export interface EmployeePermissions {
-  read: boolean
-  write: boolean
-  create: boolean
-  delete: boolean
-}
-
 declare global {
   interface Window {
     user?: string
@@ -47,45 +40,6 @@ export const user = computed<UserInfo>(
       avatar_color: null,
     },
 )
-
-// Deliberately uncached: a persisted cache is keyed by the browser, not the
-// user, so the next person to log in on this machine would get a stale-first
-// render of someone else's permissions — a create button that flashes up and
-// then fails. The request is one small call at boot.
-const permissionsCall = useCall<EmployeePermissions>({
-  url: '/api/v2/method/tbs_commons.api.get_employee_permissions',
-})
-
-const NO_PERMISSIONS: EmployeePermissions = {
-  read: false,
-  write: false,
-  create: false,
-  delete: false,
-}
-
-/**
- * What the session user may do with Employee records.
- *
- * Denies everything until the answer arrives: a button that appears and then
- * vanishes is worse than one that appears a beat late, and the server rechecks
- * every write regardless — this only decides what the UI offers.
- */
-export const can = computed<EmployeePermissions>(
-  () => permissionsCall.data ?? NO_PERMISSIONS,
-)
-
-/**
- * Whether the answer is in — settled or refused, not merely arrived. A call
- * that fails never sets `data`, so gating a skeleton on that leaves it up for a
- * reply that is never coming; `permissionsError` is what to say instead.
- */
-export const permissionsLoaded = computed(() => permissionsCall.isFinished)
-
-export const permissionsError = computed(() => permissionsCall.error ?? null)
-
-export function reloadPermissions() {
-  return permissionsCall.reload()
-}
 
 const logoutCall = useCall({
   url: '/api/v2/method/logout',

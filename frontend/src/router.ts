@@ -17,28 +17,7 @@ const routes: RouteRecordRaw[] = [
     redirect: { name: 'Announcements' },
   },
   {
-    path: '/employees',
-    name: 'EmployeeList',
-    component: () => import('@/pages/EmployeeList.vue'),
-    meta: { app: 'employees' },
-  },
-  {
-    path: '/employees/new',
-    name: 'NewEmployee',
-    component: () => import('@/pages/NewEmployee.vue'),
-    meta: { app: 'employees' },
-  },
-  {
-    // Employee names come from a naming series (HR-EMP-00001), so a plain
-    // param is enough — no slashes to worry about.
-    path: '/employees/:name',
-    name: 'Employee',
-    component: () => import('@/pages/EmployeeDetail.vue'),
-    props: true,
-    meta: { app: 'employees' },
-  },
-  {
-    // Above both sections, and ungated: every user of this app sees the same
+    // Above the sections, and ungated: every user of this app sees the same
     // announcements. It is also where the desk icon lands.
     path: '/announcements',
     name: 'Announcements',
@@ -54,11 +33,8 @@ const routes: RouteRecordRaw[] = [
     meta: { app: 'requests' },
   },
   {
-    // The employee's own record, read only. Under `requests` rather than
-    // `employees`: this is something a person does about themselves and waits
-    // on an approver for, which is what that app is, and the directory next
-    // door is the other half -- everyone else's records, for the people who
-    // maintain them.
+    // The employee's own record, read only: something a person does about
+    // themselves and waits on an approver for, which is what this app is.
     path: '/profile',
     name: 'MyProfile',
     component: () => import('@/pages/MyProfile.vue'),
