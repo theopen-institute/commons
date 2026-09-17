@@ -117,6 +117,35 @@ def session_employee_access() -> str:
 	return "forbidden" if frappe.db.exists(EMPLOYEE, session_employee_filters()) else "missing"
 
 
+def default_expense_approver(employee: frappe._dict | None) -> str | None:
+	"""Who an expense-shaped request should name, before the requester touches the field.
+
+	The employee's own expense approver first; failing that the first approver
+	their department lists, which is how the desk's own Expense Claim decides it
+	too -- see `hrms.api.get_expense_approval_details`. A disabled department is
+	not an answer, and neither is a department with an empty table: the form then
+	opens blank and the requester picks.
+
+	Shared by expense claims, whose field this is, and by procurement, which
+	routes its requests to the same person for the same reason -- a department's
+	spending is approved by whoever approves that department's spending. One
+	answer, so the two sections cannot start disagreeing about who that is.
+	"""
+	if not employee:
+		return None
+	if employee.expense_approver:
+		return employee.expense_approver
+	if not employee.department:
+		return None
+	if frappe.db.get_value("Department", employee.department, "disabled"):
+		return None
+	return frappe.db.get_value(
+		"Department Approver",
+		{"parent": employee.department, "parentfield": "expense_approvers", "idx": 1},
+		"approver",
+	)
+
+
 @frappe.whitelist()
 def get_session_user() -> dict:
 	"""Return the session user, for the sidebar's account row.

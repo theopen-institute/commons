@@ -9,7 +9,7 @@ import frappe
 from frappe.utils import flt
 
 from tbs_commons import workflow as wf
-from tbs_commons.api import roles_with_permission, session_employee
+from tbs_commons.api import default_expense_approver, roles_with_permission, session_employee
 from tbs_commons.procurement.doctype.procurement_request.procurement_request import (
 	DOCTYPE as PROCUREMENT_REQUEST,
 )
@@ -118,32 +118,9 @@ def get_procurement_request_defaults() -> dict:
 			frappe.db.get_value("Company", company, "default_currency") if company else None
 		),
 		"department": employee.department if employee else None,
-		"approver": _default_procurement_approver(employee),
+		"approver": default_expense_approver(employee),
 		"uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
 	}
-
-
-def _default_procurement_approver(employee: frappe._dict | None) -> str | None:
-	"""Who a new request should name, before the requester touches the field.
-
-	The employee's own expense approver first; failing that the first approver
-	their department lists, which is how the desk's expense claims decide it
-	too. A disabled department is not an answer, and neither is a department
-	with an empty table — the form then opens blank and the requester picks.
-	"""
-	if not employee:
-		return None
-	if employee.expense_approver:
-		return employee.expense_approver
-	if not employee.department:
-		return None
-	if frappe.db.get_value("Department", employee.department, "disabled"):
-		return None
-	return frappe.db.get_value(
-		"Department Approver",
-		{"parent": employee.department, "parentfield": "expense_approvers", "idx": 1},
-		"approver",
-	)
 
 
 @frappe.whitelist(methods=["POST"])

@@ -69,6 +69,18 @@ const routes: RouteRecordRaw[] = [
     meta: { app: 'requests' },
   },
   {
+    path: '/expenses',
+    name: 'MyExpenses',
+    component: () => import('@/pages/MyExpenses.vue'),
+    meta: { app: 'requests' },
+  },
+  {
+    path: '/expenses/approvals',
+    name: 'ExpenseApprovals',
+    component: () => import('@/pages/ExpenseApprovals.vue'),
+    meta: { app: 'requests' },
+  },
+  {
     path: '/procurement',
     name: 'MyProcurement',
     component: () => import('@/pages/MyProcurement.vue'),

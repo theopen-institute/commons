@@ -1,5 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import { leaveCan, leavePermissionsLoaded } from './leave'
+import { expenseCan, expensePermissionsLoaded } from './expense'
 import { procurementCan, procurementPermissionsLoaded } from './procurement'
 import { navLoaded, navRecords } from './selfService'
 
@@ -13,7 +14,7 @@ import { navLoaded, navRecords } from './selfService'
  *
  * There is one app, `requests`, and everything in it is something a person
  * raises about themselves and waits on an approver for: their profile, their
- * bank accounts, their leave, their purchases. Each keeps its own route and its
+ * bank accounts, their leave, their expenses, their purchases. Each keeps its own route and its
  * own permission check; what they share is the sidebar, where each gets a
  * labelled section.
  *
@@ -59,12 +60,14 @@ export const apps: Record<AppKey, AppDefinition> = {
       () =>
         navRecords.value.length > 0 ||
         leaveCan.value.read ||
+        expenseCan.value.read ||
         procurementCan.value.read
     ),
     resolved: computed(
       () =>
         navLoaded.value &&
         leavePermissionsLoaded.value &&
+        expensePermissionsLoaded.value &&
         procurementPermissionsLoaded.value
     ),
   },
@@ -83,6 +86,7 @@ export const firstRequestSection = computed<string | null>(() => {
   // open none.
   if (navRecords.value.length) return '/profile'
   if (leaveCan.value.read) return '/leave'
+  if (expenseCan.value.read) return '/expenses'
   if (procurementCan.value.read) return '/procurement'
   return null
 })

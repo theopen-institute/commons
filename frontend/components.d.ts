@@ -16,6 +16,8 @@ declare module 'vue' {
     ChangeDiff: typeof import('./src/components/ChangeDiff.vue')['default']
     ChangeRequestList: typeof import('./src/components/ChangeRequestList.vue')['default']
     DepartmentBudgetCard: typeof import('./src/components/DepartmentBudgetCard.vue')['default']
+    ExpenseClaimDialog: typeof import('./src/components/ExpenseClaimDialog.vue')['default']
+    ExpenseClaimLines: typeof import('./src/components/ExpenseClaimLines.vue')['default']
     LeaveRequestDialog: typeof import('./src/components/LeaveRequestDialog.vue')['default']
     LinkControl: typeof import('./src/components/LinkControl.vue')['default']
     PermissionNotice: typeof import('./src/components/PermissionNotice.vue')['default']

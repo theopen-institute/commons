@@ -119,6 +119,26 @@
 					</SidebarItem>
 				</SidebarSection>
 
+				<SidebarSection v-if="expenseCan.read" label="Expenses" collapsible>
+					<SidebarItem
+						label="My expenses"
+						icon="lucide-receipt"
+						:to="{ name: 'MyExpenses' }"
+					/>
+					<SidebarItem
+						v-if="expenseCan.approve"
+						label="Approvals"
+						icon="lucide-check-check"
+						:to="{ name: 'ExpenseApprovals' }"
+					>
+						<template v-if="expenseCan.pending_approvals" #suffix>
+							<Badge theme="amber" variant="subtle">
+								{{ expenseCan.pending_approvals }}
+							</Badge>
+						</template>
+					</SidebarItem>
+				</SidebarSection>
+
 				<SidebarSection v-if="procurementCan.read" label="Procurement" collapsible>
 					<SidebarItem
 						label="My requests"
@@ -193,6 +213,7 @@ import {
 } from 'frappe-ui'
 import { logout, user } from '@/data/session'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
+import { expenseCan } from '@/data/expense'
 import { leaveCan } from '@/data/leave'
 import { procurementCan } from '@/data/procurement'
 import { navRecords } from '@/data/selfService'
@@ -256,6 +277,7 @@ const DESK_ROUTES: [prefix: string, deskPath: string][] = [
 	// The profile page itself is one employee record, not the list of them.
 	['/profile', '/app/employee'],
 	['/leave', '/app/leave-application'],
+	['/expenses', '/app/expense-claim'],
 	['/procurement', '/app/procurement-request'],
 ]
 
