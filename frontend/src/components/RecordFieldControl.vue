@@ -1,4 +1,9 @@
 <template>
+	<!-- A free-form field is a text box even though its value is destined for a
+	     Link: the whole point is that the document may not exist yet, so there is
+	     nothing to search. The server draws that distinction (`free_text`), and
+	     sends `type: 'text'` with no `doctype`, so this needs no special case --
+	     only the hint below, which says why the search is missing. -->
 	<LinkControl
 		v-if="field.type === 'link'"
 		v-model="model"
@@ -14,12 +19,12 @@
 		v-model="model"
 		:type="controlType"
 		:label="field.label"
-		:description="field.description ?? undefined"
 		:error="error"
 		:required="field.required"
 		:disabled="disabled"
 		:options="field.type === 'select' ? selectOptions : undefined"
 		:rows="field.type === 'textarea' ? 3 : undefined"
+		:description="description"
 	/>
 </template>
 
@@ -71,6 +76,17 @@ const CONTROLS: Record<string, ControlType> = {
 }
 
 const controlType = computed<ControlType>(() => CONTROLS[props.field.type] ?? 'text')
+
+// A free-form field looks like any other text box, so it has to say why it is
+// one -- otherwise it reads as a field somebody forgot to make searchable.
+const FREE_TEXT_HINT =
+	"Type it out. If it isn't on file yet, whoever reviews this will add it."
+
+const description = computed(() => {
+	const own = props.field.description ?? ''
+	if (!props.field.free_text) return own || undefined
+	return own ? `${own} ${FREE_TEXT_HINT}` : FREE_TEXT_HINT
+})
 
 const selectOptions = computed(() => {
 	const options = props.field.options.map((option) => ({

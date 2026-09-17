@@ -35,8 +35,13 @@ export interface RecordField {
   type: string
   /** `select` only. */
   options: string[]
-  /** `link` only — the doctype to search. */
+  /** `link` only — the doctype to search. Null on a free-form field, which is
+   *  drawn as a text box precisely because there is nothing to search yet. */
   doctype: string | null
+  /** Whether the owner types this value rather than picking it. Set where the
+   *  document a Link points at may not exist yet, or may be invisible to them —
+   *  whoever reviews the request creates it. */
+  free_text: boolean
   required: boolean
   description: string | null
   /** Whether the owner may propose a change to this field. */

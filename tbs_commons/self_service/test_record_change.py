@@ -783,13 +783,193 @@ class TestRequestModes(unittest.TestCase):
 		)
 
 
+class TestFreeFormFields(unittest.TestCase):
+	"""A Link field whose target may not exist yet.
+
+	The case this exists for: an employee has to name something the site does not
+	have on file, or does not let them see. They type it, the request carries the
+	text, and whoever reviews it creates the document. Nothing is applied until
+	that document exists -- which is the line between "free form" and "unchecked".
+	"""
+
+	def setUp(self):
+		frappe.db.savepoint("free_text_test")
+		self.addCleanup(self.restore)
+		frappe.set_user("Administrator")
+
+		self.config = frappe.get_doc("Self Service Record", RECORD_BANK)
+		self.config.allow_new = 0
+		self.config.allow_delete = 0
+		for row in self.config.fields:
+			if row.fieldname == "bank":
+				row.proposable = 1
+				row.free_text = 1
+		self.config.save()
+		registry.clear_cache()
+
+		self.user = frappe.get_doc(
+			dict(
+				doctype="User",
+				email=f"freetext-{frappe.generate_hash(length=8)}@example.com",
+				first_name="Free",
+				send_welcome_email=0,
+			)
+		).insert(ignore_permissions=True)
+		company = frappe.db.get_value("Company", "_Test Company", "name") or frappe.db.get_value(
+			"Company", {}, "name"
+		)
+		self.employee = (
+			frappe.get_doc(
+				dict(
+					doctype="Employee",
+					first_name="Free",
+					gender=frappe.db.get_value("Gender", {}, "name"),
+					date_of_birth="1990-01-01",
+					date_of_joining="2020-01-01",
+					status="Active",
+					company=company,
+					user_id=self.user.name,
+				)
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+		self.user.reload()
+		self.user.add_roles("Accounts User")
+		bank = (
+			frappe.db.get_value("Bank", {}, "name")
+			or frappe.get_doc(dict(doctype="Bank", bank_name=f"Base {frappe.generate_hash(length=6)}"))
+			.insert(ignore_permissions=True)
+			.name
+		)
+		self.account = (
+			frappe.get_doc(
+				dict(
+					doctype="Bank Account",
+					account_name="Existing",
+					bank=bank,
+					party_type="Employee",
+					party=self.employee,
+				)
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+		self.unknown = f"Bank Of Nowhere {frappe.generate_hash(length=6)}"
+
+	def restore(self):
+		"""A savepoint rollback does not run the cache callbacks, so configuration
+		saved here has to be dropped by hand."""
+		frappe.db.rollback(save_point="free_text_test")
+		registry.clear_cache()
+		frappe.set_user("Administrator")
+
+	def propose_unknown_bank(self) -> str:
+		frappe.set_user(self.user.name)
+		return api.request_change(
+			RECORD_BANK,
+			json.dumps(
+				{
+					"request_type": "Change",
+					"reference_name": self.account,
+					"changes": [{"fieldname": "bank", "proposed_value": self.unknown}],
+				}
+			),
+		)["name"]
+
+	def test_the_field_is_offered_as_text_with_nothing_to_search(self):
+		"""The page draws a text box because there is no document to find yet."""
+		field = next(
+			f
+			for section in registry.field_definitions(RECORD_BANK)
+			for f in section["fields"]
+			if f["fieldname"] == "bank"
+		)
+		self.assertTrue(field["free_text"])
+		self.assertEqual(field["type"], "text")
+		self.assertIsNone(field["doctype"])
+
+	def test_a_value_that_names_nothing_is_accepted_when_raised(self):
+		"""The whole point: the document does not exist yet."""
+		name = self.propose_unknown_bank()
+		row = frappe.get_doc(api.DOCTYPE, name).changes[0]
+		self.assertEqual(row.proposed_value, self.unknown)
+		self.assertFalse(frappe.db.exists("Bank", self.unknown))
+
+	def test_approval_is_refused_while_the_document_is_missing(self):
+		"""Free form is not unchecked. Approving is the moment somebody decided the
+		value is right, and the link has to exist for the save to take it."""
+		name = self.propose_unknown_bank()
+		frappe.set_user("Administrator")
+		with self.assertRaises(frappe.LinkValidationError):
+			api.decide_change(name, "Approve")
+		# Nothing was written to the record on the way to refusing.
+		self.assertNotEqual(frappe.db.get_value("Bank Account", self.account, "bank"), self.unknown)
+
+	def test_approval_succeeds_once_the_reviewer_creates_it(self):
+		name = self.propose_unknown_bank()
+		frappe.set_user("Administrator")
+		frappe.db.savepoint("attempt")
+		try:
+			api.decide_change(name, "Approve")
+		except frappe.LinkValidationError:
+			# A web request rolls back when a whitelisted method throws; the test
+			# runner has no such boundary, so the refused attempt is undone here.
+			frappe.db.rollback(save_point="attempt")
+		frappe.get_doc(dict(doctype="Bank", bank_name=self.unknown)).insert(ignore_permissions=True)
+		api.decide_change(name, "Approve")
+		self.assertEqual(frappe.db.get_value("Bank Account", self.account, "bank"), self.unknown)
+
+	def test_a_refused_approval_leaves_the_request_decidable(self):
+		"""Otherwise the reviewer creates the document and has nothing to approve."""
+		name = self.propose_unknown_bank()
+		frappe.set_user("Administrator")
+		frappe.db.savepoint("attempt")
+		try:
+			api.decide_change(name, "Approve")
+		except frappe.LinkValidationError:
+			frappe.db.rollback(save_point="attempt")
+		row = frappe.db.get_value(api.DOCTYPE, name, ["status", "docstatus"], as_dict=True)
+		self.assertEqual(row.status, "Pending")
+		self.assertEqual(row.docstatus, 0)
+
+	# -- what the configuration refuses -----------------------------------
+
+	def test_free_form_needs_something_to_link_to(self):
+		"""A Select's options are the point of the field; typing past them would
+		propose a value the doctype refuses."""
+		frappe.set_user("Administrator")
+		self.config.reload()
+		for row in self.config.fields:
+			if row.fieldname == "account_name":
+				row.proposable = 1
+				row.free_text = 1
+		with self.assertRaises(frappe.ValidationError):
+			self.config.save()
+
+	def test_free_form_needs_the_field_to_be_proposable(self):
+		frappe.set_user("Administrator")
+		self.config.reload()
+		for row in self.config.fields:
+			if row.fieldname == "bank":
+				row.proposable = 0
+				row.free_text = 1
+		with self.assertRaises(frappe.ValidationError):
+			self.config.save()
+
+
 def run():
 	original_user = frappe.session.user
 	frappe.set_user("Administrator")
 	try:
 		suite = unittest.TestSuite(
 			unittest.defaultTestLoader.loadTestsFromTestCase(case)
-			for case in (TestRecordChangeRequest, TestBankAccountPolicy, TestRequestModes)
+			for case in (
+				TestRecordChangeRequest,
+				TestBankAccountPolicy,
+				TestRequestModes,
+				TestFreeFormFields,
+			)
 		)
 		result = unittest.TextTestRunner(verbosity=2).run(suite)
 		if not result.wasSuccessful():

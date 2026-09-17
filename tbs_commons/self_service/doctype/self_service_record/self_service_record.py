@@ -261,6 +261,21 @@ class SelfServiceRecord(Document):
 						row.idx, frappe.bold(row.fieldname)
 					)
 				)
+			if row.free_text and not row.proposable:
+				frappe.throw(
+					_("Row {0}: {1} cannot be free form without being proposable.").format(
+						row.idx, frappe.bold(row.fieldname)
+					)
+				)
+			if row.free_text and field.fieldtype not in ("Link", "Dynamic Link"):
+				# Only a link has a target that might not exist yet. A Select's
+				# options are the point of the field, and letting one through as
+				# free text would mean proposing a value the doctype refuses.
+				frappe.throw(
+					_("Row {0}: {1} is a {2} field, so there is nothing to type freely into.").format(
+						row.idx, frappe.bold(row.fieldname), field.fieldtype
+					)
+				)
 			if row.proposable and field.read_only:
 				frappe.throw(
 					_("Row {0}: {1} is read only on {2}, so a change to it could never apply.").format(

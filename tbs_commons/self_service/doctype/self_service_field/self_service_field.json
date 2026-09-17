@@ -10,7 +10,8 @@
   "fieldname",
   "column_break_field",
   "viewable",
-  "proposable"
+  "proposable",
+  "free_text"
  ],
  "fields": [
   {
@@ -52,6 +53,16 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Proposable"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "depends_on": "proposable",
+   "description": "For a Link field whose target may not exist yet, or may be invisible to the owner. They type a value instead of picking one, and whoever reviews the request creates the linked document if it is needed. Nothing is applied until that document exists.",
+   "fieldname": "free_text",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Free Form Text"
   }
  ],
  "index_web_pages_for_search": 1,

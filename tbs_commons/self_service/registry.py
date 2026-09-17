@@ -111,7 +111,15 @@ def policies() -> dict[str, dict]:
 		rows = frappe.get_all(
 			"Self Service Field",
 			filters={"parent": ["in", [p.name for p in parents]], "parenttype": CONFIG},
-			fields=["parent", "section", "fieldname", "viewable", "proposable", "idx"],
+			fields=[
+				"parent",
+				"section",
+				"fieldname",
+				"viewable",
+				"proposable",
+				"free_text",
+				"idx",
+			],
 			order_by="parent asc, idx asc",
 			parent_doctype=CONFIG,
 		)
@@ -210,9 +218,13 @@ def field_definitions(doctype: str) -> list[dict]:
 			{
 				"fieldname": row.fieldname,
 				"label": frappe._(field.label) if field.label else row.fieldname,
-				"type": _control_type(field),
+				"type": "text" if row.free_text else _control_type(field),
 				"options": _select_options(field),
-				"doctype": field.options if field.fieldtype == "Link" else None,
+				# A free-form field is drawn as a text box rather than a link
+				# search, so the page is not told what to search. The value is
+				# still destined for that link -- see `free_text` on the row.
+				"doctype": (field.options if field.fieldtype == "Link" and not row.free_text else None),
+				"free_text": bool(row.free_text),
 				"required": bool(field.reqd),
 				"description": frappe._(field.description) if field.description else None,
 				"proposable": bool(row.proposable),

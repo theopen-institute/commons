@@ -19,6 +19,7 @@ class SelfServiceField(Document):
 		from frappe.types import DF
 
 		fieldname: DF.Data
+		free_text: DF.Check
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data

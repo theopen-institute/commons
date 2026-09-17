@@ -346,6 +346,8 @@ class RecordChangeRequest(Document):
 		there is no document yet -- `insert()` checks it again anyway, and this
 		makes the refusal name creating rather than writing.
 		"""
+		self.check_links_exist()
+
 		policy = registry.policy(self.reference_doctype)
 		record = frappe.new_doc(self.reference_doctype)
 		record.update(
@@ -365,6 +367,50 @@ class RecordChangeRequest(Document):
 			update_modified=False,
 		)
 		frappe.msgprint(_("Created {0}.").format(record.name), alert=True)
+
+	def check_links_exist(self) -> None:
+		"""Refuse an approval whose free-form values name nothing yet.
+
+		A free-form field exists because the document it points at may not exist
+		when the request is raised -- see `free_text` on `Self Service Field`.
+		Approving it is the moment somebody decided the value is right, and the
+		linked document has to be there for the save to accept it.
+
+		Frappe would refuse it anyway, with a message about a link. This says
+		which field, which value, and what to do about it, because the approver
+		is the one who can do it and they are reading this in a queue rather than
+		in the desk.
+		"""
+		missing = []
+		meta = frappe.get_meta(self.reference_doctype)
+		free_form = {
+			row["fieldname"]
+			for row in registry.policy(self.reference_doctype)["fields"]
+			if row.get("free_text")
+		}
+		for row in self.changes:
+			value = normalized(row.proposed_value)
+			if not value or row.fieldname not in free_form:
+				continue
+			field = meta.get_field(row.fieldname)
+			target = field.options if field.fieldtype == "Link" else None
+			if target and not frappe.db.exists(target, value):
+				missing.append((row.label or row.fieldname, target, value))
+
+		if not missing:
+			return
+		frappe.throw(
+			_("Create the {0} named {1} first, then approve this — {2} has no such record yet.").format(
+				frappe.bold(missing[0][1]),
+				frappe.bold(missing[0][2]),
+				_(missing[0][1]),
+			)
+			if len(missing) == 1
+			else _("These need creating before this can be approved: {0}").format(
+				", ".join(f"{label} → {value} ({target})" for label, target, value in missing)
+			),
+			frappe.LinkValidationError,
+		)
 
 	def delete_record(self) -> None:
 		"""Remove the record this request asked to have removed.
@@ -388,6 +434,8 @@ class RecordChangeRequest(Document):
 		"""
 		record = frappe.get_doc(self.reference_doctype, self.reference_name)
 		record.check_permission("write")
+
+		self.check_links_exist()
 
 		applied = []
 		for row in self.changes:
