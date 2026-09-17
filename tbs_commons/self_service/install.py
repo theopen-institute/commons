@@ -206,7 +206,15 @@ def sync_change_workflow() -> None:
 			"document_type": DOCTYPE,
 			"workflow_state_field": "status",
 			"is_active": 1,
-			"send_email_alert": 1,
+			# Off, and not merely left unset. Frappe's workflow alert is not a
+			# notification with an optional attachment: `get_common_email_args`
+			# calls `attach_print` unconditionally, so turning the alert on mails
+			# every reviewer a PDF of the request itself. A `Record Change Request`
+			# carries what somebody is proposing to change about their own record,
+			# which under the bank-account policy means an account number and an
+			# IBAN -- sent out of the system, to an inbox, as a file. The queue is
+			# where reviews happen and it already counts what is waiting.
+			"send_email_alert": 0,
 		}
 	)
 	workflow.set("states", [{k: v for k, v in state.items() if k != "style"} for state in WORKFLOW_STATES])

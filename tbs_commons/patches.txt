@@ -1,6 +1,4 @@
-# Intentionally empty: this app has no patches yet.
-#
-# The file itself must exist even so. Frappe's asset builder treats
+# This file must exist even when it is empty. Frappe's asset builder treats
 # `hooks.py` + `modules.txt` + `patches.txt` as the signature of an app
 # (esbuild/utils.js `is_frappe_app`), and without all three it stops
 # recognising this directory as one -- `bench build` then fails with
@@ -9,5 +7,8 @@
 [pre_model_sync]
 
 [post_model_sync]
+# Seeded workflows are never rewritten by `sync_change_workflow`, so a default
+# that should not have shipped has to be withdrawn once, by hand.
+tbs_commons.patches.silence_self_service_workflow_email
 
 [post_fixture_sync]
