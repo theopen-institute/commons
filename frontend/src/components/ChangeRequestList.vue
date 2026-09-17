@@ -1,14 +1,25 @@
 <template>
 	<section>
-		<div class="flex items-center justify-between">
-			<h2 class="text-lg font-semibold text-ink-gray-9">Requests</h2>
-			<Button
-				variant="ghost"
-				icon-left="lucide-refresh-cw"
-				label="Refresh"
-				:loading="loading"
-				@click="emit('refresh')"
-			/>
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<h2 class="text-lg font-semibold text-ink-gray-9">
+				{{ settled ? 'Change Request History' : 'Pending Change Requests' }}
+			</h2>
+			<div class="flex items-center gap-2">
+				<TabButtons
+					v-model="tab"
+					:options="[
+						{ label: 'Pending', value: 'pending' },
+						{ label: 'History', value: 'history' },
+					]"
+				/>
+				<Button
+					variant="ghost"
+					icon-left="lucide-refresh-cw"
+					label="Refresh"
+					:loading="loading"
+					@click="emit('refresh')"
+				/>
+			</div>
 		</div>
 
 		<div v-if="loading" class="mt-3 space-y-2">
@@ -19,9 +30,15 @@
 			v-else-if="!requests.length"
 			class="mt-3 rounded-4 border border-dashed border-outline-gray-2 px-4 py-10 text-center"
 		>
-			<p class="text-base-medium text-ink-gray-7">Nothing proposed yet</p>
+			<p class="text-base-medium text-ink-gray-7">
+				{{ settled ? 'Nothing settled yet' : 'Nothing waiting on a review' }}
+			</p>
 			<p class="mt-1 text-p-sm text-ink-gray-5">
-				What you send for review, and what was decided, shows up here.
+				{{
+					settled
+						? 'Requests that have been approved, turned down or withdrawn show up here, along with whatever the reviewer said about them.'
+						: 'What you have sent and nobody has decided yet shows up here. Once a request is settled it moves to History.'
+				}}
 			</p>
 		</div>
 
@@ -80,8 +97,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Badge, Button, Skeleton, dialog, toast } from 'frappe-ui'
+import { computed, ref } from 'vue'
+import { Badge, Button, Skeleton, TabButtons, dialog, toast } from 'frappe-ui'
 import ChangeDiff from './ChangeDiff.vue'
 import {
 	decisionButtons,
@@ -99,6 +116,11 @@ defineProps<{
 	/** The outcomes the server will accept, in the order to offer them. */
 	decisions: Decision[]
 }>()
+
+/** Which list is on screen. The page owns the fetch; this owns the switch. */
+const tab = defineModel<'pending' | 'history'>('tab', { required: true })
+
+const settled = computed(() => tab.value === 'history')
 
 const emit = defineEmits<{ refresh: [] }>()
 

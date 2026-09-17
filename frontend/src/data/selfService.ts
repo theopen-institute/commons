@@ -319,18 +319,33 @@ export interface ChangeRequest {
   actions?: string[]
 }
 
-/** This user's own requests about one record type, newest first. */
-export function useMyChanges(doctype: MaybeRefOrGetter<string>) {
+/**
+ * This user's own requests about one record type.
+ *
+ * Open ones by default; `decided` asks for the settled ones instead. Which is
+ * which is the server's to say — see `get_my_changes`, which reads the same
+ * predicate the review queue and the pending badge do, so "open" cannot come to
+ * mean one thing on this page and another in the count beside it.
+ */
+export function useMyChanges(
+  doctype: MaybeRefOrGetter<string>,
+  decided: MaybeRefOrGetter<boolean> = false,
+  enabled: MaybeRefOrGetter<boolean> = true
+) {
   const target = computed(() => toValue(doctype))
-  const call = useCall<ChangeRequest[], { doctype: string }>({
+  const settled = computed(() => toValue(decided))
+  // History is only worth a round trip once somebody asks to see it, so the
+  // caller can keep this list dormant until then.
+  const active = computed(() => toValue(enabled))
+  const call = useCall<ChangeRequest[], { doctype: string; decided: number }>({
     url: '/api/v2/method/tbs_commons.self_service.api.get_my_changes',
-    params: () => ({ doctype: target.value }),
+    params: () => ({ doctype: target.value, decided: settled.value ? 1 : 0 }),
     immediate: false,
   })
   watch(
-    target,
-    (name) => {
-      if (name) call.reload()
+    [target, settled, active],
+    ([name, , on]) => {
+      if (name && on) call.reload()
     },
     { immediate: true }
   )

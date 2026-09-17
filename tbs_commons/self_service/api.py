@@ -117,13 +117,6 @@ def initial_state(workflow) -> str:
 	return frappe.get_meta(DOCTYPE).get_field("status").default or "Pending"
 
 
-@frappe.whitelist()
-def get_change_workflow() -> dict | None:
-	"""The active Workflow definition, reduced to fields the SPA can render."""
-	frappe.has_permission(DOCTYPE, "read", throw=True)
-	return wf.describe(change_workflow())
-
-
 def _may_review() -> bool:
 	"""Whether this user has a review queue at all.
 
@@ -424,8 +417,28 @@ def _with_state_field(workflow) -> list[str]:
 
 
 @frappe.whitelist()
-def get_my_changes(doctype: str | None = None) -> list[dict]:
-	"""The session user's own requests, newest first.
+def get_my_changes(doctype: str | None = None, decided: int = 0) -> list[dict]:
+	"""The session user's own requests: the open ones, or the ones already settled.
+
+	Two lists rather than one, because they answer different questions and the
+	page asks them at different times. What is still open is what the owner can
+	act on -- and what tells the profile which fields already have a proposal
+	against them, so nobody raises the same correction twice. What is settled is
+	history: why a request was turned down, and what the reviewer said about it.
+
+	The owner's history, not the reviewer's. `get_change_queue(decided=1)` also
+	returns settled requests, but it is the reviewer's record of what *they*
+	decided and needs submit on the doctype; this is what happened to requests
+	about *your* records, and needs nothing but owning them.
+
+	One predicate either way -- `_queue_filters`, which the review queue and the
+	badge also read, so "open" cannot come to mean one thing here and another
+	there. Open is the state a request starts in, derived rather than named; see
+	`initial_state`.
+
+	Filtered in the query rather than after it. Settled requests outnumber open
+	ones over time, so a Python filter behind `limit_page_length` would let the
+	open one this page exists to show fall off the end of a page of history.
 
 	Two ways a request is theirs, and both are needed.
 
@@ -447,10 +460,11 @@ def get_my_changes(doctype: str | None = None) -> list[dict]:
 	# none" is the same answer as far as it is concerned.
 	if not frappe.has_permission(DOCTYPE, "read"):
 		return []
+	decided = bool(frappe.utils.cint(decided))
 	owned = _my_records(doctype)
 	user = frappe.session.user
 	workflow = change_workflow()
-	filters = {"reference_doctype": doctype} if doctype else {}
+	filters = _queue_filters(decided, doctype)
 	requests = frappe.get_list(
 		DOCTYPE,
 		filters=filters,
@@ -461,7 +475,9 @@ def get_my_changes(doctype: str | None = None) -> list[dict]:
 			["requested_by", "=", user],
 		],
 		fields=_with_state_field(workflow),
-		order_by="creation desc",
+		# Newest first while they are still open -- the one just sent is the one
+		# being looked for; most recently settled first once they are history.
+		order_by="modified desc" if decided else "creation desc",
 		limit_page_length=PAGE_LENGTH,
 	)
 	# `reference_name` alone could collide across doctypes, so the pair is what

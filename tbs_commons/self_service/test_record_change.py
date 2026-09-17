@@ -284,6 +284,56 @@ class TestRecordChangeRequest(unittest.TestCase):
 			[("cell_number", "0712 000 000", "0799 999 999")],
 		)
 
+	def test_a_settled_request_leaves_the_owner_s_list(self):
+		"""The profile shows what is still waiting, not what was decided.
+
+		An approved request is already the record above it and a refused one is
+		raised again rather than revisited, so neither is something the owner can
+		act on. The reviewer's own history is `get_change_queue(decided=1)`,
+		which is where who decided what still matters.
+
+		Each outcome separately, because they settle differently: approving
+		submits the request (docstatus 1) while rejecting and withdrawing leave
+		it at 0, so a predicate reading `docstatus` would have caught only one of
+		the three.
+		"""
+		# A distinct number per outcome: approving *applies* the change, so a
+		# second request proposing the same value is refused by the controller
+		# as proposing nothing.
+		for outcome, number in (
+			("Approve", "0799 000 001"),
+			("Reject", "0799 000 002"),
+			("Withdraw", "0799 000 003"),
+		):
+			with self.subTest(outcome=outcome):
+				name = self.propose(cell_number=number)
+				frappe.set_user(self.user)
+				self.assertIn(name, [row["name"] for row in api.get_my_changes()])
+
+				frappe.set_user("Administrator")
+				api.decide_change(name, outcome)
+				frappe.set_user(self.user)
+				self.assertNotIn(name, [row["name"] for row in api.get_my_changes()])
+
+	def test_a_settled_request_is_in_the_owners_history(self):
+		"""The other half of the split: gone from the list, not gone.
+
+		The owner's own history, which is not the reviewer's -- `get_change_queue`
+		needs submit on the doctype, and this needs nothing but owning the record.
+		A refused request and the reason it was refused are the requester's to
+		read.
+		"""
+		name = self.propose(cell_number="0799 000 004")
+		frappe.set_user("Administrator")
+		api.decide_change(name, "Reject", note="Ring the office first.")
+
+		frappe.set_user(self.user)
+		self.assertNotIn(name, [row["name"] for row in api.get_my_changes()])
+		settled = {row["name"]: row for row in api.get_my_changes(decided=1)}
+		self.assertIn(name, settled)
+		self.assertFalse(settled[name]["open"])
+		self.assertEqual(settled[name]["review_note"], "Ring the office first.")
+
 	def test_one_persons_requests_are_not_anothers(self):
 		"""`get_my_changes` filters on the records this login owns, so a second
 		employee's request is invisible to the first."""

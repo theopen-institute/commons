@@ -127,8 +127,9 @@
 				</div>
 			</div>
 
-			<ChangeRequestHistory
+			<ChangeRequestList
 				v-if="can.proposable.length || can.allow_new || can.allow_delete"
+				v-model:tab="changesTab"
 				class="mt-10"
 				:requests="changes.data ?? []"
 				:loading="changes.loading && !changes.data"
@@ -171,7 +172,7 @@ import {
 } from '@/data/selfService'
 import { pluralise } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
-import ChangeRequestHistory from '@/components/ChangeRequestHistory.vue'
+import ChangeRequestList from '@/components/ChangeRequestList.vue'
 import ProfileSection from '@/components/ProfileSection.vue'
 import ProposeFieldDialog from '@/components/ProposeFieldDialog.vue'
 import ProposeRecordDialog from '@/components/ProposeRecordDialog.vue'
@@ -194,7 +195,21 @@ const doctype = computed(() => nav.value?.doctype ?? '')
 // changes again when the address does; a composable called inside a computed
 // would build a fresh set of calls on every read and none of them would settle.
 const source = useSelfServiceRecords<Record<string, any>>(() => doctype.value)
-const changes = useMyChanges(() => doctype.value)
+const changesTab = ref<'pending' | 'history'>('pending')
+
+// Two lists, not one switched between. The open requests are what marks a field
+// as already having a proposal against it and what the header badge counts, and
+// neither of those should empty out because somebody looked at their history.
+const pendingChanges = useMyChanges(() => doctype.value)
+const historyChanges = useMyChanges(
+	() => doctype.value,
+	true,
+	// Dormant until asked for: nobody opens a profile to read history.
+	() => changesTab.value === 'history',
+)
+const changes = computed(() =>
+	changesTab.value === 'history' ? historyChanges : pendingChanges,
+)
 
 const can = source.can
 const records = source.records
@@ -230,7 +245,7 @@ function startEdit(record: Record<string, any>, field: RecordField) {
  */
 function pendingFor(record: Record<string, any>) {
 	const pending: Record<string, string | null> = {}
-	for (const row of changes.data ?? []) {
+	for (const row of pendingChanges.data ?? []) {
 		if (!row.open || row.reference_name !== record.name) continue
 		for (const change of row.changes) pending[change.fieldname] = change.proposed_value
 	}
@@ -246,13 +261,15 @@ function pendingFor(record: Record<string, any>) {
  * a record marked for removal long after the request was turned down.
  */
 function removalPending(record: Record<string, any>): boolean {
-	return (changes.data ?? []).some(
+	return (pendingChanges.data ?? []).some(
 		(row) =>
 			row.open && row.request_type === 'Delete' && row.reference_name === record.name,
 	)
 }
 
-const pendingCount = computed(() => (changes.data ?? []).filter((row) => row.open).length)
+const pendingCount = computed(
+	() => (pendingChanges.data ?? []).filter((row) => row.open).length,
+)
 
 function proposeRemoval(record: Record<string, any>) {
 	const label = titleOf(record)
@@ -283,7 +300,10 @@ function proposeRemoval(record: Record<string, any>) {
 
 function refresh() {
 	source.reload()
-	changes.reload()
+	// The open list always: it feeds the field markers and the badge whichever
+	// tab is showing. The history only when it is the one on screen.
+	pendingChanges.reload()
+	if (changesTab.value === 'history') historyChanges.reload()
 }
 
 // A different record type is a different page; nothing from the last one should

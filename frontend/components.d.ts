@@ -14,7 +14,7 @@ declare module 'vue' {
     AppPageHeader: typeof import('./src/components/AppPageHeader.vue')['default']
     AppSidebar: typeof import('./src/components/AppSidebar.vue')['default']
     ChangeDiff: typeof import('./src/components/ChangeDiff.vue')['default']
-    ChangeRequestHistory: typeof import('./src/components/ChangeRequestHistory.vue')['default']
+    ChangeRequestList: typeof import('./src/components/ChangeRequestList.vue')['default']
     DepartmentBudgetCard: typeof import('./src/components/DepartmentBudgetCard.vue')['default']
     LeaveRequestDialog: typeof import('./src/components/LeaveRequestDialog.vue')['default']
     LinkControl: typeof import('./src/components/LinkControl.vue')['default']
