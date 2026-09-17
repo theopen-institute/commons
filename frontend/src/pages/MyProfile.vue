@@ -14,15 +14,6 @@
 				{{ profile.status }}
 			</Badge>
 		</div>
-		<template #actions>
-			<Button
-				v-if="profile && profileCan.request"
-				variant="solid"
-				icon-left="lucide-pencil-line"
-				label="Propose changes"
-				@click="showPropose = true"
-			/>
-		</template>
 	</AppPageHeader>
 
 	<div class="px-5 py-4">
@@ -57,7 +48,7 @@
 				title="This page is read only"
 				:description="
 					profileCan.request
-						? 'Your details are held by HR. Use Propose changes to ask for a correction — they see what you changed and decide.'
+						? 'Your details are held by HR. Fields you can correct have a pencil beside them — your change goes to HR as a proposal.'
 						: 'Your details are held by HR. Ask them to correct anything that is wrong.'
 				"
 			/>
@@ -69,6 +60,8 @@
 					:section="section"
 					:doc="profile"
 					:pending="pendingByField"
+					:proposable="profileCan.request ? profileCan.proposable : []"
+					@propose="editing = $event"
 				/>
 			</div>
 
@@ -176,11 +169,12 @@
 			</section>
 		</div>
 
-		<ProposeChangesDialog
+		<ProposeFieldDialog
 			v-if="profile"
-			v-model:open="showPropose"
 			:profile="profile"
+			:field="editing"
 			:pending="pendingByField"
+			@close="editing = null"
 			@created="refresh"
 		/>
 	</div>
@@ -207,14 +201,17 @@ import {
 	type DecisionButton,
 	type ProfileChangeRequest,
 } from '@/data/profile'
-import { employeeSections } from '@/data/employeeFields'
+import { employeeSections, type EmployeeField } from '@/data/employeeFields'
 import { formatDate, pluralise, statusTheme } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import ChangeDiff from '@/components/ChangeDiff.vue'
 import ProfileSection from '@/components/ProfileSection.vue'
-import ProposeChangesDialog from '@/components/ProposeChangesDialog.vue'
+import ProposeFieldDialog from '@/components/ProposeFieldDialog.vue'
 
-const showPropose = ref(false)
+// Which field the propose dialog is open on, or null when it is closed. One
+// nullable ref rather than a field plus a visibility flag, so the two cannot
+// disagree about what is being asked.
+const editing = ref<EmployeeField | null>(null)
 
 const profile = computed(() => myProfile.value)
 
