@@ -72,12 +72,18 @@
 					label="Profile"
 					collapsible
 				>
+					<!-- `active` explicitly, because these rows share one named route.
+					     SidebarItem infers it by comparing route *names*, which is right
+					     for a page per route and wrong for a page per slug: every row
+					     resolves to `SelfServiceRecord`, so all of them would light up
+					     whenever any one was open. -->
 					<SidebarItem
 						v-for="row in navRecords"
 						:key="row.slug"
 						:label="row.label"
 						:icon="row.icon || 'lucide-file-text'"
 						:to="`/profile/${row.slug}`"
+						:active="route.params.slug === row.slug"
 					/>
 					<SidebarItem
 						v-if="reviewCan.review"
