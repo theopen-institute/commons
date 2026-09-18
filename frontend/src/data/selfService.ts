@@ -12,7 +12,7 @@ import { user } from './session'
 /**
  * One self-service record type, read the way every one of them is read.
  *
- * The section is generic on the server (`tbs_commons.self_service`), and this is
+ * The section is generic on the server (`commons.self_service`), and this is
  * the client half of the same idea: a record type is a doctype plus a policy,
  * and everything a page needs to show one -- which fields, which rows are mine,
  * whether I may see them at all -- arrives from that policy rather than being
@@ -161,7 +161,7 @@ export function useSelfServiceRecords<T>(
   // is keyed by the browser rather than the user, so the next person to log in
   // on this machine would get a stale-first render of someone else's answer.
   const permissionsCall = useCall<SelfServicePermissions, { doctype: string }>({
-    url: '/api/v2/method/tbs_commons.self_service.api.get_change_permissions',
+    url: '/api/v2/method/commons.self_service.api.get_change_permissions',
     params: () => ({ doctype: target.value }),
     immediate: false,
   })
@@ -269,7 +269,7 @@ export interface NavRecord {
 }
 
 const navCall = useCall<NavRecord[]>({
-  url: '/api/v2/method/tbs_commons.self_service.api.get_self_service_nav',
+  url: '/api/v2/method/commons.self_service.api.get_self_service_nav',
 })
 
 /** Every self-service page, in configured order. The sidebar reads this rather
@@ -338,7 +338,7 @@ export function useMyChanges(
   // caller can keep this list dormant until then.
   const active = computed(() => toValue(enabled))
   const call = useCall<ChangeRequest[], { doctype: string; decided: number }>({
-    url: '/api/v2/method/tbs_commons.self_service.api.get_my_changes',
+    url: '/api/v2/method/commons.self_service.api.get_my_changes',
     params: () => ({ doctype: target.value, decided: settled.value ? 1 : 0 }),
     immediate: false,
   })
@@ -358,7 +358,7 @@ export function useMyChanges(
  */
 export function useRaiseRequest() {
   return useCall<{ name: string }, { doctype: string; doc: string }>({
-    url: '/api/v2/method/tbs_commons.self_service.api.request_change',
+    url: '/api/v2/method/commons.self_service.api.request_change',
     method: 'POST',
     immediate: false,
   })
@@ -370,7 +370,7 @@ export function useDecision() {
     { name: string; status: string; docstatus: number },
     { name: string; decision: string; note?: string }
   >({
-    url: '/api/v2/method/tbs_commons.self_service.api.decide_change',
+    url: '/api/v2/method/commons.self_service.api.decide_change',
     method: 'POST',
     immediate: false,
   })

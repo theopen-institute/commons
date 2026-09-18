@@ -1,7 +1,7 @@
 {
 	"private": true,
-	"name": "tbs_commons",
-	"description": "Tools for TBS",
+	"name": "commons",
+	"description": "Shared tools for Frappe",
 	"scripts": {
 		"postinstall": "cd frontend && yarn install --check-files",
 		"dev": "cd frontend && yarn dev",

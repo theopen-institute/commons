@@ -147,7 +147,7 @@ allocation covers their date. Only requests with no department need importing, a
 importing means attributing them:
 
 ```
-tbs_commons.requests.budget.register_existing_documents
+commons.requests.budget.register_existing_documents
 ```
 
 Its `documents` argument is a list such as
@@ -163,8 +163,8 @@ of this.
 
 ## Verification
 
-- `python -m unittest tbs_commons.requests.test_budget_math` — outstanding estimate arithmetic.
-- `bench --site SITE execute tbs_commons.requests.test_budget_integration.run` —
+- `python -m unittest commons.requests.test_budget_math` — outstanding estimate arithmetic.
+- `bench --site SITE execute commons.requests.test_budget_integration.run` —
   real Purchase and Material Issue requests, hard limits, cancellation, budget
   amendment, partial fulfilment, UOMs, immutability, historical attribution and
   PO/PI independence. Fixtures are rolled back.

@@ -90,7 +90,7 @@ export interface ExpenseClaimLine {
 }
 
 const section = createRequestSection<{ name: string }, ExpenseClaimRow>({
-  module: 'tbs_commons.requests.expense',
+  module: 'commons.requests.expense',
   doctype: 'Expense Claim',
   decisionField: 'approval_status',
   endpoints: {
@@ -163,7 +163,7 @@ export const useExpenseDecision = () =>
  */
 export function useExpenseClaimLines(claims: MaybeRefOrGetter<string[]>) {
   const lines = useCall<ExpenseClaimLine[], { claims: string }>({
-    url: '/api/v2/method/tbs_commons.requests.expense.get_expense_claim_lines',
+    url: '/api/v2/method/commons.requests.expense.get_expense_claim_lines',
     params: () => ({ claims: JSON.stringify(toValue(claims)) }),
     immediate: false,
   })
@@ -220,7 +220,7 @@ export function useExpenseClaimSummary() {
 
 export function useExpenseClaimDefaults() {
   return useCall<ExpenseClaimDefaults>({
-    url: '/api/v2/method/tbs_commons.requests.expense.get_expense_claim_defaults',
+    url: '/api/v2/method/commons.requests.expense.get_expense_claim_defaults',
     immediate: false,
   })
 }

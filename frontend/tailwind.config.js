@@ -15,6 +15,6 @@ export default {
     ...frappeUIContent,
     './index.html',
     './src/**/*.{vue,js,ts}',
-    '../tbs_commons/self_service/icons.py',
+    '../commons/self_service/icons.py',
   ],
 }

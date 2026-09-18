@@ -64,7 +64,7 @@ const props = defineProps<{ summary: DepartmentBudgetSummary; requestName?: stri
 
 // `useCall`, like the rest of the app, rather than a bare resource.
 const documents = useCall<BudgetDocument[], { request: string }>({
-  url: '/api/v2/method/tbs_commons.requests.budget.get_budget_documents',
+  url: '/api/v2/method/commons.requests.budget.get_budget_documents',
   immediate: false,
 })
 

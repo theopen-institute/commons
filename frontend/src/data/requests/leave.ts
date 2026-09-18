@@ -47,7 +47,7 @@ export interface LeaveApplicationRow extends RequestRow {
 }
 
 const section = createRequestSection<MyEmployee, LeaveApplicationRow>({
-  module: 'tbs_commons.requests.leave',
+  module: 'commons.requests.leave',
   doctype: 'Leave Application',
   decisionField: 'status',
   endpoints: {

@@ -1,0 +1,13 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- The app's own mark, as against the three section marks beside it: this is
+       what the desk icon carries, so it stands for the app rather than any one section.
+       Same tile, colour and 4px white stroke as the others. A schoolhouse:
+       pitched roof, door, and the belfry that is the one feature telling it
+       apart from a plain house. No windows, because at the 32px the sidebar
+       renders this they close up into a smudge. -->
+  <rect width="64" height="64" rx="14" fill="#1E3A8A"/>
+  <path d="M27 23V13h10v10" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M11 35L32 22l21 13" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 35v16h32V35" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M27 51v-9h10v9" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

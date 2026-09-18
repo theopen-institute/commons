@@ -7,8 +7,8 @@ export default defineConfig({
   plugins: [
     frappeui({
       // Drives the dev-server banner and the built page's destination:
-      // ../tbs_commons/www/tbs_commons.html, which hooks.py routes /tbs_commons/* to.
-      frontendRoute: '/tbs_commons',
+      // ../commons/www/commons.html, which hooks.py routes /commons/* to.
+      frontendRoute: '/commons',
       frappeTypes: {
         // Employee lives in erpnext; the generator reads the doctype JSON out
         // of the bench and writes src/types/doctypes.ts on dev start.

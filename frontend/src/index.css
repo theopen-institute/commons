@@ -26,7 +26,7 @@
   Written out as the colours it resolves to rather than as the `var(--green-200)`
   pairs it is declared with: frappe-ui's ramp of that name is a shade off
   frappe's, and an avatar that changes colour between the two pages is the thing
-  this is here to stop. `tbs_commons.www.tbs_commons.get_avatar_color` picks which pair a
+  this is here to stop. `commons.www.commons.get_avatar_color` picks which pair a
   person gets, by the same arithmetic the desk uses.
 */
 :root {

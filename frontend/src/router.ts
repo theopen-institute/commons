@@ -11,7 +11,7 @@ declare module 'vue-router' {
 
 const routes: RouteRecordRaw[] = [
   {
-    // Bare /tbs_commons lands on announcements: the one page every user of this
+    // Bare /commons lands on announcements: the one page every user of this
     // app can open, so it needs no permission answer to redirect on.
     path: '/',
     redirect: { name: 'Announcements' },
@@ -87,6 +87,6 @@ const routes: RouteRecordRaw[] = [
 ]
 
 export default createRouter({
-  history: createWebHistory('/tbs_commons'),
+  history: createWebHistory('/commons'),
   routes,
 })

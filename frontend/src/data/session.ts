@@ -25,7 +25,7 @@ declare global {
 const bootUser = window.user_info
 
 const sessionCall = useCall<UserInfo>({
-  url: '/api/v2/method/tbs_commons.api.get_session_user',
+  url: '/api/v2/method/commons.api.get_session_user',
   immediate: !bootUser,
 })
 

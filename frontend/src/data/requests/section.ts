@@ -17,7 +17,7 @@ import {
  * and a label for each row. The two data modules said all of that separately
  * and nearly identically — the second one's comments cited the first as their
  * argument, which is how you know. The server's half of the same duplication is
- * `tbs_commons.requests.approvals`; this is the browser's half.
+ * `commons.requests.approvals`; this is the browser's half.
  *
  * What a section supplies is the part that is genuinely its own: which endpoint
  * answers each question, what a row of its list carries, and what its outcomes
@@ -114,7 +114,7 @@ export interface StatusDisplay {
 
 export interface RequestSectionOptions {
   /** The dotted path of the server module behind the section, e.g.
-   *  `tbs_commons.requests.leave`. Its endpoints are named below rather than
+   *  `commons.requests.leave`. Its endpoints are named below rather than
    *  derived, because they are named for what they do and not for a pattern. */
   module: string
   /** The doctype the user's own list is read from through the document API,

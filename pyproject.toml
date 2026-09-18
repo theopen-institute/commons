@@ -1,9 +1,9 @@
 [project]
-name = "tbs_commons"
+name = "commons"
 authors = [
     { name = "Peter", email = "pgraif@gmail.com"}
 ]
-description = "Tools for TBS"
+description = "Shared tools for Frappe"
 requires-python = ">=3.14"
 readme = "README.md"
 dynamic = ["version"]

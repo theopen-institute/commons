@@ -101,7 +101,7 @@ export interface ProcurementRequestItemRow {
 }
 
 const permissionsCall = useCall<ProcurementPermissions>({
-  url: '/api/v2/method/tbs_commons.requests.procurement.get_procurement_permissions',
+  url: '/api/v2/method/commons.requests.procurement.get_procurement_permissions',
 })
 
 const NO_PERMISSIONS: ProcurementPermissions = {
@@ -133,7 +133,7 @@ export interface ProcurementRequestDefaults {
 
 export function useProcurementRequestDefaults() {
   return useCall<ProcurementRequestDefaults>({
-    url: '/api/v2/method/tbs_commons.requests.procurement.get_procurement_request_defaults',
+    url: '/api/v2/method/commons.requests.procurement.get_procurement_request_defaults',
     immediate: false,
   })
 }
@@ -201,7 +201,7 @@ export const procurementWorkflow = computed(
 /** Own requests, with amendments displayed in their cancelled ancestor's place. */
 export function useMyProcurementRequests() {
   return useCall<ProcurementRequestRow[]>({
-    url: '/api/v2/method/tbs_commons.requests.procurement.get_my_procurement_requests',
+    url: '/api/v2/method/commons.requests.procurement.get_my_procurement_requests',
   })
 }
 
@@ -235,7 +235,7 @@ export function useProcurementWorkflowQueue(
   decided: MaybeRefOrGetter<boolean>,
 ) {
   const queue = useCall<ProcurementQueue, { decided: number }>({
-    url: '/api/v2/method/tbs_commons.requests.procurement.get_procurement_workflow_queue',
+    url: '/api/v2/method/commons.requests.procurement.get_procurement_workflow_queue',
     params: () => ({ decided: toValue(decided) ? 1 : 0 }),
     immediate: false,
   })
@@ -254,7 +254,7 @@ export function useProcurementRequestTransitions(
     Record<string, AvailableWorkflowAction[]>,
     { requests: string }
   >({
-    url: '/api/v2/method/tbs_commons.requests.procurement.get_procurement_request_transitions',
+    url: '/api/v2/method/commons.requests.procurement.get_procurement_request_transitions',
     params: () => ({ requests: JSON.stringify(toValue(parents)) }),
     immediate: false,
   })
@@ -280,7 +280,7 @@ export function useProcurementRequestLines(
   parents: MaybeRefOrGetter<string[]>,
 ) {
   const lines = useCall<ProcurementRequestItemRow[], { requests: string }>({
-    url: '/api/v2/method/tbs_commons.requests.procurement.get_procurement_request_lines',
+    url: '/api/v2/method/commons.requests.procurement.get_procurement_request_lines',
     params: () => ({ requests: JSON.stringify(toValue(parents)) }),
     immediate: false,
   })
@@ -318,7 +318,7 @@ export function useApplyProcurementWorkflow() {
 
 export function useSaveProcurementRequest() {
   return useCall<ProcurementRequestRow, { doc: string; action?: string }>({
-    url: '/api/v2/method/tbs_commons.requests.procurement.save_procurement_request',
+    url: '/api/v2/method/commons.requests.procurement.save_procurement_request',
     method: 'POST',
     immediate: false,
   })

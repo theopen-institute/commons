@@ -1,6 +1,6 @@
-### TBS Commons
+### Commons
 
-Tools for TBS
+Shared tools for Frappe
 
 ### Installation
 
@@ -9,7 +9,7 @@ You can install this app using the [bench](https://github.com/frappe/bench) CLI:
 ```bash
 cd $PATH_TO_YOUR_BENCH
 bench get-app $URL_OF_THIS_REPO --branch develop
-bench install-app tbs_commons
+bench install-app commons
 ```
 
 ### Contributing
@@ -17,7 +17,7 @@ bench install-app tbs_commons
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
 
 ```bash
-cd apps/tbs_commons
+cd apps/commons
 pre-commit install
 ```
 

@@ -1,6 +1,6 @@
-# TBS Commons frontend
+# Commons frontend
 
-Vue 3 + [frappe-ui](https://ui.frappe.io) v1 (espresso), served at `/tbs_commons`.
+Vue 3 + [frappe-ui](https://ui.frappe.io) v1 (espresso), served at `/commons`.
 
 One bundle, one app, several sections — see
 [One app, several sections](#one-app-several-sections).
@@ -19,12 +19,12 @@ start, so type changes follow schema changes.
 
 ```sh
 yarn type-check  # vue-tsc
-yarn build       # writes ../tbs_commons/public/frontend + ../tbs_commons/www/tbs_commons.html
+yarn build       # writes ../commons/public/frontend + ../commons/www/commons.html
 ```
 
-`yarn build` is what makes `/tbs_commons` work on the site: it copies the built page
-to `tbs_commons/www/tbs_commons.html`, which `website_route_rules` in `hooks.py` points
-every `/tbs_commons/*` path at.
+`yarn build` is what makes `/commons` work on the site: it copies the built page
+to `commons/www/commons.html`, which `website_route_rules` in `hooks.py` points
+every `/commons/*` path at.
 
 ## Layout
 
@@ -40,14 +40,14 @@ every `/tbs_commons/*` path at.
 | `src/data/workflowStyle.ts`           | **The styling vocabulary.** A Workflow State's style → a badge or button  |
 | `src/components/RequestGate.vue`      | The permission preamble every request page opens with                     |
 | `src/components/EmployeeRequired.vue` | The two empty states for a login with no employee record                  |
-| `src/data/session.ts`                 | The session user, from boot data or `tbs_commons.api.get_session_user`    |
+| `src/data/session.ts`                 | The session user, from boot data or `commons.api.get_session_user`    |
 | `src/components/LinkControl.vue`      | Link-field picker backed by Frappe's own link search                      |
 | `src/pages/`                          | Announcements, profile, and a "mine"/"approvals" pair per request section |
 
 ## One app, several sections
 
-The desk shows one icon, **TBS**, and behind it is one app — **TBS Commons**,
-read by a member of staff about themselves. Everything in it is something a
+The desk shows one icon, **Commons**, and behind it is one app, read by a
+member of staff about themselves. Everything in it is something a
 person raises about themselves and waits on an approver for: their profile,
 their bank accounts, their leave, their expenses, their purchases.
 
@@ -70,7 +70,7 @@ The sections inside it are two things:
 ### How the desk icons work
 
 The desk renders **`Desktop Icon` documents**, not a hook. This app ships one as
-a file, `tbs_commons/desktop_icon/tbs.json`, which `frappe.model.sync` imports on
+a file, `commons/desktop_icon/commons.json`, which `frappe.model.sync` imports on
 every migrate because `desktop_icon` is one of its `app_level_folders`. Editing
 that file and migrating is the whole workflow -- `install.py` maintains no icons,
 and there is no `add_to_apps_screen` entry to keep in step with it.
@@ -90,7 +90,7 @@ hard reload may be needed to see it.
 ## Requests
 
 Leave, expenses and procurement are one shape wearing three names, and the
-server says so: `tbs_commons.requests.approvals` holds the decision vocabulary,
+server says so: `commons.requests.approvals` holds the decision vocabulary,
 the queue and its badge, the permissions payload and the decide-or-apply-workflow
 transaction, and each section supplies only its doctype, its deciding field and
 the rules HRMS applies to it and not the others.
@@ -121,7 +121,7 @@ Two pages over HRMS's `Leave Application`:
   with Approve / Deny.
 
 A decision is two writes underneath — `status` (which sits at permlevel 1) and
-a submit — so `tbs_commons.requests.leave.decide_leave_application` does both in
+a submit — so `commons.requests.leave.decide_leave_application` does both in
 one transaction. The endpoint requires the caller to be the application's
 *named* approver, or hold a role that owns the doctype: the `Leave Approver`
 role by itself grants submit on every leave application, which would let one
@@ -171,5 +171,5 @@ siblings) and the UI hides or disables what the user cannot do. That is a
 courtesy, not the boundary: every read and write goes through the REST API,
 which applies the same checks server-side. Lists the pages fetch for themselves
 go through Frappe's document API precisely so that role permissions, User
-Permissions and this app's own gate in `tbs_commons.safer_permissions` all apply
+Permissions and this app's own gate in `commons.safer_permissions` all apply
 without the frontend restating any of them.
