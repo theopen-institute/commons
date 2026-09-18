@@ -42,14 +42,6 @@ const routes: RouteRecordRaw[] = [
     meta: { app: 'requests' },
   },
   {
-    path: '/profile/approvals',
-    name: 'ProfileChangeApprovals',
-    component: () => import('@/pages/ProfileChangeApprovals.vue'),
-    meta: { app: 'requests' },
-  },
-  {
-    // Declared after `approvals`, which is a page this app owns rather than a
-    // record slug -- `SelfServiceRecord` refuses that slug for the same reason.
     path: '/profile/:slug',
     name: 'SelfServiceRecord',
     component: () => import('@/pages/SelfServiceRecord.vue'),

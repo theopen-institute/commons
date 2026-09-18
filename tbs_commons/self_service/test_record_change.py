@@ -914,7 +914,7 @@ class TestFreeFormFields(unittest.TestCase):
 		registry.clear_cache()
 		frappe.set_user("Administrator")
 
-	def propose_unknown_bank(self) -> str:
+	def propose_unknown_bank(self, value: str | None = None) -> str:
 		frappe.set_user(self.user.name)
 		return api.request_change(
 			RECORD_BANK,
@@ -922,10 +922,16 @@ class TestFreeFormFields(unittest.TestCase):
 				{
 					"request_type": "Change",
 					"reference_name": self.account,
-					"changes": [{"fieldname": "bank", "proposed_value": self.unknown}],
+					"changes": [{"fieldname": "bank", "proposed_value": value or self.unknown}],
 				}
 			),
 		)["name"]
+
+	def onloaded(self, name: str) -> list[dict]:
+		"""What the desk form is told when it opens this request."""
+		doc = frappe.get_doc(api.DOCTYPE, name)
+		doc.run_method("onload")
+		return doc.get_onload("missing_links")
 
 	def test_the_field_is_offered_as_text_with_nothing_to_search(self):
 		"""The page draws a text box because there is no document to find yet."""
@@ -982,6 +988,68 @@ class TestFreeFormFields(unittest.TestCase):
 		row = frappe.db.get_value(api.DOCTYPE, name, ["status", "docstatus"], as_dict=True)
 		self.assertEqual(row.status, "Pending")
 		self.assertEqual(row.docstatus, 0)
+
+	# -- what the desk form is told ---------------------------------------
+
+	def test_the_form_says_what_is_missing_before_anybody_approves(self):
+		"""The refusal is the guard, not the notice.
+
+		An approver who only finds out by pressing Approve reads an error where
+		they could have read a sentence. The same answer arrives with the
+		document, so the form can say it and offer the popup against it.
+		"""
+		name = self.propose_unknown_bank()
+		frappe.set_user("Administrator")
+		gaps = self.onloaded(name)
+		self.assertEqual(len(gaps), 1)
+		self.assertEqual(gaps[0]["target"], "Bank")
+		self.assertEqual(gaps[0]["value"], self.unknown)
+		self.assertEqual(gaps[0]["label"], "Bank")
+		# A Bank is named after `bank_name`, so the typed value becomes the name
+		# the Link will resolve to -- which is what makes the popup worth offering.
+		self.assertEqual(gaps[0]["name_field"], "bank_name")
+		self.assertTrue(gaps[0]["creatable"])
+
+	def test_the_notice_goes_once_the_document_exists(self):
+		"""Paired with the approval test below: one answer behind both, so the
+		form cannot go on asking for something that is already there."""
+		name = self.propose_unknown_bank()
+		frappe.set_user("Administrator")
+		frappe.get_doc(dict(doctype="Bank", bank_name=self.unknown)).insert(ignore_permissions=True)
+		self.assertEqual(self.onloaded(name), [])
+
+	def test_a_near_match_already_on_file_is_offered(self):
+		"""Against duplicates: a typed value that matches nothing may still be
+		something the site holds under a slightly different name, and the
+		approver is the only person placed to notice."""
+		frappe.set_user("Administrator")
+		existing = frappe.get_doc(
+			dict(doctype="Bank", bank_name=f"Chartered Bank {frappe.generate_hash(length=6)}")
+		).insert(ignore_permissions=True)
+		name = self.propose_unknown_bank("Chartered")
+		frappe.set_user("Administrator")
+		self.assertIn(existing.name, self.onloaded(name)[0]["suggestions"])
+
+	def test_nothing_is_offered_to_create_to_somebody_who_may_not(self):
+		"""The employee who raised it can read their own request in the desk.
+		Creating the bank it names is not theirs to do, and the form is told so
+		rather than offering a popup that would be refused on insert."""
+		name = self.propose_unknown_bank()
+		frappe.set_user(self.user.name)
+		gaps = self.onloaded(name)
+		self.assertEqual(len(gaps), 1)
+		self.assertFalse(gaps[0]["creatable"])
+
+	def test_a_record_type_taken_out_of_self_service_still_opens(self):
+		"""A form that cannot be opened is a worse answer to a configuration
+		change than a form with no notice on it. The approval still refuses."""
+		name = self.propose_unknown_bank()
+		frappe.set_user("Administrator")
+		self.config.reload()
+		self.config.enabled = 0
+		self.config.save()
+		registry.clear_cache()
+		self.assertEqual(self.onloaded(name), [])
 
 	# -- what the configuration refuses -----------------------------------
 

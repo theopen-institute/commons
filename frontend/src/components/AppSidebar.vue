@@ -62,16 +62,11 @@
 
 				<!-- Visible to anyone who may use the section, not only to those who
 					     own a record: the page explains an unlinked login far better
-					     than an absent row does, and a reviewer who is not themselves
-					     an employee still needs the queue below. -->
+					     than an absent row does. -->
 				<!-- The rows are configuration: one per `Self Service Record`, in the
 				     order and with the label and icon it was given. A record type is
 				     added in the desk and appears here, with no code to change. -->
-				<SidebarSection
-					v-if="navRecords.length || reviewCan.review"
-					label="Profile"
-					collapsible
-				>
+				<SidebarSection v-if="navRecords.length" label="Profile" collapsible>
 					<!-- `active` explicitly, because these rows share one named route.
 					     SidebarItem infers it by comparing route *names*, which is right
 					     for a page per route and wrong for a page per slug: every row
@@ -85,18 +80,6 @@
 						:to="`/profile/${row.slug}`"
 						:active="route.params.slug === row.slug"
 					/>
-					<SidebarItem
-						v-if="reviewCan.review"
-						label="Change requests"
-						icon="lucide-file-pen-line"
-						:to="{ name: 'ProfileChangeApprovals' }"
-					>
-						<template v-if="reviewCan.pending_reviews" #suffix>
-							<Badge theme="amber" variant="subtle">
-								{{ reviewCan.pending_reviews }}
-							</Badge>
-						</template>
-					</SidebarItem>
 				</SidebarSection>
 
 				<!-- One row per thing a person raises, and one page behind each: what
@@ -175,10 +158,10 @@ import {
 	useColorScheme,
 } from 'frappe-ui'
 import { logout, user } from '@/data/session'
+import { websiteUrl } from '@/data/website'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
 import { navRecords } from '@/data/selfService'
 import { requestSections, type RequestSection } from '@/data/requestSections'
-import { reviewCan } from '@/data/changeReview'
 import { apps, availableApps, SUITE_TITLE, type AppDefinition, type AppKey } from '@/data/apps'
 
 // Two initials, like the desk's `get_abbr`: the first letter of each of the
@@ -247,7 +230,6 @@ const currentApp = computed<AppDefinition>(() => apps[route.meta.app ?? 'request
 // Keyed by route prefix, not by app: Requests spans two doctypes, and "Open in
 // desk" should land on the one whose section is on screen.
 const DESK_ROUTES: [prefix: string, deskPath: string][] = [
-	['/profile/approvals', '/app/record-change-request'],
 	// The profile page itself is one employee record, not the list of them.
 	['/profile', '/app/employee'],
 	['/leave', '/app/leave-application'],
@@ -347,10 +329,12 @@ const menuItems = computed(() => [
 		],
 	},
 	{
+		// Website Settings' Website Button Target, falling back to the site root.
+		// Not the home page: that one setting also decides where a login lands.
 		label: 'Website',
 		icon: 'lucide-globe',
 		onClick: () => {
-			window.open(window.location.origin)
+			window.open(websiteUrl.value)
 		},
 	},
 	{

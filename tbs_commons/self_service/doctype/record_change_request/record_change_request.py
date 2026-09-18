@@ -34,6 +34,7 @@ before-and-after rather than whatever the field said when the request was first
 raised.
 """
 
+import re
 from typing import ClassVar
 
 import frappe
@@ -61,6 +62,52 @@ def normalized(value) -> str | None:
 		return None
 	text = str(value).strip()
 	return text or None
+
+
+def name_field_of(doctype: str) -> str | None:
+	"""The field whose value becomes a document's name, where there is one.
+
+	Narrower than it looks, and the reason a popup is not always offered. A
+	free-form value has to come back as the *name* of the created document,
+	because that is what the Link on the referenced record gets set to. Only
+	`field:` naming and user-set naming do that: a doctype named by series or by
+	hash would take the value as a title and answer to a name nobody proposed, so
+	the link would still resolve to nothing and the approval would still refuse.
+	"""
+	meta = frappe.get_meta(doctype)
+	autoname = (meta.autoname or "").strip()
+	if autoname.startswith("field:"):
+		return autoname.split(":", 1)[1].strip() or None
+	if autoname.lower() == "prompt" or meta.naming_rule == "Set by user":
+		return "name"
+	return None
+
+
+def near_matches(doctype: str, value: str, limit: int = 3) -> list[str]:
+	"""Records already on file whose name resembles the one being proposed.
+
+	Against duplicates rather than for convenience. A free-form value is typed,
+	so `Standard Chartered` arriving at a site that already holds `Standard
+	Chartered Bank` is one master record too many -- and the approver is the only
+	person placed to notice before it exists. Matched on the longest word in the
+	value: a `like` on the whole string finds nothing, since not matching is the
+	reason we are here.
+
+	Through `get_list`, so somebody who may not read the target doctype is not
+	shown its contents by way of a suggestion.
+	"""
+	if not frappe.has_permission(doctype, "read"):
+		return []
+	words = sorted((word for word in re.split(r"\W+", value) if len(word) >= 4), key=len, reverse=True)
+	if not words:
+		return []
+	return frappe.get_list(
+		doctype,
+		filters={"name": ["like", f"%{words[0]}%"]},
+		pluck="name",
+		limit_page_length=limit,
+		order_by="modified desc",
+	)
 
 
 class RecordChangeRequest(Document):
@@ -109,6 +156,29 @@ class RecordChangeRequest(Document):
 	@property
 	def is_deletion(self) -> bool:
 		return self.request_type == self.DELETE
+
+	def onload(self) -> None:
+		"""What the desk form needs to know and cannot work out for itself.
+
+		A free-form value naming a document that does not exist is the one thing
+		an approver cannot see on this form: the row says `Standard Chartered`,
+		and whether there is a `Bank` by that name is a question about a different
+		doctype. Sent with the document rather than fetched by the form, so the
+		notice is there on the first paint and costs no extra round trip.
+
+		Answered here rather than only at `check_links_exist`, which is the guard
+		and stays the guard. The difference is when: this reaches the approver
+		while they are reading the request, instead of as the refusal that follows
+		their decision.
+
+		Failing softly on purpose. A form that cannot be opened is a worse answer
+		to an unregistered record type than a form without a notice on it -- and
+		the approval itself still refuses, with the reason.
+		"""
+		try:
+			self.set_onload("missing_links", self.missing_links())
+		except frappe.PermissionError:
+			self.set_onload("missing_links", [])
 
 	def validate(self) -> None:
 		# Refuses an unregistered doctype outright, and does it before anything
@@ -378,39 +448,80 @@ class RecordChangeRequest(Document):
 
 		Frappe would refuse it anyway, with a message about a link. This says
 		which field, which value, and what to do about it, because the approver
-		is the one who can do it and they are reading this in a queue rather than
-		in the desk.
+		is the one who can do it.
+
+		The form says the same thing before the decision -- see `onload`, which
+		reads `missing_links`, and the client script, which offers the desk's own
+		new-record popup against it. This stays the guard rather than the notice:
+		the check has to sit on the write, or an approval arriving by any other
+		route would apply a value pointing at nothing.
 		"""
-		missing = []
+		missing = self.missing_links()
+		if not missing:
+			return
+		first = missing[0]
+		frappe.throw(
+			_("Create the {0} named {1} first, then approve this — {2} has no such record yet.").format(
+				frappe.bold(first["target"]),
+				frappe.bold(first["value"]),
+				_(first["target"]),
+			)
+			if len(missing) == 1
+			else _("These need creating before this can be approved: {0}").format(
+				", ".join(f"{row['label']} → {row['value']} ({row['target']})" for row in missing)
+			),
+			frappe.LinkValidationError,
+		)
+
+	def missing_links(self) -> list[dict]:
+		"""Every free-form value on this request that names a document not there yet.
+
+		Two callers, and the split between them is the point. `check_links_exist`
+		reads it to refuse an approval; `onload` reads it so the form can say the
+		same thing while there is still time to act on it. One answer, so the
+		notice and the refusal cannot come to disagree.
+
+		Each row carries what the desk needs to offer the popup: the doctype, the
+		value, the field the value would become the name of, whether creating one
+		is this user's to do, and anything already on file that looks like it.
+
+		Only a `Link` has a target this can resolve. A `Dynamic Link` names its
+		doctype in a sibling field on the referenced record, so it is left to that
+		record's own save, which has the sibling to hand.
+		"""
 		meta = frappe.get_meta(self.reference_doctype)
 		free_form = {
 			row["fieldname"]
 			for row in registry.policy(self.reference_doctype)["fields"]
 			if row.get("free_text")
 		}
+		missing = []
 		for row in self.changes:
 			value = normalized(row.proposed_value)
 			if not value or row.fieldname not in free_form:
 				continue
 			field = meta.get_field(row.fieldname)
-			target = field.options if field.fieldtype == "Link" else None
-			if target and not frappe.db.exists(target, value):
-				missing.append((row.label or row.fieldname, target, value))
-
-		if not missing:
-			return
-		frappe.throw(
-			_("Create the {0} named {1} first, then approve this — {2} has no such record yet.").format(
-				frappe.bold(missing[0][1]),
-				frappe.bold(missing[0][2]),
-				_(missing[0][1]),
+			target = field.options if field and field.fieldtype == "Link" else None
+			if not target or frappe.db.exists(target, value):
+				continue
+			name_field = name_field_of(target)
+			missing.append(
+				{
+					"fieldname": row.fieldname,
+					"label": row.label or row.fieldname,
+					"target": target,
+					"value": value,
+					# Which field the value would land in, and so what the document
+					# would answer to afterwards.
+					"name_field": name_field,
+					# Whether this user can close the gap from here at all. The
+					# popup checks it again on insert; this is what decides whether
+					# to offer one.
+					"creatable": bool(name_field) and bool(frappe.has_permission(target, "create")),
+					"suggestions": near_matches(target, value),
+				}
 			)
-			if len(missing) == 1
-			else _("These need creating before this can be approved: {0}").format(
-				", ".join(f"{label} → {value} ({target})" for label, target, value in missing)
-			),
-			frappe.LinkValidationError,
-		)
+		return missing
 
 	def delete_record(self) -> None:
 		"""Remove the record this request asked to have removed.
