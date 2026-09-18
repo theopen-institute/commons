@@ -32,20 +32,19 @@ website_route_rules = [
 # migrate's own sync. These hooks only do what that sync cannot, and each entry is
 # the install module of the module that owns it -- nothing here is app-wide.
 # `requests.install` seeds procurement's Custom Fields and Workflow; leave and
-# expenses run on HRMS's own doctypes and assert nothing.
+# expenses run on HRMS's own doctypes and assert nothing. `commons_core.install`
+# creates the two Custom Fields the core extensions read.
 after_install = [
 	"tbs_commons.requests.install.sync_procurement",
 	"tbs_commons.self_service.install.sync_self_service",
 	"tbs_commons.safer_permissions.install.sync_gate_field",
-	"tbs_commons.website_link.sync_website_button_field",
-	"tbs_commons.home_page.sync_home_page_priority_field",
+	"tbs_commons.commons_core.install.sync_commons_core",
 ]
 after_migrate = [
 	"tbs_commons.requests.install.sync_procurement",
 	"tbs_commons.self_service.install.sync_self_service",
 	"tbs_commons.safer_permissions.install.sync_gate_field",
-	"tbs_commons.website_link.sync_website_button_field",
-	"tbs_commons.home_page.sync_home_page_priority_field",
+	"tbs_commons.commons_core.install.sync_commons_core",
 ]
 
 # Modules are added to `modules.txt` after this app has already been installed
@@ -72,7 +71,8 @@ before_migrate = "tbs_commons.install.sync_module_defs"
 #
 # One bundle, loaded after core's own `app_include_js`, so the classes it patches
 # already exist. Today it holds only the "Website" button's target -- see
-# `tbs_commons/public/js/website_button.js`.
+# `tbs_commons/public/js/website_button.js`, whose server half is
+# `tbs_commons/commons_core/website_link.py`.
 app_include_js = "tbs_commons.bundle.js"
 
 # include js, css files in header of web template
@@ -232,11 +232,11 @@ doc_events = {
 	# Who lands where is cached per user, and both ends of the rule can move it:
 	# a Role's home page or priority, and a User's own list of roles.
 	"Role": {
-		"on_update": "tbs_commons.home_page.clear_cache",
-		"on_trash": "tbs_commons.home_page.clear_cache",
+		"on_update": "tbs_commons.commons_core.home_page.clear_cache",
+		"on_trash": "tbs_commons.commons_core.home_page.clear_cache",
 	},
 	"User": {
-		"on_update": "tbs_commons.home_page.clear_user_cache",
+		"on_update": "tbs_commons.commons_core.home_page.clear_user_cache",
 	},
 	"Material Request": {
 		"validate": "tbs_commons.requests.budget.validate_material_request",
@@ -317,10 +317,11 @@ ignore_links_on_delete = ["Record Change Request"]
 # Request Events
 # ----------------
 # Core picks the home page from whichever of the user's roles the database
-# happened to return first -- see `tbs_commons/home_page.py`. That loop cannot be
-# ordered from outside and the hook core offers runs after it, so the answer is
-# settled here instead, early enough that login, `/` and the desk boot all see it.
-before_request = ["tbs_commons.home_page.set_home_page_flag"]
+# happened to return first -- see `tbs_commons/commons_core/home_page.py`. That
+# loop cannot be ordered from outside and the hook core offers runs after it, so
+# the answer is settled here instead, early enough that login, `/` and the desk
+# boot all see it.
+before_request = ["tbs_commons.commons_core.home_page.set_home_page_flag"]
 # after_request = ["tbs_commons.utils.after_request"]
 
 # Job Events
@@ -388,6 +389,6 @@ page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
 
 
 # The desk's "Website" button reads its target from the boot, so the sidebar does
-# not have to fetch a setting before it can render. See `tbs_commons/website_link.py`
-# for why this is not simply the home page.
-extend_bootinfo = "tbs_commons.website_link.extend_bootinfo"
+# not have to fetch a setting before it can render. See
+# `tbs_commons/commons_core/website_link.py` for why this is not simply the home page.
+extend_bootinfo = "tbs_commons.commons_core.website_link.extend_bootinfo"

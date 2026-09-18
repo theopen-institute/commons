@@ -28,7 +28,7 @@ has a state name or a role name behind it in this file.
 
 import frappe
 
-from tbs_commons.api import roles_with_permission
+from tbs_commons.commons_core.doc_perms import roles_with_permission
 from tbs_commons.requests import approvals
 
 LEAVE_APPLICATION = "Leave Application"

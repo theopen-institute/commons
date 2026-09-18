@@ -6,10 +6,10 @@ section reads, and a second copy is the thing that drifts: the two would have
 started out agreeing on what an action is and ended up disagreeing about which
 ones a user may take.
 
-This stays at the app level rather than moving into `tbs_commons.requests` with
-its three callers, because nothing in it is about a request: it is what an
-active Workflow says, for any doctype. `requests.approvals` is the layer above
-that does know what a request is.
+It is here rather than in `tbs_commons.requests` with its three callers because
+nothing in it is about a request: it is what an active Workflow says, for any
+doctype, and it would read the same in an app that had no requests in it at all.
+`requests.approvals` is the layer above that does know what a request is.
 
 Nothing here decides anything. `get_transitions` is Frappe's own answer to "what
 may this user do to this document, right now", asked in that user's session --

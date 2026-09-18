@@ -9,15 +9,15 @@ pointing at states and roles that no longer exist.
 
 Reading the workflow itself, naming its state column and listing its
 transitions are not here: those are the same questions leave and expenses ask,
-and they are answered once in `tbs_commons.workflow`. What is here is only what
-is derived from *this* workflow's particular shape.
+and they are answered once in `tbs_commons.commons_core.workflow`. What is here
+is only what is derived from *this* workflow's particular shape.
 
 The two derivations below both fall back to what `install.py` seeds. A site with
 no workflow at all still gets the app's own answer, which is what it had before
 any of this was derived -- the fallbacks are a floor, never an override.
 """
 
-from tbs_commons import workflow as wf
+from tbs_commons.commons_core import workflow as wf
 
 # Spelled out rather than imported from the controller: `budget` reads this
 # module and the controller reads `budget`, so importing it here would close a

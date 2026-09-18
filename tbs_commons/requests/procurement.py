@@ -17,9 +17,11 @@ of its own rather than the flat list the other two return.
 import frappe
 from frappe.utils import flt
 
-from tbs_commons import workflow as wf
-from tbs_commons.api import department_head, roles_with_permission, session_employee
+from tbs_commons.api import session_employee
+from tbs_commons.commons_core import workflow as wf
+from tbs_commons.commons_core.doc_perms import roles_with_permission
 from tbs_commons.requests import approvals
+from tbs_commons.requests.approvers import department_head
 from tbs_commons.requests.doctype.procurement_request.procurement_request import (
 	DOCTYPE as PROCUREMENT_REQUEST,
 )

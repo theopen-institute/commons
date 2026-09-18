@@ -28,12 +28,12 @@ retune a workflow, and be offered what it configured.
 
 import frappe
 
-from tbs_commons import workflow as wf
 from tbs_commons.api import (
 	session_employee,
 	session_employee_access,
 	session_employee_filters,
 )
+from tbs_commons.commons_core import workflow as wf
 
 # How an outcome reads when no Workflow is styling it. The names are Frappe's
 # Workflow State styles, so a badge or a button is coloured from one vocabulary
@@ -50,8 +50,8 @@ AFFIRMATIVE_STYLE = "Success"
 # then up the department tree, not from a filter over User. Sent to the frontend
 # rather than named there, so a site that wants a different set of candidates
 # changes the query in one place. HRMS's own, wrapped so the picker reads a name
-# rather than a comma-separated one -- see `tbs_commons.api.get_approvers`.
-APPROVER_QUERY = "tbs_commons.api.get_approvers"
+# rather than a comma-separated one -- see `tbs_commons.requests.approvers`.
+APPROVER_QUERY = "tbs_commons.requests.approvers.get_approvers"
 
 # How many rows an approvals queue returns. The badge counts to the same
 # ceiling, so it never promises more than the page will show.

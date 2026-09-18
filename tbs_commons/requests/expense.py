@@ -29,8 +29,9 @@ is genuinely not leave's:
 import frappe
 from frappe.utils import flt
 
-from tbs_commons.api import default_expense_approver, session_employee
+from tbs_commons.api import session_employee
 from tbs_commons.requests import approvals
+from tbs_commons.requests.approvers import default_expense_approver
 
 EXPENSE_CLAIM = "Expense Claim"
 EXPENSE_CLAIM_DETAIL = "Expense Claim Detail"

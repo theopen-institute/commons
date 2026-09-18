@@ -3,13 +3,20 @@
 Everything else an install or migrate asserts belongs to one section and is
 wired into `hooks.py` from that section -- `tbs_commons.requests.install` for
 the Custom Fields and the Workflow, `tbs_commons.safer_permissions.install` for
-the gate column.
+the gate column, `tbs_commons.commons_core.install` for the two fields the core
+extensions read.
 
-The desk icon is in neither. It ships as a file in `tbs_commons/desktop_icon/`,
+The desk icon is in none of them. It ships as a file in `tbs_commons/desktop_icon/`,
 which `frappe.model.sync` imports on every migrate -- `desktop_icon` is one of its
 `app_level_folders`. Keeping it as a record built at runtime meant migrate's orphan
 sweep deleted it (it drops any `standard` icon with no backing file) and
 `after_migrate` put it straight back, once per migrate.
+
+`commons_core` is a directory and not a line in `modules.txt`, so nothing here is
+about it: a module earns a `Module Def` by owning desk artifacts, and that one
+owns none. Its own `__init__.py` says what would change if it grew some -- the
+function below is most of the answer, because it is what lets a module be added
+to an app that is already installed somewhere.
 """
 
 APP = "tbs_commons"

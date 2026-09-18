@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
-from tbs_commons import workflow as wf
+from tbs_commons.commons_core import workflow as wf
 from tbs_commons.requests import procurement as api
 
 

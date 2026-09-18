@@ -6,7 +6,7 @@
  * `window.open(window.location.origin)`, which lands on `/` -- and `/` is
  * resolved by the same `get_home_page` cascade that `frappe.auth` sends a fresh
  * login through. One setting, two jobs. `frappe.boot.website_button_url` is the
- * second setting; see `tbs_commons/website_link.py`.
+ * second setting; see `tbs_commons/commons_core/website_link.py`.
  *
  * Patched by wrapping `add_navbar_items`, which the constructor calls *before*
  * `setup_app_switcher` and `populate_dropdown_menu` render from the same array.

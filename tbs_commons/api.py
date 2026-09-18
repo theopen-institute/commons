@@ -1,11 +1,15 @@
-"""Session-level endpoints and shared helpers for the TBS Commons frontend.
+"""Who is using this app -- the one question every section starts from.
 
-Domain endpoints live with their domain. Everything a person raises and waits
-on an approver for is one module, `tbs_commons.requests` -- leave, expenses and
-procurement, over a shape they share in `requests.approvals` -- and the profile
-is `tbs_commons.self_service.api`. What is left here is what belongs to no one
-section: who is logged in, which employee record is theirs, who may approve
-what, and which roles a doctype's own permission rows grant something to.
+A request starts from "which employee am I", procurement reads the same record
+for a department and an approver, and self-service reads it as the record being
+corrected. That is what is left here: the session's own identity, and the
+handful of ways it can be absent.
+
+Nothing else. Domain endpoints live with their domain -- everything a person
+raises and waits on an approver for is `tbs_commons.requests`, the profile is
+`tbs_commons.self_service.api`, and anything that is really about Frappe rather
+than about TBS is `tbs_commons.commons_core`. If something here stops being an
+answer to "who am I", it belongs in one of those.
 """
 
 import frappe
@@ -13,30 +17,8 @@ import frappe
 EMPLOYEE = "Employee"
 
 
-def roles_with_permission(doctype: str, **ptypes: int) -> set[str]:
-	"""Roles whose permission rows on `doctype` grant all of `ptypes`.
-
-	Every section asks a version of "who is allowed to do this", and all of them
-	want the answer the site's own Role Permission Manager gives rather than a
-	list of role names in Python. `permlevel` 0 unless a caller says otherwise: the
-	higher levels gate individual fields, not the action.
-
-	Custom DocPerm *replaces* the standard rows rather than adding to them, so a
-	doctype with any customisation at all is answered from there alone -- falling
-	back to `DocPerm` for a site that deliberately revoked something would hand
-	back the permission it had just taken away.
-	"""
-	source = "Custom DocPerm" if frappe.db.exists("Custom DocPerm", {"parent": doctype}) else "DocPerm"
-	ptypes.setdefault("permlevel", 0)
-	return set(frappe.get_all(source, filters={"parent": doctype, **ptypes}, pluck="role"))
-
-
 def session_employee(fieldnames: list[str]) -> frappe._dict | None:
 	"""The active Employee record linked to the session user, or None.
-
-	Shared by every section: a request starts from "which employee am I",
-	procurement reads the same record for a department and an approver, and
-	self-service reads it as the record being corrected.
 
 	Through `frappe.get_list`, so the site's permissions decide what comes back --
 	role permissions, User Permissions, and this app's own gate in
@@ -119,70 +101,6 @@ def session_employee_access() -> str:
 
 
 @frappe.whitelist()
-@frappe.validate_and_sanitize_search_inputs
-def get_approvers(
-	doctype: str, txt: str, searchfield: str, start: int, page_len: int, filters: dict
-) -> list[tuple[str, str]]:
-	"""HRMS's own approver query, with the approver's name in one column.
-
-	Who may approve is HRMS's answer and stays HRMS's answer -- the employee's
-	own approver, then every approver named up their department tree. This adds
-	nothing to that and takes nothing away.
-
-	What it changes is the shape. HRMS returns `(user, first_name, last_name)`,
-	and Frappe joins every column after the first with a comma to make a link
-	option's description (see `build_for_autosuggest`), so a picker offered
-	"Alice, Art-Head" -- a person's own name read as a list of two things. One
-	column, one name, no comma.
-	"""
-	from hrms.hr.doctype.department_approver.department_approver import (
-		get_approvers as hrms_approvers,
-	)
-
-	rows = hrms_approvers(doctype, txt, searchfield, start, page_len, filters)
-	# Sorted, because HRMS answers with a set: the picker would otherwise put
-	# the same candidates in a different order on every keystroke.
-	return sorted((row[0], " ".join(part for part in row[1:] if part)) for row in rows)
-
-
-def department_head(department: str | None) -> str | None:
-	"""The first approver a department lists -- its head, as far as spending goes.
-
-	A disabled department is not an answer, and neither is a department with an
-	empty table: the caller gets `None` and the form opens blank so the requester
-	picks.
-	"""
-	if not department:
-		return None
-	if frappe.db.get_value("Department", department, "disabled"):
-		return None
-	return frappe.db.get_value(
-		"Department Approver",
-		{"parent": department, "parentfield": "expense_approvers", "idx": 1},
-		"approver",
-	)
-
-
-def default_expense_approver(employee: frappe._dict | None) -> str | None:
-	"""Who an expense claim should name, before the requester touches the field.
-
-	The employee's own expense approver first; failing that their department's
-	head, which is how the desk's own Expense Claim decides it too -- see
-	`hrms.api.get_expense_approval_details`.
-
-	Expense claims only. Procurement deliberately names the department head and
-	nothing else: a request spends the department's budget, so it is the
-	department's head who decides it, whoever happens to sign off the requester's
-	personal expenses.
-	"""
-	if not employee:
-		return None
-	if employee.expense_approver:
-		return employee.expense_approver
-	return department_head(employee.department)
-
-
-@frappe.whitelist()
 def get_session_user() -> dict:
 	"""Return the session user, for the sidebar's account row.
 
@@ -192,16 +110,3 @@ def get_session_user() -> dict:
 	from tbs_commons.www.tbs_commons import get_user_info
 
 	return get_user_info()
-
-
-@frappe.whitelist()
-def get_website_button_url() -> str:
-	"""Where this app's sidebar "Website" button opens.
-
-	Boot data carries this in a production build, for the same reason
-	`get_session_user` is there; the dev server asks. See
-	`tbs_commons/website_link.py` for why it is not the home page.
-	"""
-	from tbs_commons.website_link import get_website_button_url as target
-
-	return target()

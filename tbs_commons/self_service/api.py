@@ -42,7 +42,7 @@ own options. Neither path has a state name or a role name behind it here.
 
 import frappe
 
-from tbs_commons import workflow as wf
+from tbs_commons.commons_core import workflow as wf
 from tbs_commons.self_service import registry
 
 DOCTYPE = "Record Change Request"
