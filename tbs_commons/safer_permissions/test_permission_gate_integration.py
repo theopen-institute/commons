@@ -17,7 +17,7 @@ import unittest
 import frappe
 
 from frappe.utils.fixtures import sync_fixtures
-from tbs_commons.safer_permissions.permissions import GATE, clear_gated_doctypes
+from tbs_commons.safer_permissions.permissions import GATE
 
 DOCTYPE = "Branch"
 REQUIRED = "Branch"
@@ -72,19 +72,16 @@ class TestPermissionGate(unittest.TestCase):
 	def setUp(self):
 		frappe.db.savepoint("permission_gate_test")
 		frappe.set_user("Administrator")
-		# `gated_doctypes` memoises onto `frappe.local`, which is a per-request
-		# store everywhere but here: one test process serves every module, so a
-		# memo taken before `setUpClass` ticked the gate would say this doctype is
-		# ungated and the first test would see rows the gate exists to withhold.
-		clear_gated_doctypes()
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
 		_drop_user_permissions()
 		frappe.db.rollback(save_point="permission_gate_test")
+		# The tick lives on a `Custom DocPerm` row, so the meta holding it is the
+		# only thing cached about the gate, and this is what drops it. One process
+		# serves every module here, unlike a request, so a stale meta would
+		# outlive the class that ticked it.
 		frappe.clear_cache()
-		# The gate is retired after this class, so leave no memo asserting it.
-		clear_gated_doctypes()
 
 	def visible(self, user):
 		"""Which of the two fixtures this user can list."""
@@ -161,18 +158,49 @@ class TestPermissionGate(unittest.TestCase):
 
 	def test_the_gate_is_configured_entirely_from_the_permission_row(self):
 		"""No second document: the tick on the role is the whole configuration."""
-		from tbs_commons.safer_permissions.permissions import gated_doctypes
+		from tbs_commons.safer_permissions.permissions import blocked_scope
 
-		clear_gated_doctypes()
-		self.assertIn(DOCTYPE, gated_doctypes())
+		self.assertIsNotNone(blocked_scope(GATED_USER, DOCTYPE))
 		self.assertFalse(frappe.db.exists("DocType", "Permission Gate Settings"))
 
 	def test_a_doctype_nobody_ticked_is_untouched(self):
 		"""The fast path, and the safety: gating is opt-in per role row."""
 		from tbs_commons.safer_permissions.permissions import blocked_scope
 
-		clear_gated_doctypes()
 		self.assertIsNone(blocked_scope(GATED_USER, "ToDo"))
+
+	def test_a_gated_role_cannot_have_a_report_run_in_the_background(self):
+		"""`make_prepared_report` reaches the same SQL without going through
+		`run`, and core inserts the record with `ignore_permissions=True`."""
+		from tbs_commons.safer_permissions.permissions import make_prepared_report
+
+		frappe.set_user(GATED_USER)
+		self.assertRaises(frappe.PermissionError, make_prepared_report, REPORT)
+
+		frappe.set_user(OPEN_USER)
+		self.assertEqual(frappe.db.count("Prepared Report", {"report_name": REPORT}), 0)
+
+	def test_a_gated_role_cannot_read_results_that_already_exist(self):
+		"""The other end: a Prepared Report generated before the role was gated,
+		or by somebody else, which `download_attachment` hands over.
+
+		Registration is asserted alongside the decision, rather than going through
+		`frappe.permissions.has_permission`, because that denies both users here
+		for a reason of core's own: reading any Prepared Report needs the
+		`Prepared Report User` role and neither test user holds it, so a run
+		through the full stack would pass whether or not this hook existed. The
+		two assertions together say it is consulted and says the right thing.
+		"""
+		from tbs_commons.safer_permissions.permissions import has_prepared_report_permission
+
+		self.assertIn(
+			"tbs_commons.safer_permissions.permissions.has_prepared_report_permission",
+			frappe.get_hooks("has_permission").get("Prepared Report", []),
+		)
+
+		prepared = frappe._dict(doctype="Prepared Report", report_name=REPORT)
+		self.assertTrue(has_prepared_report_permission(doc=prepared, user=OPEN_USER))
+		self.assertFalse(has_prepared_report_permission(doc=prepared, user=GATED_USER))
 
 	def test_a_gated_role_is_refused_reports(self):
 		from tbs_commons.safer_permissions.permissions import _refuse_gated_report

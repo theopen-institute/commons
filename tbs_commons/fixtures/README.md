@@ -31,13 +31,15 @@ several that each name one. Core picks whichever role the database returned
 first; `tbs_commons.commons_core.home_page` orders them by this instead. Sits
 directly under the field it orders.
 
-**`require_user_permission`** on `Custom DocPerm`, `DocPerm` and `DocShare` —
-the gate. A role ticked here grants nothing until a User Permission exists for
-the user. `DocShare` is included because core's own permission types are: a
-share must not hand out what a gate withholds. Read by
-`tbs_commons.safer_permissions.permissions`, and drawn in the Role Permission
-Manager by `public/js/permission_manager_gate.js`, which supplies its own
-translated label — so the `label` here is never shown to anyone.
+**`require_user_permission`** on `Custom DocPerm` and `DocPerm` — the gate. A
+role ticked here grants nothing until a User Permission exists for the user.
+Both tables, because core reads `Custom DocPerm` instead of `DocPerm` once a
+doctype has been customised. Not `DocShare`: sharing is out of scope, and core
+re-grants around this app's hooks for a shared document anyway — see the
+`tbs_commons.safer_permissions.permissions` docstring. Read by that module, and
+drawn in the Role Permission Manager by `public/js/permission_manager_gate.js`,
+which supplies its own translated label — so the `label` here is never shown to
+anyone.
 
 **`Material Request.procurement_request`**, **`Material Request Item.procurement_request`**
 and **`.procurement_request_item`** — back-references from the stock document to

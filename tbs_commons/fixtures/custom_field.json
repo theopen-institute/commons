@@ -49,17 +49,6 @@
  },
  {
   "doctype": "Custom Field",
-  "name": "DocShare-require_user_permission",
-  "owner": "Administrator",
-  "is_system_generated": 1,
-  "dt": "DocShare",
-  "fieldname": "require_user_permission",
-  "label": "Require User Permission",
-  "fieldtype": "Check",
-  "insert_after": "append"
- },
- {
-  "doctype": "Custom Field",
   "name": "Material Request-procurement_request",
   "owner": "Administrator",
   "is_system_generated": 1,

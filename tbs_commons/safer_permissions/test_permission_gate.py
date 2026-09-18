@@ -35,21 +35,16 @@ def meta(*perms):
 class GateApplies(TestCase):
 	"""Which users the gate holds back."""
 
-	def check(self, roles, perms, ticked=True):
+	def check(self, roles, perms):
 		with (
-			patch.object(
-				permissions,
-				"gated_doctypes",
-				return_value=frozenset({DOCTYPE}) if ticked else frozenset(),
-			),
 			patch.object(permissions.frappe, "get_roles", return_value=roles),
 			patch.object(permissions.frappe, "get_meta", return_value=meta(*perms)),
 		):
 			return permissions.gate_scope("employee@example.com", DOCTYPE)
 
 	def test_doctype_nobody_ticked_is_never_gated(self):
-		"""The fast path: no tick anywhere on the doctype, no gate to apply."""
-		self.assertIsNone(self.check(["Employee"], [perm("Employee", gated=True)], ticked=False))
+		"""The fast path, and the safety: gating is opt-in per role row."""
+		self.assertIsNone(self.check(["Employee"], [perm("Employee"), perm("HR Manager")]))
 
 	def test_gated_role_is_held_back(self):
 		self.assertEqual(self.check(["Employee"], [perm("Employee", gated=True)]), NOTHING)
@@ -143,9 +138,8 @@ class GateApplies(TestCase):
 		self.assertIsNone(self.check(["Employee"], [perm("Employee", if_owner=True)]))
 
 	def test_administrator_is_never_gated(self):
-		with (
-			patch.object(permissions, "gated_doctypes", return_value=frozenset({DOCTYPE})),
-			patch.object(permissions.frappe, "get_meta", return_value=meta(perm("Employee", gated=True))),
+		with patch.object(
+			permissions.frappe, "get_meta", return_value=meta(perm("Employee", gated=True))
 		):
 			self.assertFalse(permissions.gate_applies("Administrator", DOCTYPE))
 
@@ -235,6 +229,15 @@ class Hooks(TestCase):
 			True,
 		)
 
+	def test_owning_it_under_a_different_case_still_counts(self):
+		"""Core lowercases both sides, and the owner condition above is compared
+		by the database under a case-insensitive collation. An exact compare here
+		would list a row and then refuse to open it."""
+		self.assertEqual(
+			self.check(blocked=OWN, owner="Employee@Example.com")[1],
+			True,
+		)
+
 	def test_a_doctype_level_check_has_nothing_to_gate(self):
 		self.assertTrue(permissions.has_permission(doc=None, user="employee@example.com"))
 
@@ -267,3 +270,32 @@ class Reports(TestCase):
 
 	def test_a_report_without_a_name_is_left_to_core(self):
 		permissions._refuse_gated_report(None)
+
+
+class PreparedReports(TestCase):
+	"""A report's results, sitting in a file once the report has run."""
+
+	def readable(self, gate_applies, report_name="Salary Register"):
+		with (
+			patch.object(permissions.frappe, "get_cached_value", return_value=DOCTYPE),
+			patch.object(permissions, "gate_applies", return_value=gate_applies),
+		):
+			return permissions.has_prepared_report_permission(
+				doc=frappe._dict(doctype="Prepared Report", report_name=report_name),
+				user="employee@example.com",
+			)
+
+	def test_a_gated_role_cannot_read_one(self):
+		"""Refusing the run and then serving the file would be no refusal at all:
+		core reaches a finished Prepared Report without going near the wrappers
+		above, and lets anyone who may access the report read it."""
+		self.assertFalse(self.readable(gate_applies=True))
+
+	def test_an_ungated_role_can(self):
+		self.assertTrue(self.readable(gate_applies=False))
+
+	def test_one_naming_no_report_is_left_to_core(self):
+		self.assertTrue(self.readable(gate_applies=True, report_name=None))
+
+	def test_a_doctype_level_check_has_nothing_to_refuse(self):
+		self.assertTrue(permissions.has_prepared_report_permission(doc=None, user="employee@example.com"))

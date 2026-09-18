@@ -224,6 +224,10 @@ permission_query_conditions = {
 
 has_permission = {
 	"*": "tbs_commons.safer_permissions.permissions.has_permission",
+	# A report's stored results are the rows themselves, and core lets anyone who
+	# may access the report read them. Core registers its own hook for this
+	# doctype too; both are consulted, and either can deny.
+	"Prepared Report": "tbs_commons.safer_permissions.permissions.has_prepared_report_permission",
 }
 
 # Document Events
@@ -296,6 +300,8 @@ doc_events = {
 override_whitelisted_methods = {
 	"frappe.desk.query_report.run": "tbs_commons.safer_permissions.permissions.run_query_report",
 	"frappe.desk.query_report.export_query": "tbs_commons.safer_permissions.permissions.export_query_report",
+	# Runs a report without going through either of the two above.
+	"frappe.core.doctype.prepared_report.prepared_report.make_prepared_report": "tbs_commons.safer_permissions.permissions.make_prepared_report",
 }
 #
 # each overriding function accepts a `data` argument;
