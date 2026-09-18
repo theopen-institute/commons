@@ -2,32 +2,55 @@
 
 These replaced two constants -- the approver role and the open request states --
 so the first thing each suite pins is that the derivation still answers exactly
-what the constant said, against the workflow `install.py` actually seeds. The
-rest is what the constants could not do: follow a workflow an administrator has
-retuned.
+what the constants said, against a chain shaped the way those constants assumed.
+The rest is what the constants could not do: follow whatever an administrator
+actually built -- which, since nothing installs a chain, is every workflow there
+will ever be.
+
+The chain below is this suite's own fixture and nothing else's. It is not a
+configuration the app ships or suggests: a site builds its own, and the point of
+the tests is that it may be shaped quite differently.
 """
 
 from types import SimpleNamespace
 from unittest import TestCase
 
 from tbs_commons.requests import procurement_workflow as wf
-from tbs_commons.requests.install import WORKFLOW_STATES, WORKFLOW_TRANSITIONS
 
 # What a caller passes to say "there is no workflow" without going to the
 # database for one. `None` means the opposite -- look it up.
 NO_WORKFLOW = False
 
 
-def seeded_workflow():
-	"""The workflow `sync_procurement_workflow` installs, as an object tree."""
-	return SimpleNamespace(
-		workflow_state_field="status",
-		states=[SimpleNamespace(**row) for row in WORKFLOW_STATES],
-		transitions=[
-			SimpleNamespace(**{"condition": None, "allow_self_approval": 0, **row})
-			for row in WORKFLOW_TRANSITIONS
-		],
-	)
+# A conventional purchasing chain: the author sends it on, procurement costs it,
+# a named approver decides, and procurement can override. Written out here
+# because the two fallbacks are only defensible if a chain of this ordinary shape
+# still derives exactly what they name.
+BY_APPROVER = "doc.approver == frappe.session.user"
+CONVENTIONAL_STATES = [
+	("Draft", 0),
+	("Pending", 0),
+	("Under Review", 0),
+	("Approved", 1),
+	("Rejected", 0),
+	("Completed", 1),
+	("Canceled", 2),
+]
+CONVENTIONAL_TRANSITIONS = [
+	("Draft", "Pending", "Employee", None),
+	("Pending", "Under Review", "Purchase User", None),
+	("Under Review", "Approved", "Expense Approver", BY_APPROVER),
+	("Under Review", "Rejected", "Expense Approver", BY_APPROVER),
+	("Under Review", "Approved", "Purchase User", None),
+	("Under Review", "Rejected", "Purchase User", None),
+	("Approved", "Canceled", "Purchase User", None),
+	("Rejected", "Pending", "Purchase User", None),
+]
+
+
+def conventional_workflow():
+	"""A chain of the shape the fallbacks assume, as an object tree."""
+	return workflow(CONVENTIONAL_STATES, CONVENTIONAL_TRANSITIONS)
 
 
 def workflow(states, transitions):
@@ -50,8 +73,8 @@ def workflow(states, transitions):
 
 
 class TestApproverRoles(TestCase):
-	def test_the_seeded_workflow_still_answers_the_role_it_used_to_name(self):
-		self.assertEqual(wf.approver_roles(seeded_workflow()), {"Expense Approver"})
+	def test_a_conventional_chain_answers_the_role_the_constant_used_to_name(self):
+		self.assertEqual(wf.approver_roles(conventional_workflow()), {"Expense Approver"})
 
 	def test_an_unconditioned_override_is_not_this_pages_queue(self):
 		"""Purchase User can approve, but not as a request's named approver."""
@@ -75,21 +98,21 @@ class TestApproverRoles(TestCase):
 		)
 		self.assertEqual(roles, {"Budget Holder"})
 
-	def test_a_workflow_that_names_nobody_falls_back_to_the_seeded_role(self):
+	def test_a_workflow_that_names_nobody_falls_back(self):
 		roles = wf.approver_roles(
 			workflow([("Review", 0), ("Done", 1)], [("Review", "Done", "Reviewer", None)])
 		)
-		self.assertEqual(roles, {wf.SEEDED_APPROVER_ROLE})
+		self.assertEqual(roles, {wf.FALLBACK_APPROVER_ROLE})
 
-	def test_no_workflow_is_no_queue_rather_than_the_seeded_role(self):
+	def test_no_workflow_is_no_queue_rather_than_the_fallback_role(self):
 		"""Without a workflow there are no transitions to hold, so no page."""
 		self.assertEqual(wf.approver_roles(NO_WORKFLOW), set())
 
 
 class TestOpenRequestStates(TestCase):
-	def test_the_seeded_workflow_still_answers_the_states_it_used_to_name(self):
+	def test_a_conventional_chain_answers_the_states_the_constant_used_to_name(self):
 		self.assertEqual(
-			wf.open_request_states(seeded_workflow()), ("Pending", "Under Review")
+			wf.open_request_states(conventional_workflow()), ("Pending", "Under Review")
 		)
 
 	def test_the_initial_state_is_the_authors_own_copy_not_an_open_ask(self):
@@ -129,9 +152,9 @@ class TestOpenRequestStates(TestCase):
 		)
 		self.assertEqual(states, ("Costed", "Review"))
 
-	def test_no_workflow_falls_back_to_what_the_app_seeds(self):
-		self.assertEqual(wf.open_request_states(NO_WORKFLOW), wf.SEEDED_OPEN_REQUEST_STATES)
+	def test_no_workflow_falls_back_to_the_named_states(self):
+		self.assertEqual(wf.open_request_states(NO_WORKFLOW), wf.FALLBACK_OPEN_REQUEST_STATES)
 
 	def test_a_workflow_with_nothing_open_answers_so_rather_than_falling_back(self):
-		"""Only the *absence* of a workflow falls back to the seeded names."""
+		"""Only the *absence* of a workflow falls back to the named states."""
 		self.assertEqual(wf.open_request_states(workflow([("Done", 1)], [])), ())

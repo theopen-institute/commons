@@ -1,11 +1,12 @@
 """Which doctypes people may read their own records of, and what they may propose.
 
 This is the configuration the self-service section runs on, held as documents
-rather than as code. It used to be a `self_service_records` hook pointing at
-dicts in `tbs_commons.self_service.policies`, which meant that adding a field to
-the employee profile -- or taking one off it -- was a deploy. It is a decision
-about what staff may see about themselves, which is an administrator's to make
-and to be able to review, so it belongs where they can see and change it.
+rather than as code. It used to be a hook pointing at dicts in the app, which
+meant that adding a field to the employee profile -- or taking one off it -- was
+a deploy. It is a decision about what staff may see about themselves, which is a
+System Manager's to make and to be able to review, so it belongs where they can
+see and change it. The app ships no records of this doctype: a site with none
+simply has no self-service, which is a coherent state rather than a broken one.
 
 A record answers four questions, and deliberately not a fifth.
 

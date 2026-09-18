@@ -31,50 +31,6 @@ import frappe
 
 FIELDNAME = "website_button_url"
 
-LABEL = "Website Button Target"
-
-DESCRIPTION = (
-	"Where the <b>Website</b> button in the desk sidebar and the TBS Commons sidebar opens. "
-	"An absolute URL (<code>https://example.org</code>) or a path on this site "
-	"(<code>/about</code>). Leave blank to open the site root. "
-	"This does <b>not</b> change where anyone lands after logging in &mdash; that is Home Page above, "
-	"together with the Home Page on each Role."
-)
-
-
-def sync_website_button_field() -> None:
-	"""Create the field on install and migrate. Safe to run repeatedly.
-
-	A Custom Field rather than a fork of Website Settings: the target of a button
-	is site configuration, and carrying a patched core doctype to say so would
-	mean re-patching it on every Frappe release.
-	"""
-	from frappe.custom.doctype.custom_field.custom_field import create_custom_field
-
-	properties = {
-		"fieldname": FIELDNAME,
-		"label": LABEL,
-		"fieldtype": "Data",
-		"options": "URL",
-		"description": DESCRIPTION,
-		# Beside Home Page, in the same column, so the pair reads as the two
-		# halves of a decision that used to be one field.
-		"insert_after": "home_page",
-	}
-
-	existing = frappe.db.get_value("Custom Field", {"dt": "Website Settings", "fieldname": FIELDNAME})
-	if existing:
-		# The label and description are the whole of this field's UI, and the
-		# distinction they draw is the point of it -- so a site that already has
-		# the field gets the current wording on migrate rather than whichever
-		# wording it was installed with.
-		field = frappe.get_doc("Custom Field", existing)
-		field.update(properties)
-		field.save(ignore_permissions=True)
-		return
-
-	create_custom_field("Website Settings", properties)
-
 
 @frappe.whitelist()
 def get_website_button_url() -> str:

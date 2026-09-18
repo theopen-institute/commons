@@ -10,10 +10,14 @@ So each test is a whole round trip through the real doctype, the real Workflow
 and real permissions, asserted against the referenced record afterwards. Mocking
 any of those would leave exactly the layer that could be wrong untested.
 
-`Employee` is the record under test because it is the one registered policy. The
-machinery being tested is not Employee's -- see
+`Employee` is the record under test because it is the shape the machinery was
+built for: a record named by a login. The machinery is not Employee's -- see
 `tbs_commons.self_service.registry` -- but a suite that exercised a made-up
-doctype would be testing a fixture rather than the thing that ships.
+doctype would be testing its own invention rather than the thing that ships.
+
+Nothing installs a configuration or an approval chain, so the fixtures at the
+foot of this file put both on the site for the run and the rollback takes them
+back. They are this suite's, not a configuration the app suggests.
 """
 
 import json
@@ -467,7 +471,7 @@ class TestBankAccountPolicy(unittest.TestCase):
 			.name
 		)
 		# Reading bank accounts is an accounts right, not an employee one -- see
-		# the note in `policies`. Granted here so the *policy* is what is under
+		# the fixture note below. Granted here so the *policy* is what is under
 		# test rather than the site's permission configuration.
 		self.user.reload()
 		self.user.add_roles("Accounts User")
@@ -1076,10 +1080,261 @@ class TestFreeFormFields(unittest.TestCase):
 			self.config.save()
 
 
+# --- fixtures -------------------------------------------------------------
+#
+# The configuration and the approval chain this suite runs against. Nothing
+# installs either: which record types are self-service, which of their fields
+# staff may see and propose corrections to, and who decides a proposal are a
+# site's decisions, made by a System Manager on a new site. So a suite that
+# exercises the whole round trip has to bring its own, and what follows is a
+# fixture rather than a recommendation.
+#
+# `Employee` is the record under test because the machinery needs one that is
+# named by a login, and `Bank Account` because it is the other shape -- several
+# records per owner, owned through a chain. The split between viewable and
+# proposable is the one the tests assert on: employment facts and identity are
+# shown but not proposable, pay and bank details are never proposable at all.
+
+# (section, fieldname, proposable)
+EMPLOYEE_FIELDS = (
+	("Basic information", "salutation", False),
+	("Basic information", "first_name", False),
+	("Basic information", "middle_name", False),
+	("Basic information", "last_name", False),
+	("Basic information", "gender", False),
+	("Basic information", "date_of_birth", False),
+	("Employment", "company", False),
+	("Employment", "status", False),
+	("Employment", "date_of_joining", False),
+	("Employment", "employee_number", False),
+	("Employment", "designation", False),
+	("Employment", "department", False),
+	("Employment", "branch", False),
+	("Employment", "reports_to", False),
+	("Employment", "holiday_list", False),
+	("Access & approvals", "user_id", False),
+	("Access & approvals", "leave_approver", False),
+	("Contact", "cell_number", True),
+	("Contact", "company_email", False),
+	("Contact", "personal_email", True),
+	("Contact", "prefered_contact_email", True),
+	("Contact", "current_address", True),
+	("Contact", "permanent_address", True),
+	("Emergency contact", "person_to_be_contacted", True),
+	("Emergency contact", "relation", True),
+	("Emergency contact", "emergency_phone_number", True),
+	("Personal details", "marital_status", True),
+	("Personal details", "blood_group", True),
+	("Personal details", "passport_number", True),
+)
+
+BANK_ACCOUNT_FIELDS = (
+	("Account", "account_name", False),
+	("Account", "bank", False),
+	("Account", "account_type", False),
+	("Account", "account_subtype", False),
+	("Account", "is_default", False),
+	("Account", "disabled", False),
+	("Details", "bank_account_no", False),
+	("Details", "iban", False),
+	("Details", "branch_code", False),
+)
+
+SEED = (
+	{
+		"document_type": "Employee",
+		"label": "My profile",
+		"route_slug": "employee",
+		"icon": "lucide-id-card",
+		"nav_order": 10,
+		"read_only_notice": (
+			"Your details are held by HR. Fields you can correct have a pencil beside "
+			"them — your change goes to HR as a proposal."
+		),
+		"empty_notice": ("There's no profile to show until HR links an employee record to your login."),
+		# `user_id` is a Link to User, so it names the owner outright.
+		"owner_field": "user_id",
+		"title_field": "employee_name",
+		# One employee record per login, so "my record" has a single answer.
+		"is_singular": 1,
+		# A leaver's record stops being theirs to correct.
+		"record_filters": '{"status": "Active"}',
+		"fields": EMPLOYEE_FIELDS,
+	},
+	{
+		"document_type": "Bank Account",
+		"label": "Bank accounts",
+		"route_slug": "bank-accounts",
+		"icon": "lucide-landmark",
+		"nav_order": 20,
+		"read_only_notice": (
+			"Bank details are held by payroll. To change where you're paid, talk to "
+			"them directly — this isn't something to send through a form."
+		),
+		"empty_notice": (
+			"This is where the accounts payroll pays you into would appear. Ask "
+			"whoever runs payroll if you expected one here."
+		),
+		# `party` is a Dynamic Link, so the doctype it points at is a field on the
+		# row rather than a property of the schema -- which is why the filters pin
+		# `party_type` as well. Without it this would claim every bank account
+		# whose party id happened to match an employee id.
+		"owner_field": "party",
+		"owner_doctype": "Employee",
+		"title_field": "account_name",
+		# One employee, several accounts: the page lists them.
+		"is_singular": 0,
+		"record_filters": '{"party_type": "Employee"}',
+		"fields": BANK_ACCOUNT_FIELDS,
+	},
+)
+
+CHANGE_WORKFLOW = "Record Change Request Workflow"
+DOCTYPE = "Record Change Request"
+
+# Approval is the submission, as it is for `Procurement Request`: everything
+# before a decision is docstatus 0, and only `Approved` reaches 1 -- which is
+# what lets `RecordChangeRequest.on_submit` apply the change without consulting
+# the name of a state.
+#
+# Order is load-bearing. `Pending` is first, so it is the state Frappe assigns a
+# request that arrives without one -- and this section has no draft step, because
+# a proposal nobody has sent is just a form nobody has pressed Send on.
+# `Approved` is the first `doc_status` 1 row, so it is what
+# `set_workflow_state_on_action` picks if something submits a request outside the
+# workflow.
+WORKFLOW_STATES = (
+	{"state": "Pending", "style": "Warning", "doc_status": "0", "allow_edit": "Employee"},
+	{
+		"state": "Approved",
+		"style": "Success",
+		"doc_status": "1",
+		"allow_edit": "HR Manager",
+	},
+	{
+		"state": "Rejected",
+		"style": "Danger",
+		"doc_status": "0",
+		"allow_edit": "HR Manager",
+	},
+	# The requester's own way out, and the reason it is not `Cancel`: a request
+	# that was never decided should not read as one somebody turned down.
+	{"state": "Withdrawn", "style": "Inverse", "doc_status": "0", "allow_edit": "HR Manager"},
+	# Cancelling an *approved* request. It does not put the old values back --
+	# see `RecordChangeRequest.on_cancel` -- so the state says what happened to
+	# the request, not to the record.
+	{"state": "Reversed", "style": "Inverse", "doc_status": "2", "allow_edit": "HR Manager"},
+)
+
+WORKFLOW_ACTIONS = ("Approve", "Reject", "Withdraw", "Reverse")
+
+WORKFLOW_TRANSITIONS = (
+	{"state": "Pending", "action": "Approve", "next_state": "Approved", "allowed": "HR Manager"},
+	{"state": "Pending", "action": "Reject", "next_state": "Rejected", "allowed": "HR Manager"},
+	{"state": "Pending", "action": "Approve", "next_state": "Approved", "allowed": "HR User"},
+	{"state": "Pending", "action": "Reject", "next_state": "Rejected", "allowed": "HR User"},
+	# Withdrawing decides nothing, so a requester may do it to their own
+	# request -- which is the only kind they can see. Without `allow_self_approval`
+	# Frappe would refuse it as approving your own document.
+	{
+		"state": "Pending",
+		"action": "Withdraw",
+		"next_state": "Withdrawn",
+		"allowed": "Employee",
+		"allow_self_approval": 1,
+	},
+	{"state": "Approved", "action": "Reverse", "next_state": "Reversed", "allowed": "HR Manager"},
+)
+
+
+def make_test_configuration() -> None:
+	"""Put this suite's configuration on the site, for record types with none.
+
+	An existing `Self Service Record` is left exactly as it is: on a real site
+	this suite is being run against somebody's own configuration, and overwriting
+	it to test against a fixture would be both rude and dishonest about what
+	passed. A record whose doctype is not installed is skipped rather than
+	raising, because `Bank Account` is ERPNext's.
+	"""
+	for entry in SEED:
+		doctype = entry["document_type"]
+		if frappe.db.exists(registry.CONFIG, doctype):
+			continue
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		record = frappe.new_doc(registry.CONFIG)
+		record.update({key: value for key, value in entry.items() if key != "fields"})
+		meta = frappe.get_meta(doctype)
+		for section, fieldname, proposable in entry["fields"]:
+			# A field the site's version of the doctype does not have is dropped
+			# rather than seeded, so the first save does not fail validation on
+			# something upstream renamed.
+			if not meta.has_field(fieldname):
+				continue
+			record.append(
+				"fields",
+				{
+					"section": section,
+					"fieldname": fieldname,
+					"viewable": 1,
+					"proposable": 1 if proposable else 0,
+				},
+			)
+		if record.fields:
+			record.insert(ignore_permissions=True)
+
+
+def make_test_workflow() -> None:
+	"""Put this suite's approval chain on the site, unless the site has one.
+
+	An existing workflow, active or not, is left alone -- the same rule
+	`make_test_configuration` follows and for the same reason.
+
+	A `Workflow State` is a site-wide record shared with every other workflow
+	that names it, so an existing one is never restyled here.
+	"""
+	if frappe.db.exists("Workflow", {"document_type": DOCTYPE}):
+		return
+
+	for state in WORKFLOW_STATES:
+		name = state["state"]
+		if not frappe.db.exists("Workflow State", name):
+			frappe.get_doc(
+				{"doctype": "Workflow State", "workflow_state_name": name, "style": state["style"]}
+			).insert(ignore_permissions=True)
+
+	for action in WORKFLOW_ACTIONS:
+		if not frappe.db.exists("Workflow Action Master", action):
+			frappe.get_doc({"doctype": "Workflow Action Master", "workflow_action_name": action}).insert(
+				ignore_permissions=True
+			)
+
+	workflow = frappe.new_doc("Workflow")
+	workflow.update(
+		{
+			"workflow_name": CHANGE_WORKFLOW,
+			"document_type": DOCTYPE,
+			"workflow_state_field": "status",
+			# Off. Frappe's workflow alert calls `attach_print` unconditionally, so
+			# turning it on mails every reviewer a PDF of the request -- which under
+			# the bank-account fixture means an account number and an IBAN.
+			"send_email_alert": 0,
+		}
+	)
+	workflow.set("states", [{k: v for k, v in state.items() if k != "style"} for state in WORKFLOW_STATES])
+	workflow.set("transitions", list(WORKFLOW_TRANSITIONS))
+	workflow.save(ignore_permissions=True)
+
+
 def run():
 	original_user = frappe.session.user
 	frappe.set_user("Administrator")
 	try:
+		# Nothing installs the self-service configuration or its approval chain, so
+		# the suite puts its own fixture on the site. Both leave an existing
+		# configuration alone, and the rollback below takes back whatever is written.
+		make_test_configuration()
+		make_test_workflow()
 		suite = unittest.TestSuite(
 			unittest.defaultTestLoader.loadTestsFromTestCase(case)
 			for case in (

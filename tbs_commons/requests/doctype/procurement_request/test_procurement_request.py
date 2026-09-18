@@ -10,7 +10,94 @@ from tbs_commons.requests.doctype.procurement_request.procurement_request import
 	DOCTYPE,
 	make_material_request,
 )
-from tbs_commons.requests.install import PROCUREMENT_WORKFLOW, sync_procurement_workflow
+from tbs_commons.requests.procurement_workflow import PROCUREMENT_REQUEST
+
+# This suite's own approval chain. Nothing installs one -- a site builds whatever
+# it needs, and `tbs_commons.requests.procurement_workflow` reads that rather
+# than assuming any particular shape -- so a suite that exercises transitions has
+# to bring a workflow with it. The shape below is a conventional one: the buyer
+# sends a request on, procurement costs it, a named approver decides, and a
+# rejection can be reworked. It is a fixture, not a recommendation.
+#
+# Order is load-bearing twice over. `Draft` is first, so it is the state Frappe
+# assigns a document that arrives without one, and `Approved` is the first
+# `doc_status` 1 row, so it is the state `set_workflow_state_on_action` picks
+# when something submits a request without going through the workflow.
+PROCUREMENT_WORKFLOW = "Procurement Request Workflow"
+
+# Approval is the submission. Everything before a decision is a draft, a
+# rejection leaves it one, and only `Approved` carries the request to docstatus
+# 1 -- which is what lets `make_material_request` gate on `docstatus` alone
+# rather than on the name of a state. `Completed` and `Canceled` are the two
+# ways out of it afterwards.
+#
+# Order is load-bearing twice over. `Draft` is first, so it is the state Frappe
+# assigns a document that arrives without one, and `Approved` is the first
+# `doc_status` 1 row, so it is the state `set_workflow_state_on_action` picks
+# when something submits a request without going through the workflow.
+WORKFLOW_STATES = (
+	{"state": "Draft", "style": "Primary", "doc_status": "0", "allow_edit": "Employee"},
+	{
+		"state": "Pending",
+		"style": "Warning",
+		"doc_status": "0",
+		"allow_edit": "Purchase User",
+		# Reopening brings a rejected request back here, so this is also where a
+		# rejection stops standing. Left alone, last time's reason would still be
+		# on the request the next time an approver turned it down. An empty
+		# `update_value` clears the field: `evaluate_workflow_value` reads any
+		# falsy value as None.
+		"update_field": "rejection_reason",
+		"update_value": "",
+	},
+	{"state": "Under Review", "style": "Info", "doc_status": "0", "allow_edit": "Expense Approver"},
+	{"state": "Approved", "style": "Success", "doc_status": "1", "allow_edit": "Purchase User"},
+	{"state": "Rejected", "style": "Danger", "doc_status": "0", "allow_edit": "Expense Approver"},
+	{"state": "Completed", "style": "Success", "doc_status": "1", "allow_edit": "Purchase User"},
+	{"state": "Canceled", "style": "Inverse", "doc_status": "2", "allow_edit": "Purchase User"},
+)
+
+WORKFLOW_ACTIONS = ("Send to Procurement", "Send for Review", "Approve", "Reject", "Cancel", "Reopen")
+
+WORKFLOW_TRANSITIONS = (
+	{"state": "Draft", "action": "Send to Procurement", "next_state": "Pending", "allowed": "Employee", "allow_self_approval": 1},
+	{
+		"state": "Pending",
+		"action": "Send for Review",
+		"next_state": "Under Review",
+		"allowed": "Purchase User",
+		"condition": 'not frappe.db.get_value("Procurement Request Item", {"parent": doc.name, "item_code": ["is", "not set"]}, "name")',
+	},
+	{
+		"state": "Under Review",
+		"action": "Approve",
+		"next_state": "Approved",
+		"allowed": "Expense Approver",
+		"condition": "doc.approver == frappe.session.user",
+	},
+	{
+		"state": "Under Review",
+		"action": "Reject",
+		"next_state": "Rejected",
+		"allowed": "Expense Approver",
+		"condition": "doc.approver == frappe.session.user",
+	},
+	{"state": "Under Review", "action": "Approve", "next_state": "Approved", "allowed": "Purchase User"},
+	{"state": "Under Review", "action": "Reject", "next_state": "Rejected", "allowed": "Purchase User"},
+	{"state": "Approved", "action": "Cancel", "next_state": "Canceled", "allowed": "Purchase User"},
+	# A rejection is a decision, not a shredder. Procurement owns the queue, so
+	# they are the ones who decide whether a turned-down request is worth
+	# reworking, and reopening puts it back in their hands at `Pending` -- where
+	# it is theirs to edit again, which `Rejected` deliberately is not.
+	{
+		"state": "Rejected",
+		"action": "Reopen",
+		"next_state": "Pending",
+		"allowed": "Purchase User",
+		# Reopening decides nothing, so a buyer may reopen their own request.
+		"allow_self_approval": 1,
+	},
+)
 
 # Frappe builds test records for a doctype by following its Link fields, then
 # theirs, and so on. From `Procurement Request` that walk is 24 hops long --
@@ -32,15 +119,7 @@ class ProcurementTestCase(IntegrationTestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		super().setUpClass()
-		sync_procurement_workflow()
-		# The workflow notifies the next approver by email, and that email
-		# attaches the request as a PDF -- which needs `wkhtmltopdf` on the
-		# machine running the suite. What is under test here is which
-		# transitions are allowed and what they leave behind, not delivery, so
-		# the alert is off for the run. `frappe.model.workflow` sends it inline
-		# rather than queued when `frappe.in_test`, so leaving it on makes every
-		# one of these tests depend on a binary that need not be installed.
-		frappe.db.set_value("Workflow", PROCUREMENT_WORKFLOW, "send_email_alert", 0)
+		make_test_workflow()
 		# `_Test Company` by name, not whichever company comes back first: it is
 		# the one ERPNext's `before_tests` hook sets up, so its currency matches
 		# the buying price list and its warehouses and departments exist. A site
@@ -483,6 +562,50 @@ class TestProcurementApproval(ProcurementTestCase):
 
 		with self.assertRaises(frappe.ValidationError):
 			apply_workflow(request, "Reject")
+
+
+def make_test_workflow() -> None:
+	"""Put this suite's chain on the site, unless the site already has one.
+
+	An existing workflow is left exactly as it is: on a real site this suite is
+	being run against somebody's own chain, and overwriting it to test against a
+	fixture would be both rude and dishonest about what passed.
+
+	The alert is off. Frappe's workflow alert attaches the request as a PDF, which
+	needs `wkhtmltopdf` on the machine running the suite, and it is sent inline
+	rather than queued when `frappe.in_test` -- so leaving it on would make every
+	test here depend on a binary that need not be installed. What is under test is
+	which transitions are allowed and what they leave behind, not delivery.
+	"""
+	if frappe.db.exists("Workflow", {"document_type": PROCUREMENT_REQUEST}):
+		return
+
+	for state in WORKFLOW_STATES:
+		name = state["state"]
+		if not frappe.db.exists("Workflow State", name):
+			frappe.get_doc(
+				{"doctype": "Workflow State", "workflow_state_name": name, "style": state["style"]}
+			).insert(ignore_permissions=True)
+
+	for action in WORKFLOW_ACTIONS:
+		if not frappe.db.exists("Workflow Action Master", action):
+			frappe.get_doc(
+				{"doctype": "Workflow Action Master", "workflow_action_name": action}
+			).insert(ignore_permissions=True)
+
+	workflow = frappe.new_doc("Workflow")
+	workflow.update(
+		{
+			"workflow_name": PROCUREMENT_WORKFLOW,
+			"document_type": PROCUREMENT_REQUEST,
+			"workflow_state_field": "status",
+			"is_active": 1,
+			"send_email_alert": 0,
+		}
+	)
+	workflow.set("states", [{k: v for k, v in state.items() if k != "style"} for state in WORKFLOW_STATES])
+	workflow.set("transitions", list(WORKFLOW_TRANSITIONS))
+	workflow.save(ignore_permissions=True)
 
 
 def make_test_item(code: str = "_Test Procurement Item") -> str:

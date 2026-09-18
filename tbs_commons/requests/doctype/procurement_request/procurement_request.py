@@ -14,10 +14,12 @@ estimated cost fields exist for the approver and are posted nowhere.
 
 Very little of that is enforced here, because very little of it has to be. The
 DocType JSON carries the defaults, the `fetch_from` links into the item master
-and the mandatory and non-negative checks. The Workflow in `tbs_commons.requests.install`
-carries who may do what and when -- including the rule that every row must have
-an `item_code` before a request can go for review, so an approved request has
-no uncoded row unless a site has switched the Workflow off. Frappe itself
+and the mandatory and non-negative checks. Whatever Workflow a site has built
+carries who may do what and when -- including, if it is set up that way, the rule
+that every row must have an `item_code` before a request can go for review.
+Nothing here assumes one: a site with no Workflow, or one shaped differently, is
+read rather than corrected -- see `tbs_commons.requests.procurement_workflow`.
+Frappe itself
 refuses every edit to an approved request's items, because no field on that
 table is `allow_on_submit`, and refuses any cancellation that would orphan a
 submitted Material Request. What is left in this file is arithmetic, and the

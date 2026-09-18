@@ -1,20 +1,22 @@
 """What the active Workflow says, read by everything that needs to know.
 
-`sync_procurement_workflow` seeds a Workflow once and never rewrites it, so the
-one an administrator ends up running is theirs to retune -- states renamed,
-transitions re-pointed at different roles, a review step added. Everything in
-this module is derived from that document rather than named in code, so a
-retuned workflow moves the app with it instead of leaving constants behind
-pointing at states and roles that no longer exist.
+Nothing installs a Workflow for `Procurement Request`. The one an administrator
+builds on a new site is entirely theirs -- whatever states they name, whatever
+roles they point the transitions at, however many review steps they want.
+Everything in this module is derived from that document rather than named in
+code, so whatever they build moves the app with it instead of leaving constants
+behind pointing at states and roles that were never going to exist.
 
 Reading the workflow itself, naming its state column and listing its
 transitions are not here: those are the same questions leave and expenses ask,
 and they are answered once in `tbs_commons.commons_core.workflow`. What is here
 is only what is derived from *this* workflow's particular shape.
 
-The two derivations below both fall back to what `install.py` seeds. A site with
-no workflow at all still gets the app's own answer, which is what it had before
-any of this was derived -- the fallbacks are a floor, never an override.
+The two derivations below both fall back to a conventional answer. A site with
+no workflow at all -- which is every site until somebody builds one -- still
+gets something coherent rather than an empty page, and a site whose workflow
+happens to be shaped differently is read, not corrected. The fallbacks are a
+floor, never an override.
 """
 
 from tbs_commons.commons_core import workflow as wf
@@ -28,9 +30,9 @@ PROCUREMENT_REQUEST = "Procurement Request"
 # one *person* rather than to a role. See `approver_roles`.
 APPROVER_FIELD = "approver"
 
-# What the seeded workflow answers, for a site running without one.
-SEEDED_APPROVER_ROLE = "Expense Approver"
-SEEDED_OPEN_REQUEST_STATES = ("Pending", "Under Review")
+# What the reference chain answers, for a site running without a workflow.
+FALLBACK_APPROVER_ROLE = "Expense Approver"
+FALLBACK_OPEN_REQUEST_STATES = ("Pending", "Under Review")
 
 
 def _states_by_doc_status(workflow, doc_status: int) -> set[str]:
@@ -41,8 +43,8 @@ def approver_roles(workflow=None) -> set[str]:
 	"""Roles the workflow routes to a *named* approver, not merely to a role.
 
 	Whose queue the SPA's Approvals page is. Holding a transition is not the
-	test: the seeded workflow grants the same Approve and Reject actions to
-	`Purchase User` as an override, and gating on any transition at all would
+	test: a chain will typically grant the same Approve and Reject actions to a
+	procurement role as an override, and gating on any transition at all would
 	put this page -- and its sidebar row -- in front of everyone who moves a
 	request along from the desk.
 
@@ -61,7 +63,7 @@ def approver_roles(workflow=None) -> set[str]:
 		for row in workflow.transitions
 		if row.allowed and APPROVER_FIELD in (row.condition or "")
 	}
-	return roles or {SEEDED_APPROVER_ROLE}
+	return roles or {FALLBACK_APPROVER_ROLE}
 
 
 def open_request_states(workflow=None) -> tuple[str, ...]:
@@ -84,7 +86,7 @@ def open_request_states(workflow=None) -> tuple[str, ...]:
 	"""
 	workflow = workflow if workflow is not None else wf.active_workflow(PROCUREMENT_REQUEST)
 	if not workflow or not workflow.states:
-		return SEEDED_OPEN_REQUEST_STATES
+		return FALLBACK_OPEN_REQUEST_STATES
 
 	drafts = _states_by_doc_status(workflow, 0)
 	submitted = _states_by_doc_status(workflow, 1)
@@ -96,6 +98,6 @@ def open_request_states(workflow=None) -> tuple[str, ...]:
 	}
 	# Empty is a real answer -- a workflow whose every draft state is either the
 	# author's own or the outcome of a decision has no open asks -- so it is
-	# returned as one rather than papered over with the seeded names. Only the
+	# returned as one rather than papered over with the fallback names. Only the
 	# absence of a workflow above falls back.
 	return tuple(sorted(drafts - decided - {workflow.states[0].state}))

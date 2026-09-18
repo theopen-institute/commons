@@ -15,7 +15,7 @@
  "fields": [
   {
    "columns": 2,
-   "description": "The field this row changes, on the request's referenced doctype. Must be one that doctype's self-service policy marks proposable -- see tbs_commons.self_service.policies.",
+   "description": "The field this row changes, on the request's referenced doctype. Must be one that doctype's Self Service Record marks proposable.",
    "fieldname": "fieldname",
    "fieldtype": "Data",
    "in_list_view": 1,

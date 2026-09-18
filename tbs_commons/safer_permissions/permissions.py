@@ -38,7 +38,7 @@ what it grants -- the gate then withholds every row but the user's own. See
 
 None of this patches core. The marker is one Check field on `DocPerm`, `Custom
 DocPerm` and `DocShare`, which the Role Permission Manager draws beside "Only if
-Creator" -- see `safer_permissions.install.sync_gate_field`. Enforcement
+Creator" -- declared in `tbs_commons/fixtures/custom_field.json`. Enforcement
 is core's two permission hooks, both of which accept a `"*"` key so they are
 consulted for every doctype, and both of which can only ever deny:
 

@@ -8,10 +8,11 @@ record, and nothing in this file does either -- the single write lives in
 permission check.
 
 Every endpoint that touches a record takes the doctype as an argument and gets
-its answers from that doctype's entry in `tbs_commons.self_service.policies`.
-Employee is the first registered record and currently the only page, but nothing
-below names it: adding a second record type is a registry entry and a page, not
-a second copy of this module.
+its answers from that doctype's `Self Service Record`, through
+`tbs_commons.self_service.registry`. Nothing below names a doctype, and the app
+registers none: which record types are self-service is a site's decision, and
+adding one is a configuration document and a page, not a second copy of this
+module.
 
 There is deliberately no endpoint here that returns the record itself. The page
 reads it with the ordinary document API, filtered to the caller's own row, so

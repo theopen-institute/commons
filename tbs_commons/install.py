@@ -1,12 +1,20 @@
 """App-level migrate hook: registering this app's modules.
 
-Everything else an install or migrate asserts belongs to one section and is
-wired into `hooks.py` from that section -- `tbs_commons.requests.install` for
-the Custom Fields and the Workflow, `tbs_commons.safer_permissions.install` for
-the gate column, `tbs_commons.commons_core.install` for the two fields the core
-extensions read.
+Everything else this app adds to core and ERPNext doctypes is declared rather
+than created. The nine Custom Fields are in
+`tbs_commons/fixtures/custom_field.json`, written by Frappe's fixture sync on
+install and every migrate; the desk icon is a file under `desktop_icon/`, written
+by the model sync. Neither needs a hook. The two hooks left in `hooks.py` do only
+what no sync can: `tbs_commons.self_service.install` drops a cache whose key
+`frappe.clear_cache` does not know about, and
+`tbs_commons.safer_permissions.install` gets a changed `page_js` in front of
+admins whose desks still hold the last copy of it.
 
-The desk icon is in none of them. It ships as a file in `tbs_commons/desktop_icon/`,
+Workflows, self-service configuration and Property Setters are a System Manager's
+to set up on a new site, and the app ships none of them -- not as a seed, not as
+a fixture, not at all.
+
+About that desk icon. It ships as a file in `tbs_commons/desktop_icon/`,
 which `frappe.model.sync` imports on every migrate -- `desktop_icon` is one of its
 `app_level_folders`. Keeping it as a record built at runtime meant migrate's orphan
 sweep deleted it (it drops any `standard` icon with no backing file) and

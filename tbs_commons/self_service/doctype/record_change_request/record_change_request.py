@@ -11,9 +11,9 @@ decision somebody made on purpose.
 It is deliberately not about employees. A request names a doctype and a document,
 and everything that gives that pair meaning -- whose record it is, which of its
 fields may be proposed, how it reads in a queue -- comes from that doctype's
-entry in `tbs_commons.self_service.policies`. Employee is the first such entry
-and currently the only one; a second HR record about the same person is a
-registry entry and a page, not another copy of this file.
+`Self Service Record`, through `tbs_commons.self_service.registry`. The app
+registers none: a site says which record types are self-service, and a second
+one is a configuration document and a page, not another copy of this file.
 
 So the self-service half is read-only by construction. Nothing here writes to the
 referenced record until `on_submit`, and `on_submit` runs under whoever approved

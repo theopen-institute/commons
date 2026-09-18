@@ -5,9 +5,9 @@ file it scans -- the classes are generated per name by frappe-ui's
 `iconPackPlugin`, and emitting all two thousand lucide icons would cost nearly
 two megabytes of CSS. An icon that appears nowhere in the scanned source
 therefore has no rule at all, and a sidebar row wearing it draws an empty
-square rather than a mark. That is what happened to both seeded record types:
-their icons were configuration, held here and in the database, and the build
-had no way to know about them.
+square rather than a mark. That is what happens to a record type a site
+configures: its icon is configuration, held in the database, and the build has
+no way to know about it.
 
 So this module is the one place the names are written down, and
 `frontend/tailwind.config.js` scans it for exactly that reason. Being a closed

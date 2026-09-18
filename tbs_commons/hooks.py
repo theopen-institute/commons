@@ -28,23 +28,30 @@ website_route_rules = [
 	{"from_route": "/tbs_commons/<path:app_path>", "to_route": "tbs_commons"},
 ]
 
-# The desk icon ships as a file under `tbs_commons/desktop_icon/` and is imported by
-# migrate's own sync. These hooks only do what that sync cannot, and each entry is
-# the install module of the module that owns it -- nothing here is app-wide.
-# `requests.install` seeds procurement's Custom Fields and Workflow; leave and
-# expenses run on HRMS's own doctypes and assert nothing. `commons_core.install`
-# creates the two Custom Fields the core extensions read.
+# Almost nothing is left here, and that is the point. The desk icon ships as a
+# file under `tbs_commons/desktop_icon/`, the nine Custom Fields this app adds to
+# core and ERPNext doctypes ship as `tbs_commons/fixtures/custom_field.json`, and
+# both are written by Frappe's own sync on install and on every migrate. Neither
+# needs a hook, and a hook that re-asserted them would only be a second, quieter
+# copy of the same declaration.
+#
+# What is left are the two things no sync can do: dropping a cache whose key
+# `frappe.clear_cache` does not know about, and getting a changed `page_js` in
+# front of admins whose desks are still holding the last copy of it.
+#
+# No approval chain, no self-service configuration and no Property Setters. Those
+# are a System Manager's to set up on a new site, and a deploy is not where they
+# get made. The app ships none of them in any form, and the code reads whatever a
+# site has rather than assuming any particular shape -- see
+# `tbs_commons.requests.procurement_workflow` and
+# `tbs_commons.self_service.registry`.
 after_install = [
-	"tbs_commons.requests.install.sync_procurement",
 	"tbs_commons.self_service.install.sync_self_service",
-	"tbs_commons.safer_permissions.install.sync_gate_field",
-	"tbs_commons.commons_core.install.sync_commons_core",
+	"tbs_commons.safer_permissions.install.sync_permission_manager",
 ]
 after_migrate = [
-	"tbs_commons.requests.install.sync_procurement",
 	"tbs_commons.self_service.install.sync_self_service",
-	"tbs_commons.safer_permissions.install.sync_gate_field",
-	"tbs_commons.commons_core.install.sync_commons_core",
+	"tbs_commons.safer_permissions.install.sync_permission_manager",
 ]
 
 # Modules are added to `modules.txt` after this app has already been installed

@@ -3,7 +3,7 @@
 Not purely rollback-only, unlike the budget suite. The `Custom DocPerm` rows are
 committed so other connections see them, and `_register_gate` and `_retire_gate`
 bracket the run to put them back; everything within it rolls back. The gate
-column itself is created once by `sync_gate_field` and left alone.
+column itself comes from this app's fixtures and is left alone.
 
 `Branch` stands in for a payslip. It has one field, it autonames from it, no
 role outside HR can read it, and this app's are the only permission hooks
@@ -16,7 +16,7 @@ import unittest
 
 import frappe
 
-from tbs_commons.safer_permissions.install import sync_gate_field
+from frappe.utils.fixtures import sync_fixtures
 from tbs_commons.safer_permissions.permissions import GATE, clear_gated_doctypes
 
 DOCTYPE = "Branch"
@@ -191,7 +191,11 @@ def _register_gate():
 	_fixtures()
 	_roles_and_users()
 
-	sync_gate_field()
+	# The gate columns are declared in `tbs_commons/fixtures/custom_field.json`,
+	# so an installed site already has them. Synced here anyway, for the reason the
+	# call to the install hook was here before: the suite should set up what it
+	# needs rather than assume somebody migrated first.
+	sync_fixtures("tbs_commons")
 
 	frappe.permissions.add_permission(DOCTYPE, GATED_ROLE, 0)
 	frappe.permissions.update_permission_property(DOCTYPE, GATED_ROLE, 0, GATE, 1)

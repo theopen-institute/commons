@@ -40,42 +40,10 @@ import frappe
 
 FIELDNAME = "home_page_priority"
 
-LABEL = "Home Page Priority"
-
-DESCRIPTION = (
-	"Which Home Page wins when someone holds several roles that each name one. "
-	"<b>Lowest number wins</b>; roles on the same number are settled by name, so the order is "
-	"always the same on every site and every login. Only meaningful alongside Home Page above."
-)
 
 # One hash, keyed by user. Rebuilt by a single query, so clearing it wholesale on
 # any Role change costs almost nothing.
 CACHE_KEY = "tbs_commons_home_page"
-
-
-def sync_home_page_priority_field() -> None:
-	"""Create the field on install and migrate. Safe to run repeatedly."""
-	from frappe.custom.doctype.custom_field.custom_field import create_custom_field
-
-	properties = {
-		"fieldname": FIELDNAME,
-		"label": LABEL,
-		"fieldtype": "Int",
-		"default": "0",
-		"description": DESCRIPTION,
-		# Directly under the field it orders.
-		"insert_after": "home_page",
-	}
-
-	existing = frappe.db.get_value("Custom Field", {"dt": "Role", "fieldname": FIELDNAME})
-	if existing:
-		field = frappe.get_doc("Custom Field", existing)
-		field.update(properties)
-		field.save(ignore_permissions=True)
-	else:
-		create_custom_field("Role", properties)
-
-	clear_cache()
 
 
 def candidates(user: str) -> list[frappe._dict]:
