@@ -42,6 +42,10 @@ import frappe
 
 CONFIG = "Self Service Record"
 
+# Where the resolved registry is cached. Named once: a key spelled twice is a
+# key that can be read under one spelling and invalidated under another.
+POLICY_CACHE_KEY = "tbs_commons_self_service_policies"
+
 # How deep an ownership chain may run before it is treated as a cycle. Chains are
 # a configuration, so a mistake in one is a hang rather than an error unless
 # something counts -- and a real chain is one or two links.
@@ -150,7 +154,11 @@ def policies() -> dict[str, dict]:
 			}
 		return found
 
-	return frappe.cache.get_value("tbs_commons_self_service_policies", build, shared=True)
+	# Not `shared`: that flag drops the site name from the key, so every site on
+	# a bench would read whichever one warmed the cache last -- one site's
+	# proposable fields answering another site's permission check. Per-site is
+	# what "cached for the site" meant, and it is what the key does now.
+	return frappe.cache.get_value(POLICY_CACHE_KEY, build)
 
 
 def _parse_filters(raw: str | None) -> dict:
@@ -457,4 +465,4 @@ def clear_cache() -> None:
 	Without it a configuration change would appear to do nothing until something
 	else happened to clear the cache.
 	"""
-	frappe.cache.delete_value("tbs_commons_self_service_policies", shared=True)
+	frappe.cache.delete_value(POLICY_CACHE_KEY)
