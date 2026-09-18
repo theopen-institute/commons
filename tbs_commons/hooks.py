@@ -35,11 +35,15 @@ after_install = [
 	"tbs_commons.procurement.install.sync_procurement",
 	"tbs_commons.self_service.install.sync_self_service",
 	"tbs_commons.safer_permissions.install.sync_gate_field",
+	"tbs_commons.website_link.sync_website_button_field",
+	"tbs_commons.home_page.sync_home_page_priority_field",
 ]
 after_migrate = [
 	"tbs_commons.procurement.install.sync_procurement",
 	"tbs_commons.self_service.install.sync_self_service",
 	"tbs_commons.safer_permissions.install.sync_gate_field",
+	"tbs_commons.website_link.sync_website_button_field",
+	"tbs_commons.home_page.sync_home_page_priority_field",
 ]
 
 # `Safer Permissions` was added to `modules.txt` after this app had already
@@ -62,7 +66,11 @@ before_migrate = "tbs_commons.install.sync_module_defs"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/tbs_commons/css/tbs_commons.css"
-# app_include_js = "/assets/tbs_commons/js/tbs_commons.js"
+#
+# One bundle, loaded after core's own `app_include_js`, so the classes it patches
+# already exist. Today it holds only the "Website" button's target -- see
+# `tbs_commons/public/js/website_button.js`.
+app_include_js = "tbs_commons.bundle.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/tbs_commons/css/tbs_commons.css"
@@ -218,6 +226,15 @@ has_permission = {
 # at it. Only the budget needs a hook, and only on submit — usage is summed from
 # submitted requests, so a cancelled one leaves the tally by its docstatus alone.
 doc_events = {
+	# Who lands where is cached per user, and both ends of the rule can move it:
+	# a Role's home page or priority, and a User's own list of roles.
+	"Role": {
+		"on_update": "tbs_commons.home_page.clear_cache",
+		"on_trash": "tbs_commons.home_page.clear_cache",
+	},
+	"User": {
+		"on_update": "tbs_commons.home_page.clear_user_cache",
+	},
 	"Material Request": {
 		"validate": "tbs_commons.procurement.budget.validate_material_request",
 		"before_update_after_submit": "tbs_commons.procurement.budget.protect_submitted_material_request",
@@ -296,7 +313,11 @@ ignore_links_on_delete = ["Record Change Request"]
 
 # Request Events
 # ----------------
-# before_request = ["tbs_commons.utils.before_request"]
+# Core picks the home page from whichever of the user's roles the database
+# happened to return first -- see `tbs_commons/home_page.py`. That loop cannot be
+# ordered from outside and the hook core offers runs after it, so the answer is
+# settled here instead, early enough that login, `/` and the desk boot all see it.
+before_request = ["tbs_commons.home_page.set_home_page_flag"]
 # after_request = ["tbs_commons.utils.after_request"]
 
 # Job Events
@@ -361,3 +382,9 @@ extend_doctype_class = {
 # The gate checkbox is drawn next to "Only if Creator" rather than among the
 # rights, because it scopes rows rather than granting a right.
 page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
+
+
+# The desk's "Website" button reads its target from the boot, so the sidebar does
+# not have to fetch a setting before it can render. See `tbs_commons/website_link.py`
+# for why this is not simply the home page.
+extend_bootinfo = "tbs_commons.website_link.extend_bootinfo"

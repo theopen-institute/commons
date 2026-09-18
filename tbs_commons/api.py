@@ -191,3 +191,16 @@ def get_session_user() -> dict:
 	from tbs_commons.www.tbs_commons import get_user_info
 
 	return get_user_info()
+
+
+@frappe.whitelist()
+def get_website_button_url() -> str:
+	"""Where this app's sidebar "Website" button opens.
+
+	Boot data carries this in a production build, for the same reason
+	`get_session_user` is there; the dev server asks. See
+	`tbs_commons/website_link.py` for why it is not the home page.
+	"""
+	from tbs_commons.website_link import get_website_button_url as target
+
+	return target()

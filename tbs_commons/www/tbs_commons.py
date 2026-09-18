@@ -17,12 +17,15 @@ def get_context(context: dict) -> dict:
 	if frappe.session.user == "Guest":
 		frappe.throw(frappe._("You need to be logged in to access this page."), frappe.PermissionError)
 
+	from tbs_commons.website_link import get_website_button_url
+
 	context.no_cache = 1
 	context.boot = {
 		"csrf_token": frappe.sessions.get_csrf_token(),
 		"site_name": frappe.local.site,
 		"user": frappe.session.user,
 		"user_info": get_user_info(),
+		"website_button_url": get_website_button_url(),
 	}
 	return context
 
