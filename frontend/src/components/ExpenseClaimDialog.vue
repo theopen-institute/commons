@@ -50,9 +50,8 @@
                 :error="errors[`type-${index}`]"
                 required
               />
-              <FormControl
+              <BikramDatePicker
                 v-model="line.expense_date"
-                type="date"
                 label="When"
                 :max="today"
                 :error="errors[`date-${index}`]"
@@ -182,6 +181,7 @@ import {
   toast,
   type DialogAction,
 } from 'frappe-ui'
+import BikramDatePicker from './BikramDatePicker.vue'
 import LinkControl from './LinkControl.vue'
 import {
   attachToExpenseClaim,

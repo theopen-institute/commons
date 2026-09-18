@@ -74,13 +74,15 @@ before_migrate = "commons.install.sync_module_defs"
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/commons/css/commons.css"
 #
 # One bundle, loaded after core's own `app_include_js`, so the classes it patches
-# already exist. Today it holds only the "Website" button's target -- see
+# already exist. It holds the "Website" button's target -- see
 # `commons/public/js/website_button.js`, whose server half is
-# `commons/core/website_link.py`.
+# `commons/core/website_link.py` -- and the Bikram Sambat readout that
+# `commons/public/js/bikram_sambat/` puts on Date and Datetime fields, which
+# draws itself only on sites whose country is Nepal.
 app_include_js = "commons.bundle.js"
+app_include_css = "commons.bundle.css"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/commons/css/commons.css"

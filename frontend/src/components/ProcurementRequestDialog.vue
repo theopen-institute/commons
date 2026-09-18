@@ -7,7 +7,7 @@
 	>
 		<div class="space-y-4">
 			<div class="grid gap-4 sm:grid-cols-2">
-				<FormControl v-model="form.schedule_date" type="date" label="Needed by" required />
+				<BikramDatePicker v-model="form.schedule_date" label="Needed by" required />
 				<LinkControl
 					v-model="form.department"
 					doctype="Department"
@@ -110,6 +110,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import { Button, Dialog, ErrorMessage, FormControl, toast, type DialogAction } from 'frappe-ui'
+import BikramDatePicker from './BikramDatePicker.vue'
 import LinkControl from './LinkControl.vue'
 import {
 	procurementCan,

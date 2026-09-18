@@ -1,0 +1,284 @@
+/**
+ * The Bikram Sambat readout and calendar.
+ *
+ * Every colour here is one of core's own custom properties, so the readout and
+ * the picker follow the desk into dark mode, and into whatever a site's theme
+ * does to those variables, without a second definition to keep in step. The
+ * tokens under `--date-*` are the ones core's own datepicker uses for a selected
+ * day; reusing them is what makes the two calendars look like one control.
+ */
+
+/* ------------------------------------------------------------------------- *
+ * The readout, inside the field
+ * ------------------------------------------------------------------------- */
+
+/**
+ * The readout is positioned against `.control-input-wrapper`, which contains
+ * both the editable `.control-input` and the read-only `.control-value` that
+ * core swaps between -- so the readout sits in the same place whichever of the
+ * two is currently on screen. In a grid cell, where there is no wrapper and no
+ * read-only rendering, it is the `.frappe-control` itself. The JS puts the class
+ * on whichever applies.
+ */
+.bs-readout-host {
+	position: relative;
+}
+
+.commons-bs-readout {
+	position: absolute;
+	top: 0;
+	right: 1px;
+	height: var(--input-height, 28px);
+	max-width: 50%;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	padding: 0 8px;
+	border: none;
+	background: none;
+	/* Tabular figures so the readout does not jitter as the day ticks over, and
+	   so it lines up with the Gregorian value it sits beside. */
+	font-variant-numeric: tabular-nums;
+	/* The smallest step on core's scale. The readout annotates the field's value
+	   rather than competing with it, so it should read as secondary to the 13-14px
+	   the input itself uses -- and Devanagari digits are tall enough to stay
+	   legible here. */
+	font-size: var(--text-xs);
+	line-height: 1;
+	color: var(--text-muted);
+	white-space: nowrap;
+	cursor: pointer;
+
+	&:hover,
+	&:focus {
+		color: var(--text-color);
+		outline: none;
+	}
+
+	&:focus-visible {
+		box-shadow: 0 0 0 2px var(--control-bg-on-gray);
+		border-radius: var(--border-radius);
+	}
+
+	/* A read-only field keeps its Bikram Sambat date in the same spot, but it is
+	   no longer something to click, and it should sit at the same weight as the
+	   disabled value beside it. */
+	&.is-static {
+		cursor: default;
+		color: var(--disabled-text-color);
+
+		&:hover,
+		&:focus {
+			color: var(--disabled-text-color);
+		}
+	}
+
+	/* The empty-field token. Held back hard, because otherwise every unfilled
+	   date field on a form turns into a row of little flags competing with the
+	   content; it comes up to full strength when it is pointed at. */
+	&.is-placeholder {
+		font-size: var(--text-sm);
+		opacity: 0.45;
+		filter: grayscale(0.4);
+
+		&:hover,
+		&:focus {
+			opacity: 1;
+			filter: none;
+		}
+	}
+}
+
+/**
+ * Reserve room for it, so a long date typed into the field never slides under
+ * the readout. Enough for `२०८१-०५-१८` plus its padding at `--text-xs`, and held
+ * constant whether the field is showing a date or the empty token, so the input
+ * does not change width as the first date is typed into it.
+ */
+.frappe-control.has-bs-readout:not(.bs-compact) {
+	input.form-control,
+	.control-value {
+		padding-right: 84px;
+	}
+}
+
+/**
+ * Grid cells and filter rows are too narrow to give up 92px, so there the
+ * readout overlays instead and steps out of the way while the cell is being
+ * typed in. At rest -- which is how a grid is read almost all of the time --
+ * the Bikram Sambat date is still there.
+ */
+.frappe-control.has-bs-readout.bs-compact {
+	&:focus-within .commons-bs-readout {
+		display: none;
+	}
+}
+
+/* ------------------------------------------------------------------------- *
+ * The picker
+ * ------------------------------------------------------------------------- */
+
+.commons-bs-picker {
+	/* Fixed, so a picker opened inside a scrolling modal body does not depend on
+	   which ancestor happens to establish a containing block; the JS keeps it
+	   glued to the field. 9999 is what core's datepicker uses, which puts both
+	   above Frappe's modals. */
+	position: fixed;
+	z-index: 9999;
+	width: 264px;
+	padding: 8px;
+	background: var(--fg-color);
+	color: var(--text-color);
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-lg);
+	box-shadow: var(--shadow-2xl);
+	font-size: var(--text-sm);
+	user-select: none;
+
+	.commons-bs-nav {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding-bottom: 8px;
+		border-bottom: 1px solid var(--border-color);
+	}
+
+	.commons-bs-step {
+		flex: 0 0 auto;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: none;
+		border-radius: var(--border-radius);
+		background: none;
+		color: var(--text-color);
+		font-size: var(--text-lg);
+		line-height: 1;
+		cursor: pointer;
+
+		&:hover {
+			background-color: var(--fg-hover-color);
+		}
+	}
+
+	.commons-bs-select {
+		flex: 1 1 auto;
+		min-width: 0;
+		height: 24px;
+		padding: 0 4px;
+		border: 1px solid transparent;
+		border-radius: var(--border-radius);
+		background: var(--control-bg);
+		color: var(--text-color);
+		font-size: var(--text-sm);
+		cursor: pointer;
+
+		&:hover {
+			border-color: var(--border-color);
+		}
+	}
+
+	.commons-bs-year {
+		flex: 0 0 auto;
+		width: 76px;
+	}
+
+	.commons-bs-weekdays,
+	.commons-bs-grid {
+		display: grid;
+		grid-template-columns: repeat(7, 1fr);
+		gap: 1px;
+	}
+
+	.commons-bs-weekdays {
+		padding: 8px 0 4px;
+
+		span {
+			text-align: center;
+			font-size: var(--text-xs);
+			color: var(--text-light);
+
+			&.is-weekend {
+				color: var(--red-400, var(--text-muted));
+			}
+		}
+	}
+
+	.commons-bs-cell {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 30px;
+		border-radius: var(--border-radius-tiny, var(--border-radius));
+		font-variant-numeric: tabular-nums;
+		cursor: pointer;
+
+		&.is-blank {
+			cursor: default;
+		}
+
+		&.is-weekend {
+			color: var(--red-400, var(--text-muted));
+		}
+
+		/* Today is weighted rather than filled, so it cannot be mistaken for the
+		   selection -- the same distinction core's datepicker draws. */
+		&.is-today {
+			font-weight: var(--weight-bold);
+		}
+
+		&:not(.is-blank):hover,
+		&:focus {
+			background-color: var(--fg-hover-color);
+			outline: none;
+		}
+
+		&:focus-visible {
+			box-shadow: inset 0 0 0 2px var(--border-color);
+		}
+
+		&.is-selected {
+			color: var(--date-active-text);
+			background: var(--date-active-bg);
+
+			&:hover,
+			&:focus {
+				color: var(--date-active-text);
+				background: var(--date-active-bg);
+			}
+		}
+	}
+
+	.commons-bs-foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-top: 4px;
+		padding-top: 8px;
+		border-top: 1px solid var(--border-color);
+	}
+
+	.commons-bs-today {
+		padding: 2px 8px;
+		border: none;
+		border-radius: var(--border-radius);
+		background: none;
+		color: var(--text-color);
+		font-size: var(--text-sm);
+		cursor: pointer;
+
+		&:hover {
+			background-color: var(--fg-hover-color);
+		}
+	}
+
+	/* The Gregorian date the keyboard is sitting on. The whole point of the
+	   widget is the correspondence, so it should never be more than a glance
+	   away while someone is navigating in the other calendar. */
+	.commons-bs-gregorian {
+		font-variant-numeric: tabular-nums;
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+}

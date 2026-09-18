@@ -9,5 +9,5 @@
     // type-checking the library's own sources fails.
     "types": ["vite/client", "unplugin-icons/types/vue"]
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.js"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.js"]
 }

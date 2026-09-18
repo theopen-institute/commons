@@ -33,16 +33,14 @@
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2">
-        <FormControl
+        <BikramDatePicker
           v-model="form.from_date"
-          type="date"
           label="From"
           :error="errors.from_date"
           required
         />
-        <FormControl
+        <BikramDatePicker
           v-model="form.to_date"
-          type="date"
           label="To"
           :error="errors.to_date"
           required
@@ -55,10 +53,9 @@
         label="Half day"
         :disabled="!form.from_date || !form.to_date"
       />
-      <FormControl
+      <BikramDatePicker
         v-if="form.half_day && form.from_date !== form.to_date"
         v-model="form.half_day_date"
-        type="date"
         label="Which day is the half day"
         :error="errors.half_day_date"
       />
@@ -101,6 +98,7 @@ import {
   type DialogAction,
 } from 'frappe-ui'
 import { useDebounceFn } from '@vueuse/core'
+import BikramDatePicker from './BikramDatePicker.vue'
 import LinkControl from './LinkControl.vue'
 import {
   leaveCan,

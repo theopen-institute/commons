@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AppPageHeader: typeof import('./src/components/AppPageHeader.vue')['default']
     AppSidebar: typeof import('./src/components/AppSidebar.vue')['default']
+    BikramDatePicker: typeof import('./src/components/BikramDatePicker.vue')['default']
     ChangeDiff: typeof import('./src/components/ChangeDiff.vue')['default']
     ChangeRequestList: typeof import('./src/components/ChangeRequestList.vue')['default']
     DepartmentBudgetCard: typeof import('./src/components/DepartmentBudgetCard.vue')['default']
