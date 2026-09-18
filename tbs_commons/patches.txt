@@ -3,12 +3,7 @@
 # (esbuild/utils.js `is_frappe_app`), and without all three it stops
 # recognising this directory as one -- `bench build` then fails with
 # "paths[0] argument must be of type string".
-
-[pre_model_sync]
-
-[post_model_sync]
-# Seeded workflows are never rewritten by `sync_change_workflow`, so a default
-# that should not have shipped has to be withdrawn once, by hand.
-tbs_commons.patches.silence_self_service_workflow_email
-
-[post_fixture_sync]
+#
+# The app is in active primary development and does not carry migrations:
+# schema and seed data are expected to be rebuilt, not patched forward. Keep
+# this file empty.
