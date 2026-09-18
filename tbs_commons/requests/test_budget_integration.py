@@ -1,0 +1,508 @@
+"""Rollback-only integration suite: bench --site SITE execute tbs_commons.requests.test_budget_integration.run."""
+
+import unittest
+from unittest.mock import patch
+
+import frappe
+from frappe.utils import add_days, today
+
+from tbs_commons.requests import budget
+
+
+class TestDepartmentBudget(unittest.TestCase):
+	def setUp(self):
+		frappe.db.savepoint("budget_test")
+		# `_Test Company` by name rather than whichever company answers first:
+		# it is the one ERPNext's `before_tests` hook sets up, so its currency
+		# matches the buying price list and its warehouses exist. A site
+		# carrying other companies would otherwise hand back an arbitrary one.
+		self.company = frappe.db.get_value("Company", "_Test Company", "name") or frappe.db.get_value(
+			"Company", {}, "name"
+		)
+		self.department = self.new_department()
+		self.year = frappe.db.get_value(
+			"Fiscal Year",
+			{"year_start_date": ["<=", today()], "year_end_date": [">=", today()], "disabled": 0},
+			"name",
+		)
+		self.budget = self.allocation()
+		self.item = (
+			frappe.get_doc(
+				dict(
+					doctype="Item",
+					item_code="Budget-" + frappe.generate_hash(length=8),
+					item_name="Budget test item",
+					item_group=frappe.db.get_value("Item Group", {"is_group": 0}, "name"),
+					stock_uom="Nos",
+					is_stock_item=1,
+					is_purchase_item=1,
+				)
+			)
+			.insert()
+			.name
+		)
+		self.warehouse = frappe.db.get_value("Warehouse", {"company": self.company, "is_group": 0}, "name")
+		self.enterContext(patch("frappe.model.document.Document.validate_workflow"))
+
+	def tearDown(self):
+		frappe.db.rollback(save_point="budget_test")
+
+	def new_department(self):
+		return (
+			frappe.get_doc(
+				dict(
+					doctype="Department",
+					department_name="Budget test " + frappe.generate_hash(length=8),
+					company=self.company,
+				)
+			)
+			.insert()
+			.name
+		)
+
+	def allocation(self, amount=1000, department=None, submit=True, save=True):
+		doc = frappe.get_doc(
+			dict(
+				doctype=budget.BUDGET,
+				company=self.company,
+				department=department or self.department,
+				fiscal_year=self.year,
+				budget_owner="Administrator",
+				annual_amount=amount,
+			)
+		)
+		if not save:
+			return doc
+		doc.insert()
+		return doc.submit() if submit else doc
+
+	def amendment(self, amount, **overrides):
+		"""Cancel the active allocation and open its replacement as a draft."""
+		self.budget.reload()
+		if self.budget.docstatus == 1:
+			self.budget.cancel()
+		draft = frappe.copy_doc(self.budget)
+		# `copy_doc` clears `docstatus` everywhere except under the test runner
+		# -- it keeps it when `frappe.in_test`, so a copy of the allocation just
+		# cancelled above arrives at docstatus 2 and cannot be inserted.
+		draft.docstatus = 0
+		draft.amended_from = self.budget.name
+		draft.annual_amount = amount
+		draft.update(overrides)
+		return draft
+
+	def used(self):
+		return budget.used_amount(self.budget)
+
+	def deliver(self, doc):
+		"""What a receipt or an issue leaves behind, without the stock documents."""
+		doc.db_set("status", "Received" if doc.material_request_type == "Purchase" else "Issued")
+		return doc
+
+	def request(self, amount=400, approve=True):
+		doc = frappe.get_doc(
+			dict(
+				doctype="Procurement Request",
+				company=self.company,
+				department=self.department,
+				transaction_date=today(),
+				schedule_date=add_days(today(), 7),
+				approver="Administrator",
+				items=[dict(item_code=self.item, qty=4, uom="Nos", estimated_rate=amount / 4)],
+			)
+		).insert()
+		if approve:
+			doc.status = "Approved"
+			doc.submit()
+		return doc
+
+	def approval(self, amount=400):
+		"""A request sitting at the approver, not yet approved."""
+		doc = self.request(amount, approve=False)
+		doc.status = "Approved"
+		return doc
+
+	def mr(self, rate=100, qty=1, kind="Purchase", request=None, submit=True, department=True):
+		if request:
+			from tbs_commons.requests.doctype.procurement_request.procurement_request import (
+				make_material_request,
+			)
+
+			doc = make_material_request(
+				request.name, selected_items=[{"name": request.items[0].name, "qty": qty}]
+			)
+			doc.material_request_type = kind
+			doc.items[0].rate = rate
+		else:
+			doc = frappe.get_doc(
+				dict(
+					doctype="Material Request",
+					material_request_type=kind,
+					company=self.company,
+					transaction_date=today(),
+					schedule_date=add_days(today(), 7),
+					items=[dict(item_code=self.item, qty=qty, uom="Nos", rate=rate)],
+				)
+			)
+		if department:
+			doc.department = self.department
+		doc.set_warehouse = self.warehouse
+		for row in doc.items:
+			row.warehouse = self.warehouse
+		doc.insert()
+		if submit:
+			doc.submit()
+		return doc
+
+	def refuses(self, doc, method="submit"):
+		"""Assert the call is rejected, and leave no partial write behind."""
+		frappe.db.savepoint("refused")
+		with self.assertRaises(frappe.ValidationError):
+			getattr(doc, method)()
+		frappe.db.rollback(save_point="refused")
+
+	# --- the tally ----------------------------------------------------------
+
+	def test_both_material_request_types_are_actual_usage(self):
+		self.mr(rate=125, qty=2)
+		self.mr(rate=75, qty=2, kind="Material Issue")
+		self.assertEqual(self.used(), 400)
+
+	def test_draft_material_request_does_not_count(self):
+		self.mr(rate=2000, submit=False)
+		self.assertEqual(self.used(), 0)
+
+	def test_mr_submission_checks_live_remaining_balance_and_rolls_back(self):
+		self.mr(rate=700)
+		second = self.mr(rate=400, submit=False)
+		self.refuses(second)
+		self.assertEqual(frappe.db.get_value("Material Request", second.name, "docstatus"), 0)
+		self.assertEqual(self.used(), 700)
+
+	def test_cancellation_releases_usage_without_a_stored_reversal(self):
+		doc = self.mr(rate=700)
+		self.assertEqual(self.used(), 700)
+		doc.cancel()
+		self.assertEqual(self.used(), 0)
+		# The request keeps its department, so the release stays attributable.
+		self.assertEqual(
+			frappe.db.get_value("Material Request", doc.name, "department"), self.department
+		)
+
+	def test_replaying_the_submit_hook_cannot_double_charge(self):
+		doc = self.mr(rate=250)
+		budget.charge_material_request(doc)
+		doc.db_set("status", "Stopped")
+		budget.charge_material_request(doc)
+		self.assertEqual(self.used(), 250)
+		doc.db_set("status", "Issued")
+		budget.charge_material_request(doc)
+		self.assertEqual(self.used(), 250)
+
+	def test_submitted_rates_cannot_be_changed_or_refreshed(self):
+		doc = self.mr(rate=250)
+		doc.update_item_rates()
+		self.assertEqual(self.used(), 250)
+		doc.items[0].rate = 300
+		self.refuses(doc, "save")
+
+	def test_missing_department_and_zero_rate_block_mr_only(self):
+		for kwargs in ({"department": False}, {"rate": 0}):
+			self.refuses(self.mr(submit=False, **kwargs))
+
+	# --- the allocation -----------------------------------------------------
+
+	def test_draft_and_cancelled_allocations_do_not_authorize_requests(self):
+		other = self.new_department()
+		self.allocation(department=other, submit=False)
+		doc = self.mr(submit=False)
+		doc.department = other
+		self.refuses(doc)
+		self.budget.reload().cancel()
+		self.refuses(self.mr(submit=False))
+
+	def test_only_one_submitted_allocation_may_cover_a_period(self):
+		self.refuses(self.allocation(save=False), "insert")
+
+	def test_allocation_cannot_be_cut_below_what_is_already_charged(self):
+		self.mr(rate=700)
+		self.refuses(self.amendment(500), "insert")
+
+	def test_amendment_keeps_usage_without_touching_the_requests(self):
+		doc = self.mr(rate=700)
+		modified = frappe.db.get_value("Material Request", doc.name, "modified")
+		new = self.amendment(2000).insert()
+		new.submit()
+		# Attribution is derived, so the requests are neither rewritten nor stranded.
+		self.assertEqual(budget.used_amount(new), 700)
+		self.assertEqual(frappe.db.get_value("Material Request", doc.name, "modified"), modified)
+		# The restated allocation is what the next request is measured against.
+		self.mr(rate=1200)
+		self.assertEqual(budget.used_amount(new), 1900)
+
+	def test_a_fresh_allocation_inherits_the_periods_existing_usage(self):
+		"""A budget declares an amount for a department and period; it does not own
+		the requests. A replacement therefore sees what the period already carries."""
+		self.mr(rate=700)
+		self.budget.reload().cancel()
+		replacement = self.allocation(2000)
+		self.assertEqual(budget.used_amount(replacement), 700)
+
+	def test_amendment_cannot_move_the_budget_to_another_department(self):
+		self.refuses(self.amendment(2000, department=self.new_department()), "insert")
+
+	def test_amendment_chain_records_the_supersession(self):
+		new = self.amendment(2000).insert()
+		new.submit()
+		self.assertEqual(new.amended_from, self.budget.name)
+		self.assertEqual(frappe.db.get_value(budget.BUDGET, self.budget.name, "docstatus"), 2)
+
+	def test_price_refresh_is_suppressed_only_for_budgeted_request_types(self):
+		"""The guard keys on purpose, not on `department`, which outlives a type change."""
+		from erpnext.stock.doctype.material_request.material_request import MaterialRequest
+
+		doc = self.mr(rate=250)
+		with patch.object(MaterialRequest, "update_item_rates") as native:
+			doc.update_item_rates()
+			self.assertFalse(native.called)
+			# Same document, same lingering department, non-budgeted purpose: the
+			# native price refresh must still run.
+			doc.material_request_type = "Material Transfer"
+			doc.update_item_rates()
+			self.assertTrue(native.called)
+
+	def test_a_stale_draft_does_not_shadow_the_submitted_allocation(self):
+		"""Documents the guarantee rather than catching a regression: the old code
+		picked whichever row the database returned first, so it could pass by luck."""
+		self.budget.reload().cancel()
+		frappe.db.delete(budget.BUDGET, {"name": self.budget.name})
+		self.allocation(9999, submit=False)
+		self.allocation(1000)
+		summary = budget.request_summary(self.request(400))
+		self.assertFalse(summary["inactive"])
+		self.assertEqual(summary["annual"], 1000)
+
+	def test_a_shared_position_cache_does_not_change_the_answer(self):
+		self.mr(rate=250)
+		first, second = self.request(400), self.request(200)
+		cache: dict = {}
+		for doc in (first, second):
+			self.assertEqual(budget.request_summary(doc), budget.request_summary(doc, cache))
+		self.assertEqual(len(cache), 1)
+
+	# --- the approval gate --------------------------------------------------
+
+	def test_approval_is_refused_when_the_request_does_not_fit(self):
+		self.request(400)
+		self.refuses(self.approval(700))
+		# Refused, not partially applied: the department is where it was.
+		self.assertEqual(budget.request_summary(self.request(0))["committed"], 400)
+
+	def test_an_approval_that_exactly_fills_the_allocation_is_allowed(self):
+		self.request(400)
+		doc = self.approval(600)
+		doc.submit()
+		self.assertEqual(doc.docstatus, 1)
+		self.assertEqual(budget.request_summary(doc)["remaining"], 0)
+
+	def test_material_requests_already_charged_leave_less_to_approve(self):
+		self.mr(rate=800, qty=1)
+		self.refuses(self.approval(400))
+		self.approval(200).submit()
+
+	def test_ordering_an_approved_request_does_not_charge_it_twice(self):
+		"""The gate counts what is outstanding, not what was estimated.
+
+		Once a Material Request covers a line, the Material Request tally carries
+		it. Were the estimate still counted beside it the allocation would be
+		spent twice over, and the department would be blocked out of money it
+		never committed.
+		"""
+		doc = self.request(400)
+		self.mr(rate=100, qty=4, request=doc)
+		self.assertEqual(self.used(), 400)
+		# 400 charged, nothing left outstanding on it, so 600 is still approvable.
+		self.approval(600).submit()
+
+	def test_undecided_requests_do_not_block_an_approval(self):
+		"""Only a decision to spend holds an allocation. An open ask does not."""
+		self.request(900, approve=False).db_set("status", "Pending")
+		self.request(900, approve=False)
+		self.approval(1000).submit()
+
+	def test_a_request_without_an_estimate_is_never_refused(self):
+		"""An estimate is optional, and what commits nothing cannot overdraw."""
+		self.request(1000)
+		self.approval(0).submit()
+
+	def test_only_a_submitted_allocation_gates_approvals(self):
+		"""No allocation and a draft one both read as nothing to enforce.
+
+		A department Finance has not budgeted yet is not over budget. The control
+		is not lost, only deferred: `find_budget` still refuses to raise a
+		Material Request against a missing or unsubmitted allocation.
+		"""
+		self.budget.reload().cancel()
+		frappe.db.delete(budget.BUDGET, {"name": self.budget.name})
+		self.approval(5000).submit()
+		self.allocation(submit=False)
+		self.approval(5000).submit()
+
+	def test_a_cancelled_approval_releases_what_it_held(self):
+		doc = self.request(700)
+		self.refuses(self.approval(400))
+		doc.reload().cancel()
+		self.approval(400).submit()
+
+	# --- the readout --------------------------------------------------------
+
+	def test_procurement_approval_is_committed_not_spent(self):
+		doc = self.request(400)
+		self.assertEqual(self.used(), 0)
+		summary = budget.request_summary(doc)
+		self.assertEqual(summary["spent"], 0)
+		self.assertEqual(summary["committed"], 400)
+		self.assertEqual(summary["remaining"], 600)
+
+	def test_the_readout_still_shows_an_overdraft_a_cut_allocation_creates(self):
+		"""Approvals can no longer overdraw a budget, but a restatement still can.
+
+		`validate_covers_usage` holds an allocation above what Material Requests
+		have charged, and says nothing about what approvals have committed -- so
+		negative remaining is still reachable, and still has to read as negative.
+		"""
+		doc = self.request(400)
+		cut = self.amendment(100)
+		cut.insert()
+		cut.submit()
+		summary = budget.request_summary(doc.reload())
+		self.assertEqual(summary["committed"], 400)
+		self.assertEqual(summary["remaining"], -300)
+
+	def test_delivery_moves_a_material_request_from_committed_to_spent(self):
+		doc = self.request(400)
+		mr = self.mr(rate=100, qty=4, request=doc)
+		summary = budget.request_summary(doc.reload())
+		self.assertEqual((summary["spent"], summary["committed"]), (0, 400))
+		self.deliver(mr)
+		summary = budget.request_summary(doc.reload())
+		# The same 400, on the other side of the line, so what remains cannot move.
+		self.assertEqual((summary["spent"], summary["committed"]), (400, 0))
+		self.assertEqual(summary["remaining"], 600)
+
+	def test_open_requests_sit_beside_the_subtraction_not_inside_it(self):
+		doc = self.request(400)
+		self.request(500, approve=False).db_set("status", "Pending")
+		summary = budget.request_summary(doc)
+		self.assertEqual(summary["committed"], 400)
+		self.assertEqual(summary["open_requests"], 500)
+		self.assertEqual(summary["remaining"], 600)
+
+	def test_a_request_its_author_has_not_sent_yet_is_not_an_open_request(self):
+		doc = self.request(400)
+		# Straight out of `insert`, so still at `Draft`: nobody but its author has
+		# seen it, and a department readout is not where it should first appear.
+		self.request(500, approve=False)
+		self.assertEqual(budget.request_summary(doc)["open_requests"], 0)
+
+	def test_procurement_approval_does_not_need_an_allocation_or_estimate(self):
+		self.request(0)
+		self.budget.reload().cancel()
+		frappe.db.delete(budget.BUDGET, {"name": self.budget.name})
+		self.assertTrue(budget.request_summary(self.request(400))["missing"])
+
+	def test_draft_allocation_is_reported_as_inactive_not_missing(self):
+		self.budget.reload().cancel()
+		frappe.db.delete(budget.BUDGET, {"name": self.budget.name})
+		self.allocation(submit=False)
+		summary = budget.request_summary(self.request(400))
+		self.assertFalse(summary["missing"])
+		self.assertTrue(summary["inactive"])
+
+	def test_mr_rate_replaces_only_covered_provisional_quantities(self):
+		doc = self.request(400)
+		mr = self.mr(rate=150, qty=2, request=doc, department=False)
+		summary = budget.request_summary(doc.reload())
+		self.assertEqual(mr.department, self.department)
+		# 300 ordered at the MR rate, 200 of the estimate still uncovered: the
+		# ordered half is counted once, at what it actually cost.
+		self.assertEqual(self.used(), 300)
+		self.assertEqual(summary["committed"], 500)
+		self.assertEqual(summary["remaining"], 500)
+		mr.cancel()
+		summary = budget.request_summary(doc.reload())
+		self.assertEqual(self.used(), 0)
+		self.assertEqual(summary["committed"], 400)
+
+	def test_rejections_and_cancellations_stay_out_of_the_readout(self):
+		active = self.request(400)
+
+		# A rejection leaves the request a draft, so this is a straight write
+		# rather than a submit -- going through the workflow would need the
+		# approver role, and all this test wants is a request in that state.
+		rejected = self.request(600, approve=False)
+		rejected.db_set("status", "Rejected")
+		# Within the allocation, because approving it is now gated on fitting:
+		# what this test is about is that cancelling takes it back out again.
+		self.request(500).cancel()
+		summary = budget.request_summary(active)
+		self.assertEqual(summary["committed"], 400)
+		self.assertEqual(summary["open_requests"], 0)
+
+	def test_uom_conversion_reduces_correct_provisional_quantity(self):
+		item = frappe.get_doc("Item", self.item)
+		item.append("uoms", {"uom": "Box", "conversion_factor": 2})
+		item.save()
+		doc = self.request(400)
+		mr = self.mr(rate=150, qty=2, request=doc, submit=False)
+		mr.items[0].update({"uom": "Box", "qty": 1, "conversion_factor": 2})
+		mr.save().submit()
+		self.assertEqual(self.used(), 150)
+		# Asserted on the split itself: the conversion is what decides how much of
+		# the estimate the Material Request covered, and the readout adds the two
+		# sides together.
+		self.assertEqual(budget.provisional_requests(self.budget.reload()), (200, 0))
+
+	# --- purchasing independence -------------------------------------------
+
+	def test_po_and_pi_cannot_change_budget(self):
+		from erpnext.buying.doctype.purchase_order.purchase_order import make_purchase_invoice
+		from erpnext.stock.doctype.material_request.material_request import make_purchase_order
+
+		# Non-stock item permits invoice testing without a receipt or stock movement.
+		frappe.db.set_value("Item", self.item, "is_stock_item", 0)
+		frappe.clear_document_cache("Item", self.item)
+		doc = self.mr(rate=100, qty=2)
+		supplier = frappe.get_doc(
+			dict(
+				doctype="Supplier",
+				supplier_name="Budget-" + frappe.generate_hash(length=8),
+				supplier_group=frappe.db.get_value("Supplier Group", {"is_group": 0}, "name"),
+				supplier_type="Company",
+			)
+		).insert()
+		po = make_purchase_order(doc.name)
+		po.supplier = supplier.name
+		po.items[0].rate = 600
+		po.insert().submit()
+		invoice = make_purchase_invoice(po.name)
+		invoice.insert().submit()
+		self.assertEqual(self.used(), 200)
+		invoice.cancel()
+		po.reload().cancel()
+		self.assertEqual(self.used(), 200)
+
+
+def run():
+	original_user = frappe.session.user
+	frappe.set_user("Administrator")
+	try:
+		result = unittest.TextTestRunner(verbosity=2).run(
+			unittest.defaultTestLoader.loadTestsFromTestCase(TestDepartmentBudget)
+		)
+		if not result.wasSuccessful():
+			raise RuntimeError("Department budget integration tests failed")
+		return dict(tests=result.testsRun, success=True)
+	finally:
+		frappe.db.rollback()
+		frappe.set_user(original_user)

@@ -1,7 +1,7 @@
 """App-level migrate hook: registering this app's modules.
 
 Everything else an install or migrate asserts belongs to one section and is
-wired into `hooks.py` from that section -- `tbs_commons.procurement.install` for
+wired into `hooks.py` from that section -- `tbs_commons.requests.install` for
 the Custom Fields and the Workflow, `tbs_commons.safer_permissions.install` for
 the gate column.
 

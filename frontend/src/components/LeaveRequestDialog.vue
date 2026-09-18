@@ -108,7 +108,7 @@ import {
   useRequestLeave,
   type LeaveAllocationSummary,
   type MyEmployee,
-} from '@/data/leave'
+} from '@/data/requests/leave'
 
 const props = defineProps<{
   employee: MyEmployee

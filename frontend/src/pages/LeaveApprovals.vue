@@ -26,133 +26,120 @@
   </AppPageHeader>
 
   <div class="px-5 py-4">
-    <!-- The permission answer refused rather than arrived: say so, instead of
-         leaving a skeleton up for a reply that is never coming. -->
-    <div v-if="leavePermissionsError" class="mx-auto max-w-3xl">
-      <ErrorMessage
-        :message="leavePermissionsError.message"
-        class="mb-3"
-      />
-      <Button label="Try again" variant="subtle" @click="reloadLeavePermissions()" />
-    </div>
-
-    <div
-      v-else-if="!leavePermissionsLoaded"
-      class="mx-auto max-w-3xl space-y-2"
-    >
-      <Skeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-4" />
-    </div>
-
-    <PermissionNotice
-      v-else-if="!leaveCan.approve"
+    <RequestGate
+      :error="leavePermissionsError"
+      :loaded="leavePermissionsLoaded"
+      :permitted="leaveCan.approve"
       what="approve leave"
-    />
-
-    <div v-else class="mx-auto max-w-3xl">
-      <ErrorMessage
-        v-if="requests.error"
-        :message="requests.error.message"
-        class="mb-3"
-      />
-      <ErrorMessage
-        v-if="decision.error"
-        :message="decision.error.message"
-        class="mb-3"
-      />
-
-      <div v-if="requests.loading && !requests.data" class="space-y-2">
-        <Skeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-4" />
-      </div>
-
-      <div
-        v-else-if="requests.data?.length === 0"
-        class="mt-16 flex flex-col items-center gap-2 text-center"
-      >
-        <span
-          class="size-8 text-ink-gray-4"
-          :class="tab === 'pending' ? 'lucide-check-check' : 'lucide-inbox'"
+      row-class="h-28"
+      @retry="reloadLeavePermissions()"
+    >
+      <div class="mx-auto max-w-3xl">
+        <ErrorMessage
+          v-if="requests.error"
+          :message="requests.error.message"
+          class="mb-3"
         />
-        <p class="text-base-medium text-ink-gray-7">
-          {{ tab === 'pending' ? 'Nothing waiting on you' : 'Nothing decided yet' }}
-        </p>
-        <p class="text-p-sm text-ink-gray-5">
-          {{
-            tab === 'pending'
-              ? 'Leave requests naming you as approver land here.'
-              : 'Requests you approve or deny move here.'
-          }}
-        </p>
-      </div>
+        <ErrorMessage
+          v-if="decision.error"
+          :message="decision.error.message"
+          class="mb-3"
+        />
 
-      <ul v-else-if="requests.data" class="space-y-3">
-        <li
-          v-for="request in requests.data"
-          :key="request.name"
-          class="rounded-4 border border-outline-gray-1 p-4"
+        <div v-if="requests.loading && !requests.data" class="space-y-2">
+          <Skeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-4" />
+        </div>
+
+        <div
+          v-else-if="requests.data?.length === 0"
+          class="mt-16 flex flex-col items-center gap-2 text-center"
         >
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="flex min-w-0 items-start gap-3">
-              <Avatar :label="request.employee_name" size="lg" />
-              <div class="min-w-0">
-                <div class="truncate text-base-medium text-ink-gray-8">
-                  {{ request.employee_name }}
-                </div>
-                <div class="mt-0.5 text-p-sm text-ink-gray-5">
-                  {{ request.leave_type }} ·
-                  {{ formatDateRange(request.from_date, request.to_date) }} ·
-                  {{ request.total_leave_days }}
-                  day{{ request.total_leave_days === 1 ? '' : 's' }}
+          <span
+            class="size-8 text-ink-gray-4"
+            :class="tab === 'pending' ? 'lucide-check-check' : 'lucide-inbox'"
+          />
+          <p class="text-base-medium text-ink-gray-7">
+            {{ tab === 'pending' ? 'Nothing waiting on you' : 'Nothing decided yet' }}
+          </p>
+          <p class="text-p-sm text-ink-gray-5">
+            {{
+              tab === 'pending'
+                ? 'Leave requests naming you as approver land here.'
+                : 'Requests you approve or deny move here.'
+            }}
+          </p>
+        </div>
+
+        <ul v-else-if="requests.data" class="space-y-3">
+          <li
+            v-for="request in requests.data"
+            :key="request.name"
+            class="rounded-4 border border-outline-gray-1 p-4"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="flex min-w-0 items-start gap-3">
+                <Avatar :label="request.employee_name" size="lg" />
+                <div class="min-w-0">
+                  <div class="truncate text-base-medium text-ink-gray-8">
+                    {{ request.employee_name }}
+                  </div>
+                  <div class="mt-0.5 text-p-sm text-ink-gray-5">
+                    {{ request.leave_type }} ·
+                    {{ formatDateRange(request.from_date, request.to_date) }} ·
+                    {{ request.total_leave_days }}
+                    day{{ request.total_leave_days === 1 ? '' : 's' }}
+                  </div>
                 </div>
               </div>
+              <Badge :theme="leaveStatus(request).theme" variant="subtle">
+                {{ leaveStatus(request).label }}
+              </Badge>
             </div>
-            <Badge :theme="leaveStatus(request).theme" variant="subtle">
-              {{ leaveStatus(request).label }}
-            </Badge>
-          </div>
 
-          <p
-            v-if="request.description"
-            class="mt-3 whitespace-pre-line text-p-base text-ink-gray-7"
-          >
-            {{ request.description }}
-          </p>
+            <p
+              v-if="request.description"
+              class="mt-3 whitespace-pre-line text-p-base text-ink-gray-7"
+            >
+              {{ request.description }}
+            </p>
 
-          <!-- Whose decision this is, when it is not this user's own queue. -->
-          <p
-            v-if="
-              request.leave_approver && request.leave_approver !== user.name
-            "
-            class="mt-3 text-p-sm text-ink-gray-5"
-          >
-            Assigned to
-            {{ request.leave_approver_name || request.leave_approver }}
-          </p>
+            <!-- Whose decision this is, when it is not this user's own queue. -->
+            <p
+              v-if="
+                request.leave_approver && request.leave_approver !== user.name
+              "
+              class="mt-3 text-p-sm text-ink-gray-5"
+            >
+              Assigned to
+              {{ request.leave_approver_name || request.leave_approver }}
+            </p>
 
-          <!-- Drawn from the server's answer for this row, not from its
-               docstatus: whether this user decides this application is a
-               question only the server can settle. -->
-          <div v-if="request.can_decide" class="mt-4 flex items-center gap-2">
-            <Button
-              v-for="button in buttonsFor(request)"
-              :key="button.decision"
-              :variant="button.variant"
-              :theme="button.theme"
-              :label="button.label"
-              :icon-left="button.icon"
-              :loading="deciding === `${request.name}:${button.decision}`"
-              :disabled="Boolean(deciding)"
-              @click="decide(request, button)"
-            />
-            <span class="ml-auto text-p-sm text-ink-gray-5">
+            <!-- Drawn from the server's answer for this row, not from its
+                 docstatus: whether this user decides this application is a
+                 question only the server can settle. -->
+            <div v-if="request.can_decide" class="mt-4 flex items-center gap-2">
+              <Button
+                v-for="button in buttonsFor(request)"
+                :key="button.decision"
+                :variant="button.variant"
+                :theme="button.theme"
+                :label="button.label"
+                :icon-left="button.icon"
+                :loading="deciding === `${request.name}:${button.decision}`"
+                :disabled="Boolean(deciding)"
+                @click="decide(request, button)"
+              />
+              <span class="ml-auto text-p-sm text-ink-gray-5">
+                Requested {{ formatDate(request.posting_date) }}
+              </span>
+            </div>
+            <p v-else class="mt-4 text-p-sm text-ink-gray-5">
               Requested {{ formatDate(request.posting_date) }}
-            </span>
-          </div>
-          <p v-else class="mt-4 text-p-sm text-ink-gray-5">
-            Requested {{ formatDate(request.posting_date) }}
-          </p>
-        </li>
-      </ul>
-    </div>
+            </p>
+          </li>
+        </ul>
+      </div>
+    </RequestGate>
   </div>
 </template>
 
@@ -180,10 +167,10 @@ import {
   useLeaveDecision,
   type DecisionButton,
   type LeaveApplicationRow,
-} from '@/data/leave'
+} from '@/data/requests/leave'
 import { formatDate, formatDateRange } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
-import PermissionNotice from '@/components/PermissionNotice.vue'
+import RequestGate from '@/components/RequestGate.vue'
 import RequestTabs from '@/components/RequestTabs.vue'
 
 const tab = ref<'pending' | 'decided'>('pending')

@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useCall } from 'frappe-ui'
-import type { DepartmentBudgetSummary } from '@/data/procurement'
+import type { DepartmentBudgetSummary } from '@/data/requests/procurement'
 import { formatCurrency } from '@/data/format'
 
 interface BudgetDocument {
@@ -64,7 +64,7 @@ const props = defineProps<{ summary: DepartmentBudgetSummary; requestName?: stri
 
 // `useCall`, like the rest of the app, rather than a bare resource.
 const documents = useCall<BudgetDocument[], { request: string }>({
-  url: '/api/v2/method/tbs_commons.procurement.budget.get_budget_documents',
+  url: '/api/v2/method/tbs_commons.requests.budget.get_budget_documents',
   immediate: false,
 })
 

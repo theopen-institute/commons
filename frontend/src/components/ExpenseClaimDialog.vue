@@ -188,7 +188,7 @@ import {
   expenseCan,
   useExpenseClaimDefaults,
   useRequestExpenseClaim,
-} from '@/data/expense'
+} from '@/data/requests/expense'
 import { formatCurrency, formatFileSize, pluralise } from '@/data/format'
 
 defineProps<{

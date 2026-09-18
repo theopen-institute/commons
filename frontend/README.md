@@ -2,8 +2,8 @@
 
 Vue 3 + [frappe-ui](https://ui.frappe.io) v1 (espresso), served at `/tbs_commons`.
 
-One bundle, presented as **two apps** with their own desk icons and their own
-sidebars — see [Two apps, one bundle](#two-apps-one-bundle).
+One bundle, one app, several sections — see
+[One app, several sections](#one-app-several-sections).
 
 ## Develop
 
@@ -28,30 +28,44 @@ every `/tbs_commons/*` path at.
 
 ## Layout
 
-| Path                          | What it is                                                        |
-| ----------------------------- | ----------------------------------------------------------------- |
-| `src/App.vue`                 | `DesktopShell` — sidebar plus the routed page                      |
-| `src/data/apps.ts`            | **The app registry.** Which apps exist and who may open them       |
-| `src/components/AppSidebar.vue` | Per-app navigation, app switcher, theme toggle                  |
-| `src/data/employeeFields.ts`  | **The field schema.** Both forms render from it — add fields here  |
-| `src/data/employees.ts`       | `useList` / `useDoc` / `useNewDoc` wrappers for Employee          |
-| `src/data/leave.ts`           | Leave lists, balances, and the approve/deny action                 |
-| `src/data/session.ts`         | Session user and the Employee permission flags the UI gates on     |
-| `src/components/LinkControl.vue` | Link-field picker backed by Frappe's own link search           |
-| `src/pages/`                  | Employee list / create / edit, My leave, Approvals                |
+| Path                                  | What it is                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| `src/App.vue`                         | `DesktopShell` — sidebar plus the routed page                             |
+| `src/data/apps.ts`                    | **The app registry.** Which apps exist and who may open them              |
+| `src/components/AppSidebar.vue`       | Per-app navigation, app switcher, theme toggle                            |
+| `src/data/requests/section.ts`        | **The request shape.** Leave and expenses are both built from it          |
+| `src/data/requests/sections.ts`       | The three request sections, as the sidebar and the tab switcher read them |
+| `src/data/requests/`                  | Leave, expenses and procurement — one module per section beside the shape |
+| `src/data/selfService.ts`             | The profile pages, driven entirely by the server's record registry        |
+| `src/data/workflowStyle.ts`           | **The styling vocabulary.** A Workflow State's style → a badge or button  |
+| `src/components/RequestGate.vue`      | The permission preamble every request page opens with                     |
+| `src/components/EmployeeRequired.vue` | The two empty states for a login with no employee record                  |
+| `src/data/session.ts`                 | The session user, from boot data or `tbs_commons.api.get_session_user`    |
+| `src/components/LinkControl.vue`      | Link-field picker backed by Frappe's own link search                      |
+| `src/pages/`                          | Announcements, profile, and a "mine"/"approvals" pair per request section |
 
-## Two apps, one bundle
+## One app, several sections
 
-The desk shows one icon, **TBS**, and behind it the bundle is two sections:
-**Employees** (`/employees`) and **Requests** (`/requests`, which holds both
-leave and procurement). They are one Vite bundle under one route prefix; what
-makes them feel separate is that every route declares which section it belongs
-to (`meta.app`), and `AppSidebar` renders only that section's navigation. The
-only way across is the switcher in the sidebar header, which lists just the
-sections the user can actually open.
+The desk shows one icon, **TBS**, and behind it is one app — **TBS Commons**,
+read by a member of staff about themselves. Everything in it is something a
+person raises about themselves and waits on an approver for: their profile,
+their bank accounts, their leave, their expenses, their purchases.
 
-Adding a third means: an entry in `src/data/apps.ts`, `meta.app` on its routes,
-and a branch in `AppSidebar`.
+`src/data/apps.ts` stays a registry with a single entry rather than being
+dissolved into the router. It is what `meta.app` points at, what the header
+names, and what the desk apps screen mirrors — and a second app would be an
+entry there rather than that structure being rebuilt. An `Employees` directory
+used to be the other one.
+
+The sections inside it are two things:
+
+- **Self-service** (`/profile/:slug`) — one page per record type the server's
+  registry offers. Adding a record type is a desk entry and no frontend change.
+- **Requests** (`/leave`, `/expenses`, `/procurement`) — each one page with two
+  tabs, *what I raised* and *what I have to decide*. The tabs stay two routes,
+  so a queue can be linked to and a reload comes back where it was;
+  `src/data/requests/sections.ts` holds the half the sidebar and the tab
+  switcher both need.
 
 ### How the desk icons work
 
@@ -73,28 +87,51 @@ After changing icons, run `bench --site <site> migrate`. The icon set is cached
 per user; the sync clears that cache, but a browser also caches boot data, so a
 hard reload may be needed to see it.
 
-## Leave
+## Requests
+
+Leave, expenses and procurement are one shape wearing three names, and the
+server says so: `tbs_commons.requests.approvals` holds the decision vocabulary,
+the queue and its badge, the permissions payload and the decide-or-apply-workflow
+transaction, and each section supplies only its doctype, its deciding field and
+the rules HRMS applies to it and not the others.
+
+The browser mirrors that split. `src/data/requests/section.ts` is a factory:
+leave and expenses are both built from it, so a permissions call, the employee
+behind the session, your own list, an approvals queue with per-row buttons and a
+label for each row are written once. Procurement keeps its own module, because
+its queue is grouped by the department whose budget it spends and its
+permissions payload answers a different question — workflow access, not an
+approve right.
+
+Nothing on these pages names a status, a role or an outcome. Where a site runs a
+Frappe Workflow, the states, their styling and the transitions a given user may
+take all arrive from it; where one does not, the outcomes are read off the
+deciding field's own options. `workflowStyle.ts` is the only place that turns
+the site's styling vocabulary into a colour.
+
+### Leave
 
 Two pages over HRMS's `Leave Application`:
 
 - **My leave** — the signed-in user's own balances and requests, and the
   request form. Self-service, so it resolves the employee by
-  `Employee.user_id`; a login with no employee record is told to ask HR.
+  `Employee.user_id`; a login with no employee record is told who to ask, and
+  which of the two reasons applies.
 - **Approvals** — requests naming the signed-in user as `leave_approver`,
   with Approve / Deny.
 
 A decision is two writes underneath — `status` (which sits at permlevel 1) and
-a submit — so `tbs_commons.api.decide_leave_application` does both in one
-transaction. The endpoint requires the caller to be the application's *named*
-approver, or hold an HR role: the `Leave Approver` role by itself grants submit
-on every leave application, which would let one team's supervisor decide
-another team's requests.
+a submit — so `tbs_commons.requests.leave.decide_leave_application` does both in
+one transaction. The endpoint requires the caller to be the application's
+*named* approver, or hold a role that owns the doctype: the `Leave Approver`
+role by itself grants submit on every leave application, which would let one
+team's supervisor decide another team's requests.
 
 Balances, day counts and every validation (overlaps, allocation periods,
 maximum continuous days) come from HRMS rather than being recomputed here, so
 what the form shows is what gets booked.
 
-### What leave needs configured
+#### What leave needs configured
 
 Leave fails at submit, not at request time, if these are missing:
 
@@ -110,10 +147,29 @@ Leave fails at submit, not at request time, if these are missing:
    Assignment` doctype, not `Company.default_holiday_list`.
 4. **A Leave Allocation** for any leave type that draws on a balance.
 
+### Expenses
+
+The same two pages over HRMS's `Expense Claim`, with two differences that are
+the section's own:
+
+- a claim is money, so what it is priced at, which cost centre it is charged to
+  and which account each expense books to are settled by
+  `request_expense_claim` rather than collected by the form;
+- an approver may allow less than was claimed, and those per-row figures travel
+  with the decision in one call, so the amount and the outcome land together.
+
+### Procurement
+
+`Procurement Request` is this app's own doctype and has been driven by a Frappe
+Workflow from the start. Its approvals page is grouped by department, with the
+budget each group spends priced beside it — see `docs/department-budgets.md`.
+
 ## Permissions
 
-`src/data/session.ts` fetches `tbs_commons.api.get_employee_permissions` and
-`src/data/leave.ts` fetches `tbs_commons.leave.api.get_leave_permissions`; the UI hides or
-disables what the user can't do. That is a courtesy, not the boundary: every
-read and write goes through the REST API, which applies the same checks
-server-side.
+Every section fetches a permissions payload (`get_leave_permissions` and its
+siblings) and the UI hides or disables what the user cannot do. That is a
+courtesy, not the boundary: every read and write goes through the REST API,
+which applies the same checks server-side. Lists the pages fetch for themselves
+go through Frappe's document API precisely so that role permissions, User
+Permissions and this app's own gate in `tbs_commons.safer_permissions` all apply
+without the frontend restating any of them.

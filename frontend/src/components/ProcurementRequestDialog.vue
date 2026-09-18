@@ -120,7 +120,7 @@ import {
 	type AvailableWorkflowAction,
 	type ProcurementRequestItemRow,
 	type ProcurementRequestRow,
-} from '@/data/procurement'
+} from '@/data/requests/procurement'
 import { withScheme } from '@/data/format'
 
 const props = defineProps<{

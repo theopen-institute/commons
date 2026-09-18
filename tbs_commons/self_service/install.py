@@ -3,7 +3,7 @@
 Everything else this section needs is in its own doctype definitions, which
 migrate imports on its own. What is left is the Workflow -- a document, not a
 schema, so nothing syncs it -- wired into `hooks.py` the way
-`tbs_commons.procurement.install` is.
+`tbs_commons.requests.install` is.
 
 One workflow governs every registered record type, because there is one request
 doctype. That is the right shape while the registered records are HR's -- an

@@ -12,7 +12,7 @@ on: `Record Change Request` names a doctype and a document, and a policy is the
 only thing that turns that pair into "your record, and these are the fields you
 may propose".
 
-Site-less by design, the way `test_leave_api` is: nothing here needs a database
+Site-less by design, the way `requests.test_leave` is: nothing here needs a database
 to be wrong in an interesting way.
 """
 
@@ -26,7 +26,7 @@ from tbs_commons.self_service.doctype.record_change_request.record_change_reques
 
 # `frappe._` reaches for the translation cache and, failing that, for a log file
 # neither of which a site-less run has. The messages here are the source strings
-# either way -- see `test_leave_api`, which does the same.
+# either way -- see `requests.test_leave`, which does the same.
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
 
 

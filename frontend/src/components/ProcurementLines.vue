@@ -62,7 +62,7 @@
 
 <script setup lang="ts">
 import { formatCurrency } from '@/data/format'
-import type { ProcurementRequestItemRow } from '@/data/procurement'
+import type { ProcurementRequestItemRow } from '@/data/requests/procurement'
 
 /** The host, so an approver sees where a line's link goes before clicking it.
  *  Falls back to the raw string for anything `URL` cannot parse. */

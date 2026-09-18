@@ -87,7 +87,7 @@
 				     rows here, so the row is the subject and the tabs are the view of
 				     it. The badge stays in both places -- an approver should see the
 				     number without opening anything, and again on the tab that acts on
-				     it. See `data/requestSections.ts`, which both read. -->
+				     it. See `data/requests/sections.ts`, which both read. -->
 				<SidebarSection v-if="visibleRequestSections.length" label="Requests" collapsible>
 					<SidebarItem
 						v-for="section in visibleRequestSections"
@@ -161,7 +161,7 @@ import { logout, user } from '@/data/session'
 import { websiteUrl } from '@/data/website'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
 import { navRecords } from '@/data/selfService'
-import { requestSections, type RequestSection } from '@/data/requestSections'
+import { requestSections, type RequestSection } from '@/data/requests/sections'
 import { apps, availableApps, SUITE_TITLE, type AppDefinition, type AppKey } from '@/data/apps'
 
 // Two initials, like the desk's `get_abbr`: the first letter of each of the

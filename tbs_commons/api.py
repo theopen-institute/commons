@@ -1,10 +1,11 @@
 """Session-level endpoints and shared helpers for the TBS Commons frontend.
 
-Domain endpoints live with their domain: `tbs_commons.procurement.api` and
-`tbs_commons.procurement.budget` for procurement, `tbs_commons.leave.api` for
-leave, `tbs_commons.self_service.api` for the profile. What is left here is what
-belongs to no one section -- who is logged in, which employee record is theirs,
-and which roles a doctype's own permission rows grant something to.
+Domain endpoints live with their domain. Everything a person raises and waits
+on an approver for is one module, `tbs_commons.requests` -- leave, expenses and
+procurement, over a shape they share in `requests.approvals` -- and the profile
+is `tbs_commons.self_service.api`. What is left here is what belongs to no one
+section: who is logged in, which employee record is theirs, who may approve
+what, and which roles a doctype's own permission rows grant something to.
 """
 
 import frappe
@@ -15,9 +16,9 @@ EMPLOYEE = "Employee"
 def roles_with_permission(doctype: str, **ptypes: int) -> set[str]:
 	"""Roles whose permission rows on `doctype` grant all of `ptypes`.
 
-	Both sections ask a version of "who is allowed to do this", and both want the
-	answer the site's own Role Permission Manager gives rather than a list of
-	role names in Python. `permlevel` 0 unless a caller says otherwise: the
+	Every section asks a version of "who is allowed to do this", and all of them
+	want the answer the site's own Role Permission Manager gives rather than a
+	list of role names in Python. `permlevel` 0 unless a caller says otherwise: the
 	higher levels gate individual fields, not the action.
 
 	Custom DocPerm *replaces* the standard rows rather than adding to them, so a
@@ -33,9 +34,9 @@ def roles_with_permission(doctype: str, **ptypes: int) -> set[str]:
 def session_employee(fieldnames: list[str]) -> frappe._dict | None:
 	"""The active Employee record linked to the session user, or None.
 
-	Shared by every section: leave starts from "which employee am I", procurement
-	reads the same record for a department and an approver, and self-service
-	reads it as the record being corrected.
+	Shared by every section: a request starts from "which employee am I",
+	procurement reads the same record for a department and an approver, and
+	self-service reads it as the record being corrected.
 
 	Through `frappe.get_list`, so the site's permissions decide what comes back --
 	role permissions, User Permissions, and this app's own gate in

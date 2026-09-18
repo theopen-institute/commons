@@ -26,147 +26,139 @@
   </AppPageHeader>
 
   <div class="px-5 py-4">
-    <!-- The permission answer refused rather than arrived: say so, instead of
-         leaving a skeleton up for a reply that is never coming. -->
-    <div v-if="expensePermissionsError" class="mx-auto max-w-3xl">
-      <ErrorMessage :message="expensePermissionsError.message" class="mb-3" />
-      <Button
-        label="Try again"
-        variant="subtle"
-        @click="reloadExpensePermissions()"
-      />
-    </div>
-
-    <div v-else-if="!expensePermissionsLoaded" class="mx-auto max-w-3xl space-y-2">
-      <Skeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-4" />
-    </div>
-
-    <PermissionNotice v-else-if="!expenseCan.approve" what="approve expenses" />
-
-    <div v-else class="mx-auto max-w-3xl">
-      <ErrorMessage
-        v-if="claims.error"
-        :message="claims.error.message"
-        class="mb-3"
-      />
-      <ErrorMessage
-        v-if="decision.error"
-        :message="decision.error.message"
-        class="mb-3"
-      />
-      <ErrorMessage
-        v-if="claimLines.error"
-        :message="claimLines.error.message"
-        class="mb-3"
-      />
-
-      <div v-if="claims.loading && !claims.data" class="space-y-2">
-        <Skeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-4" />
-      </div>
-
-      <div
-        v-else-if="claims.data?.length === 0"
-        class="mt-16 flex flex-col items-center gap-2 text-center"
-      >
-        <span
-          class="size-8 text-ink-gray-4"
-          :class="tab === 'pending' ? 'lucide-check-check' : 'lucide-inbox'"
+    <RequestGate
+      :error="expensePermissionsError"
+      :loaded="expensePermissionsLoaded"
+      :permitted="expenseCan.approve"
+      what="approve expenses"
+      row-class="h-28"
+      @retry="reloadExpensePermissions()"
+    >
+      <div class="mx-auto max-w-3xl">
+        <ErrorMessage
+          v-if="claims.error"
+          :message="claims.error.message"
+          class="mb-3"
         />
-        <p class="text-base-medium text-ink-gray-7">
-          {{ tab === 'pending' ? 'Nothing waiting on you' : 'Nothing decided yet' }}
-        </p>
-        <p class="text-p-sm text-ink-gray-5">
-          {{
-            tab === 'pending'
-              ? 'Expense claims naming you as approver land here.'
-              : 'Claims you approve or decline move here.'
-          }}
-        </p>
-      </div>
+        <ErrorMessage
+          v-if="decision.error"
+          :message="decision.error.message"
+          class="mb-3"
+        />
+        <ErrorMessage
+          v-if="claimLines.error"
+          :message="claimLines.error.message"
+          class="mb-3"
+        />
 
-      <ul v-else-if="claims.data" class="space-y-3">
-        <li
-          v-for="claim in claims.data"
-          :key="claim.name"
-          class="rounded-4 border border-outline-gray-1 p-4"
+        <div v-if="claims.loading && !claims.data" class="space-y-2">
+          <Skeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-4" />
+        </div>
+
+        <div
+          v-else-if="claims.data?.length === 0"
+          class="mt-16 flex flex-col items-center gap-2 text-center"
         >
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="flex min-w-0 items-start gap-3">
-              <Avatar :label="claim.employee_name" size="lg" />
-              <div class="min-w-0">
-                <div class="truncate text-base-medium text-ink-gray-8">
-                  {{ claim.employee_name }}
-                </div>
-                <div class="mt-0.5 text-p-sm text-ink-gray-5">
-                  {{ formatCurrency(claim.total_claimed_amount, claim.currency) }}
-                  ·
-                  {{ pluralise(lineCount(claim.name), 'expense') }}
-                  ·
-                  {{ formatDate(claim.posting_date) }}
+          <span
+            class="size-8 text-ink-gray-4"
+            :class="tab === 'pending' ? 'lucide-check-check' : 'lucide-inbox'"
+          />
+          <p class="text-base-medium text-ink-gray-7">
+            {{ tab === 'pending' ? 'Nothing waiting on you' : 'Nothing decided yet' }}
+          </p>
+          <p class="text-p-sm text-ink-gray-5">
+            {{
+              tab === 'pending'
+                ? 'Expense claims naming you as approver land here.'
+                : 'Claims you approve or decline move here.'
+            }}
+          </p>
+        </div>
+
+        <ul v-else-if="claims.data" class="space-y-3">
+          <li
+            v-for="claim in claims.data"
+            :key="claim.name"
+            class="rounded-4 border border-outline-gray-1 p-4"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="flex min-w-0 items-start gap-3">
+                <Avatar :label="claim.employee_name" size="lg" />
+                <div class="min-w-0">
+                  <div class="truncate text-base-medium text-ink-gray-8">
+                    {{ claim.employee_name }}
+                  </div>
+                  <div class="mt-0.5 text-p-sm text-ink-gray-5">
+                    {{ formatCurrency(claim.total_claimed_amount, claim.currency) }}
+                    ·
+                    {{ pluralise(lineCount(claim.name), 'expense') }}
+                    ·
+                    {{ formatDate(claim.posting_date) }}
+                  </div>
                 </div>
               </div>
+              <Badge :theme="expenseStatus(claim).theme" variant="subtle">
+                {{ expenseStatus(claim).label }}
+              </Badge>
             </div>
-            <Badge :theme="expenseStatus(claim).theme" variant="subtle">
-              {{ expenseStatus(claim).label }}
-            </Badge>
-          </div>
 
-          <!-- The expenses themselves, which is what there is to decide about.
-               An approver may allow less than was claimed; the figures they set
-               travel with the decision in one call. -->
-          <ExpenseClaimLines
-            v-model:sanctioned="sanctioned[claim.name]"
-            class="mt-3"
-            :lines="byClaim.get(claim.name) ?? []"
-            :currency="claim.currency"
-            :settled="claim.docstatus === 1"
-            :editable="Boolean(claim.can_decide)"
-          />
-
-          <p
-            v-if="claim.remark"
-            class="mt-3 whitespace-pre-line text-p-base text-ink-gray-7"
-          >
-            {{ claim.remark }}
-          </p>
-
-          <!-- Whose decision this is, when it is not this user's own queue. -->
-          <p
-            v-if="claim.expense_approver && claim.expense_approver !== user.name"
-            class="mt-3 text-p-sm text-ink-gray-5"
-          >
-            Assigned to
-            {{ claim.expense_approver_name || claim.expense_approver }}
-          </p>
-          <p v-else-if="!claim.expense_approver" class="mt-3 text-p-sm text-ink-gray-5">
-            Nobody was named as approver on this claim.
-          </p>
-
-          <!-- Drawn from the server's answer for this row, not from its
-               docstatus: whether this user settles this claim is a question
-               only the server can settle. -->
-          <div v-if="claim.can_decide" class="mt-4 flex flex-wrap items-center gap-2">
-            <Button
-              v-for="button in buttonsFor(claim)"
-              :key="button.decision"
-              :variant="button.variant"
-              :theme="button.theme"
-              :label="button.label"
-              :icon-left="button.icon"
-              :loading="deciding === `${claim.name}:${button.decision}`"
-              :disabled="Boolean(deciding)"
-              @click="decide(claim, button)"
+            <!-- The expenses themselves, which is what there is to decide about.
+                 An approver may allow less than was claimed; the figures they set
+                 travel with the decision in one call. -->
+            <ExpenseClaimLines
+              v-model:sanctioned="sanctioned[claim.name]"
+              class="mt-3"
+              :lines="byClaim.get(claim.name) ?? []"
+              :currency="claim.currency"
+              :settled="claim.docstatus === 1"
+              :editable="Boolean(claim.can_decide)"
             />
-            <span
-              v-if="trimmed(claim)"
-              class="ml-auto text-p-sm text-ink-amber-3"
+
+            <p
+              v-if="claim.remark"
+              class="mt-3 whitespace-pre-line text-p-base text-ink-gray-7"
             >
-              Allowing {{ formatCurrency(allowedTotal(claim), claim.currency) }}
-            </span>
-          </div>
-        </li>
-      </ul>
-    </div>
+              {{ claim.remark }}
+            </p>
+
+            <!-- Whose decision this is, when it is not this user's own queue. -->
+            <p
+              v-if="claim.expense_approver && claim.expense_approver !== user.name"
+              class="mt-3 text-p-sm text-ink-gray-5"
+            >
+              Assigned to
+              {{ claim.expense_approver_name || claim.expense_approver }}
+            </p>
+            <p v-else-if="!claim.expense_approver" class="mt-3 text-p-sm text-ink-gray-5">
+              Nobody was named as approver on this claim.
+            </p>
+
+            <!-- Drawn from the server's answer for this row, not from its
+                 docstatus: whether this user settles this claim is a question
+                 only the server can settle. -->
+            <div v-if="claim.can_decide" class="mt-4 flex flex-wrap items-center gap-2">
+              <Button
+                v-for="button in buttonsFor(claim)"
+                :key="button.decision"
+                :variant="button.variant"
+                :theme="button.theme"
+                :label="button.label"
+                :icon-left="button.icon"
+                :loading="deciding === `${claim.name}:${button.decision}`"
+                :disabled="Boolean(deciding)"
+                @click="decide(claim, button)"
+              />
+              <span
+                v-if="trimmed(claim)"
+                class="ml-auto text-p-sm text-ink-amber-3"
+              >
+                Allowing {{ formatCurrency(allowedTotal(claim), claim.currency) }}
+              </span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </RequestGate>
   </div>
 </template>
 
@@ -195,11 +187,11 @@ import {
   useExpenseDecision,
   type DecisionButton,
   type ExpenseClaimRow,
-} from '@/data/expense'
+} from '@/data/requests/expense'
 import { formatCurrency, formatDate, pluralise } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import ExpenseClaimLines from '@/components/ExpenseClaimLines.vue'
-import PermissionNotice from '@/components/PermissionNotice.vue'
+import RequestGate from '@/components/RequestGate.vue'
 import RequestTabs from '@/components/RequestTabs.vue'
 
 const tab = ref<'pending' | 'decided'>('pending')

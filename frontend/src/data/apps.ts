@@ -1,7 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
-import { leaveCan, leavePermissionsLoaded } from './leave'
-import { expenseCan, expensePermissionsLoaded } from './expense'
-import { procurementCan, procurementPermissionsLoaded } from './procurement'
+import { leaveCan, leavePermissionsLoaded } from './requests/leave'
+import { expenseCan, expensePermissionsLoaded } from './requests/expense'
+import { procurementCan, procurementPermissionsLoaded } from './requests/procurement'
 import { navLoaded, navRecords } from './selfService'
 
 /**

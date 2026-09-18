@@ -17,8 +17,8 @@ use_json_request_body = True
 # writes to it, so the doctypes cannot migrate without ERPNext present.
 required_apps = ["erpnext", "hrms"]
 
-# Where the SPA lives. The two apps below are sections of one bundle served
-# under this prefix, so the route is written once.
+# Where the SPA lives. Every section below is served from one bundle under this
+# prefix, so the route is written once.
 app_home = "/tbs_commons"
 
 # The SPA owns its own history, so every path under /tbs_commons has to resolve to
@@ -30,26 +30,29 @@ website_route_rules = [
 
 # The desk icon ships as a file under `tbs_commons/desktop_icon/` and is imported by
 # migrate's own sync. These hooks only do what that sync cannot, and each entry is
-# the install module of the section that owns it -- nothing here is app-wide.
+# the install module of the module that owns it -- nothing here is app-wide.
+# `requests.install` seeds procurement's Custom Fields and Workflow; leave and
+# expenses run on HRMS's own doctypes and assert nothing.
 after_install = [
-	"tbs_commons.procurement.install.sync_procurement",
+	"tbs_commons.requests.install.sync_procurement",
 	"tbs_commons.self_service.install.sync_self_service",
 	"tbs_commons.safer_permissions.install.sync_gate_field",
 	"tbs_commons.website_link.sync_website_button_field",
 	"tbs_commons.home_page.sync_home_page_priority_field",
 ]
 after_migrate = [
-	"tbs_commons.procurement.install.sync_procurement",
+	"tbs_commons.requests.install.sync_procurement",
 	"tbs_commons.self_service.install.sync_self_service",
 	"tbs_commons.safer_permissions.install.sync_gate_field",
 	"tbs_commons.website_link.sync_website_button_field",
 	"tbs_commons.home_page.sync_home_page_priority_field",
 ]
 
-# `Safer Permissions` was added to `modules.txt` after this app had already
-# been installed somewhere, and `Module Def` records are only written at
-# install. Without one, migrate cannot import a doctype that names the module
-# -- so this has to run before the doctype sync, not after it.
+# Modules are added to `modules.txt` after this app has already been installed
+# somewhere -- `Safer Permissions` was, and `Requests` is `Procurement` renamed
+# -- and `Module Def` records are only written at install. Without one, migrate
+# cannot import a doctype that names the module, so this has to run before the
+# doctype sync, not after it.
 before_migrate = "tbs_commons.install.sync_module_defs"
 
 # The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
@@ -236,9 +239,9 @@ doc_events = {
 		"on_update": "tbs_commons.home_page.clear_user_cache",
 	},
 	"Material Request": {
-		"validate": "tbs_commons.procurement.budget.validate_material_request",
-		"before_update_after_submit": "tbs_commons.procurement.budget.protect_submitted_material_request",
-		"on_submit": "tbs_commons.procurement.budget.charge_material_request",
+		"validate": "tbs_commons.requests.budget.validate_material_request",
+		"before_update_after_submit": "tbs_commons.requests.budget.protect_submitted_material_request",
+		"on_submit": "tbs_commons.requests.budget.charge_material_request",
 	},
 }
 
@@ -376,7 +379,7 @@ require_type_annotated_api_methods = True
 
 # Submitted MR rates are immutable even when a price-list update is requested.
 extend_doctype_class = {
-	"Material Request": ["tbs_commons.procurement.budget.BudgetMaterialRequestMixin"],
+	"Material Request": ["tbs_commons.requests.budget.BudgetMaterialRequestMixin"],
 }
 
 # The gate checkbox is drawn next to "Only if Creator" rather than among the

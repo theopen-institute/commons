@@ -24,7 +24,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { Badge, TabButtons } from 'frappe-ui'
-import { requestSection, type RequestSectionKey } from '@/data/requestSections'
+import { requestSection, type RequestSectionKey } from '@/data/requests/sections'
 
 const props = defineProps<{ section: RequestSectionKey }>()
 

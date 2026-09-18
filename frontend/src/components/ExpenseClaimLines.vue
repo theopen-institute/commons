@@ -89,7 +89,7 @@
 import { computed } from 'vue'
 import { FormControl } from 'frappe-ui'
 import { formatCurrency, formatDate } from '@/data/format'
-import type { ExpenseClaimLine } from '@/data/expense'
+import type { ExpenseClaimLine } from '@/data/requests/expense'
 
 const props = withDefaults(
   defineProps<{
