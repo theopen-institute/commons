@@ -83,47 +83,70 @@
 			/>
 
 			<!-- One record, or several. The shape is the record type's, not this
-			     page's: `singular` says whether an owner has one of these. -->
-			<div v-for="record in records" :key="record.name" class="mt-6">
+			     page's: `singular` says whether an owner has one of these. A page that
+			     can hold several gives each its own card: the run of sections inside one
+			     record looks exactly like the run inside the next, so without an edge
+			     around each there is nothing to say where one bank account stops and the
+			     one below it starts. A page with a single record needs no such edge --
+			     boxing the only thing on the page just adds a line to look at. -->
+			<div class="mt-6 space-y-4">
 				<div
-					v-if="!can.singular"
-					class="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-outline-gray-1 pb-2"
+					v-for="record in records"
+					:key="record.name"
+					:class="
+						can.singular ? '' : 'overflow-hidden rounded-4 border border-outline-gray-1'
+					"
 				>
-					<div class="flex min-w-0 items-center gap-2">
-						<h2 class="truncate text-lg font-semibold text-ink-gray-9">
-							{{ titleOf(record) }}
-						</h2>
-						<!-- A record somebody has asked to have removed still shows its
-						     details, because nothing has happened to it yet -- but reading it
-						     as ordinary would be wrong, and the pencils beside its fields
-						     would invite corrections to something on its way out. -->
-						<Badge v-if="removalPending(record)" theme="red" variant="subtle">
-							Removal pending
-						</Badge>
+					<!-- The card's own header, on a band rather than under a rule: it names
+					     which record everything below it belongs to, and a band reads as the
+					     top of a box in a way another underline would not, with the section
+					     headings inside already carrying rules of their own. -->
+					<div
+						v-if="!can.singular"
+						class="flex flex-wrap items-center justify-between gap-2 border-b border-outline-gray-1 bg-surface-gray-1 px-4 py-2.5"
+					>
+						<div class="flex min-w-0 items-center gap-2">
+							<h2 class="truncate text-lg font-semibold text-ink-gray-9">
+								{{ titleOf(record) }}
+							</h2>
+							<!-- A record somebody has asked to have removed still shows its
+							     details, because nothing has happened to it yet -- but reading it
+							     as ordinary would be wrong, and the pencils beside its fields
+							     would invite corrections to something on its way out. -->
+							<Badge v-if="removalPending(record)" theme="red" variant="subtle">
+								Removal pending
+							</Badge>
+						</div>
+						<Button
+							v-if="can.allow_delete && can.request"
+							variant="ghost"
+							theme="red"
+							size="sm"
+							:icon-left="removalPending(record) ? 'lucide-clock' : 'lucide-trash-2'"
+							:label="removalPending(record) ? 'Removal requested' : 'Propose removal'"
+							:disabled="removalPending(record)"
+							:loading="deleting === record.name"
+							@click="proposeRemoval(record)"
+						/>
 					</div>
-					<Button
-						v-if="can.allow_delete && can.request"
-						variant="ghost"
-						theme="red"
-						size="sm"
-						:icon-left="removalPending(record) ? 'lucide-clock' : 'lucide-trash-2'"
-						:label="removalPending(record) ? 'Removal requested' : 'Propose removal'"
-						:disabled="removalPending(record)"
-						:loading="deleting === record.name"
-						@click="proposeRemoval(record)"
-					/>
-				</div>
 
-				<div class="space-y-8" :class="removalPending(record) ? 'opacity-60' : ''">
-					<ProfileSection
-						v-for="section in can.sections"
-						:key="section.title"
-						:section="section"
-						:doc="record"
-						:pending="pendingFor(record)"
-						:can-propose="can.request && !removalPending(record)"
-						@propose="(field) => startEdit(record, field)"
-					/>
+					<div
+						class="space-y-8"
+						:class="[
+							can.singular ? '' : 'p-4 sm:p-5',
+							removalPending(record) ? 'opacity-60' : '',
+						]"
+					>
+						<ProfileSection
+							v-for="section in can.sections"
+							:key="section.title"
+							:section="section"
+							:doc="record"
+							:pending="pendingFor(record)"
+							:can-propose="can.request && !removalPending(record)"
+							@propose="(field) => startEdit(record, field)"
+						/>
+					</div>
 				</div>
 			</div>
 
