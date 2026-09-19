@@ -1,7 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
-import { expenseCan } from './expense'
-import { leaveCan } from './leave'
-import { procurementCan } from './procurement'
+import { expenseCan, expensePermissionsLoaded } from './expense'
+import { leaveCan, leavePermissionsLoaded } from './leave'
+import { procurementCan, procurementPermissionsLoaded } from './procurement'
 
 /**
  * The three things a person raises and waits on an approver for.
@@ -37,6 +37,9 @@ export interface RequestSection {
   mineLabel: string
   /** Whether this user has the section at all. */
   visible: ComputedRef<boolean>
+  /** False until the permission answer is in, so a sidebar waiting on it can
+   *  hold still rather than draw a row it is about to take away. */
+  resolved: ComputedRef<boolean>
   /** Whether the approvals tab is theirs to open. */
   canApprove: ComputedRef<boolean>
   /** Decisions waiting on them, for the badge. 0 when none are. */
@@ -64,6 +67,7 @@ export const requestSections: RequestSection[] = [
     approvalsRoute: 'LeaveApprovals',
     mineLabel: 'My leave',
     visible: computed(() => leaveCan.value.read),
+    resolved: leavePermissionsLoaded,
     canApprove: computed(() => leaveCan.value.approve),
     pending: computed(() => leaveCan.value.pending_approvals),
     atCeiling: atCeiling(
@@ -79,6 +83,7 @@ export const requestSections: RequestSection[] = [
     approvalsRoute: 'ExpenseApprovals',
     mineLabel: 'My claims',
     visible: computed(() => expenseCan.value.read),
+    resolved: expensePermissionsLoaded,
     canApprove: computed(() => expenseCan.value.approve),
     pending: computed(() => expenseCan.value.pending_approvals),
     atCeiling: atCeiling(
@@ -96,6 +101,7 @@ export const requestSections: RequestSection[] = [
     // Procurement's approvals are workflow actions rather than an approve
     // permission, so both the tab and its badge read the workflow's answer.
     visible: computed(() => procurementCan.value.read),
+    resolved: procurementPermissionsLoaded,
     canApprove: computed(() => procurementCan.value.workflow_access),
     pending: computed(() => procurementCan.value.pending_workflow_actions),
     atCeiling: atCeiling(

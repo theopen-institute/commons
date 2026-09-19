@@ -1,4 +1,4 @@
-"""The icons a self-service record may wear in the sidebar.
+"""The icons this app's sidebar can draw.
 
 Tailwind compiles an icon class only when it can see the literal string in a
 file it scans -- the classes are generated per name by frappe-ui's
@@ -15,11 +15,20 @@ set also lets `Self Service Record` refuse an icon that would not draw, so an
 administrator hears it while saving rather than from a blank sidebar.
 
 Adding one: put the lucide name here, then rebuild the frontend.
+
+Read by two doctypes now, for one reason. `Self Service Record` holds the icon
+of a navigation row; `Commons Workspace` holds the mark beside a workspace in
+the switcher, and the override a workspace row may put on a page. All three are
+configuration -- stored in the database, sent down by the API, invisible to the
+build -- so all three answer to this list. The module stays here rather than
+moving somewhere neutral because self-service is what made it necessary, and a
+second copy of the palette would be worse than an import across sections.
 """
 
 # Lucide names, prefixed as the class is written. The set is a nav palette --
 # what a record type about a person, their money or their paperwork is likely
-# to want -- not the whole of lucide.
+# to want, plus the marks this app's own pages wear so a workspace can match one
+# -- not the whole of lucide.
 NAV_ICONS = (
 	# The fallback the sidebar applies when a record names no icon at all.
 	# Listed so this module stays the full account of what the sidebar can draw.
@@ -44,15 +53,19 @@ NAV_ICONS = (
 	"lucide-handshake",
 	"lucide-heart-pulse",
 	"lucide-house",
+	"lucide-inbox",
 	"lucide-key",
 	"lucide-laptop",
 	"lucide-mail",
 	"lucide-map-pin",
+	"lucide-megaphone",
+	"lucide-palmtree",
 	"lucide-paperclip",
 	"lucide-phone",
 	"lucide-plane",
 	"lucide-receipt",
 	"lucide-shield",
+	"lucide-shopping-cart",
 	"lucide-smartphone",
 	"lucide-stethoscope",
 	"lucide-truck",

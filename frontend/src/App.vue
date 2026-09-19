@@ -26,8 +26,14 @@ import { onKeyStroke } from '@vueuse/core'
 import { DesktopShell, FrappeUIProvider } from 'frappe-ui'
 import AppSidebar from '@/components/AppSidebar.vue'
 import { closeSidebar, isMobile, sidebarOpen } from '@/data/sidebar'
+import { title } from '@/data/shell'
 
 const route = useRoute()
+
+// The browser tab, which said `Commons` from `index.html` whatever the site
+// called itself. Watched rather than set once: in a production build the name
+// is on `window` before this runs, but the dev server has to ask for it.
+watch(title, (name) => (document.title = name), { immediate: true })
 
 // Two ways out beyond the overlay. The desk leaves the drawer standing over
 // the page it just navigated to, which on a phone hides the thing you asked

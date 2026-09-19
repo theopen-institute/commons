@@ -37,7 +37,22 @@ def sync_module_defs() -> None:
 	*installed* and never again, so a module added to `modules.txt` afterwards
 	has none -- and importing a doctype that names it fails. This runs from
 	`before_migrate`, ahead of the doctype sync that would trip over it.
+
+	The record is only half of it. Which modules an app has is itself cached --
+	`frappe.setup_module_map` keeps the whole bench's map under `app_modules`,
+	and the site's own under `installed_app_modules` -- and the doctype sync
+	walks that map rather than the file. A module added to `modules.txt` and
+	left to the cache is therefore not merely unregistered: its `doctype/`
+	folder is not looked in at all, and the first migrate after the upgrade
+	syncs everything except the new module, silently, with a second migrate
+	putting it right. Dropping both keys and rebuilding the map here is what
+	makes the first one enough.
 	"""
+	import frappe
 	from frappe.installer import add_module_defs
+
+	frappe.cache.delete_value("app_modules")
+	frappe.client_cache.delete_value("installed_app_modules")
+	frappe.setup_module_map(include_all_apps=True)
 
 	add_module_defs(APP, ignore_if_duplicate=True)

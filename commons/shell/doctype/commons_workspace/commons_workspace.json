@@ -1,0 +1,107 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:title",
+ "creation": "2026-09-19 00:00:00",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "workspace_section",
+  "title",
+  "enabled",
+  "column_break_workspace",
+  "icon",
+  "logo",
+  "nav_order",
+  "items_section",
+  "items"
+ ],
+ "fields": [
+  {
+   "fieldname": "workspace_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "Named in bold at the top of the sidebar, and in the workspace switcher.",
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "description": "A disabled workspace is offered to nobody. Disable every workspace and the sidebar falls back to the one this app ships.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_workspace",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Lucide name, such as lucide-inbox. The mark beside this workspace in the switcher. Only the icons this app's build compiles can be drawn; saving tells you which.",
+   "fieldname": "icon",
+   "fieldtype": "Data",
+   "label": "Icon"
+  },
+  {
+   "description": "The 32px mark at the top of the sidebar. Left blank it is this app's own logo.",
+   "fieldname": "logo",
+   "fieldtype": "Attach Image",
+   "label": "Logo"
+  },
+  {
+   "description": "Where this workspace sits in the switcher. Equal numbers fall back to the title.",
+   "fieldname": "nav_order",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Order"
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Navigation"
+  },
+  {
+   "description": "The sidebar rows, top to bottom. Rows sharing a heading, one after another, are drawn as one collapsible group; a row with no heading stands on its own.",
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Rows",
+   "options": "Commons Workspace Item",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-19 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Shell",
+ "name": "Commons Workspace",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "search_fields": "title",
+ "sort_field": "nav_order",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

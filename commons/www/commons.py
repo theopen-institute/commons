@@ -18,6 +18,7 @@ def get_context(context: dict) -> dict:
 		frappe.throw(frappe._("You need to be logged in to access this page."), frappe.PermissionError)
 
 	from commons.core.website_link import get_website_button_url
+	from commons.shell.api import get_shell
 
 	context.no_cache = 1
 	context.boot = {
@@ -26,6 +27,11 @@ def get_context(context: dict) -> dict:
 		"user": frappe.session.user,
 		"user_info": get_user_info(),
 		"website_button_url": get_website_button_url(),
+		# What the app is called and what is in its sidebar, so the first paint
+		# is the real sidebar rather than a frame waiting for one. The endpoint
+		# behind it stays whitelisted for the dev server -- see
+		# `commons.shell.api`.
+		"shell": get_shell(),
 	}
 	return context
 

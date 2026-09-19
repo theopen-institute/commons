@@ -1,11 +1,14 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import type { AppKey } from '@/data/apps'
+import type { PageKey } from '@/data/shell'
 
 declare module 'vue-router' {
   interface RouteMeta {
-    /** Which app this route belongs to — drives the sidebar. Every route that
-     *  renders a page declares one; the landing redirect has none. */
-    app?: AppKey
+    /** Which of this app's own pages this route renders — what the sidebar
+     *  works out the current workspace from, since a page sits in exactly one
+     *  (see `data/shell.ts`). The self-service routes declare none: their slug
+     *  is what says which row they are. Nor do the two landing redirects, which
+     *  are on their way somewhere that does. */
+    page?: PageKey
   }
 }
 
@@ -22,7 +25,7 @@ const routes: RouteRecordRaw[] = [
     path: '/announcements',
     name: 'Announcements',
     component: () => import('@/pages/Announcements.vue'),
-    meta: { app: 'requests' },
+    meta: { page: 'announcements' },
   },
   {
     // Where the Requests tile lands: which of the two sections opens depends on
@@ -30,7 +33,6 @@ const routes: RouteRecordRaw[] = [
     path: '/requests',
     name: 'RequestsHome',
     component: () => import('@/pages/RequestsHome.vue'),
-    meta: { app: 'requests' },
   },
   {
     // Every self-service page, addressed by the slug its configuration gives it.
@@ -39,50 +41,48 @@ const routes: RouteRecordRaw[] = [
     path: '/profile',
     name: 'SelfServiceHome',
     component: () => import('@/pages/SelfServiceHome.vue'),
-    meta: { app: 'requests' },
   },
   {
     path: '/profile/:slug',
     name: 'SelfServiceRecord',
     component: () => import('@/pages/SelfServiceRecord.vue'),
     props: true,
-    meta: { app: 'requests' },
   },
   {
     path: '/leave',
     name: 'MyLeave',
     component: () => import('@/pages/MyLeave.vue'),
-    meta: { app: 'requests' },
+    meta: { page: 'leave' },
   },
   {
     path: '/leave/approvals',
     name: 'LeaveApprovals',
     component: () => import('@/pages/LeaveApprovals.vue'),
-    meta: { app: 'requests' },
+    meta: { page: 'leave' },
   },
   {
     path: '/expenses',
     name: 'MyExpenses',
     component: () => import('@/pages/MyExpenses.vue'),
-    meta: { app: 'requests' },
+    meta: { page: 'expense' },
   },
   {
     path: '/expenses/approvals',
     name: 'ExpenseApprovals',
     component: () => import('@/pages/ExpenseApprovals.vue'),
-    meta: { app: 'requests' },
+    meta: { page: 'expense' },
   },
   {
     path: '/procurement',
     name: 'MyProcurement',
     component: () => import('@/pages/MyProcurement.vue'),
-    meta: { app: 'requests' },
+    meta: { page: 'procurement' },
   },
   {
     path: '/procurement/approvals',
     name: 'ProcurementApprovals',
     component: () => import('@/pages/ProcurementApprovals.vue'),
-    meta: { app: 'requests' },
+    meta: { page: 'procurement' },
   },
 ]
 

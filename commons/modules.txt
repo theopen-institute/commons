@@ -1,3 +1,4 @@
 Requests
 Safer Permissions
 Self Service
+Shell

@@ -8,9 +8,13 @@
        Below the desk's own mobile width it is a drawer rather than a narrower
        column, again like the desk: see `shellClass`. -->
 	<Sidebar class="app-sidebar gap-3.5" :class="shellClass" :width="shellWidth" disable-collapse>
-		<!-- The desk's header: a 32px mark, the section over the app it belongs to,
-         and one menu built like the desk's own -- same sections in the same
-         order, icons from the same family (see `menuItems`). -->
+		<!-- The desk's header: a 32px mark, the workspace over the name of the app
+         it is part of, and one menu built like the desk's own -- same sections
+         in the same order, icons from the same family (see `menuItems`).
+
+         Both lines are the site's to choose now: the workspace is a
+         `Commons Workspace` document and the name under it is
+         `Commons Settings`. See `data/shell.ts`. -->
 		<Dropdown class="shrink-0" :options="menuItems" match-trigger-width>
 			<!-- The desk prints an item's shortcut in a right-aligned span after the
            label (`menu-item-shortcut`); frappe-ui's suffix slot is that
@@ -27,24 +31,24 @@
 				<!-- Bound, not a literal `src`: a literal absolute path is treated as
              an import to bundle, and this asset is served by Frappe from the
              app's public folder. -->
-				<img :src="currentApp.logo" alt="" class="size-8 shrink-0 rounded-4" />
+				<img :src="workspace.logo" alt="" class="size-8 shrink-0 rounded-4" />
 				<span class="ml-2 flex min-w-0 flex-1 flex-col text-left">
 					<span class="truncate text-base-medium leading-[1.2] text-ink-gray-8">
-						{{ currentApp.title }}
+						{{ workspace.title }}
 					</span>
 					<span class="mt-[3px] truncate text-sm leading-[1.2] text-ink-gray-6">
-						{{ SUITE_TITLE }}
+						{{ title }}
 					</span>
 				</span>
 				<span class="lucide-chevron-down ml-2 size-4 shrink-0 text-ink-gray-6" />
 			</button>
 		</Dropdown>
 
-		<!-- One app's navigation. It holds two jobs that are read separately --
-         what is held about me, and what I have asked for -- so each gets a
-         label, which is the desk's own pattern for a sidebar that carries more
-         than one group. A section whose permission this user does not have is
-         absent rather than empty. -->
+		<!-- One workspace's navigation, laid out the way its document lays it out:
+         rows in order, and consecutive rows sharing a heading drawn as a
+         group. Which rows exist is the site's (`Commons Workspace`); which of
+         them this user has is not (`data/shell.ts`). A group whose every row
+         belongs to somebody else is absent rather than empty. -->
 		<div class="flex-1 overflow-y-auto">
 			<!-- `gap-2` on top of the 8px each SidebarSection already carries: the
            sections are separate jobs, and the label alone does not read as
@@ -52,58 +56,16 @@
            container -- its specificity beats the sections' own `mt-2` and
            collapses them back together. -->
 			<div class="flex flex-col gap-2">
-				<!-- A bare row, not a section: one page with nothing under it, and
-             ungated, so it sits above the groups rather than beside them. -->
-				<SidebarItem
-					label="Announcements"
-					icon="lucide-megaphone"
-					:to="{ name: 'Announcements' }"
-				/>
-
-				<!-- Visible to anyone who may use the section, not only to those who
-					     own a record: the page explains an unlinked login far better
-					     than an absent row does. -->
-				<!-- The rows are configuration: one per `Self Service Record`, in the
-				     order and with the label and icon it was given. A record type is
-				     added in the desk and appears here, with no code to change. -->
-				<SidebarSection v-if="navRecords.length" label="Profile" collapsible>
-					<!-- `active` explicitly, because these rows share one named route.
-					     SidebarItem infers it by comparing route *names*, which is right
-					     for a page per route and wrong for a page per slug: every row
-					     resolves to `SelfServiceRecord`, so all of them would light up
-					     whenever any one was open. -->
-					<SidebarItem
-						v-for="row in navRecords"
-						:key="row.slug"
-						:label="row.label"
-						:icon="row.icon || 'lucide-file-text'"
-						:to="`/profile/${row.slug}`"
-						:active="route.params.slug === row.slug"
-					/>
-				</SidebarSection>
-
-				<!-- One row per thing a person raises, and one page behind each: what
-				     I raised and what I have to decide are tabs on it rather than two
-				     rows here, so the row is the subject and the tabs are the view of
-				     it. The badge stays in both places -- an approver should see the
-				     number without opening anything, and again on the tab that acts on
-				     it. See `data/requests/sections.ts`, which both read. -->
-				<SidebarSection v-if="visibleRequestSections.length" label="Requests" collapsible>
-					<SidebarItem
-						v-for="section in visibleRequestSections"
-						:key="section.key"
-						:label="section.label"
-						:icon="section.icon"
-						:to="{ name: section.mineRoute }"
-						:active="isCurrentSection(section)"
-					>
-						<template v-if="section.canApprove.value && section.pending.value" #suffix>
-							<Badge theme="amber" variant="subtle">
-								{{ section.pending.value }}{{ section.atCeiling.value ? '+' : '' }}
-							</Badge>
-						</template>
-					</SidebarItem>
-				</SidebarSection>
+				<template v-for="(group, index) in navGroups(workspace)" :key="index">
+					<SidebarSection v-if="group.label" :label="group.label" collapsible>
+						<AppSidebarRow v-for="entry in group.entries" :key="entry.id" :entry="entry" />
+					</SidebarSection>
+					<!-- Bare rows, not a section: nothing groups them, so they sit above
+               the groups rather than beside them. -->
+					<template v-else>
+						<AppSidebarRow v-for="entry in group.entries" :key="entry.id" :entry="entry" />
+					</template>
+				</template>
 			</div>
 		</div>
 
@@ -148,21 +110,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-	Badge,
-	Dropdown,
-	Sidebar,
-	SidebarItem,
-	SidebarSection,
-	useCall,
-	useColorScheme,
-} from 'frappe-ui'
+import { Dropdown, Sidebar, SidebarSection, useCall, useColorScheme } from 'frappe-ui'
 import { logout, user } from '@/data/session'
 import { websiteUrl } from '@/data/website'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
-import { navRecords } from '@/data/selfService'
-import { requestSections, type RequestSection } from '@/data/requests/sections'
-import { apps, availableApps, SUITE_TITLE, type AppDefinition, type AppKey } from '@/data/apps'
+import AppSidebarRow from '@/components/AppSidebarRow.vue'
+import {
+	availableWorkspaces,
+	homeOf,
+	navGroups,
+	title,
+	workspaceFor,
+	type Workspace,
+} from '@/data/shell'
 
 // Two initials, like the desk's `get_abbr`: the first letter of each of the
 // first two words, left in the case they were written in -- the desk does not
@@ -209,23 +169,12 @@ const shellWidth = computed(() =>
 const route = useRoute()
 const router = useRouter()
 
-// Only the sections this user has. An empty list takes the whole group with it
-// rather than leaving a labelled gap.
-const visibleRequestSections = computed(() =>
-	requestSections.filter((section) => section.visible.value),
-)
-
-// Explicitly, because a section is two routes: the row stays lit while the
-// approvals tab is the one open. SidebarItem's own inference compares the
-// resolved route to `to`, which is the other tab.
-function isCurrentSection(section: RequestSection) {
-	return route.name === section.mineRoute || route.name === section.approvalsRoute
-}
 const { colorScheme, setColorScheme } = useColorScheme()
 
-// The route says which app we are in. Every route that renders declares one;
-// the fallback is only for the bare landing path, which redirects before it.
-const currentApp = computed<AppDefinition>(() => apps[route.meta.app ?? 'requests'])
+// The open page says which workspace we are in -- a page belongs to exactly one
+// (see `workspaceFor`). The fallback is the first workspace this user has, which
+// is what the two landing paths sit on while they decide where to send you.
+const workspace = computed<Workspace>(() => workspaceFor(route))
 
 // Keyed by route prefix, not by app: Requests spans two doctypes, and "Open in
 // desk" should land on the one whose section is on screen.
@@ -242,12 +191,6 @@ const DESK_ROUTES: [prefix: string, deskPath: string][] = [
 function openDesk() {
 	const match = DESK_ROUTES.find(([prefix]) => route.path.startsWith(prefix))
 	window.location.href = match ? match[1] : '/app'
-}
-
-// The marks each app carries in the switcher -- the same ones its navigation
-// rows use, so a submenu entry reads as the section it opens.
-const APP_ICONS: Record<AppKey, string> = {
-	requests: 'lucide-inbox',
 }
 
 // The desk's Reload (`frappe.ui.toolbar.clear_cache`): clear the server's
@@ -285,7 +228,7 @@ const userDeskUrl = computed(() => `/app/user/${encodeURIComponent(user.value.na
 // the label hidden: the menu renderer borders each group, which is that line.
 const menuItems = computed(() => [
 	// Desktop is the desk's own name for its home. Workspaces is where the desk
-	// lists a workspace's siblings -- here that is the rest of the suite, with
+	// lists a workspace's siblings -- here that is the rest of this app's, with
 	// the two destinations that are not workspaces under a divider: the apps
 	// screen, and this app's page in the desk.
 	{
@@ -299,14 +242,18 @@ const menuItems = computed(() => [
 		label: 'Workspaces',
 		icon: 'lucide-layout-dashboard',
 		submenu: [
-			// Only the apps this user can actually open, and never the one they
-			// are in.
-			...availableApps.value
-				.filter((app) => app.key !== currentApp.value.key)
-				.map((app) => ({
-					label: app.title,
-					icon: APP_ICONS[app.key],
-					onClick: () => router.push(app.home),
+			// Only the workspaces this user can actually open, and never the one
+			// they are in. Each lands on its own first row, which is a row they
+			// have -- that is what made the workspace available.
+			...availableWorkspaces.value
+				.filter((item) => item !== workspace.value)
+				.map((item) => ({
+					label: item.title,
+					icon: item.icon,
+					onClick: () => {
+						const home = homeOf(item)
+						if (home) router.push(home)
+					},
 				})),
 			{
 				group: '',
