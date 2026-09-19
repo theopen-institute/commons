@@ -4,7 +4,7 @@ import { fuzzy_match } from '@fuzzy-match'
 import router from '@/router'
 import { availableWorkspaces, visibleEntries, type NavEntry } from '@/data/shell'
 import { requestSections, type RequestSection } from '@/data/requests/sections'
-import { user } from '@/data/session'
+import { hasDeskAccess } from '@/data/session'
 
 /**
  * The Awesome Bar, ported.
@@ -1101,8 +1101,8 @@ export const searchKeywords = ref('')
 export const globalSearchKeywords = ref('')
 
 /** Whether the desk is worth offering at all -- its doctypes, its documents,
- *  and the Global Search dialog. See `UserInfo.desk_access`. */
-export const canSearchDesk = computed(() => user.value.desk_access)
+ *  and the Global Search dialog. The bar's own name for `hasDeskAccess`. */
+export const canSearchDesk = hasDeskAccess
 
 export function openSearch(keywords = '') {
   searchKeywords.value = keywords

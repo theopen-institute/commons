@@ -1,5 +1,10 @@
 <template>
-	<section>
+	<!-- The queue sits on its own tint rather than on the page. Its rows are
+	     cards the same shape and weight as the record cards above it, so on the
+	     white of the page a reader scrolling past sees the run continue and takes
+	     the requests for more of the record. A ground of its own is what stops
+	     that, and it pays for itself again inside: the rows lift off it. -->
+	<section class="rounded-4 bg-surface-gray-1 p-4 sm:p-5">
 		<div class="flex flex-wrap items-center justify-between gap-3">
 			<h2 class="text-lg font-semibold text-ink-gray-9">
 				{{ settled ? 'Change Request History' : 'Pending Change Requests' }}
@@ -28,7 +33,7 @@
 
 		<div
 			v-else-if="!requests.length"
-			class="mt-3 rounded-4 border border-dashed border-outline-gray-2 px-4 py-10 text-center"
+			class="mt-3 rounded-4 border border-dashed border-outline-gray-3 px-4 py-10 text-center"
 		>
 			<p class="text-base-medium text-ink-gray-7">
 				{{ settled ? 'Nothing settled yet' : 'Nothing waiting on a review' }}
@@ -46,7 +51,7 @@
 			<li
 				v-for="row in requests"
 				:key="row.name"
-				class="rounded-4 border border-outline-gray-1 p-4"
+				class="rounded-4 border border-outline-gray-1 bg-surface-base p-4"
 			>
 				<div class="flex flex-wrap items-start justify-between gap-3">
 					<div class="min-w-0">

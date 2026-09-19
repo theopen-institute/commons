@@ -150,15 +150,23 @@
 				</div>
 			</div>
 
-			<ChangeRequestList
+			<!-- What the records say, and what somebody has asked to change about
+			     them, are two different kinds of thing, and the second was reading as
+			     one more section of the first: same heading weight, same bordered
+			     cards, only a gap between them. The rule and the space are the seam,
+			     and the panel behind the requests keeps them on their own ground. -->
+			<div
 				v-if="can.proposable.length || can.allow_new || can.allow_delete"
-				v-model:tab="changesTab"
-				class="mt-10"
-				:requests="changes.data ?? []"
-				:loading="changes.loading && !changes.data"
-				:decisions="can.decisions"
-				@refresh="refresh"
-			/>
+				class="mt-10 border-t border-outline-gray-2 pt-10"
+			>
+				<ChangeRequestList
+					v-model:tab="changesTab"
+					:requests="changes.data ?? []"
+					:loading="changes.loading && !changes.data"
+					:decisions="can.decisions"
+					@refresh="refresh"
+				/>
+			</div>
 		</div>
 
 		<ProposeFieldDialog

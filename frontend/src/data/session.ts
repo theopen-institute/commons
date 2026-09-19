@@ -11,11 +11,12 @@ export interface UserInfo {
   avatar_color: string | null
   /** Whether any of this person's roles opens the desk.
    *
-   *  Read by the search bar, and only there. Half of what the bar offers is the
-   *  desk -- doctype lists, new documents, and the documents Global Search
-   *  finds -- and every one of those opens at `/app`. For somebody who cannot
-   *  go there they would all be dead ends, so the bar offers this app's own
-   *  pages alone and the Global Search dialog is not mounted at all. */
+   *  Read by everything in this app that offers the desk, because for somebody
+   *  whose roles do not open it every one of those is a dead end: half of what
+   *  the search bar offers (doctype lists, new documents, the documents Global
+   *  Search finds, all of which open at `/app`), the Home crumb beside a page
+   *  title, and the desk destinations in the sidebar's menu. See
+   *  `hasDeskAccess`. */
   desk_access: boolean
 }
 
@@ -49,6 +50,10 @@ export const user = computed<UserInfo>(
       desk_access: false,
     },
 )
+
+/** Whether to offer the desk at all. See `UserInfo.desk_access` for what the
+ *  flag means and who asks. */
+export const hasDeskAccess = computed(() => user.value.desk_access)
 
 const logoutCall = useCall({
   url: '/api/v2/method/logout',

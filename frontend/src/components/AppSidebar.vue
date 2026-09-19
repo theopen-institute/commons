@@ -86,8 +86,19 @@
 
 		<!-- Who you are, and a way to your own User record -- the one thing the
          desk's own footer badge does when you click it. No menu: everything
-         else is in the header's, which is the only menu in the sidebar. -->
-		<a :href="userDeskUrl" class="app-sidebar__hover mt-3 block shrink-0 rounded-4 px-2 py-1">
+         else is in the header's, which is the only menu in the sidebar.
+
+         The record is a desk page, so for somebody whose roles do not open the
+         desk the badge is a label rather than a link: a plain div, and without
+         the hover that is the only thing telling a row here it can be pressed.
+         It still says who is signed in, which is the other half of what it is
+         for. -->
+		<component
+			:is="hasDeskAccess ? 'a' : 'div'"
+			:href="hasDeskAccess ? userDeskUrl : undefined"
+			class="mt-3 block shrink-0 rounded-4 px-2 py-1"
+			:class="{ 'app-sidebar__hover': hasDeskAccess }"
+		>
 			<!-- 40px of content inside 4px of padding, like the desk's row: the
            minimum is the content's, not the padded box's, or the whole thing
            comes up 2px short. -->
@@ -118,7 +129,7 @@
 					</span>
 				</div>
 			</div>
-		</a>
+		</component>
 	</Sidebar>
 </template>
 
@@ -133,7 +144,7 @@ import {
 	useCall,
 	useColorScheme,
 } from 'frappe-ui'
-import { logout, user } from '@/data/session'
+import { hasDeskAccess, logout, user } from '@/data/session'
 import { websiteUrl } from '@/data/website'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
 import { modKey, openSearch } from '@/data/search'
@@ -236,11 +247,70 @@ function clearCacheAndReload() {
 // binds no key of its own.
 const RELOAD_SHORTCUT = /mac/i.test(navigator.platform) ? '⇧⌘R' : 'Shift+Ctrl+R'
 
-// Where the desk's own footer badge goes: this person's User record. `name` is
-// the user id, which is an email for everyone but Administrator, so it has to
-// be encoded. `/app` rather than `/desk`, like the routes above -- Frappe
-// forwards it, and has kept forwarding it across two renames of the desk.
+// Where the desk's own footer badge goes: this person's User record, for a
+// person who can open it. `name` is the user id, which is an email for
+// everyone but Administrator, so it has to be encoded. `/app` rather than
+// `/desk`, like the routes above -- Frappe forwards it, and has kept
+// forwarding it across two renames of the desk.
 const userDeskUrl = computed(() => `/app/user/${encodeURIComponent(user.value.name)}`)
+
+// The menu items that leave for the desk, spread in only when they lead
+// somewhere: for a user whose roles do not open it every one of them is a
+// refusal page. The apps screen is one of them -- `/apps` redirects to `/desk`
+// (frappe/hooks.py, `website_redirects`). What is left for such a user is this
+// app's own workspaces, which is the whole of what they can reach.
+function deskOnly<T>(...items: T[]): T[] {
+	return hasDeskAccess.value ? items : []
+}
+
+// Workspaces, where the desk lists a workspace's siblings -- here the rest of
+// this app's, with the two destinations that are not workspaces under a
+// divider: the apps screen, and this app's page in the desk.
+//
+// The row itself is conditional, which is why this builds the submenu before
+// deciding: a menu item that opens onto nothing is a dead end, and somebody
+// with one workspace and no desk to leave for has nothing to list under it.
+const workspacesItem = computed(() => {
+	const submenu = [
+		// Only the workspaces this user can actually open, and never the one they
+		// are in. Each lands on its own first row, which is a row they have --
+		// that is what made the workspace available.
+		...availableWorkspaces.value
+			.filter((item) => item !== workspace.value)
+			.map((item) => ({
+				label: item.title,
+				icon: item.icon,
+				onClick: () => {
+					const home = homeOf(item)
+					if (home) router.push(home)
+				},
+			})),
+		// The group goes with its contents rather than standing empty: the menu
+		// draws a border for it, and a divider under the last workspace with
+		// nothing after it is a line across the bottom of the menu.
+		...deskOnly({
+			group: '',
+			hideLabel: true,
+			options: [
+				{
+					label: 'All apps',
+					icon: 'lucide-layout-grid',
+					onClick: () => {
+						window.location.href = '/apps'
+					},
+				},
+				{
+					label: 'Open in desk',
+					icon: 'lucide-external-link',
+					onClick: openDesk,
+				},
+			],
+		}),
+	]
+
+	if (!submenu.length) return []
+	return [{ label: 'Workspaces', icon: 'lucide-layout-dashboard', submenu }]
+})
 
 // The desk's header menu (`SidebarHeader.dropdown_items`), carried over
 // section for section: navigation, a divider, display and maintenance, a
@@ -250,54 +320,15 @@ const userDeskUrl = computed(() => `/app/user/${encodeURIComponent(user.value.na
 // this app does not have. The desk's `is_divider` markers become groups with
 // the label hidden: the menu renderer borders each group, which is that line.
 const menuItems = computed(() => [
-	// Desktop is the desk's own name for its home. Workspaces is where the desk
-	// lists a workspace's siblings -- here that is the rest of this app's, with
-	// the two destinations that are not workspaces under a divider: the apps
-	// screen, and this app's page in the desk.
-	{
+	// Desktop is the desk's own name for its home.
+	...deskOnly({
 		label: 'Desktop',
 		icon: 'lucide-home',
 		onClick: () => {
 			window.location.href = '/app'
 		},
-	},
-	{
-		label: 'Workspaces',
-		icon: 'lucide-layout-dashboard',
-		submenu: [
-			// Only the workspaces this user can actually open, and never the one
-			// they are in. Each lands on its own first row, which is a row they
-			// have -- that is what made the workspace available.
-			...availableWorkspaces.value
-				.filter((item) => item !== workspace.value)
-				.map((item) => ({
-					label: item.title,
-					icon: item.icon,
-					onClick: () => {
-						const home = homeOf(item)
-						if (home) router.push(home)
-					},
-				})),
-			{
-				group: '',
-				hideLabel: true,
-				options: [
-					{
-						label: 'All apps',
-						icon: 'lucide-layout-grid',
-						onClick: () => {
-							window.location.href = '/apps'
-						},
-					},
-					{
-						label: 'Open in desk',
-						icon: 'lucide-external-link',
-						onClick: openDesk,
-					},
-				],
-			},
-		],
-	},
+	}),
+	...workspacesItem.value,
 	{
 		// Website Settings' Website Button Target, falling back to the site root.
 		// Not the home page: that one setting also decides where a login lands.
