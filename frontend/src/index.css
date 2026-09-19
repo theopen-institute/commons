@@ -149,3 +149,186 @@ body,
 body {
   @apply bg-surface-base;
 }
+
+/*
+  The Awesome Bar, in the desk's numbers.
+
+  Same argument as the sidebar tokens above, and the same source: a user crosses
+  between the two searches all day, and the second one should not announce that
+  it is a different program. Everything here is measured out of
+  frappe/public/scss/desk/navbar.scss (the modal, its input row and its footer)
+  and frappe/public/scss/common/awesomeplete.scss (the result rows), with the
+  spacing tokens those files use resolved to the pixels they hold --
+  `--padding-xs` is 5px, `--padding-sm` is 7px, `--margin-md` is 15px,
+  `--border-radius` is 8px, `--text-sm` is 13px, `--input-height` is 28px.
+
+  Global rather than scoped because both dialogs wear the same chrome, and a
+  scoped style cannot reach markup its own component did not render -- the rows
+  are the consumer's, the panel is not.
+
+  Colours are this app's rather than the desk's: `--control-bg` and
+  `--border-color` are a shade off frappe-ui's equivalents and nobody can see
+  the difference between two greys a click apart. It is the *measurements* that
+  make a component read as the same component.
+*/
+
+/* The input row. The divider sits at 40px, which is the desk's, and cuts 4px
+   into the row's own bottom padding -- copied rather than tidied, because the
+   12px gap below it is measured from the row and tidying it would move the
+   list. */
+.app-search__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 8px;
+}
+
+.app-search__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding-left: 10px;
+  padding-right: 2px;
+  pointer-events: none;
+  @apply text-ink-gray-5;
+}
+
+/* `.form-control` with `bg-transparent shadow-none`, as the desk writes it. */
+.app-search__input {
+  min-width: 0;
+  flex: 1;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 420;
+  @apply text-ink-gray-9;
+}
+
+/*
+  No focus ring on this one field.
+
+  frappe-ui's Tailwind plugin puts `outline: var(--focus-outline-default)` on a
+  bare `:focus-visible` in the base layer -- every focusable element in the app
+  gets the blue ring, and its own comment names `focus-visible:outline-none` as
+  the way out. On a borderless field that fills a panel the ring draws a box
+  that is not there, and the desk's input has none: the panel is plainly the
+  focused thing. Suppressed here and nowhere else, so every other control in
+  the app keeps the indicator a keyboard user needs.
+*/
+.app-search__input:focus,
+.app-search__input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  --tw-ring-shadow: 0 0 #0000;
+}
+
+.app-search__input::placeholder {
+  @apply text-ink-gray-4;
+}
+
+.app-search__divider {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  width: 100%;
+  height: 0;
+  @apply border-t border-outline-gray-1;
+}
+
+/* The results. `min(60vh, 300px)` is the cap every awesomplete list in the desk
+   carries, and it is why the bar never grows past about eight rows. */
+.app-search__list {
+  margin: 12px 0 0;
+  padding: 5px;
+  max-height: min(60vh, 300px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.app-search__item {
+  cursor: pointer;
+  padding: 7px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 420;
+  @apply text-ink-gray-8;
+}
+
+.app-search__item:not(:last-child) {
+  margin-bottom: 5px;
+}
+
+.app-search__item:hover,
+.app-search__item[data-active] {
+  @apply bg-surface-gray-2;
+}
+
+/* The desk bolds the part of a row that names the thing -- a recent page, the
+   doctype in "Employee List" -- and leaves the rest at the row's own weight. */
+.app-search__label b,
+.app-search__label strong {
+  font-weight: 700;
+}
+
+.app-search__description {
+  font-size: 13px;
+  @apply text-ink-gray-5;
+}
+
+.app-search__hint {
+  flex-shrink: 0;
+  font-size: 12px;
+  @apply text-ink-gray-5;
+}
+
+/* What the matched letters wear. Bootstrap's `mark` is what paints them in the
+   desk (#fcf8e3); its `padding: .2em` is dropped, because in a 13px row seven
+   pixels tall it pushes the line box around as you type. */
+mark {
+  background-color: #fcf8e3;
+  border-radius: 2px;
+  color: inherit;
+}
+
+[data-theme='dark'] mark {
+  background-color: #4a4327;
+  color: inherit;
+}
+
+/* The footer, from `.awesomebar-modal-footer`: 10px of padding, 12px text,
+   15px between hints and 5px inside one. */
+.app-search__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 15px;
+  padding: 10px;
+  font-size: 12px;
+  @apply border-t border-outline-gray-1 text-ink-gray-5;
+}
+
+.app-search__help {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.app-search__key {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1;
+  @apply bg-surface-gray-3 text-ink-gray-7;
+}
+
+/* The desk gives the written keys a little more room than the glyphs. */
+.app-search__key--text {
+  padding: 2px 4px;
+}

@@ -191,10 +191,15 @@ import { formatDate, formatDateRange } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import EmployeeRequired from '@/components/EmployeeRequired.vue'
 import LeaveRequestDialog from '@/components/LeaveRequestDialog.vue'
+import { useNewRequestQuery } from '@/data/requests/newRequest'
 import RequestGate from '@/components/RequestGate.vue'
 import RequestTabs from '@/components/RequestTabs.vue'
 
 const showRequest = ref(false)
+
+// `?new=1` from the search bar: it asked for this page so that this
+// dialog could be opened. See `useNewRequestQuery`.
+useNewRequestQuery(showRequest)
 
 const employee = computed(() => myEmployee.value)
 

@@ -203,9 +203,11 @@ app_include_css = "commons.bundle.css"
 
 # Awesome Bar
 # -----------
-# Extra search results: list of dicts with label, description, route, index.
-# route: ["List", "ToDo"], "/desk/docs/some/page", or "https://example.com"
-# awesomebar_search = ["commons.search.awesomebar_results"]
+# This app's pages, offered in the desk's own search box. The bar builds its
+# results from `frappe.boot` -- doctypes, reports, workspaces -- so a page under
+# `/commons` is invisible to it without this. See `commons/search.py`, which
+# also explains why it offers pages and not documents.
+awesomebar_search = ["commons.search.awesomebar_results"]
 
 # Permissions
 # -----------

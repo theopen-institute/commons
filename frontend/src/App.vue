@@ -16,6 +16,14 @@
 			</template>
 			<router-view />
 		</DesktopShell>
+
+		<!-- The two halves of the desk's search, mounted once for the app: they
+         are summoned from a keystroke anywhere, from the sidebar, and from
+         each other, so they belong to the shell rather than to a page. Global
+         Search is absent entirely for somebody who cannot open the desk --
+         every document it finds is a desk form. See `data/search.ts`. -->
+		<AppSearchDialog />
+		<AppGlobalSearch v-if="canSearchDesk" />
 	</FrappeUIProvider>
 </template>
 
@@ -24,8 +32,17 @@ import { watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { onKeyStroke } from '@vueuse/core'
 import { DesktopShell, FrappeUIProvider } from 'frappe-ui'
+import AppGlobalSearch from '@/components/AppGlobalSearch.vue'
+import AppSearchDialog from '@/components/AppSearchDialog.vue'
 import AppSidebar from '@/components/AppSidebar.vue'
 import { closeSidebar, isMobile, sidebarOpen } from '@/data/sidebar'
+import {
+	canSearchDesk,
+	openGlobalSearch,
+	openSearch,
+	recordVisit,
+	searchOpen,
+} from '@/data/search'
 import { title } from '@/data/shell'
 
 const route = useRoute()
@@ -40,6 +57,28 @@ watch(title, (name) => (document.title = name), { immediate: true })
 // for; a tapped row has done its job, so it closes.
 watch(() => route.fullPath, closeSidebar)
 onKeyStroke('Escape', () => closeSidebar())
+
+// Where you have been, for the search bar's recents. By path rather than full
+// path, so arriving at a page with `?new=1` on it is the same visit as
+// arriving without.
+watch(() => route.path, recordVisit, { immediate: true })
+
+// The desk's two search keys, bound for the whole app. Ctrl+K toggles the bar
+// -- its own footer says it closes with the key that opened it -- and Ctrl+G
+// goes straight to Global Search. Each dialog stops its own copy of these from
+// reaching here, so the text you have typed is what gets handed over.
+onKeyStroke(['k', 'K'], (event) => {
+	if (!(event.ctrlKey || event.metaKey)) return
+	event.preventDefault()
+	if (searchOpen.value) searchOpen.value = false
+	else openSearch()
+})
+
+onKeyStroke(['g', 'G'], (event) => {
+	if (!(event.ctrlKey || event.metaKey)) return
+	event.preventDefault()
+	openGlobalSearch()
+})
 </script>
 
 <style scoped>

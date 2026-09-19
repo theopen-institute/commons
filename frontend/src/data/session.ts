@@ -9,6 +9,14 @@ export interface UserInfo {
   user_image: string | null
   /** Which of the desk's avatar palette entries this person gets. */
   avatar_color: string | null
+  /** Whether any of this person's roles opens the desk.
+   *
+   *  Read by the search bar, and only there. Half of what the bar offers is the
+   *  desk -- doctype lists, new documents, and the documents Global Search
+   *  finds -- and every one of those opens at `/app`. For somebody who cannot
+   *  go there they would all be dead ends, so the bar offers this app's own
+   *  pages alone and the Global Search dialog is not mounted at all. */
+  desk_access: boolean
 }
 
 declare global {
@@ -38,6 +46,7 @@ export const user = computed<UserInfo>(
       email: null,
       user_image: null,
       avatar_color: null,
+      desk_access: false,
     },
 )
 

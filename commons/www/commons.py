@@ -80,4 +80,11 @@ def get_user_info() -> dict:
 		"email": user.email,
 		"user_image": user.user_image,
 		"avatar_color": get_avatar_color(user.full_name),
+		# Whether any of this person's roles opens the desk, which is the same
+		# question `User.validate` asks to decide whether they are a System User
+		# at all. The search bar reads it: half of what it offers is the desk --
+		# doctype lists, new documents, and whatever Global Search finds -- and
+		# all of it opens at `/app/...`. Offering somebody a result that will
+		# refuse them when they click it is worse than not offering it.
+		"desk_access": bool(user.has_desk_access()),
 	}

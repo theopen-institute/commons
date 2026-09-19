@@ -220,11 +220,16 @@ import { formatCurrency, formatDate, pluralise } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import EmployeeRequired from '@/components/EmployeeRequired.vue'
 import ExpenseClaimDialog from '@/components/ExpenseClaimDialog.vue'
+import { useNewRequestQuery } from '@/data/requests/newRequest'
 import ExpenseClaimLines from '@/components/ExpenseClaimLines.vue'
 import RequestGate from '@/components/RequestGate.vue'
 import RequestTabs from '@/components/RequestTabs.vue'
 
 const showClaim = ref(false)
+
+// `?new=1` from the search bar: it asked for this page so that this
+// dialog could be opened. See `useNewRequestQuery`.
+useNewRequestQuery(showClaim)
 const expanded = ref('')
 
 const employee = computed(() => myEmployee.value)

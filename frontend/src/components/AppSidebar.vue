@@ -44,6 +44,21 @@
 			</button>
 		</Dropdown>
 
+		<!-- The search bar's way in for anyone who has not met Ctrl+K. The desk
+         keeps its Awesome Bar in the navbar; this app has no navbar, so the
+         row sits at the top of the navigation instead -- above the workspace's
+         own rows, because it reaches all of them and none of them is it. The
+         key is printed beside it rather than left to be discovered, which is
+         what the desk does for every shortcut in its own menu. -->
+		<SidebarItem class="shrink-0" label="Search" icon="lucide-search" @click="openSearch()">
+			<!-- Written out rather than drawn as key caps, which is what the desk
+           does everywhere a shortcut sits beside the thing it opens -- the
+           same `get_shortcut_label` spelling as Reload in the menu above. -->
+			<template #suffix>
+				<span class="mr-2 text-sm text-ink-gray-5">{{ modKey }}K</span>
+			</template>
+		</SidebarItem>
+
 		<!-- One workspace's navigation, laid out the way its document lays it out:
          rows in order, and consecutive rows sharing a heading drawn as a
          group. Which rows exist is the site's (`Commons Workspace`); which of
@@ -110,10 +125,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Dropdown, Sidebar, SidebarSection, useCall, useColorScheme } from 'frappe-ui'
+import {
+	Dropdown,
+	Sidebar,
+	SidebarItem,
+	SidebarSection,
+	useCall,
+	useColorScheme,
+} from 'frappe-ui'
 import { logout, user } from '@/data/session'
 import { websiteUrl } from '@/data/website'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
+import { modKey, openSearch } from '@/data/search'
 import AppSidebarRow from '@/components/AppSidebarRow.vue'
 import {
 	availableWorkspaces,

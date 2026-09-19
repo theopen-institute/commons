@@ -42,6 +42,10 @@ export interface RequestSection {
   resolved: ComputedRef<boolean>
   /** Whether the approvals tab is theirs to open. */
   canApprove: ComputedRef<boolean>
+  /** Whether raising one is theirs to do. Read by the search bar, which offers
+   *  "New leave request" the way the desk's Awesome Bar offers "New ToDo" --
+   *  and, like the desk's, must not offer what the server would refuse. */
+  canCreate: ComputedRef<boolean>
   /** Decisions waiting on them, for the badge. 0 when none are. */
   pending: ComputedRef<number>
   /**
@@ -69,6 +73,7 @@ export const requestSections: RequestSection[] = [
     visible: computed(() => leaveCan.value.read),
     resolved: leavePermissionsLoaded,
     canApprove: computed(() => leaveCan.value.approve),
+    canCreate: computed(() => leaveCan.value.request),
     pending: computed(() => leaveCan.value.pending_approvals),
     atCeiling: atCeiling(
       () => leaveCan.value.pending_approvals,
@@ -85,6 +90,7 @@ export const requestSections: RequestSection[] = [
     visible: computed(() => expenseCan.value.read),
     resolved: expensePermissionsLoaded,
     canApprove: computed(() => expenseCan.value.approve),
+    canCreate: computed(() => expenseCan.value.request),
     pending: computed(() => expenseCan.value.pending_approvals),
     atCeiling: atCeiling(
       () => expenseCan.value.pending_approvals,
@@ -103,6 +109,7 @@ export const requestSections: RequestSection[] = [
     visible: computed(() => procurementCan.value.read),
     resolved: procurementPermissionsLoaded,
     canApprove: computed(() => procurementCan.value.workflow_access),
+    canCreate: computed(() => procurementCan.value.request),
     pending: computed(() => procurementCan.value.pending_workflow_actions),
     atCeiling: atCeiling(
       () => procurementCan.value.pending_workflow_actions,

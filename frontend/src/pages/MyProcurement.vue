@@ -225,10 +225,15 @@ import { formatCurrency, formatDate, pluralise } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import ProcurementLines from '@/components/ProcurementLines.vue'
 import ProcurementRequestDialog from '@/components/ProcurementRequestDialog.vue'
+import { useNewRequestQuery } from '@/data/requests/newRequest'
 import RequestGate from '@/components/RequestGate.vue'
 import RequestTabs from '@/components/RequestTabs.vue'
 
 const showRequest = ref(false)
+
+// `?new=1` from the search bar: it asked for this page so that this
+// dialog could be opened. See `useNewRequestQuery`.
+useNewRequestQuery(showRequest)
 const editingRequest = ref<ProcurementRequestRow | null>(null)
 const expanded = ref('')
 const runningAction = ref('')
