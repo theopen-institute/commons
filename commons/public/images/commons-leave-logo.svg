@@ -1,7 +1,7 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- Same tile colour as the Employees mark, by request: the glyph is what
        tells the two apart, so keep them clearly different shapes. -->
-  <rect width="64" height="64" rx="14" fill="#1E3A8A"/>
+  <rect width="64" height="64" rx="14" fill="#184a83"/>
   <rect x="15" y="18" width="34" height="30" rx="5" stroke="#fff" stroke-width="4"/>
   <path d="M15 28h34M24 14v8M40 14v8" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
   <path d="M27 38l4 4 7-8" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>

@@ -1,0 +1,14 @@
+<svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+<!--
+     An open book, spine drawn rather than implied. At this size the two page
+     curves on their own leave a gap down the middle that reads as a seam in
+     the mark instead of the fold of a book.
+
+     Same tile, colour and stroke as students.svg, which says why the desk's
+     container and this app's glyph idiom are both used here.
+-->
+<path d="M38.5714 0H15.4286C6.90761 0 0 6.90761 0 15.4286V38.5714C0 47.0924 6.90761 54 15.4286 54H38.5714C47.0924 54 54 47.0924 54 38.5714V15.4286C54 6.90761 47.0924 0 38.5714 0Z" fill="#184a83" fill-opacity="0.12"/>
+<path d="M27 20.5C24 18 20 17.2 14.5 17.5V33.5C20 33.2 24 34 27 36.5" stroke="#154173" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M27 20.5C30 18 34 17.2 39.5 17.5V33.5C34 33.2 30 34 27 36.5" stroke="#154173" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M27 20.5V36.5" stroke="#154173" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

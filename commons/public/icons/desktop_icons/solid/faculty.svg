@@ -1,0 +1,20 @@
+<svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+<!--
+     Someone standing behind a lectern: head, shoulders, and the panel that
+     crops them. Three shapes rather than two because the panel on its own was
+     a trophy, and a board on a stand, which was the next idea, is already
+     ERPNext's Projects glyph at almost the same size and weight.
+
+     A figure at all, when Users and Employees are both figures, works only
+     because the lectern carries the meaning. The person is what stops the
+     lectern reading as furniture; the lectern is what stops the person
+     reading as one more user.
+
+     Same tile, colour and stroke as students.svg, which says why the desk's
+     container and this app's glyph idiom are both used here.
+-->
+<path d="M38.5714 0H15.4286C6.90761 0 0 6.90761 0 15.4286V38.5714C0 47.0924 6.90761 54 15.4286 54H38.5714C47.0924 54 54 47.0924 54 38.5714V15.4286C54 6.90761 47.0924 0 38.5714 0Z" fill="#184a83"/>
+<circle cx="27" cy="16.5" r="4.5" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M19 28C19 25.5 22.6 23.5 27 23.5C31.4 23.5 35 25.5 35 28" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M14.5 29H39.5L36.5 39H17.5L14.5 29Z" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

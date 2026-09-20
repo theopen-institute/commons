@@ -2,7 +2,7 @@
   <!-- A filled tile rather than a bare glyph: the apps screen and the sidebar
        header both render this on their own background, one light and one dark,
        and only a tile keeps the mark legible on both. -->
-  <rect width="64" height="64" rx="14" fill="#1E3A8A"/>
+  <rect width="64" height="64" rx="14" fill="#184a83"/>
   <circle cx="32" cy="25" r="8" stroke="#fff" stroke-width="4"/>
   <path d="M17 47c0-7.2 6.7-13 15-13s15 5.8 15 13" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
 </svg>

@@ -1,0 +1,16 @@
+<svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+<!-- A mortarboard, for the Students sidebar. Two conventions meet here: the
+     tile is the desk's (54x54 on the same squircle path every desktop icon
+     uses, so this sits square with its neighbours on the apps screen), and the
+     glyph is this app's (#184a83, 4px-equivalent white stroke, round caps) so
+     it reads as one of Commons' marks rather than a stranger among them.
+
+     A cap rather than a person: Users and Employees are already figures, and
+     three person glyphs in one row tell nobody anything. The board alone is a
+     diamond, so the crown beneath it and the tassel are what make it a cap at
+     the 32px the sidebar also renders this at. -->
+<path d="M38.5714 0H15.4286C6.90761 0 0 6.90761 0 15.4286V38.5714C0 47.0924 6.90761 54 15.4286 54H38.5714C47.0924 54 54 47.0924 54 38.5714V15.4286C54 6.90761 47.0924 0 38.5714 0Z" fill="#184a83" fill-opacity="0.12"/>
+<path d="M27 16L41.5 22L27 28L12.5 22L27 16Z" stroke="#154173" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M18.5 24.3V32C18.5 35.3 22.3 38 27 38C31.7 38 35.5 35.3 35.5 32V24.3" stroke="#154173" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M41.5 22V30" stroke="#154173" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
