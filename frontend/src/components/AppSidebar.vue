@@ -44,20 +44,36 @@
 			</button>
 		</Dropdown>
 
-		<!-- The search bar's way in for anyone who has not met Ctrl+K. The desk
-         keeps its Awesome Bar in the navbar; this app has no navbar, so the
-         row sits at the top of the navigation instead -- above the workspace's
-         own rows, because it reaches all of them and none of them is it. The
-         key is printed beside it rather than left to be discovered, which is
-         what the desk does for every shortcut in its own menu. -->
-		<SidebarItem class="shrink-0" label="Search" icon="lucide-search" @click="openSearch()">
-			<!-- Written out rather than drawn as key caps, which is what the desk
-           does everywhere a shortcut sits beside the thing it opens -- the
-           same `get_shortcut_label` spelling as Reload in the menu above. -->
-			<template #suffix>
-				<span class="mr-2 text-sm text-ink-gray-5">{{ modKey }}K</span>
+		<!-- The rows that belong to the person rather than to the workspace, in
+         the desk's own order: Search, Notifications, To Do. They sit above the
+         workspace's own rows because each reaches all of them and none of them
+         is it, and flush against each other in one stack -- the sidebar's own
+         `gap-3.5` is the space between jobs, and these three are one job.
+
+         The search bar is the way in for anyone who has not met Ctrl+K: the
+         desk keeps its Awesome Bar in the navbar, and this app has no navbar.
+         The other two are absent for a signed-out visitor -- both lists are
+         "yours", and the server has nothing to answer for somebody who is
+         nobody -- and each hides its own row while it has nothing in it, so a
+         person with a clear plate is left with Search alone. -->
+		<div class="flex shrink-0 flex-col">
+			<SidebarItem label="Search" icon="lucide-search" @click="openSearch()">
+				<!-- Written out rather than drawn as key caps, which is what the desk
+             does everywhere a shortcut sits beside the thing it opens -- the
+             same `get_shortcut_label` spelling as Reload in the menu above. -->
+				<template #suffix>
+					<span class="mr-2 text-sm text-ink-gray-5">{{ modKey }}K</span>
+				</template>
+			</SidebarItem>
+
+			<template v-if="user.name !== 'Guest'">
+				<AppNotifications />
+				<!-- Desk access as well as a session: every to-do opens a desk form,
+             and "See all" is a desk list, so for somebody whose roles do not
+             open the desk the whole widget is a list of dead ends. -->
+				<AppTodoList v-if="hasDeskAccess" />
 			</template>
-		</SidebarItem>
+		</div>
 
 		<!-- One workspace's navigation, laid out the way its document lays it out:
          rows in order, and consecutive rows sharing a heading drawn as a
@@ -73,12 +89,20 @@
 			<div class="flex flex-col gap-2">
 				<template v-for="(group, index) in navGroups(workspace)" :key="index">
 					<SidebarSection v-if="group.label" :label="group.label" collapsible>
-						<AppSidebarRow v-for="entry in group.entries" :key="entry.id" :entry="entry" />
+						<AppSidebarRow
+							v-for="entry in group.entries"
+							:key="entry.id"
+							:entry="entry"
+						/>
 					</SidebarSection>
 					<!-- Bare rows, not a section: nothing groups them, so they sit above
                the groups rather than beside them. -->
 					<template v-else>
-						<AppSidebarRow v-for="entry in group.entries" :key="entry.id" :entry="entry" />
+						<AppSidebarRow
+							v-for="entry in group.entries"
+							:key="entry.id"
+							:entry="entry"
+						/>
 					</template>
 				</template>
 			</div>
@@ -136,19 +160,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-	Dropdown,
-	Sidebar,
-	SidebarItem,
-	SidebarSection,
-	useCall,
-	useColorScheme,
-} from 'frappe-ui'
+import { Dropdown, Sidebar, SidebarItem, SidebarSection, useCall, useColorScheme } from 'frappe-ui'
 import { hasDeskAccess, logout, user } from '@/data/session'
 import { websiteUrl } from '@/data/website'
 import { isMobile, sidebarOpen } from '@/data/sidebar'
 import { modKey, openSearch } from '@/data/search'
 import AppSidebarRow from '@/components/AppSidebarRow.vue'
+import AppNotifications from '@/components/AppNotifications.vue'
+import AppTodoList from '@/components/AppTodoList.vue'
 import {
 	availableWorkspaces,
 	homeOf,
@@ -167,7 +186,7 @@ const initials = computed(() =>
 		.filter(Boolean)
 		.slice(0, 2)
 		.map((word) => word[0])
-		.join('')
+		.join(''),
 )
 
 // The palette entry is the server's answer; these two variables are the desk's,
@@ -197,7 +216,7 @@ const shellClass = computed(() => {
 // class would beat it. 0 rather than hidden: the panel keeps its place in the
 // layout, so the page beside it is laid out against a column of no width.
 const shellWidth = computed(() =>
-	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)'
+	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)',
 )
 
 const route = useRoute()
@@ -215,9 +234,9 @@ const workspace = computed<Workspace>(() => workspaceFor(route))
 const DESK_ROUTES: [prefix: string, deskPath: string][] = [
 	// The profile page itself is one employee record, not the list of them.
 	['/profile', '/app/employee'],
-	['/leave', '/app/leave-application'],
-	['/expenses', '/app/expense-claim'],
-	['/procurement', '/app/procurement-request'],
+	['/requests/leave', '/app/leave-application'],
+	['/requests/expenses', '/app/expense-claim'],
+	['/requests/procurement', '/app/procurement-request'],
 ]
 
 // A full page load, not a router push: the desk is a different app served off

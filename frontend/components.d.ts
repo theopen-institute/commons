@@ -12,10 +12,13 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AppGlobalSearch: typeof import('./src/components/AppGlobalSearch.vue')['default']
+    AppNotifications: typeof import('./src/components/AppNotifications.vue')['default']
     AppPageHeader: typeof import('./src/components/AppPageHeader.vue')['default']
     AppSearchDialog: typeof import('./src/components/AppSearchDialog.vue')['default']
     AppSidebar: typeof import('./src/components/AppSidebar.vue')['default']
+    AppSidebarPanel: typeof import('./src/components/AppSidebarPanel.vue')['default']
     AppSidebarRow: typeof import('./src/components/AppSidebarRow.vue')['default']
+    AppTodoList: typeof import('./src/components/AppTodoList.vue')['default']
     BikramDatePicker: typeof import('./src/components/BikramDatePicker.vue')['default']
     ChangeDiff: typeof import('./src/components/ChangeDiff.vue')['default']
     ChangeRequestList: typeof import('./src/components/ChangeRequestList.vue')['default']

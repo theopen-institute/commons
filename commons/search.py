@@ -67,9 +67,9 @@ from commons.shell.pages import PAGES
 # kind of thing this map exists to get right.
 PAGE_PATHS: dict[str, str] = {
 	"announcements": "/commons/announcements",
-	"leave": "/commons/leave",
-	"expense": "/commons/expenses",
-	"procurement": "/commons/procurement",
+	"leave": "/commons/requests/leave",
+	"expense": "/commons/requests/expenses",
+	"procurement": "/commons/requests/procurement",
 }
 
 # The doctype whose read permission decides whether a page is worth offering.

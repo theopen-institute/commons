@@ -30,6 +30,12 @@ const routes: RouteRecordRaw[] = [
   {
     // Where the Requests tile lands: which of the two sections opens depends on
     // permissions that haven't loaded yet, so a component decides.
+    //
+    // The three sections live under it rather than beside it -- they are one
+    // job in three forms, which is why they share a sidebar group, a Python
+    // package and a data module. Flat paths rather than nested routes: nothing
+    // is shared at render time, so there is no parent component to render a
+    // `<router-view>` into.
     path: '/requests',
     name: 'RequestsHome',
     component: () => import('@/pages/RequestsHome.vue'),
@@ -49,37 +55,37 @@ const routes: RouteRecordRaw[] = [
     props: true,
   },
   {
-    path: '/leave',
+    path: '/requests/leave',
     name: 'MyLeave',
     component: () => import('@/pages/MyLeave.vue'),
     meta: { page: 'leave' },
   },
   {
-    path: '/leave/approvals',
+    path: '/requests/leave/approvals',
     name: 'LeaveApprovals',
     component: () => import('@/pages/LeaveApprovals.vue'),
     meta: { page: 'leave' },
   },
   {
-    path: '/expenses',
+    path: '/requests/expenses',
     name: 'MyExpenses',
     component: () => import('@/pages/MyExpenses.vue'),
     meta: { page: 'expense' },
   },
   {
-    path: '/expenses/approvals',
+    path: '/requests/expenses/approvals',
     name: 'ExpenseApprovals',
     component: () => import('@/pages/ExpenseApprovals.vue'),
     meta: { page: 'expense' },
   },
   {
-    path: '/procurement',
+    path: '/requests/procurement',
     name: 'MyProcurement',
     component: () => import('@/pages/MyProcurement.vue'),
     meta: { page: 'procurement' },
   },
   {
-    path: '/procurement/approvals',
+    path: '/requests/procurement/approvals',
     name: 'ProcurementApprovals',
     component: () => import('@/pages/ProcurementApprovals.vue'),
     meta: { page: 'procurement' },
