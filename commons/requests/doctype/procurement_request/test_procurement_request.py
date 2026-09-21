@@ -116,6 +116,27 @@ IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Currency", "Department", "User", 
 class ProcurementTestCase(IntegrationTestCase):
 	"""Shared fixtures. Not named `Test*`, so it is not collected on its own."""
 
+	def require_transition(self, state: str, action: str) -> None:
+		"""Skip unless the site's active chain offers this move.
+
+		These tests run against whatever Workflow the site has -- see
+		`make_test_workflow` -- so a transition the site's chain does not define
+		is a configuration this suite cannot exercise rather than a failure. Said
+		here so the skip names the missing move instead of surfacing as Frappe's
+		`WorkflowTransitionError` from somewhere in the middle of a test.
+		"""
+		workflow = frappe.db.get_value(
+			"Workflow", {"document_type": PROCUREMENT_REQUEST, "is_active": 1}, "name"
+		)
+		if workflow and frappe.db.exists(
+			"Workflow Transition",
+			{"parent": workflow, "parenttype": "Workflow", "state": state, "action": action},
+		):
+			return
+		self.skipTest(
+			f"This site's {PROCUREMENT_REQUEST} workflow has no {action!r} from {state!r}."
+		)
+
 	@classmethod
 	def setUpClass(cls) -> None:
 		super().setUpClass()
@@ -140,6 +161,16 @@ class ProcurementTestCase(IntegrationTestCase):
 		cls.requester = make_test_user("requester@procurement.test", "Employee", cls.company)
 		cls.procurement_user = make_test_user("buyer@procurement.test", "Purchase User")
 		cls.approver = make_test_user("approver@procurement.test", "Expense Approver")
+		# Each of these holds exactly one role, which is the point -- and on a
+		# site that has gated one of them, holding it grants nothing until a User
+		# Permission narrows it. `Expense Approver` is the one that bites here:
+		# gated on `Procurement Request`, the approver could not read the request
+		# they were named on, and every workflow test failed in `get_transitions`
+		# with a permission error rather than asserting anything about the
+		# transition. See `satisfy_permission_gate`.
+		for user in (cls.requester, cls.procurement_user, cls.approver):
+			for doctype in (PROCUREMENT_REQUEST, "Material Request"):
+				satisfy_permission_gate(user, doctype, "Department", cls.department)
 
 	def tearDown(self) -> None:
 		frappe.set_user("Administrator")
@@ -487,6 +518,12 @@ class TestProcurementApproval(ProcurementTestCase):
 	def test_only_the_named_approver_decides(self):
 		request = self.make_review_request()
 		stranger = make_test_user("stranger@procurement.test", "Expense Approver")
+		# Holding the approving role and nothing else is the whole point of this
+		# stranger, so on a gated site they have to be given the User Permission
+		# that role needs -- otherwise the refusal below is the gate declining to
+		# show them the request at all, which is a `PermissionError` and not what
+		# this test is about. Refused for not being the named approver is.
+		satisfy_permission_gate(stranger, PROCUREMENT_REQUEST, "Department", self.department)
 
 		frappe.set_user(stranger)
 		with self.assertRaises(frappe.ValidationError):
@@ -535,6 +572,17 @@ class TestProcurementApproval(ProcurementTestCase):
 			make_material_request(request.name)
 
 	def test_a_rejected_request_can_be_reopened(self):
+		"""Reopening clears the rejection, and the request is editable again.
+
+		Skipped where the site's own chain has no such transition. This suite
+		runs against whatever workflow it finds -- `make_test_workflow` installs
+		its own only on a site with none, deliberately -- and a chain that offers
+		no way back from `Rejected` cannot be asked what reopening leaves
+		behind. Before this, the test failed there with Frappe's
+		`WorkflowTransitionError`, which reads as a bug in the app rather than as
+		a transition nobody configured.
+		"""
+		self.require_transition("Rejected", "Reopen")
 		request = self.make_review_request()
 		frappe.set_user(self.approver)
 		request.db_set("rejection_reason", "Too expensive this quarter")
@@ -609,9 +657,48 @@ def make_test_workflow() -> None:
 
 
 def make_test_item(code: str = "_Test Procurement Item") -> str:
-	from erpnext.stock.doctype.item.test_item import make_item
+	"""A stock item to put on a request line, made if the site has none.
 
-	return make_item(code, {"is_stock_item": 1, "stock_uom": "Nos"}).name
+	Written here rather than through `erpnext.stock.doctype.item.test_item`'s
+	`make_item`. That module imports `erpnext.tests.utils`, which instantiates
+	`BootStrapTestData()` at module level -- so the import alone writes
+	erpnext's entire test master data to whatever site is connected: the India
+	preset records, UOMs, companies, accounts, and a company-less `Fiscal Year`
+	for every calendar year from 2012 to twenty-five years out.
+
+	On a site that keeps its own company-less fiscal year -- one running an
+	April-to-March book, say -- ERPNext's own `Fiscal Year.validate_overlap`
+	then refuses one of the two and the *import* raises `frappe.NameError`.
+	That happened in `setUpClass`, so both classes in this file reported an
+	error and none of their tests ran at all.
+
+	An item is three mandatory fields and nothing this suite needs is in the
+	rest, so importing a test module to get one was never a good trade. The
+	group and the UOM are read off the site rather than named: `_Test Item
+	Group` and the preset UOMs are exactly the master data this no longer
+	installs.
+	"""
+	if frappe.db.exists("Item", code):
+		return code
+
+	group = frappe.db.get_value("Item Group", {"is_group": 0}, "name") or frappe.db.get_value(
+		"Item Group", {}, "name"
+	)
+	uom = frappe.db.get_value("UOM", "Nos", "name") or frappe.db.get_value("UOM", {}, "name")
+	return (
+		frappe.get_doc(
+			{
+				"doctype": "Item",
+				"item_code": code,
+				"item_name": code,
+				"item_group": group,
+				"stock_uom": uom,
+				"is_stock_item": 1,
+			}
+		)
+		.insert(ignore_permissions=True)
+		.name
+	)
 
 
 def make_test_budget(company: str, department: str) -> str | None:
@@ -645,9 +732,29 @@ def make_test_budget(company: str, department: str) -> str | None:
 	return budget.name
 
 
+#: The department this suite raises every request against. Its own, by name.
+TEST_DEPARTMENT = "Procurement Test"
+
+
 def make_test_department(company: str) -> str:
-	"""A leaf department of the given company, made if the site has none."""
-	existing = frappe.db.get_value("Department", {"company": company, "is_group": 0}, "name")
+	"""This suite's own leaf department of the given company.
+
+	Its own, rather than whichever leaf department the site happens to list
+	first. That is what this did, and on a site with real departments it picked
+	a real one -- `Fine Arts` here -- whose budget carries real committed spend.
+	`make_test_budget` then found that department's existing allocation and
+	reused it, so the four approval tests charged a live overspent budget and
+	failed with a shortfall rather than on anything they were written to check.
+	The comment beside `make_test_budget` in `setUpClass` says these should
+	never fail for want of funds; this is what makes that true.
+
+	Matched on `department_name` rather than on the full name, because ERPNext
+	autonames a Department by appending the company abbreviation and a site
+	renaming its company would otherwise get a second one every run.
+	"""
+	existing = frappe.db.get_value(
+		"Department", {"company": company, "department_name": TEST_DEPARTMENT}, "name"
+	)
 	if existing:
 		return existing
 
@@ -655,7 +762,7 @@ def make_test_department(company: str) -> str:
 		frappe.get_doc(
 			{
 				"doctype": "Department",
-				"department_name": "Procurement Test",
+				"department_name": TEST_DEPARTMENT,
 				"company": company,
 				"is_group": 0,
 			}
@@ -663,6 +770,43 @@ def make_test_department(company: str) -> str:
 		.insert(ignore_permissions=True)
 		.name
 	)
+
+
+def satisfy_permission_gate(user: str, doctype: str, allow: str, for_value: str) -> None:
+	"""Give `user` the User Permission this site's gate demands on `doctype`.
+
+	`commons.safer_permissions` lets a Role Permission row be marked
+	`require_user_permission`, and a role marked that way grants nothing at all
+	until a User Permission aimed at that doctype narrows it. These fixtures give
+	each login exactly one role so that permissions prove something -- which
+	means that on a gated site each login has only the gated grant, and so no
+	access, and the tests fail on the way in rather than on what they assert.
+
+	`applicable_for` the doctype being gated, never a blanket permission: the
+	gate ignores blanket ones by design, because that is the default and
+	counting them would let one unrelated restriction open every gate on the
+	site. `allow`/`for_value` name the link to narrow by, which is why this takes
+	them -- a `Department` is the realistic one for both doctypes here, and it is
+	what a real gated site grants an approver.
+
+	Asked of the gate rather than assumed, so nothing is written on a site that
+	gates nothing and these suites run there exactly as they did before.
+	"""
+	from commons.safer_permissions.permissions import gate_applies, gate_satisfied
+
+	if not gate_applies(user, doctype) or gate_satisfied(user, doctype):
+		return
+
+	frappe.get_doc(
+		{
+			"doctype": "User Permission",
+			"user": user,
+			"allow": allow,
+			"for_value": for_value,
+			"applicable_for": doctype,
+		}
+	).insert(ignore_permissions=True)
+	frappe.clear_cache(user=user)
 
 
 def make_test_user(email: str, role: str, company: str | None = None) -> str:

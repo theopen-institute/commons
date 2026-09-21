@@ -25,10 +25,62 @@ import unittest
 
 import frappe
 
+from commons.safer_permissions.permissions import gate_applies, gate_satisfied
 from commons.self_service import api, registry
 
 RECORD = "Employee"
 RECORD_BANK = "Bank Account"
+
+
+def satisfy_permission_gate(user: str, employee: str) -> None:
+	"""Give `user` whatever User Permission this site's gate demands on `Employee`.
+
+	`commons.safer_permissions` adds a third state to Frappe's two permission
+	systems: a Role Permission row marked `require_user_permission` grants
+	nothing at all until a User Permission aimed at that doctype narrows it. On
+	a site that has ticked it for `Employee`/`Employee` -- which is the feature
+	working, and the configuration it exists for -- a fresh login with only the
+	`Employee` role sees none of its own record, and every test here that reads
+	one failed with "You have no Employee record for this request".
+
+	What was missing was this fixture declaring the dependency. The suite
+	creates a User and an Employee and lets ERPNext grant the role, but no
+	User Permission -- so it only ever passed on a site with the gate switched
+	off, and said nothing about the one where it is on. A correctly configured
+	gated site gives each employee exactly this row, and the gate's own module
+	docstring is where that is prescribed: `applicable_for` the doctype being
+	gated, never a blanket permission, which the gate ignores by design.
+
+	In the same spirit as `add_roles("Accounts User")` in the fixtures below:
+	granted so that the *policy* is what these tests are about rather than the
+	site's permission configuration. Written inside each test's savepoint, so
+	the rollback takes it back like everything else.
+
+	Asked of the gate rather than assumed, so nothing is written on a site that
+	gates nothing -- there the suite runs exactly as it did before.
+
+	`Bank Account` needs no equivalent, though the fixtures below grant a role
+	that is gated on it: ERPNext's `Employee` role also holds read there and is
+	*not* gated, and one unrestricted ungated grant stands the gate down. See
+	`gate_scope`.
+	"""
+	# The role arrives with the Employee record -- ERPNext's `validate_employee_role`
+	# grants it on insert -- and `gate_applies` reads the user's roles, so the
+	# cache has to be dropped or this asks about a user who still holds nothing.
+	frappe.clear_cache(user=user)
+	if not gate_applies(user, RECORD) or gate_satisfied(user, RECORD):
+		return
+
+	frappe.get_doc(
+		dict(
+			doctype="User Permission",
+			user=user,
+			allow=RECORD,
+			for_value=employee,
+			applicable_for=RECORD,
+		)
+	).insert(ignore_permissions=True)
+	frappe.clear_cache(user=user)
 
 
 class TestRecordChangeRequest(unittest.TestCase):
@@ -71,10 +123,19 @@ class TestRecordChangeRequest(unittest.TestCase):
 		)
 
 	def new_employee(self, user: str) -> str:
+		"""An active Employee for `user`, reachable by them.
+
+		The gate fixture is applied here rather than in `setUp` because this is
+		also how the second employee in `test_one_persons_requests_are_not_anothers`
+		is made, and that one needs it for the same reason: without it, on a site
+		that gates `Employee`, the other login cannot see the record this just
+		created for it and the test fails raising its own request rather than
+		asserting anything about whose it is.
+		"""
 		company = frappe.db.get_value("Company", "_Test Company", "name") or frappe.db.get_value(
 			"Company", {}, "name"
 		)
-		return (
+		employee = (
 			frappe.get_doc(
 				dict(
 					doctype="Employee",
@@ -92,6 +153,8 @@ class TestRecordChangeRequest(unittest.TestCase):
 			.insert(ignore_permissions=True)
 			.name
 		)
+		satisfy_permission_gate(user, employee)
+		return employee
 
 	def propose(self, **values) -> str:
 		frappe.set_user(self.user)
@@ -213,11 +276,32 @@ class TestRecordChangeRequest(unittest.TestCase):
 
 	def test_a_select_field_only_accepts_its_own_options(self):
 		"""Asked while the dropdown that produced it is still on screen, rather
-		than days later on the approver's behalf."""
+		than days later on the approver's behalf.
+
+		The field is taken from the policy rather than named here. It used to be
+		`blood_group`, which is proposable on some sites and not on others -- and
+		where it is not, `validate_rows` refuses the row for being withheld
+		before it ever looks at the value, so this passed while asserting nothing
+		about select options. Any proposable Select does the job, and a site whose
+		policy offers none has no dropdown for this to be about.
+		"""
+		meta = frappe.get_meta(RECORD)
+		selects = [
+			fieldname
+			for fieldname in registry.proposable_fields(RECORD)
+			if meta.get_field(fieldname).fieldtype == "Select"
+		]
+		if not selects:
+			self.skipTest(f"No proposable Select field on this site's {RECORD} policy.")
+
+		fieldname = selects[0]
+		options = meta.get_field(fieldname).options or ""
+		self.assertNotIn("Q+", options.split("\n"), "the value below has to be an impossible one")
+
 		frappe.set_user(self.user)
 		with self.assertRaises(frappe.ValidationError):
 			api.request_change(
-				RECORD, json.dumps({"changes": [{"fieldname": "blood_group", "proposed_value": "Q+"}]})
+				RECORD, json.dumps({"changes": [{"fieldname": fieldname, "proposed_value": "Q+"}]})
 			)
 
 	# -- what the request records ------------------------------------------
@@ -475,6 +559,7 @@ class TestBankAccountPolicy(unittest.TestCase):
 		# test rather than the site's permission configuration.
 		self.user.reload()
 		self.user.add_roles("Accounts User")
+		satisfy_permission_gate(self.user.name, self.employee)
 
 	def new_account(self, name: str, **extra) -> str:
 		bank = (
@@ -554,12 +639,29 @@ class TestBankAccountPolicy(unittest.TestCase):
 		policy would claim any party whose id happened to match an employee's."""
 		self.assertEqual(registry.policy(RECORD_BANK)["filters"]["party_type"], "Employee")
 
-	def test_the_policy_offers_no_proposals_and_no_credentials(self):
-		"""Read-only by policy, and two fields kept out of `display` entirely."""
+	# The two fields that must never reach a self-service page for a bank
+	# account, whatever else the policy is configured to offer: one is a
+	# credential and the other addresses somebody else's system.
+	BANK_CREDENTIALS = ("statement_password", "integration_id")
+
+	def test_the_policy_never_offers_credentials(self):
+		"""Neither to read nor to propose, whatever the site has configured.
+
+		This used to assert `proposable == ()` as well -- that the policy is
+		read-only outright. That is how `make_test_configuration` seeds it, but
+		the seed only applies to a record type the site has none for, and this
+		suite deliberately runs against whatever configuration it finds (see the
+		fixture note at the foot of this file). A site that has opened one field
+		for proposal is configured, not broken, so asserting the seed here made
+		the test a claim about the site rather than about the policy machinery.
+
+		What holds either way is the part worth pinning: these two fields are
+		absent from both lists, so no configuration reaches them.
+		"""
 		policy = registry.policy(RECORD_BANK)
-		self.assertEqual(tuple(policy["proposable"]), ())
-		for fieldname in ("statement_password", "integration_id"):
+		for fieldname in self.BANK_CREDENTIALS:
 			self.assertNotIn(fieldname, policy["display"])
+			self.assertNotIn(fieldname, policy["proposable"])
 
 	def test_permissions_report_the_list_shape(self):
 		self.new_account("Salary")
@@ -572,16 +674,42 @@ class TestBankAccountPolicy(unittest.TestCase):
 		self.assertEqual(permissions["owner_field"], "party")
 		self.assertEqual(permissions["owner_value"], self.employee)
 		self.assertEqual(permissions["record_filters"], {"party_type": "Employee"})
-		self.assertFalse(permissions["request"])
+		# Derived from the policy rather than asserted flat. `request` is "may
+		# this user raise one here", and the endpoint answers it from three
+		# things: owning a record, holding `create`, and the policy having a
+		# field to propose at all. Only the last varies between sites, so it is
+		# read rather than assumed -- the invariant is that the payload agrees
+		# with the configuration, not that this site's is read-only.
+		self.assertEqual(
+			permissions["request"], bool(registry.proposable_fields(RECORD_BANK))
+		)
 
 	def test_an_account_you_may_not_read_is_forbidden_not_empty(self):
 		"""Existence is the discriminator: a row is there and the site is
 		withholding it, which is a permissions question rather than an empty
-		page."""
+		page.
+
+		Every role that grants read is taken away, not just `Accounts User`.
+		Dropping the one this fixture granted was enough on a site where it is
+		the only route to a `Bank Account`, and silently not enough on one where
+		another role also holds read -- ERPNext's `Employee` does on some sites,
+		and there this user kept reading accounts after the removal and the
+		assertion below failed. Read off the doctype's own permissions instead,
+		so whatever this site's routes are, they all go.
+
+		Taking `Employee` away can take the *parent* record's read with it, which
+		is what `registry.record_exists` has to survive to still answer
+		`forbidden` here rather than `missing` -- see `_owner_value_raw`.
+		"""
 		self.new_account("Salary")
 		frappe.set_user("Administrator")
 		self.user.reload()
-		self.user.remove_roles("Accounts User")
+		readers = {
+			perm.role
+			for perm in frappe.get_meta(RECORD_BANK).permissions
+			if not frappe.utils.cint(perm.permlevel) and (perm.read or perm.select)
+		}
+		self.user.remove_roles(*readers)
 		frappe.clear_cache(user=self.user.name)
 		frappe.set_user(self.user.name)
 		permissions = api.get_change_permissions(RECORD_BANK)
@@ -607,6 +735,11 @@ class TestRequestModes(unittest.TestCase):
 	these pin is that the two new shapes cannot be used to reach past any of it.
 	"""
 
+	#: The fields this class's configuration offers for proposal, and so the
+	#: whole of what a request here may set. Everything else on the doctype is
+	#: withheld, which is what the refusals below are about.
+	PROPOSABLE = ("account_name", "bank")
+
 	def setUp(self):
 		frappe.db.savepoint("modes_test")
 		self.addCleanup(self.restore)
@@ -615,9 +748,16 @@ class TestRequestModes(unittest.TestCase):
 		self.config = frappe.get_doc("Self Service Record", RECORD_BANK)
 		self.config.allow_new = 1
 		self.config.allow_delete = 1
+		# Exactly these two proposable and the rest not. This used to only switch
+		# the two on and leave every other row as the site had it, which on a site
+		# whose policy already offers all of them meant
+		# `test_a_new_request_may_not_set_a_field_that_is_not_proposable` had no
+		# withheld field left to be refused for. The class mutates this
+		# configuration and rolls it back either way, so pinning the whole set is
+		# no more intrusive than pinning half of it -- and it is what makes the
+		# tests below about the allowlist rather than about the site.
 		for row in self.config.fields:
-			if row.fieldname in ("account_name", "bank"):
-				row.proposable = 1
+			row.proposable = 1 if row.fieldname in self.PROPOSABLE else 0
 		self.config.save()
 		registry.clear_cache()
 
@@ -650,6 +790,7 @@ class TestRequestModes(unittest.TestCase):
 		)
 		self.user.reload()
 		self.user.add_roles("Accounts User")
+		satisfy_permission_gate(self.user.name, self.employee)
 		self.bank = (
 			frappe.db.get_value("Bank", {}, "name")
 			or frappe.get_doc(dict(doctype="Bank", bank_name=f"Bank {frappe.generate_hash(length=6)}"))
@@ -890,6 +1031,7 @@ class TestFreeFormFields(unittest.TestCase):
 		)
 		self.user.reload()
 		self.user.add_roles("Accounts User")
+		satisfy_permission_gate(self.user.name, self.employee)
 		bank = (
 			frappe.db.get_value("Bank", {}, "name")
 			or frappe.get_doc(dict(doctype="Bank", bank_name=f"Base {frappe.generate_hash(length=6)}"))
