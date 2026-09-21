@@ -1,0 +1,88 @@
+{
+ "doctype": "DocType",
+ "name": "Member",
+ "module": "Community",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "first_name",
+  "middle_name",
+  "last_name",
+  "full_name",
+  "column_break_membership",
+  "member_type",
+  "member_record"
+ ],
+ "fields": [
+  {
+   "fieldname": "first_name",
+   "label": "First Name",
+   "fieldtype": "Data",
+   "reqd": 1,
+   "in_global_search": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "middle_name",
+   "label": "Middle Name",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "last_name",
+   "label": "Last Name",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "full_name",
+   "label": "Full Name",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "hidden": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "column_break_membership",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "member_type",
+   "label": "Member Type",
+   "fieldtype": "Link",
+   "options": "DocType",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "in_list_view": 1,
+   "link_filters": "[[\"DocType\", \"name\", \"in\", [\"Faculty\", \"Associate Faculty\", \"Fellow\", \"Student\"]]]",
+   "description": "Faculty, Associate Faculty, Fellow, or Student."
+  },
+  {
+   "fieldname": "member_record",
+   "label": "Member Record",
+   "fieldtype": "Dynamic Link",
+   "options": "member_type",
+   "reqd": 1,
+   "in_list_view": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  }
+ ],
+ "title_field": "full_name",
+ "show_title_field_in_link": 1,
+ "track_changes": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

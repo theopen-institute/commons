@@ -1,4 +1,5 @@
 Commons Core
+Community
 Education Extensions
 NepalERP
 Requests

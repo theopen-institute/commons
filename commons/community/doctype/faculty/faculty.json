@@ -1,0 +1,88 @@
+{
+ "doctype": "DocType",
+ "name": "Faculty",
+ "module": "Community",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "first_name",
+  "middle_name",
+  "last_name",
+  "full_name",
+  "column_break_details",
+  "start_date",
+  "end_date",
+  "photo"
+ ],
+ "fields": [
+  {
+   "fieldname": "first_name",
+   "label": "First Name",
+   "fieldtype": "Data",
+   "reqd": 1,
+   "in_global_search": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "middle_name",
+   "label": "Middle Name",
+   "fieldtype": "Data"
+  },
+  {
+   "fieldname": "last_name",
+   "label": "Last Name",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "full_name",
+   "label": "Full Name",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "hidden": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "column_break_details",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "start_date",
+   "label": "Start Date",
+   "fieldtype": "Date",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "end_date",
+   "label": "End Date",
+   "fieldtype": "Date",
+   "description": "Leave empty while the appointment is current."
+  },
+  {
+   "fieldname": "photo",
+   "label": "Photo",
+   "fieldtype": "Attach Image"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "share": 1,
+   "print": 1,
+   "email": 1
+  }
+ ],
+ "title_field": "full_name",
+ "show_title_field_in_link": 1,
+ "image_field": "photo",
+ "track_changes": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}
