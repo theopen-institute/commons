@@ -73,14 +73,26 @@
             :key="total.currency ?? ''"
             :total="total"
             :lending="statement.lending"
-            :account-type="accountTypeFor(total.currency)"
           />
         </section>
 
         <section v-for="account in statement.accounts" :key="accountKey(account)" class="mt-8">
           <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <h2 class="text-base-medium text-ink-gray-8">{{ heading(account) }}</h2>
-            <p class="text-p-sm text-ink-gray-5">{{ standing(account) }}</p>
+            <div class="flex items-baseline gap-3">
+              <p class="text-p-sm text-ink-gray-5">{{ standing(account) }}</p>
+              <!-- A link, not a button with a handler: the endpoint answers with
+                   a file and the browser's own download is what should take it.
+                   What it saves is the print format the desk would have printed,
+                   rendered from the same figures on screen — see
+                   `statementPdfUrl`. -->
+              <a
+                :href="statementPdfUrl(account)"
+                class="text-p-sm text-ink-gray-6 underline underline-offset-2 hover:text-ink-gray-8"
+              >
+                PDF
+              </a>
+            </div>
           </div>
           <StatementLines :account="account" class="mt-3" />
         </section>
@@ -106,7 +118,7 @@ import { Button, ErrorMessage, Skeleton } from 'frappe-ui'
 import { formatExact } from '@/data/format'
 import {
   balanceAmount,
-  balanceSense,
+  directionLabel,
   hasBalances,
   isParty,
   reloadStatement,
@@ -114,6 +126,7 @@ import {
   statementError,
   statementLoaded,
   statementLoading,
+  statementPdfUrl,
   type StatementAccount,
 } from '@/data/statement'
 import AppPageHeader from '@/components/AppPageHeader.vue'
@@ -140,28 +153,16 @@ function heading(account: StatementAccount): string {
   return companies.size > 1 ? `${account.party_name} · ${account.company}` : account.party_name
 }
 
-/** Where this account stands, as a sentence rather than as a signed number. */
-function standing(account: StatementAccount): string {
-  const sense = balanceSense(account.balance, account.account_type)
-  if (!account.balance) return 'Settled'
-  return `${sense.label} ${formatExact(balanceAmount(account.balance), account.currency)}`
-}
-
 /**
- * Which way round the headline figure for one currency reads.
+ * Where this account stands, as a sentence rather than as a signed number.
  *
- * `Mixed` when the accounts behind it do not agree -- somebody who is both a
- * customer and an employee is owed by one book and owes the other, and their
- * sum is a number with no sentence attached to it. The headline says so and
- * the sections below say it properly, which is better than a headline that
- * picks one of the two readings and is wrong for half of what it covers.
+ * `direction` is the server's, so this page and the printed statement cannot
+ * come to different conclusions about whose money it is; the wording is this
+ * page's own.
  */
-function accountTypeFor(currency: string | null): 'Receivable' | 'Payable' | 'Mixed' {
-  const kinds = new Set(
-    statement.value.accounts
-      .filter((account) => account.currency === currency)
-      .map((account) => account.account_type),
-  )
-  return kinds.size === 1 ? [...kinds][0] : 'Mixed'
+function standing(account: StatementAccount): string {
+  if (!account.balance) return directionLabel('settled')
+  const amount = formatExact(balanceAmount(account.balance), account.currency)
+  return `${directionLabel(account.direction)} ${amount}`
 }
 </script>

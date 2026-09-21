@@ -17,12 +17,14 @@ a reader would not immediately see is in this file's subject matter:
 """
 
 import logging
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
+import frappe
 from pypika import Table
 
-from commons.statement import api, ledger
+from commons.statement import api, install, ledger, parties
 from commons.statement.parties import Party, party_condition
 
 # `frappe._` reaches for the translation cache and, failing that, for a log file
@@ -36,6 +38,11 @@ def setUpModule():
 
 def tearDownModule():
 	_logger.stop()
+
+
+def _raise(message, exc=frappe.ValidationError, **kwargs):
+	"""`frappe.throw` without a site behind it, keeping the exception class."""
+	raise exc(message)
 
 
 def party(account_type="Receivable", party_type="Customer", name="CUST-0001"):
@@ -186,15 +193,37 @@ class TestTheHeadlineFigures(TestCase):
 	only way to be sure they stay apart is to assert that nothing adds them.
 	"""
 
-	def account(self, balance, currency="NPR"):
-		return {"balance": balance, "currency": currency}
+	def account(self, balance, currency="NPR", account_type="Receivable"):
+		# `direction` as the server puts it there, not as a literal: these
+		# assertions are about the headline agreeing with the accounts under it,
+		# and a hand-written direction would let the two drift in the fixture.
+		return {
+			"balance": balance,
+			"currency": currency,
+			"account_type": account_type,
+			"direction": ledger.direction(balance, account_type),
+		}
+
+	def test_a_payable_balance_is_turned_round_before_it_is_added(self):
+		"""The bug this exists to stop. A customer owing 500 and an employee
+		owed 500 are +500 and +500 in their own conventions, and the two
+		conventions run opposite ways -- so added as they stand they come to
+		1,000 when the reader's net position is nought."""
+		totals = api._totals(
+			[self.account(500), self.account(500, account_type="Payable")], []
+		)
+		self.assertEqual(totals[0]["account"], 0.0)
 
 	def loan(self, outstanding, currency="NPR"):
 		return {"outstanding": outstanding, "currency": currency}
 
 	def test_the_two_balances_stay_two_numbers(self):
 		totals = api._totals([self.account(1200)], [self.loan(50000)])
-		self.assertEqual(totals, [{"currency": "NPR", "account": 1200.0, "loans": 50000.0}])
+		self.assertEqual(totals[0]["account"], 1200.0)
+		self.assertEqual(totals[0]["loans"], 50000.0)
+		# Nothing offers their sum. If a key ever appears that does, this is
+		# where it should have to be argued for.
+		self.assertNotIn(1200.0 + 50000.0, totals[0].values())
 
 	def test_a_reader_with_no_loans_still_has_a_loan_line_of_zero(self):
 		"""Zero rather than absent: "you owe nothing on loans" is an answer, and
@@ -216,11 +245,8 @@ class TestTheHeadlineFigures(TestCase):
 	def test_a_loan_in_another_currency_does_not_join_the_account_balance(self):
 		totals = api._totals([self.account(1200)], [self.loan(50000, "GBP")])
 		self.assertEqual(
-			totals,
-			[
-				{"currency": "GBP", "account": 0.0, "loans": 50000.0},
-				{"currency": "NPR", "account": 1200.0, "loans": 0.0},
-			],
+			[(row["currency"], row["account"], row["loans"]) for row in totals],
+			[("GBP", 0.0, 50000.0), ("NPR", 1200.0, 0.0)],
 		)
 
 	def test_a_company_with_no_currency_is_kept_apart_rather_than_merged(self):
@@ -231,6 +257,77 @@ class TestTheHeadlineFigures(TestCase):
 
 	def test_a_reader_with_nothing_has_no_rows_at_all(self):
 		self.assertEqual(api._totals([], []), [])
+
+
+class TestWhichWayTheHeadlineRuns(TestCase):
+	"""The one word every renderer reads instead of deriving it again.
+
+	The sign of a balance says which way it runs only once you also know which
+	side of the books the party sits on. The page said that in TypeScript and a
+	print format would have said it again in Jinja -- so it is said here, once,
+	and both of them only choose the English for it.
+	"""
+
+	def account(self, balance, account_type="Receivable", currency="NPR"):
+		return {
+			"balance": balance,
+			"currency": currency,
+			"account_type": account_type,
+			"direction": ledger.direction(balance, account_type),
+		}
+
+	def test_a_customer_in_debt_owes(self):
+		self.assertEqual(ledger.direction(500, "Receivable"), ledger.OWED_BY_PARTY)
+
+	def test_a_customer_in_credit_is_owed(self):
+		self.assertEqual(ledger.direction(-500, "Receivable"), ledger.OWED_TO_PARTY)
+
+	def test_an_employee_with_a_positive_balance_is_owed(self):
+		"""The same sign, the opposite sentence. This is the whole reason the
+		derivation is not left to whoever is drawing the number."""
+		self.assertEqual(ledger.direction(500, "Payable"), ledger.OWED_TO_PARTY)
+
+	def test_an_employee_overpaid_owes_it_back(self):
+		self.assertEqual(ledger.direction(-500, "Payable"), ledger.OWED_BY_PARTY)
+
+	def test_nothing_outstanding_runs_neither_way(self):
+		self.assertEqual(ledger.direction(0, "Receivable"), ledger.SETTLED)
+		self.assertEqual(ledger.direction(0, "Payable"), ledger.SETTLED)
+
+	def test_the_headline_follows_its_accounts(self):
+		totals = api._totals([self.account(500), self.account(300)], [])
+		self.assertEqual(totals[0]["direction"], ledger.OWED_BY_PARTY)
+
+	def test_accounts_that_disagree_are_mixed_rather_than_guessed(self):
+		"""Somebody who is both a customer and an employee. Their sum is a
+		figure with no sentence attached to it, and saying so beats picking one
+		of the two readings and being wrong for half of what it covers."""
+		totals = api._totals(
+			[self.account(500), self.account(200, "Payable")],
+			[],
+		)
+		self.assertEqual(totals[0]["direction"], api.MIXED)
+
+	def test_a_settled_account_does_not_make_the_headline_mixed(self):
+		"""Nothing outstanding is not a third opinion."""
+		totals = api._totals([self.account(500), self.account(0)], [])
+		self.assertEqual(totals[0]["direction"], ledger.OWED_BY_PARTY)
+
+	def test_accounts_that_cancel_out_net_to_nothing_and_still_say_mixed(self):
+		"""Two companies, one currency, owed one way and owing the other.
+
+		The net is genuinely nought and the page may print it. What it may not
+		do is call the reader settled: they have a debt in one company and a
+		credit in another, and both have to be dealt with. `MIXED` is what stops
+		a correct number becoming a wrong sentence.
+		"""
+		totals = api._totals([self.account(500), self.account(-500)], [])
+		self.assertEqual(totals[0]["account"], 0.0)
+		self.assertEqual(totals[0]["direction"], api.MIXED)
+
+	def test_a_headline_of_nothing_says_settled(self):
+		totals = api._totals([self.account(0)], [])
+		self.assertEqual(totals[0]["direction"], ledger.SETTLED)
 
 
 class TestMatchingADynamicLink(TestCase):
@@ -265,3 +362,163 @@ class TestMatchingADynamicLink(TestCase):
 		"""`None` rather than something that matches everything: every caller
 		reads it as "there is nothing to look for" and issues no query at all."""
 		self.assertIsNone(self.condition())
+
+
+class TestWhoMayReadSomebodyElsesStatement(TestCase):
+	"""`parties.named`, which is the only place a party arrives from outside.
+
+	Everywhere else in this section the parties come from the session and cannot
+	be anybody else's. A print format is handed a document, so the party comes
+	off that -- and this is the check standing between "print my statement" and
+	"print theirs". It is worth its own tests for the same reason the sign rule
+	is: it is four lines, and being wrong looks exactly like being right.
+	"""
+
+	def setUp(self):
+		# `frappe.throw` reaches for `frappe.flags`, which a site-less run has no
+		# binding for -- the same stand-in `shell.test_shell` makes, except that
+		# this one keeps the exception class, because which refusal is given is
+		# half of what these tests are about.
+		self.enterContext(patch.object(parties.frappe, "throw", side_effect=_raise))
+		self.mine = party(party_type="Student", name="me@example.com")
+		self.theirs = party(party_type="Student", name="them@example.com")
+		self.enterContext(
+			patch.object(parties, "_party", side_effect=lambda doctype, name: Party(
+				party_type=doctype, name=name, title="Someone", account_type="Receivable"
+			))
+		)
+		self.enterContext(patch.object(parties, "session_parties", return_value=[self.mine]))
+
+	def permissions(self, **granted):
+		"""Stand in for the site's permissions. Nothing is granted by default."""
+		self.enterContext(
+			patch.object(
+				parties.frappe,
+				"has_permission",
+				side_effect=lambda doctype, *args, **kwargs: granted.get(doctype, False),
+			)
+		)
+
+	def test_your_own_statement_needs_no_permission_at_all(self):
+		"""The whole feature. A student has no `GL Entry` right and never will,
+		and the page exists so that they can read their own balance anyway."""
+		self.permissions()
+		found = parties.named("Student", "me@example.com")
+		self.assertEqual(found.name, "me@example.com")
+
+	def test_somebody_elses_is_refused_outright(self):
+		self.permissions()
+		with self.assertRaises(frappe.PermissionError):
+			parties.named("Student", "them@example.com")
+
+	def test_accounts_may_read_anybody_they_can_read_the_ledger_for(self):
+		"""The desk's case: printing a statement for a customer."""
+		self.permissions(Student=True, **{"GL Entry": True})
+		found = parties.named("Student", "them@example.com")
+		self.assertEqual(found.name, "them@example.com")
+
+	def test_reading_the_party_alone_is_not_enough(self):
+		"""An HR user can read `Employee`. That is not the same as being
+		entitled to read an employee's salary history, and a rule asking only
+		about the party doctype would hand every one of them everybody's."""
+		self.permissions(Student=True)
+		with self.assertRaises(frappe.PermissionError):
+			parties.named("Student", "them@example.com")
+
+	def test_reading_the_ledger_alone_is_not_enough(self):
+		self.permissions(**{"GL Entry": True})
+		with self.assertRaises(frappe.PermissionError):
+			parties.named("Student", "them@example.com")
+
+	def test_a_name_that_is_not_a_party_is_refused_rather_than_answered_empty(self):
+		"""An empty statement under a real person's name reads as "you owe
+		nothing", which is a worse answer than a refusal."""
+		self.permissions(Student=True, **{"GL Entry": True})
+		with patch.object(parties, "_party", return_value=None):
+			with self.assertRaises(frappe.DoesNotExistError):
+				parties.named("Student", "nobody@example.com")
+
+
+class TestThePrintFormatsThatGetInstalled(TestCase):
+	"""One per party doctype the site has, and none for the ones it has not.
+
+	The trap this avoids is the one `commons.requests.install` documents: every
+	doctype named here belongs to another app and every one is optional. A
+	format shipped as a file would be imported on every site whatever it named
+	-- Frappe's import sets `ignore_links`, so it would not even fail -- leaving
+	each site with print formats attached to doctypes it does not have.
+	"""
+
+	def with_site(self, doctypes=(), party_types=()):
+		self.enterContext(
+			patch.object(install.apps, "has_doctype", side_effect=lambda name: name in doctypes)
+		)
+		self.enterContext(
+			patch.object(
+				install.frappe,
+				"db",
+				SimpleNamespace(exists=lambda doctype, name: name in party_types),
+			)
+		)
+		created = []
+		self.enterContext(
+			patch.object(
+				install.frappe,
+				"get_doc",
+				side_effect=lambda values: SimpleNamespace(
+					insert=lambda **kwargs: created.append(values)
+				),
+			)
+		)
+		return created
+
+	def test_one_format_per_party_type_the_site_has(self):
+		created = self.with_site(
+			doctypes={"Party Type", "Print Format", "Customer", "Employee"},
+			party_types={"Customer", "Employee"},
+		)
+		install.sync_statement_print_formats()
+		self.assertEqual(
+			[(row["name"], row["doc_type"]) for row in created],
+			[("Customer Account Statement", "Customer"), ("Employee Account Statement", "Employee")],
+		)
+
+	def test_a_doctype_that_is_not_a_party_type_gets_none(self):
+		"""`Employee` is on every site with HRMS. It is only a party where
+		somebody has said so, and a statement for a doctype with no
+		`account_type` has nothing to read a balance against."""
+		created = self.with_site(
+			doctypes={"Party Type", "Print Format", "Customer", "Employee"},
+			party_types={"Customer"},
+		)
+		install.sync_statement_print_formats()
+		self.assertEqual([row["doc_type"] for row in created], ["Customer"])
+
+	def test_a_site_with_no_ledger_gets_none(self):
+		created = self.with_site(doctypes={"Print Format"}, party_types=set())
+		install.sync_statement_print_formats()
+		self.assertEqual(created, [])
+
+	def test_a_format_that_is_already_there_is_left_alone(self):
+		"""Created, not maintained. An administrator who restyles the stub keeps
+		their restyling -- and still gets every later change to the statement
+		itself, because the stub is two lines and everything it draws is behind
+		the include."""
+		self.enterContext(
+			patch.object(install.apps, "has_doctype", side_effect=lambda name: True)
+		)
+		self.enterContext(
+			patch.object(install.frappe, "db", SimpleNamespace(exists=lambda doctype, name: True))
+		)
+		self.enterContext(
+			patch.object(install.frappe, "get_doc", side_effect=AssertionError("should not insert"))
+		)
+		install.sync_statement_print_formats()
+
+	def test_the_stub_defers_to_the_shared_template(self):
+		"""What makes "created, not maintained" safe. If this record ever grows
+		the statement's markup, the argument for leaving it alone goes with it.
+		"""
+		self.assertIn("party_statement(doc.doctype, doc.name)", install.STUB)
+		self.assertIn('include "commons/statement/print/statement.html"', install.STUB)
+		self.assertLess(len(install.STUB.strip().splitlines()), 4)

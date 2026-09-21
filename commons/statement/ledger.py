@@ -113,6 +113,7 @@ def statements(parties: list[Party]) -> list[dict]:
 				"company": company,
 				"currency": company_currency(company),
 				"balance": balance,
+				"direction": direction(balance, party.account_type),
 				"opening": opening,
 				"entries": totals["count"],
 				"lines": lines,
@@ -236,6 +237,28 @@ def _line(party: Party, row: frappe._dict) -> dict:
 		"charged": charged,
 		"paid": paid,
 	}
+
+
+# The three ways a balance can run, as the one word every renderer reads.
+#
+# Here rather than in each of them, and it is the whole of what "one source of
+# interpretation" means for this section. The sign of `balance` says which way
+# round it runs only once you also know whether this party sits on the
+# receivable or the payable side, and that is a derivation -- a small one, and
+# small derivations written down twice are the ones that drift. The page and the
+# print format each word this differently, because "You owe" and "Owed to you"
+# are wording; which of the two applies is not.
+SETTLED = "settled"
+OWED_BY_PARTY = "owed_by_party"
+OWED_TO_PARTY = "owed_to_party"
+
+
+def direction(balance: float, account_type: str) -> str:
+	"""Which way round a balance runs, said once for everything that draws it."""
+	if not balance:
+		return SETTLED
+	owed_by_party = balance > 0 if account_type == "Receivable" else balance < 0
+	return OWED_BY_PARTY if owed_by_party else OWED_TO_PARTY
 
 
 def _movement(party: Party, debit: float, credit: float) -> float:

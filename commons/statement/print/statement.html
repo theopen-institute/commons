@@ -1,0 +1,200 @@
+{#
+	The printed statement. One template, whatever party doctype the print format
+	behind it is attached to.
+
+	It expects one variable, `statement`, and gets it from
+	`commons.statement.api.party_statement` -- the same call the page makes, so
+	the figures here are not a second opinion about anybody's balance. The print
+	formats are four-line stubs that set it and include this; see
+	`commons/statement/install.py`.
+
+	What is deliberately absent: anything read off `doc`. The print format is
+	attached to a Customer, a Student, an Employee or a Supplier because a print
+	format has to be attached to something, and the party's name comes back on
+	the statement itself -- so this file does not have to know which of the four
+	it is being printed from, and there is one of it rather than four.
+
+	Wording lives here, and only wording. Which way a balance runs is
+	`statement.accounts[n].direction`, decided on the server; this file chooses
+	the English for it, and the page in the browser chooses its own.
+#}
+
+{%- set words = {
+	"settled": "Settled",
+	"owed_by_party": "You owe",
+	"owed_to_party": "Owed to you",
+	"mixed": "Across the accounts below"
+} -%}
+
+<style>
+	.statement { font-size: 9pt; }
+	.statement h2 { font-size: 13pt; margin: 0 0 2px 0; }
+	.statement h3 { font-size: 10pt; margin: 18px 0 6px 0; }
+	.statement .muted { color: #666; }
+	.statement .headline { width: 100%; border-collapse: collapse; margin-top: 12px; }
+	.statement .headline td { border: 1px solid #d8d8d8; padding: 8px 10px; width: 50%; vertical-align: top; }
+	.statement .headline .figure { font-size: 14pt; font-weight: 600; padding-top: 2px; }
+	.statement table.lines { width: 100%; border-collapse: collapse; }
+	.statement table.lines th { border-bottom: 1px solid #333; padding: 4px 6px; text-align: left; font-weight: 600; }
+	.statement table.lines td { border-bottom: 1px solid #eee; padding: 4px 6px; vertical-align: top; }
+	.statement .num { text-align: right; white-space: nowrap; }
+	.statement .brought-forward td { background: #fafafa; font-weight: 600; }
+	.statement .closing td { border-top: 1px solid #333; border-bottom: none; font-weight: 600; }
+	/* Keep a row whole across a page break -- a statement line split between two
+	   pages puts an amount under the wrong date. */
+	.statement tr { page-break-inside: avoid; }
+	.statement .note { margin-top: 4px; }
+	/* A ledger remark is several sentences with newlines between them; collapsed
+	   they run into one long line that reads as noise. */
+	.statement .remark { white-space: pre-line; }
+</style>
+
+<div class="statement">
+	<h2>Account statement</h2>
+	<div class="muted">
+		{{ statement.parties | map(attribute="party_name") | join(", ") }}
+		&middot; as at {{ frappe.format_date(frappe.utils.today(), "d MMMM yyyy") }}
+	</div>
+
+	{%- if not statement.accounts and not statement.loans %}
+		<p class="note">Nothing has been charged to this account and nothing is outstanding.</p>
+	{%- endif %}
+
+	{#- The two balances, per currency. Never added together: a loan and an
+	    invoice are settled to different schedules and through different people,
+	    and one figure combining them is one nobody could act on. -#}
+	{%- for total in statement.totals %}
+		<table class="headline">
+			<tr>
+				<td>
+					<div class="muted">Account balance</div>
+					<div class="figure">{{ frappe.utils.fmt_money(total.account | abs, currency=total.currency) }}</div>
+					<div class="muted">{{ words.get(total.direction, "") }}</div>
+				</td>
+				{%- if statement.lending %}
+					<td>
+						<div class="muted">Loan balance</div>
+						<div class="figure">{{ frappe.utils.fmt_money(total.loans, currency=total.currency) }}</div>
+						<div class="muted">
+							{%- if total.loans %}Outstanding principal, before interest{% else %}Nothing outstanding{% endif -%}
+						</div>
+					</td>
+				{%- endif %}
+			</tr>
+		</table>
+	{%- endfor %}
+
+	{%- for account in statement.accounts %}
+		{#- The company, not the party: whose statement this is was said once at
+		    the top, and a party with ledgers in two companies has two of these
+		    to tell apart. -#}
+		<h3>{{ account.company }}</h3>
+
+		<table class="lines">
+			<thead>
+				<tr>
+					<th style="width: 16%">Date</th>
+					<th>Details</th>
+					<th class="num" style="width: 18%">Amount</th>
+					<th class="num" style="width: 18%">Balance</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr class="brought-forward">
+					<td></td>
+					<td>
+						{%- if account.truncated %}
+							Balance brought forward
+							<span class="muted">
+								({{ account.entries - (account.lines | length) }} earlier entries, not listed)
+							</span>
+						{%- else %}
+							Opening balance
+						{%- endif %}
+					</td>
+					<td class="num"></td>
+					<td class="num">{{ frappe.utils.fmt_money(account.opening, currency=account.currency) }}</td>
+				</tr>
+
+				{#- Charged and settled rather than debit and credit: the book's
+				    words read backwards for a payable party, and the server has
+				    already put them the right way round. -#}
+				{%- for line in account.lines %}
+					<tr>
+						<td>{{ frappe.format_date(line.date, "d MMM yyyy") }}</td>
+						<td>
+							{%- if line.is_opening %}Opening entry{% else %}{{ line.voucher_type }}{% endif -%}
+							{%- if line.voucher_no %} <span class="muted">{{ line.voucher_no }}</span>{% endif -%}
+							{#- The account, only where the statement spans more than one. A
+							    student whose every line says "Debtors" learns nothing from it;
+							    a member of staff with payroll, income tax and social security
+							    posted against them cannot read the statement without it. -#}
+							{%- if account.lines | map(attribute="account") | unique | list | length > 1 %}
+								<div class="muted">{{ line.account }}</div>
+							{%- endif -%}
+							{%- if line.remarks %}<div class="muted remark">{{ line.remarks }}</div>{% endif -%}
+						</td>
+						<td class="num">
+							{%- if line.charged -%}
+								+{{ frappe.utils.fmt_money(line.charged, currency=account.currency) }}
+							{%- else -%}
+								&minus;{{ frappe.utils.fmt_money(line.paid, currency=account.currency) }}
+							{%- endif -%}
+						</td>
+						<td class="num">{{ frappe.utils.fmt_money(line.balance, currency=account.currency) }}</td>
+					</tr>
+				{%- endfor %}
+
+				<tr class="closing">
+					<td></td>
+					<td>{{ words.get(account.direction, "Balance") }}</td>
+					<td class="num"></td>
+					<td class="num">{{ frappe.utils.fmt_money(account.balance | abs, currency=account.currency) }}</td>
+				</tr>
+			</tbody>
+		</table>
+	{%- endfor %}
+
+	{%- if statement.loans %}
+		<h3>Loans <span class="muted">&mdash; kept separately from the account above</span></h3>
+		<table class="lines">
+			<thead>
+				<tr>
+					<th>Loan</th>
+					<th class="num" style="width: 18%">Borrowed</th>
+					<th class="num" style="width: 18%">Repaid</th>
+					<th class="num" style="width: 18%">Outstanding</th>
+				</tr>
+			</thead>
+			<tbody>
+				{%- for loan in statement.loans %}
+					<tr>
+						<td>
+							{{ loan.product }}
+							{#- No whitespace control on these tags, deliberately. Stripping it
+							    runs the facts together -- "disbursed 16 Mar 2026&middot; Disbursed"
+							    -- because the separator's leading space belongs to the line
+							    before it. Left alone, the newlines collapse to single spaces. -#}
+							<div class="muted">
+								{{ loan.loan }}
+								{% if loan.disbursement_date %}&middot; disbursed {{ frappe.format_date(loan.disbursement_date, "d MMM yyyy") }}{% endif %}
+								{% if loan.rate_of_interest %}&middot; {{ loan.rate_of_interest }}% interest{% endif %}
+								&middot; {{ loan.status }}
+							</div>
+						</td>
+						{#- What the outstanding figure is measured against. A loan only
+						    partly paid out is measured against what has actually left the
+						    building, not against what was sanctioned. -#}
+						<td class="num">{{ frappe.utils.fmt_money(loan.disbursed or loan.sanctioned, currency=loan.currency) }}</td>
+						<td class="num">{{ frappe.utils.fmt_money(loan.repaid, currency=loan.currency) }}</td>
+						<td class="num">{{ frappe.utils.fmt_money(loan.outstanding, currency=loan.currency) }}</td>
+					</tr>
+				{%- endfor %}
+			</tbody>
+		</table>
+		<p class="note muted">
+			Outstanding is principal still borrowed. It does not include interest accrued since the
+			last demand, penalties or charges, so it is not a settlement figure.
+		</p>
+	{%- endif %}
+</div>

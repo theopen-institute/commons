@@ -68,3 +68,20 @@ def company_currency(company: str) -> str | None:
 	comparable rather than merely adjacent.
 	"""
 	return frappe.get_cached_value("Company", company, "default_currency")
+
+
+def print_format_name(party_type: str) -> str:
+	"""What the statement print format for one party doctype is called.
+
+	A print format is attached to exactly one doctype, so there is one of these
+	per party type -- four of them where a site has all four. They are four
+	records and one template: each holds a two-line stub that fetches the
+	statement and includes `print/statement.html`, which is where the printed
+	statement actually lives.
+
+	Named here rather than in either of the two modules that need it.
+	`install.py` creates them under this name and `api.download_statement` asks
+	for one by it, and a name spelled in both places is a name that can be
+	changed in one.
+	"""
+	return f"{party_type} Account Statement"

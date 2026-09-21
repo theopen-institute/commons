@@ -7,7 +7,7 @@
     <div class="rounded-4 border border-outline-gray-1 px-4 py-3">
       <div class="text-p-sm text-ink-gray-6">Account balance</div>
       <div class="mt-1 text-2xl font-semibold tabular-nums" :class="accountTone">
-        {{ formatExact(Math.abs(total.account), total.currency) }}
+        {{ formatExact(balanceAmount(total.account), total.currency) }}
       </div>
       <div class="mt-1 text-p-sm text-ink-gray-5">{{ accountNote }}</div>
     </div>
@@ -31,7 +31,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { formatExact } from '@/data/format'
-import type { StatementTotal } from '@/data/statement'
+import {
+  balanceAmount,
+  directionLabel,
+  inReadersFavour,
+  type StatementTotal,
+} from '@/data/statement'
 
 /**
  * The two figures at the top of the page, for one currency.
@@ -48,26 +53,15 @@ const props = defineProps<{
    *  second one reading zero — a loan balance of nought is only worth saying to
    *  somebody who could have had one. */
   lending: boolean
-  /** Which way round the account figure reads. A reader who is a party of one
-   *  kind only — nearly all of them — gets a sentence rather than a sign. */
-  accountType: 'Receivable' | 'Payable' | 'Mixed'
 }>()
 
-const accountNote = computed(() => {
-  if (!props.total.account) return 'Nothing outstanding'
-  // A reader who is both a customer and an employee has two balances pulling in
-  // opposite directions, and one sentence cannot describe their sum honestly.
-  // The per-account sections below say it properly; this one stops claiming to.
-  if (props.accountType === 'Mixed') return 'Across your accounts below'
-  const owedByReader =
-    props.accountType === 'Receivable' ? props.total.account > 0 : props.total.account < 0
-  return owedByReader ? 'You owe this' : 'Owed to you'
-})
+// Which way the figure runs is the server's answer (`total.direction`) rather
+// than something worked out here from its sign: the sign alone cannot say,
+// because a receivable and a payable balance run opposite ways, and the print
+// format needs the same answer. All this component picks is the English.
+const accountNote = computed(() => directionLabel(props.total.direction))
 
-const accountTone = computed(() => {
-  if (!props.total.account || props.accountType === 'Mixed') return 'text-ink-gray-8'
-  const owedByReader =
-    props.accountType === 'Receivable' ? props.total.account > 0 : props.total.account < 0
-  return owedByReader ? 'text-ink-gray-8' : 'text-ink-green-3'
-})
+const accountTone = computed(() =>
+  inReadersFavour(props.total.direction) ? 'text-ink-green-3' : 'text-ink-gray-8',
+)
 </script>

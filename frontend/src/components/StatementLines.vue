@@ -51,7 +51,11 @@
                  posted against them cannot read the statement without it. -->
             <span v-if="showAccounts">{{ line.account }}</span>
           </div>
-          <p v-if="line.remarks" class="mt-1 text-p-sm text-ink-gray-5">
+          <!-- `whitespace-pre-line`: a ledger remark is several sentences with
+               newlines between them ("Amount received from ... / Transaction
+               reference ... / against Fees ..."), and collapsed they run into
+               one long line that reads as noise. -->
+          <p v-if="line.remarks" class="mt-1 whitespace-pre-line text-p-sm text-ink-gray-5">
             {{ line.remarks }}
           </p>
         </div>

@@ -119,6 +119,78 @@ def session_parties() -> list[Party]:
 	return found
 
 
+def named(party_type: str, name: str) -> Party:
+	"""One party the caller has asked for by name, or a refusal.
+
+	The other way into this module. `session_parties` answers "who am I", which
+	is how the page reaches a statement; this answers "may I see theirs", which
+	is how a print format does -- the party comes off the document being
+	printed, not off the session, so it is the one place in this section where
+	a name arrives from outside and has to be checked rather than trusted.
+
+	Two ways to be allowed, and they are different people:
+
+	* it is one of your own parties, which is the page's case and needs nothing
+	  else -- the whole feature is that a reader may see their own balance
+	  whatever their `GL Entry` permission says;
+	* or you may read both the party's own doctype *and* `GL Entry`, which is
+	  the desk's case: somebody in Accounts printing a statement for a customer.
+
+	`GL Entry` is asked for as well as the party doctype, deliberately. An HR
+	user can read `Employee`; that is not the same as being entitled to read an
+	employee's ledger, and a rule that asked only about the party doctype would
+	hand every one of them everybody's salary history.
+
+	Throws rather than returning `None`. Every caller needs the party, and a
+	print format that got a `None` would render an empty statement under a real
+	person's name -- which reads as "you owe nothing" rather than as a refusal.
+	"""
+	party = _party(party_type, name)
+	if not party:
+		frappe.throw(
+			frappe._("{0} {1} is not a party here.").format(frappe._(party_type), name),
+			frappe.DoesNotExistError,
+		)
+
+	if any(mine.party_type == party_type and mine.name == name for mine in session_parties()):
+		return party
+
+	if frappe.has_permission(party_type, "read", doc=name) and frappe.has_permission("GL Entry", "read"):
+		return party
+
+	frappe.throw(
+		frappe._("You are not permitted to see the account of {0}.").format(party.title),
+		frappe.PermissionError,
+	)
+
+
+def _party(party_type: str, name: str) -> Party | None:
+	"""The party record behind a name, or None if this site has no such party.
+
+	"No such party" covers three things a caller does not need to tell apart: a
+	doctype that is not a `Party Type` here, one that is not on the site at all,
+	and a name no record answers to. None of the three is a statement, and the
+	one caller refuses all three the same way.
+	"""
+	if not apps.has_doctype(PARTY_TYPE) or not apps.has_doctype(party_type):
+		return None
+	account_type = frappe.db.get_value(PARTY_TYPE, party_type, "account_type")
+	if account_type is None and not frappe.db.exists(PARTY_TYPE, party_type):
+		return None
+
+	title_field = frappe.get_meta(party_type).get_title_field()
+	title = frappe.db.get_value(party_type, name, title_field)
+	if title is None and not frappe.db.exists(party_type, name):
+		return None
+
+	return Party(
+		party_type=party_type,
+		name=name,
+		title=title or name,
+		account_type=account_type or "Receivable",
+	)
+
+
 def _records(party_type: str) -> list[tuple[str, str]]:
 	"""The rows of one party doctype this user is, as (name, how it reads).
 

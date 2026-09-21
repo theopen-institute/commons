@@ -73,11 +73,13 @@ after_install = [
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
 	"commons.requests.install.sync_procurement_custom_fields",
+	"commons.statement.install.sync_statement_print_formats",
 ]
 after_migrate = [
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
 	"commons.requests.install.sync_procurement_custom_fields",
+	"commons.statement.install.sync_statement_print_formats",
 ]
 
 # Modules are added to `modules.txt` after this app has already been installed
@@ -166,11 +168,25 @@ app_include_css = "commons.bundle.css"
 # Jinja
 # ----------
 
-# add methods and filters to jinja environment
-# jinja = {
-# 	"methods": "commons.utils.jinja_methods",
-# 	"filters": "commons.utils.jinja_filters"
-# }
+# What a print format, a letterhead or a web template on this site may call.
+#
+# One entry, and it is the whole reason the printed statement and the one in the
+# browser cannot drift. `party_statement` is the statement section's own data
+# function -- the same one the SPA calls over HTTP -- so the print format at
+# `commons/statement/print/statement.html` asks the app what somebody's balance
+# is rather than working it out again in Jinja. Which way a balance runs, which
+# accounts are left out because they belong to the lending module, how a running
+# balance reconciles with a total: all of that is answered once, in Python, for
+# both.
+#
+# Exposed by name to every template on the site, not only to the formats this
+# app creates, which is why it does its own permission check rather than
+# trusting its caller -- see `commons.statement.parties.named`.
+jinja = {
+	"methods": [
+		"commons.statement.api.party_statement",
+	],
+}
 
 # Installation
 # ------------

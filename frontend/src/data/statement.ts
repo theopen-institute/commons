@@ -16,7 +16,17 @@ import { useCall } from 'frappe-ui'
  * loan and money owed on an invoice are settled differently and to different
  * schedules, and a single figure combining them is one nobody could act on.
  * That is the whole reason the section has two.
+ *
+ * Nothing here works out which way a balance runs, either. That used to happen
+ * in this file, from the sign and the account type, and it is the kind of small
+ * derivation that gets written a second time the moment somebody needs the same
+ * page as a PDF — which is exactly what happened. It is `direction` now,
+ * decided in `commons/statement/ledger.py`, and this module and the print
+ * format each only choose the English for it. See `DIRECTION_WORDS`.
  */
+
+/** Which way a balance runs, as the server settles it. */
+export type Direction = 'settled' | 'owed_by_party' | 'owed_to_party' | 'mixed' 
 
 /** One movement on the ledger, as a statement has it. */
 export interface StatementLine {
@@ -57,6 +67,10 @@ export interface StatementAccount {
   /** The company's own currency, which is what every figure here is in. */
   currency: string | null
   balance: number
+  /** Which way this balance runs, in the reader's favour or against it. Never
+   *  derived here: the sign alone does not say, and the server has already
+   *  answered it for every renderer. */
+  direction: Direction
   /** What the balance stood at before the first listed line. */
   opening: number
   /** How many movements there have ever been, which is not how many are listed. */
@@ -92,8 +106,16 @@ export interface LoanBalance {
 /** The two headline figures, for one currency. */
 export interface StatementTotal {
   currency: string | null
+  /** The net across this currency's accounts, restated so that a positive
+   *  figure always means the reader owes — receivable and payable balances run
+   *  opposite ways and cannot be added as they stand. The page prints it
+   *  unsigned and lets `direction` supply the sentence. */
   account: number
   loans: number
+  /** `mixed` where the accounts behind it disagree: a reader who owes fees and
+   *  is owed a reimbursement has a net that is arithmetically right and a
+   *  sentence that would not be. */
+  direction: Direction
 }
 
 export interface Statement {
@@ -154,28 +176,49 @@ export const hasBalances = computed(
 )
 
 /**
- * How a balance reads to the person whose it is.
+ * How each direction reads on this page.
  *
- * The sign carries two different sentences depending on which side of the books
- * the party sits, and neither of them is "−1,200". A receivable party in credit
- * has been overpaid or holds a credit note; a payable one showing a negative is
- * the same situation the other way up. Said once here so the headline figure,
- * the per-account heading and the empty state cannot drift apart.
+ * Wording, and only wording — which is the one thing the browser and the print
+ * format are each entitled to decide for themselves. The printed statement says
+ * "Across the accounts below" where this says "Across your accounts below",
+ * because one of them is addressed to the reader and the other may be read by
+ * whoever was handed it.
  */
-export function balanceSense(
-  balance: number,
-  accountType: 'Receivable' | 'Payable',
-): { label: string; owing: boolean } {
-  if (!balance) return { label: 'Settled', owing: false }
-  const owedByReader = accountType === 'Receivable' ? balance > 0 : balance < 0
-  return {
-    label: owedByReader ? 'You owe' : 'Owed to you',
-    owing: owedByReader,
-  }
+const DIRECTION_WORDS: Record<Direction, string> = {
+  settled: 'Settled',
+  owed_by_party: 'You owe',
+  owed_to_party: 'Owed to you',
+  mixed: 'Across your accounts below',
 }
 
-/** The amount to print beside that sentence — never a negative, because the
+export function directionLabel(direction: Direction): string {
+  return DIRECTION_WORDS[direction] ?? ''
+}
+
+/** Whether this balance is in the reader's favour — what the green is for. A
+ *  mixed headline is neither, and is left plain. */
+export function inReadersFavour(direction: Direction): boolean {
+  return direction === 'owed_to_party'
+}
+
+/** The amount to print beside the sentence — never negative, because the
  *  sentence has already said which way round it is. */
 export function balanceAmount(balance: number): number {
   return Math.abs(balance)
+}
+
+/**
+ * Where a statement is downloaded from, as a PDF.
+ *
+ * A plain link rather than a call: the endpoint answers with a file, and the
+ * browser's own download is what should handle it. It renders the print format
+ * this app installs — the same template the desk prints — so what is saved is
+ * what the desk would have produced. See `commons.statement.api.download_statement`.
+ */
+export function statementPdfUrl(account: StatementAccount): string {
+  const query = new URLSearchParams({
+    party_type: account.party_type,
+    party: account.party,
+  })
+  return `/api/method/commons.statement.api.download_statement?${query}`
 }

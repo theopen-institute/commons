@@ -119,6 +119,35 @@ nothing on it. The row is in the sidebar for everyone, on the same reasoning as
 a self-service row: a page saying "you have no account here" explains an empty
 balance better than a missing row does.
 
+### The same statement as a PDF
+
+`commons/statement/install.py` creates one `Print Format` per party doctype the
+site has — Customer, Student, Supplier, Employee — and each is a two-line stub:
+
+```jinja
+{%- set statement = party_statement(doc.doctype, doc.name) -%}
+{% include "commons/statement/print/statement.html" %}
+```
+
+`party_statement` is the app's own endpoint, reachable from Jinja through the
+`jinja` hook in `hooks.py`. So the printed statement asks the app what somebody
+owes rather than working it out again in a template: which way a balance runs,
+which accounts are left out because they belong to the lending module, how a
+running balance reconciles with a total — all of it answered once, in Python,
+for both renderers.
+
+Which is why `direction` is a field on the payload rather than something this
+frontend derives. It used to be derived here, from the sign and the account
+type, and that is exactly the kind of small derivation that gets written a
+second time the moment the same page is wanted as a document. The server says
+which way a balance runs; `statement.ts` and `print/statement.html` each only
+choose the English for it, and they word it differently on purpose — one is
+addressed to the reader, the other may be read by whoever was handed it.
+
+Each account on the page carries a **PDF** link to
+`commons.statement.api.download_statement`, which renders that same print format
+for a reader who has no desk to print from.
+
 ## Requests
 
 Leave, expenses and procurement are one shape wearing three names, and the
