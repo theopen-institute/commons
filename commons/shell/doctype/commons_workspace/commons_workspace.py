@@ -6,7 +6,7 @@ the profile pages and the three request sections in that order. All of that is
 this document now, and a site may have as many as it likes.
 
 What a workspace is made of is deliberately narrow. A row points either at a
-page this app ships -- the four in `commons.shell.pages` -- or at a
+page this app ships -- the ones in `commons.shell.pages` -- or at a
 `Self Service Record`, which is itself configuration and already says what it is
 called. Nothing else can be put in the sidebar, because nothing else is a page
 this app has.

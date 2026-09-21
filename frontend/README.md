@@ -33,6 +33,7 @@ every `/commons/*` path at.
 | `src/App.vue`                         | `DesktopShell` — sidebar plus the routed page                             |
 | `src/data/apps.ts`                    | **The app registry.** Which apps exist and who may open them              |
 | `src/components/AppSidebar.vue`       | Per-app navigation, app switcher, theme toggle                            |
+| `src/data/statement.ts`               | **Account Balance.** The reader's own ledger and loan balances            |
 | `src/data/requests/section.ts`        | **The request shape.** Leave and expenses are both built from it          |
 | `src/data/requests/sections.ts`       | The three request sections, as the sidebar and the tab switcher read them |
 | `src/data/requests/`                  | Leave, expenses and procurement — one module per section beside the shape |
@@ -66,6 +67,9 @@ The sections inside it are two things:
   so a queue can be linked to and a reload comes back where it was;
   `src/data/requests/sections.ts` holds the half the sidebar and the tab
   switcher both need.
+- **Account Balance** (`/account`) — a statement rather than a request: what
+  this person owes the organisation and what it owes them. One page, one call,
+  no approvals tab. See [Account Balance](#account-balance).
 
 ### How the desk icons work
 
@@ -86,6 +90,34 @@ refuses what they may not see.
 After changing icons, run `bench --site <site> migrate`. The icon set is cached
 per user; the sync clears that cache, but a browser also caches boot data, so a
 hard reload may be needed to see it.
+
+## Account Balance
+
+`/commons/account` — the one section here that nobody raises anything in. It
+answers "what is on my account", and the argument for every part of it is in
+`commons/statement/__init__.py`. Three things are worth knowing from the
+browser's side.
+
+**Fees, invoices, payments and journal entries are one list, not four.** Every
+one of them posts a `GL Entry` against the party, so the ledger is the
+statement — which is why a site that installs Education gets its `Fees` on this
+page without a line changing, here or on the server.
+
+**Loans are a second balance, and never added to the first.** Not presentation:
+`lending` posts its GL entries with the borrower as the party, so a loan's
+principal sits in the same table as the invoices and would be summed with them
+by anything filtering on the party alone. On real data that turned a settled fee
+account into one reading NPR 120,000 owed. The server takes the lending module's
+accounts out of the ledger and answers for them separately, and nothing in
+`statement.ts` or on the page adds the two together.
+
+**There is no permission preamble.** `RequestGate` gates on a permissions call,
+and there is nothing here to permit — no approving, no creating. The page gates
+on three empty states instead, because they send the reader to three different
+people: no ledger on the site, no party record in your name, or an account with
+nothing on it. The row is in the sidebar for everyone, on the same reasoning as
+a self-service row: a page saying "you have no account here" explains an empty
+balance better than a missing row does.
 
 ## Requests
 

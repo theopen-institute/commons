@@ -28,6 +28,20 @@ const routes: RouteRecordRaw[] = [
     meta: { page: 'announcements' },
   },
   {
+    // The reader's own balances. Off the requests tree and alone at the top
+    // level, because it is not one: nothing is raised here and nobody approves
+    // anything, so it has neither an approvals tab nor a route to pair with.
+    //
+    // `/account` rather than `/balance` -- it is an account with a balance on
+    // it, and the address outlives whatever the page's headline figure is
+    // called. `search.py` holds the same path; see `PAGE_PATHS` there for why
+    // the server needs its own copy.
+    path: '/account',
+    name: 'AccountBalance',
+    component: () => import('@/pages/AccountBalance.vue'),
+    meta: { page: 'statement' },
+  },
+  {
     // Where the Requests tile lands: which of the two sections opens depends on
     // permissions that haven't loaded yet, so a component decides.
     //

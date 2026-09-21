@@ -13,7 +13,7 @@ on theirs.
 The dictionary keys are what a System Manager picks in the desk, and they are
 worded as the sidebar words the row rather than as the code spells it -- the
 person choosing is choosing a row they have seen. They are stored values, so
-`commons_workspace_item.json` lists exactly these four as the Select's options
+`commons_workspace_item.json` lists exactly these as the Select's options
 and `CommonsWorkspaceItem.validate` refuses anything else; a rename here is a
 rename there and a patch for anything already saved.
 
@@ -28,9 +28,11 @@ held to the icon palette for exactly that reason.
 from commons.requests.expense import EXPENSES
 from commons.requests.leave import LEAVE
 from commons.requests.procurement import PROCUREMENT
+from commons.statement import ledger
 
 PAGES: dict[str, str] = {
 	"Announcements": "announcements",
+	"Account Balance": "statement",
 	"Leave Request": "leave",
 	"Expense Claim": "expense",
 	"Procurement": "procurement",
@@ -57,9 +59,26 @@ PAGE_SECTIONS = {
 	"procurement": PROCUREMENT,
 }
 
+# The same question for a page that is not a request section. `statement` is the
+# only one so far and it is not an oversight that it has no `RequestType`: there
+# is nothing to raise and nobody to approve it, so the shape the three request
+# pages share has nothing to lend it -- what it has in common with them is only
+# that it can be absent, and that is this line rather than a base class.
+PAGE_AVAILABILITY = {
+	"statement": ledger.available,
+}
+
 # The doctype whose read permission decides whether a page is worth offering to
 # *this user*, which is a different question from whether the site has it at all
 # -- see `search._page_row`, the one caller.
+#
+# `statement` is deliberately absent, and the absence is the point rather than an
+# omission. The doctype behind it is `GL Entry`, whose read permission is an
+# accountant's: gating the row on it would take the page away from every student,
+# member and supplier it was written for and leave it to the only people who were
+# never going to read their own balance on it. Who may see what is settled inside
+# the page instead -- the reader's own parties, and nothing else exists for them
+# to be offered.
 PAGE_DOCTYPES: dict[str, str] = {key: section.doctype for key, section in PAGE_SECTIONS.items()}
 
 
@@ -73,7 +92,11 @@ def available(key: str) -> bool:
 	expenses are absent without HRMS and procurement without ERPNext; neither is
 	spelled out here, because the section says.
 
-	A page with no section behind it is always available.
+	A page with neither a section nor an availability test is always available.
+	Announcements is the only one, and it reads nothing.
 	"""
 	section = PAGE_SECTIONS.get(key)
-	return section is None or section.available()
+	if section is not None:
+		return section.available()
+	check = PAGE_AVAILABILITY.get(key)
+	return check is None or check()

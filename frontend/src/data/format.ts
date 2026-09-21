@@ -60,6 +60,23 @@ export function statusTheme(status?: string | null): BadgeTheme {
 
 const currencyFormatters = new Map<string, Intl.NumberFormat>()
 
+function currencyFormatter(currency: string, digits: number): Intl.NumberFormat {
+  // Keyed on both, or the first caller would decide how many decimals every
+  // later one got.
+  const key = `${currency}:${digits}`
+  let formatter = currencyFormatters.get(key)
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    })
+    currencyFormatters.set(key, formatter)
+  }
+  return formatter
+}
+
 /**
  * An amount in the document's own currency.
  *
@@ -74,19 +91,37 @@ export function formatCurrency(
 ): string {
   const amount = value ?? 0
   if (!currency) return amount.toLocaleString(undefined, { maximumFractionDigits: 2 })
+  // Whole units read better in a list of estimates; the pennies on an estimate
+  // are noise. A ledger is the other case entirely — see `formatExact`.
+  return currencyFormatter(currency, 0).format(amount)
+}
 
-  let formatter = currencyFormatters.get(currency)
-  if (!formatter) {
-    formatter = new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-      // Whole units read better in a list of estimates; the pennies on an
-      // estimate are noise.
-      maximumFractionDigits: 0,
+/**
+ * The same amount, to the minor unit.
+ *
+ * For anything that has actually been posted: a fee, a payment, a balance. The
+ * rounding `formatCurrency` does is right for an estimate and wrong here, and
+ * wrong in the way that costs the most trust — a statement whose lines are
+ * rounded does not add up to its own total, and the reader has no way to tell
+ * that the arithmetic is fine and only the display is not.
+ *
+ * Two decimals rather than the currency's own minor unit, deliberately: the
+ * figures come from the ledger, which is kept to the site's currency precision,
+ * and a locale that renders a zero-decimal currency to three would disagree with
+ * the books over what was actually posted.
+ */
+export function formatExact(
+  value?: number | null,
+  currency?: string | null,
+): string {
+  const amount = value ?? 0
+  if (!currency) {
+    return amount.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     })
-    currencyFormatters.set(currency, formatter)
   }
-  return formatter.format(amount)
+  return currencyFormatter(currency, 2).format(amount)
 }
 
 /** "3 items" / "1 item" — the count, said properly. */

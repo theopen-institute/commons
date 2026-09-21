@@ -167,6 +167,7 @@ class TestDefaultWorkspace(TestCase):
 				("page", "announcements", None),
 				("record", "Employee", "Profile"),
 				("record", "Bank Account", "Profile"),
+				("page", "statement", "Profile"),
 				("page", "leave", "Requests"),
 				("page", "expense", "Requests"),
 				("page", "procurement", "Requests"),
@@ -190,7 +191,10 @@ class TestDefaultWorkspace(TestCase):
 	def test_survives_a_site_with_no_self_service(self):
 		with patch.object(workspaces.registry, "registered", return_value=[]):
 			rows = workspaces.workspaces()[0]["items"]
-		self.assertEqual([row["key"] for row in rows], ["announcements", "leave", "expense", "procurement"])
+		self.assertEqual(
+			[row["key"] for row in rows],
+			["announcements", "statement", "leave", "expense", "procurement"],
+		)
 
 
 class TestPagesWhoseAppIsNotInstalled(TestCase):
@@ -204,8 +208,8 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 	(`approvals.RequestType.available`), and with the desk's Awesome Bar, which
 	reads these same rows.
 
-	The `Commons Workspace Item` Select goes on offering all four pages whatever
-	a site has installed, which is why this is settled when the rows are read
+	The `Commons Workspace Item` Select goes on offering every page whatever a
+	site has installed, which is why this is settled when the rows are read
 	rather than when they are saved.
 	"""
 
@@ -217,7 +221,9 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 	def test_the_default_workspace_keeps_only_the_sections_that_are_here(self):
 		with_documents(self, [], [], absent=self.ABSENT)
 		rows = workspaces.workspaces()[0]["items"]
-		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee", "procurement"])
+		self.assertEqual(
+			[row["key"] for row in rows], ["announcements", "Employee", "statement", "procurement"]
+		)
 
 	def test_a_configured_row_naming_one_is_dropped(self):
 		with_documents(
@@ -256,7 +262,7 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["announcements", "Employee", "leave", "expense", "procurement"],
+			["announcements", "Employee", "statement", "leave", "expense", "procurement"],
 		)
 
 	def test_procurement_goes_with_erpnext_rather_than_with_a_doctype(self):
@@ -268,15 +274,63 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		one that cannot load. The section names the app instead --
 		`Procurement.requires_apps` -- and this is the navigation agreeing.
 		"""
-		with_documents(self, [], [], apps=("frappe", "hrms", "commons"))
+		# `GL Entry` goes with ERPNext, so a site without it has no ledger either
+		# -- named here rather than inferred from `apps`, because the stand-in
+		# answers the two questions separately and so does the code under test.
+		with_documents(self, [], [], absent=("GL Entry",), apps=("frappe", "hrms", "commons"))
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee", "leave", "expense"])
 
 	def test_a_site_with_neither_keeps_the_pages_that_need_neither(self):
 		"""Bare Frappe: announcements and whatever self-service is configured."""
-		with_documents(self, [], [], absent=self.ABSENT, apps=("frappe", "commons"))
+		with_documents(self, [], [], absent=(*self.ABSENT, "GL Entry"), apps=("frappe", "commons"))
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee"])
+
+
+class TestTheStatementPage(TestCase):
+	"""The one shipped page that is not a request section.
+
+	It is here for the same reason leave is: it can be absent. `Account Balance`
+	reads the general ledger, so a site with no ERPNext has no such page -- and
+	that answer comes from `pages.PAGE_AVAILABILITY` rather than from a
+	`RequestType`, which is a second code path through `pages.available` and so a
+	second thing that can quietly stop being asked.
+	"""
+
+	def setUp(self):
+		with_policies(self, policy("Employee", "Profile", "employee"))
+
+	def test_is_offered_where_there_is_a_ledger(self):
+		with_documents(self, [], [])
+		rows = workspaces.workspaces()[0]["items"]
+		row = next(row for row in rows if row["key"] == "statement")
+		# Under Profile, and unnamed: like every shipped page, what it is called
+		# and what it is drawn with live in the frontend.
+		self.assertEqual(row["group"], "Profile")
+		self.assertIsNone(row["label"])
+		self.assertIsNone(row["icon"])
+
+	def test_is_absent_where_there_is_not(self):
+		with_documents(self, [], [], absent=("GL Entry",))
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertNotIn("statement", [row["key"] for row in rows])
+
+	def test_a_configured_row_naming_it_is_dropped_too(self):
+		"""The same rule as leave's, and it has to be: the Select offers the page
+		on every site, so a workspace saved on one that has a ledger has to stop
+		resolving on one that does not."""
+		with_documents(
+			self,
+			[parent("Staff")],
+			[
+				item("Staff", page="Announcements", idx=1),
+				item("Staff", page="Account Balance", idx=2),
+			],
+			absent=("GL Entry",),
+		)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual([row["key"] for row in rows], ["announcements"])
 
 
 class TestConfiguredWorkspaces(TestCase):

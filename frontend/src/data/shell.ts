@@ -28,11 +28,11 @@ import { requestSection, type RequestSection, type RequestSectionKey } from './r
  * that explains itself.
  *
  * The keys in `PAGES` are the contract. `commons/shell/pages.py` holds the same
- * four, and the two halves have to agree on them.
+ * set, and the two halves have to agree on them.
  */
 
 /** One of the pages this app ships, as a workspace row may name it. */
-export type PageKey = 'announcements' | RequestSectionKey
+export type PageKey = 'announcements' | 'statement' | RequestSectionKey
 
 interface PageChrome {
   label: string
@@ -70,6 +70,18 @@ const PAGES: Record<PageKey, PageChrome> = {
     icon: 'lucide-megaphone',
     to: { name: 'Announcements' },
     routeName: 'Announcements',
+    section: null,
+  },
+  // No section, and so always visible. That is the same answer a self-service
+  // row gets and it is the same argument: a page that says "you have no account
+  // here" explains an empty balance far better than a missing row does, and
+  // deciding otherwise would mean asking the server who this reader is before
+  // the sidebar could draw itself.
+  statement: {
+    label: 'Account Balance',
+    icon: 'lucide-wallet',
+    to: { name: 'AccountBalance' },
+    routeName: 'AccountBalance',
     section: null,
   },
   leave: fromSection('leave'),

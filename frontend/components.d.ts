@@ -19,6 +19,7 @@ declare module 'vue' {
     AppSidebarPanel: typeof import('./src/components/AppSidebarPanel.vue')['default']
     AppSidebarRow: typeof import('./src/components/AppSidebarRow.vue')['default']
     AppTodoList: typeof import('./src/components/AppTodoList.vue')['default']
+    BalanceHeadline: typeof import('./src/components/BalanceHeadline.vue')['default']
     BikramDatePicker: typeof import('./src/components/BikramDatePicker.vue')['default']
     ChangeDiff: typeof import('./src/components/ChangeDiff.vue')['default']
     ChangeRequestList: typeof import('./src/components/ChangeRequestList.vue')['default']
@@ -28,6 +29,7 @@ declare module 'vue' {
     ExpenseClaimLines: typeof import('./src/components/ExpenseClaimLines.vue')['default']
     LeaveRequestDialog: typeof import('./src/components/LeaveRequestDialog.vue')['default']
     LinkControl: typeof import('./src/components/LinkControl.vue')['default']
+    LoanBalances: typeof import('./src/components/LoanBalances.vue')['default']
     PermissionNotice: typeof import('./src/components/PermissionNotice.vue')['default']
     ProcurementLines: typeof import('./src/components/ProcurementLines.vue')['default']
     ProcurementRequestDialog: typeof import('./src/components/ProcurementRequestDialog.vue')['default']
@@ -39,5 +41,6 @@ declare module 'vue' {
     RequestTabs: typeof import('./src/components/RequestTabs.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    StatementLines: typeof import('./src/components/StatementLines.vue')['default']
   }
 }

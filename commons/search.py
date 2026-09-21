@@ -56,15 +56,16 @@ from commons.shell.pages import PAGE_DOCTYPES, PAGES
 
 # Where each shipped page lives, under `hooks.app_home`. The frontend's router
 # is the authority on these (`frontend/src/router.ts`) and this is a second copy
-# of four of its paths, which is the price of the bar being a desk feature: the
+# of its paths, which is the price of the bar being a desk feature: the
 # hook runs on the server, and the routes it has to name are in a bundle the
-# server never loads. Kept to the four pages, and kept next to the keys they
+# server never loads. Kept to the shipped pages, and kept next to the keys they
 # belong to, so a route that moves is one line here rather than a search.
 #
 # `expense` is `/expenses` -- the page is plural and the key is not. That is the
 # kind of thing this map exists to get right.
 PAGE_PATHS: dict[str, str] = {
 	"announcements": "/commons/announcements",
+	"statement": "/commons/account",
 	"leave": "/commons/requests/leave",
 	"expense": "/commons/requests/expenses",
 	"procurement": "/commons/requests/procurement",
