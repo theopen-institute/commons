@@ -287,6 +287,16 @@ def has_permission(doc=None, ptype: str | None = None, user: str | None = None, 
 # `enqueue_json_to_csv_conversion` then serve the file to anyone core's own rule
 # lets read the record -- which is anyone who may access the report. So both ends
 # are refused: making one, and reading one that already exists.
+#
+# All three wrappers below are a bare `@frappe.whitelist()`, so all three answer
+# a GET -- and `make_prepared_report` inserts a document on one, which is the
+# shape `commons_core.cache` shuts with `methods=["POST"]` for exactly this
+# reason. That is inherited rather than chosen: these three are
+# `override_whitelisted_methods` entries, so they stand in for core's own
+# functions at core's own addresses and have to accept what core accepts. A
+# narrower `methods` here would refuse desk traffic that core sends as a GET,
+# which would break reports rather than protect them. Said out loud so the next
+# reader does not take it for this app's decision about CSRF.
 
 
 def gated_report_doctype(report_name: str | None, user: str | None = None) -> str | None:
