@@ -11,7 +11,15 @@
   "full_name",
   "column_break_membership",
   "member_type",
-  "member_record"
+  "member_record",
+  "column_break_contact",
+  "member_email_address",
+  "alternate_email_address",
+  "phone_number",
+  "public_details_section",
+  "hide_from_website",
+  "biography",
+  "cv"
  ],
  "fields": [
   {
@@ -64,6 +72,51 @@
    "options": "member_type",
    "reqd": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_contact",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "member_email_address",
+   "label": "Member Email Address",
+   "fieldtype": "Data",
+   "options": "Email",
+   "in_global_search": 1
+  },
+  {
+   "fieldname": "alternate_email_address",
+   "label": "Alternate Email Address",
+   "fieldtype": "Data",
+   "options": "Email"
+  },
+  {
+   "fieldname": "phone_number",
+   "label": "Phone Number",
+   "fieldtype": "Data",
+   "options": "Phone"
+  },
+  {
+   "fieldname": "public_details_section",
+   "label": "Public Details",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "hide_from_website",
+   "label": "Hide from Website",
+   "fieldtype": "Check",
+   "default": "0",
+   "description": "Keep this member off public listings and pages."
+  },
+  {
+   "fieldname": "biography",
+   "label": "Biography",
+   "fieldtype": "Text Editor"
+  },
+  {
+   "fieldname": "cv",
+   "label": "CV",
+   "fieldtype": "Attach"
   }
  ],
  "permissions": [
