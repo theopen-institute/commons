@@ -1,5 +1,6 @@
-import { computed } from 'vue'
+import { computed, type ComputedRef } from 'vue'
 import { useCall } from 'frappe-ui'
+import { attendanceGate } from './attendance'
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from 'vue-router'
 import { requestSection, type RequestSection, type RequestSectionKey } from './requests/sections'
 
@@ -32,7 +33,23 @@ import { requestSection, type RequestSection, type RequestSectionKey } from './r
  */
 
 /** One of the pages this app ships, as a workspace row may name it. */
-export type PageKey = 'announcements' | 'statement' | RequestSectionKey
+export type PageKey = 'announcements' | 'statement' | 'attendance' | RequestSectionKey
+
+/**
+ * A permission answer a row waits on, for a page that is not a request section.
+ *
+ * The same two questions a section answers -- may this reader have the row, and
+ * is that answer in yet -- without the rest of what a section is. Account
+ * Balance needs neither and says so with nulls; the attendance register needs
+ * both, because `Student Attendance` is readable by every student on the site
+ * and the page is a whole cohort's marks on one screen. See
+ * `commons.education_extensions.attendance.can_mark`, which is the server's
+ * half of the same rule.
+ */
+interface PageGate {
+  visible: ComputedRef<boolean>
+  resolved: ComputedRef<boolean>
+}
 
 interface PageChrome {
   label: string
@@ -43,6 +60,9 @@ interface PageChrome {
   /** The request section behind the row, for the ones that have one: its
    *  permission, its approvals tab, and the badge an approver reads. */
   section: RequestSection | null
+  /** A permission answer the row waits on where a section is not what decides
+   *  it. Null for a row offered to everybody. */
+  gate: PageGate | null
 }
 
 function fromSection(key: RequestSectionKey): PageChrome {
@@ -53,6 +73,7 @@ function fromSection(key: RequestSectionKey): PageChrome {
     to: { name: section.mineRoute },
     routeName: section.mineRoute,
     section,
+    gate: null,
   }
 }
 
@@ -71,6 +92,7 @@ const PAGES: Record<PageKey, PageChrome> = {
     to: { name: 'Announcements' },
     routeName: 'Announcements',
     section: null,
+    gate: null,
   },
   // No section, and so always visible. That is the same answer a self-service
   // row gets and it is the same argument: a page that says "you have no account
@@ -83,6 +105,20 @@ const PAGES: Record<PageKey, PageChrome> = {
     to: { name: 'AccountBalance' },
     routeName: 'AccountBalance',
     section: null,
+    gate: null,
+  },
+  // Gated, unlike the two above, and for the opposite reason to each of them.
+  // Announcements and Account Balance are offered to everybody because the page
+  // explains itself better than a missing row would; this one is a whole
+  // cohort's attendance, and a student who may not mark it should not be
+  // offered it. See `PageGate`.
+  attendance: {
+    label: 'Attendance',
+    icon: 'lucide-clipboard-check',
+    to: { name: 'AttendanceRegister' },
+    routeName: 'AttendanceRegister',
+    section: null,
+    gate: attendanceGate,
   },
   leave: fromSection('leave'),
   expense: fromSection('expense'),
@@ -234,8 +270,10 @@ function entryFor(item: ShellItem): NavEntry | null {
     slug: null,
     section: page.section,
     routeName: page.routeName,
-    visible: () => !page.section || page.section.visible.value,
-    resolved: () => !page.section || page.section.resolved.value,
+    visible: () =>
+      (!page.section || page.section.visible.value) && (!page.gate || page.gate.visible.value),
+    resolved: () =>
+      (!page.section || page.section.resolved.value) && (!page.gate || page.gate.resolved.value),
   }
 }
 

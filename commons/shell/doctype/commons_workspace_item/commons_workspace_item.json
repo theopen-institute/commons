@@ -34,7 +34,7 @@
    "in_list_view": 1,
    "label": "Page",
    "mandatory_depends_on": "eval:doc.item_type == 'Page'",
-   "options": "\nAnnouncements\nAccount Balance\nLeave Request\nExpense Claim\nProcurement"
+   "options": "\nAnnouncements\nAccount Balance\nLeave Request\nExpense Claim\nProcurement\nAttendance"
   },
   {
    "columns": 2,

@@ -56,12 +56,19 @@ DEFAULT_ICON = "lucide-inbox"
 # site writes its own workspace; here they are only what the old sidebar said.
 PROFILE_GROUP = "Profile"
 REQUESTS_GROUP = "Requests"
+TEACHING_GROUP = "Teaching"
 
 # The page the default workspace closes its Profile group with. Named rather
 # than spelled inline for the same reason `DEFAULT_REQUEST_PAGES` is: the key is
 # the frontend's half of a contract, and a literal buried in a list comprehension
 # is the kind of thing a rename misses.
 STATEMENT_PAGE = "statement"
+
+# And the page the Teaching group holds, on a site that teaches. Its own heading
+# rather than a row among the requests: nothing is raised on it and nobody
+# approves it, and it is the only page in this app addressed to somebody in their
+# capacity as staff rather than as a person with a payslip and a leave balance.
+ATTENDANCE_PAGE = "attendance"
 
 
 def workspaces() -> list[dict]:
@@ -225,6 +232,13 @@ def _default() -> dict:
 	if page_list.available(STATEMENT_PAGE):
 		items.append(_item("page", STATEMENT_PAGE, PROFILE_GROUP))
 	items += [_item("page", key, REQUESTS_GROUP) for key in DEFAULT_REQUEST_PAGES if page_list.available(key)]
+	# Last, and dropped on a site with no education module, the way the three
+	# above are dropped without HRMS. Whether *this reader* is offered it is a
+	# separate question and is not asked here -- the default workspace is the
+	# site's sidebar, not one person's, and `PAGE_ACCESS` is what takes the row
+	# away from somebody who does not mark attendance.
+	if page_list.available(ATTENDANCE_PAGE):
+		items.append(_item("page", ATTENDANCE_PAGE, TEACHING_GROUP))
 	return {
 		"name": None,
 		"title": DEFAULT_TITLE,

@@ -25,6 +25,9 @@ configuration. A workspace row may still override either, and an override is
 held to the icon palette for exactly that reason.
 """
 
+from collections.abc import Callable
+
+from commons.education_extensions import attendance
 from commons.requests.expense import EXPENSES
 from commons.requests.leave import LEAVE
 from commons.requests.procurement import PROCUREMENT
@@ -36,6 +39,7 @@ PAGES: dict[str, str] = {
 	"Leave Request": "leave",
 	"Expense Claim": "expense",
 	"Procurement": "procurement",
+	"Attendance": "attendance",
 }
 
 # What the default workspace holds when a site has configured no workspace of
@@ -66,6 +70,11 @@ PAGE_SECTIONS = {
 # that it can be absent, and that is this line rather than a base class.
 PAGE_AVAILABILITY = {
 	"statement": ledger.available,
+	# Absent without the education module, the way leave is absent without HRMS.
+	# `Course Schedule` and `Student Attendance` are what the register is made
+	# of, and `attendance.available` asks about those two rather than about
+	# which app happens to bring them.
+	"attendance": attendance.available,
 }
 
 # The doctype whose read permission decides whether a page is worth offering to
@@ -80,6 +89,19 @@ PAGE_AVAILABILITY = {
 # the page instead -- the reader's own parties, and nothing else exists for them
 # to be offered.
 PAGE_DOCTYPES: dict[str, str] = {key: section.doctype for key, section in PAGE_SECTIONS.items()}
+
+# The same question again for a page where read permission is the wrong test.
+#
+# The attendance register is the one so far, and it is the mirror image of
+# `statement` above. There the doctype's read permission was too *narrow* -- an
+# accountant's -- for a page written for everybody. Here it is too wide:
+# `Student Attendance` is readable by every student and guardian on the site,
+# and the register is a whole cohort's marks on one screen. The page opens for
+# somebody who may write one, so that is what the row is offered on, and it is
+# the same call the endpoints make -- see `attendance.can_mark`.
+PAGE_ACCESS: dict[str, Callable[[], bool]] = {
+	"attendance": attendance.can_mark,
+}
 
 
 def available(key: str) -> bool:

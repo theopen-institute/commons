@@ -52,7 +52,7 @@ from commons.commons_core import settings
 from commons.self_service import registry
 from commons.shell import pages as page_list
 from commons.shell import workspaces
-from commons.shell.pages import PAGE_DOCTYPES, PAGES
+from commons.shell.pages import PAGE_ACCESS, PAGE_DOCTYPES, PAGES
 
 # Where each shipped page lives, under `hooks.app_home`. The frontend's router
 # is the authority on these (`frontend/src/router.ts`) and this is a second copy
@@ -69,6 +69,7 @@ PAGE_PATHS: dict[str, str] = {
 	"leave": "/commons/requests/leave",
 	"expense": "/commons/requests/expenses",
 	"procurement": "/commons/requests/procurement",
+	"attendance": "/commons/attendance",
 }
 
 # What a page is called when the workspace row carrying it typed no override.
@@ -149,6 +150,14 @@ def _page_row(item: dict) -> dict | None:
 
 	doctype = PAGE_DOCTYPES.get(item["key"])
 	if doctype and not frappe.has_permission(doctype, "read"):
+		return None
+
+	# And the pages whose offer is not a read permission over a doctype. One so
+	# far, and the bar has to agree with the sidebar about it: a student who is
+	# not offered the attendance register in the navigation must not find it by
+	# typing three letters into the desk. See `PAGE_ACCESS`.
+	access = PAGE_ACCESS.get(item["key"])
+	if access and not access():
 		return None
 
 	return {"label": item["label"] or PAGE_LABELS.get(item["key"], item["key"]), "path": path}

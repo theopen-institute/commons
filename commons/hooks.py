@@ -74,12 +74,14 @@ after_install = [
 	"commons.safer_permissions.install.sync_permission_manager",
 	"commons.requests.install.sync_procurement_custom_fields",
 	"commons.statement.install.sync_statement_print_formats",
+	"commons.education_extensions.install.sync_attendance_custom_fields",
 ]
 after_migrate = [
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
 	"commons.requests.install.sync_procurement_custom_fields",
 	"commons.statement.install.sync_statement_print_formats",
+	"commons.education_extensions.install.sync_attendance_custom_fields",
 ]
 
 # Modules are added to `modules.txt` after this app has already been installed

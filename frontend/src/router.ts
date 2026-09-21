@@ -42,6 +42,17 @@ const routes: RouteRecordRaw[] = [
     meta: { page: 'statement' },
   },
   {
+    // The teaching register. One page, no tabs: the term and the course it is
+    // showing live in the query string rather than in the path, because they
+    // are a view of it rather than a different page -- and because a link to
+    // "this course, this term" is the thing colleagues actually send each
+    // other. See `AttendanceRegister.vue`.
+    path: '/attendance',
+    name: 'AttendanceRegister',
+    component: () => import('@/pages/AttendanceRegister.vue'),
+    meta: { page: 'attendance' },
+  },
+  {
     // Where the Requests tile lands: which of the two sections opens depends on
     // permissions that haven't loaded yet, so a component decides.
     //

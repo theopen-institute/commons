@@ -19,8 +19,16 @@ start, so type changes follow schema changes.
 
 ```sh
 yarn type-check  # vue-tsc
+yarn test        # vitest, over the pure modules under src/data
 yarn build       # writes ../commons/public/frontend + ../commons/www/commons.html
 ```
+
+`yarn test` covers the modules under `src/data` that fetch nothing —
+`attendanceRegister.ts` is the one so far. Those are the parts that are
+arithmetic rather than plumbing, and the attendance register's were a Python
+test suite before the reads moved to the document API; see
+[Attendance](#attendance). It runs off `vitest.config.ts` rather than
+`vite.config.js`, which loads `frappe-ui/vite` and reads the bench.
 
 `yarn build` is what makes `/commons` work on the site: it copies the built page
 to `commons/www/commons.html`, which `website_route_rules` in `hooks.py` points
@@ -70,6 +78,10 @@ The sections inside it are two things:
 - **Account Balance** (`/account`) — a statement rather than a request: what
   this person owes the organisation and what it owes them. One page, one call,
   no approvals tab. See [Account Balance](#account-balance).
+- **Attendance** (`/attendance`) — the one section addressed to somebody in
+  their capacity as staff rather than as a person with a payslip: a term of a
+  course, and who was at it. Nothing is raised and nobody approves it, and it
+  adds no server endpoint of its own. See [Attendance](#attendance).
 
 ### How the desk icons work
 
@@ -245,6 +257,80 @@ the section's own:
 `Procurement Request` is this app's own doctype and has been driven by a Frappe
 Workflow from the start. Its approvals page is grouped by department, with the
 budget each group spends priced beside it — see `docs/department-budgets.md`.
+
+## Attendance
+
+`/attendance?term=…&course=…` is one term of one course, for every student group
+taught it: sessions down the side, students across the top, one mark in each
+cell. It replaced a Vue app embedded in a desk form.
+
+**A cell is a button.** Clicking one cycles Present → Late → Absent → blank and
+saves immediately; the colour changes first and the server is asked afterwards,
+because marking a class is twenty of these in a row. A refusal puts the old mark
+back. Marking a whole session is one button in its row, and creating a session
+offers "everyone present" so that taking attendance is a tick and then the
+exceptions. Editing the session itself — date, times, type — is the only thing
+left in a dialog.
+
+**The arithmetic is in `src/data/attendanceRegister.ts`**, which is pure and
+tested (`yarn test`). What a late arrival is worth — half the session's hours —
+is said once, in `CREDIT`, and the blocks and footings are built from it. That
+matters because the version this replaced said it in a template and got the
+group totals wrong in a way nobody could see: it footed the *first* group's
+hours under every group on the page. Because the totals are computed here, a
+mark changed on screen re-foots its block immediately rather than after a
+re-read.
+
+**Nothing here has an endpoint of its own.** An earlier version of this page
+assembled the whole register in one custom API and answered in a single call,
+which read nicely and was wrong: to do it the server had to read six tables with
+`frappe.get_all`, which is `ignore_permissions=True`, so it walked past User
+Permissions and past `commons.safer_permissions` — the gate whose entire purpose
+is that a role grants nothing until a User Permission narrows it. A single
+"may this person mark attendance" check at the door is not a substitute for that.
+
+So the page reads through `/api/v2/document/<doctype>` and writes through
+`frappe.client` (`insert`, `insert_many`, `set_value`, `delete`), exactly as the
+section below describes for everything else. The cost is four chained rounds of
+reads instead of one call — a course reaches its groups only through
+`Program Course`, sessions are read for the groups that came back, marks for the
+sessions that came back. That is what correctness costs here, and it is the same
+bargain the rest of this app makes.
+
+Two of Frappe's shapes are used rather than one, and the split is not arbitrary:
+`Program Course` and `Student Group Student` are child tables, and the REST
+document API cannot read one usefully — `document_list` never passes a
+`parent_doctype` to the query engine, so a child doctype is permission-checked
+against its own empty permissions and every requested field is stripped, leaving
+a list of bare `name`s. Those two go through `frappe.client.get_list`, which
+takes `parent` and is what the desk uses for the same job.
+
+Whether this reader may mark attendance is asked with
+`frappe.client.has_permission`, not with an endpoint of this app's. Whether the
+*site* has a register at all is not asked at all: `commons.shell.pages.available`
+already drops the row from every workspace on a site with no education module,
+so a row that is there is a register that exists.
+
+### What attendance needs configured
+
+The section is absent without the education module — `Course Schedule` and
+`Student Attendance` are what it is made of. Beyond that it stands on four
+Custom Fields this app asserts on install
+(`commons/education_extensions/install.py`): a session's type and details, the
+`custom_late` flag, and `custom_inactive` on `Academic Term` for retiring a term
+from the picker. `custom_session_type` is free text on purpose — the vocabulary
+is the school's, the dialog offers whatever is already in use, and a fifth kind
+of session is somebody typing it once rather than a deploy.
+
+A `Course` wants a `default_instructor` and a default classroom: `Course
+Schedule` requires both and the site fetches them from there, and this page
+deliberately sets neither rather than overriding a school's answer with a guess.
+
+Unlike the other sections, the sidebar row is **gated**: `Student Attendance` is
+readable by every student and guardian on the site, and the register is a whole
+cohort's marks on one screen. It is offered to whoever may *write* a mark. See
+`commons.education_extensions.attendance.can_mark`, which the navigation and the
+desk's Awesome Bar ask, and which the browser asks for itself.
 
 ## Permissions
 

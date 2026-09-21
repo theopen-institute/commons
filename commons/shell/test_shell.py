@@ -171,6 +171,7 @@ class TestDefaultWorkspace(TestCase):
 				("page", "leave", "Requests"),
 				("page", "expense", "Requests"),
 				("page", "procurement", "Requests"),
+				("page", "attendance", "Teaching"),
 			],
 		)
 
@@ -193,7 +194,7 @@ class TestDefaultWorkspace(TestCase):
 			rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["announcements", "statement", "leave", "expense", "procurement"],
+			["announcements", "statement", "leave", "expense", "procurement", "attendance"],
 		)
 
 
@@ -222,7 +223,8 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		with_documents(self, [], [], absent=self.ABSENT)
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
-			[row["key"] for row in rows], ["announcements", "Employee", "statement", "procurement"]
+			[row["key"] for row in rows],
+			["announcements", "Employee", "statement", "procurement", "attendance"],
 		)
 
 	def test_a_configured_row_naming_one_is_dropped(self):
@@ -262,7 +264,7 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["announcements", "Employee", "statement", "leave", "expense", "procurement"],
+			["announcements", "Employee", "statement", "leave", "expense", "procurement", "attendance"],
 		)
 
 	def test_procurement_goes_with_erpnext_rather_than_with_a_doctype(self):
@@ -279,13 +281,15 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		# answers the two questions separately and so does the code under test.
 		with_documents(self, [], [], absent=("GL Entry",), apps=("frappe", "hrms", "commons"))
 		rows = workspaces.workspaces()[0]["items"]
-		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee", "leave", "expense"])
+		self.assertEqual(
+			[row["key"] for row in rows], ["announcements", "Employee", "leave", "expense", "attendance"]
+		)
 
 	def test_a_site_with_neither_keeps_the_pages_that_need_neither(self):
 		"""Bare Frappe: announcements and whatever self-service is configured."""
 		with_documents(self, [], [], absent=(*self.ABSENT, "GL Entry"), apps=("frappe", "commons"))
 		rows = workspaces.workspaces()[0]["items"]
-		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee"])
+		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee", "attendance"])
 
 
 class TestTheStatementPage(TestCase):
@@ -328,6 +332,65 @@ class TestTheStatementPage(TestCase):
 				item("Staff", page="Account Balance", idx=2),
 			],
 			absent=("GL Entry",),
+		)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual([row["key"] for row in rows], ["announcements"])
+
+
+class TestTheAttendanceRegisterRow(TestCase):
+	"""The register, which can be absent for a third reason again.
+
+	Not a `RequestType` and not `PAGE_AVAILABILITY`'s only entry any more, so it
+	is worth its own class for the same reason the statement has one: the answer
+	comes from a different place, and a different place is a different thing to
+	stop being asked.
+
+	It is deliberately *not* tested here that a student does not get the row.
+	That is `pages.PAGE_ACCESS`, which is a permission question about a person
+	rather than a fact about the site, and the default workspace does not ask it
+	-- the frontend and the Awesome Bar each do. See `commons.search`.
+	"""
+
+	ABSENT = ("Course Schedule", "Student Attendance")
+
+	def setUp(self):
+		with_policies(self, policy("Employee", "Profile", "employee"))
+
+	def test_is_offered_where_the_site_teaches(self):
+		with_documents(self, [], [])
+		rows = workspaces.workspaces()[0]["items"]
+		row = next(row for row in rows if row["key"] == "attendance")
+		# Last, under its own heading, and unnamed like every shipped page.
+		self.assertEqual(row["group"], "Teaching")
+		self.assertIsNone(row["label"])
+		self.assertIsNone(row["icon"])
+		self.assertEqual(rows[-1]["key"], "attendance")
+
+	def test_is_absent_where_it_does_not(self):
+		with_documents(self, [], [], absent=self.ABSENT)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertNotIn("attendance", [row["key"] for row in rows])
+
+	def test_half_an_education_module_is_not_enough(self):
+		"""Either doctype missing takes the row away.
+
+		They arrive together in practice. The register is made of both -- a
+		session and a mark against it -- and a sidebar that offered it on one of
+		them would be offering a page whose first call fails.
+		"""
+		with_documents(self, [], [], absent=("Student Attendance",))
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertNotIn("attendance", [row["key"] for row in rows])
+
+	def test_a_configured_row_naming_it_is_dropped_too(self):
+		with_documents(
+			self,
+			[parent("Staff")],
+			[
+				item("Staff", page="Announcements", idx=1),
+				item("Staff", page="Attendance", idx=2),
+			],
+			absent=self.ABSENT,
 		)
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["announcements"])
