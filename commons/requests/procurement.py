@@ -488,23 +488,36 @@ def _add_procurement_costs(requests: list[dict]) -> None:
 def get_procurement_request_lines(requests: str) -> list[dict]:
 	"""The item lines of several requests at once, for a list of them.
 
-	Not `/api/v2/document/Procurement Request Item`: that endpoint never
-	forwards its `parent` argument to the query builder, so a child table is
-	permission-checked against itself — and a child table has no permissions,
-	so every such read is a 403. The parent names are vetted here with a single
-	`get_list`, which applies the doctype's rules, user permissions and
-	`if_owner`; the lines then follow from names this user has already been
-	allowed to see.
+	One `get_list` on the child table, with `parent_doctype` set. That is what
+	applies the parent's permissions: `frappe.database.query` inner-joins the
+	child to `Procurement Request` and puts the parent's conditions on the join
+	-- role permissions, User Permissions, `if_owner`, and this app's own gate
+	in `commons.safer_permissions`, which is registered against `"*"` and so is
+	consulted here too. A request this user may not read contributes no rows,
+	and nothing in this function decides that.
+
+	Still not `/api/v2/document/Procurement Request Item`, and the reason has
+	not changed: `document_list` never forwards a `parent`, so a child table
+	read there is permission-checked against a doctype that has no permissions
+	and refuses everyone. What changed is that this function used to read the
+	argument the document API drops as a reason to vet the names itself -- with
+	`RequestType.readable` and then a `frappe.get_all`, which is
+	`ignore_permissions=True`. The vetting was correct and it was a second copy
+	of a rule `get_list` already applies, one layer lower.
+
+	What is left is the arithmetic below, which is the reason to be an endpoint
+	at all: `committed_qty` is counted from submitted Material Requests rather
+	than stored, so no list query can ask for it.
 	"""
 	PROCUREMENT.require_available()
-	readable = PROCUREMENT.readable(frappe.parse_json(requests) or [])
-	if not readable:
+	requests = frappe.parse_json(requests) or []
+	if not requests:
 		return []
 
-	lines = frappe.get_all(
+	lines = frappe.get_list(
 		"Procurement Request Item",
 		parent_doctype=PROCUREMENT_REQUEST,
-		filters={"parent": ["in", readable]},
+		filters={"parent": ["in", requests]},
 		fields=[
 			"name",
 			"parent",
@@ -525,7 +538,13 @@ def get_procurement_request_lines(requests: str) -> list[dict]:
 	# `committed_qty` and what is left of each row are counted, not stored, so a
 	# list query cannot ask for them. One grouped read covers every line on the
 	# page -- see `get_committed_qty_map`.
-	ordered = get_committed_qty_map(readable)
+	#
+	# Scoped to the parents the read above actually returned, not to the names
+	# the caller asked about: the tally is raw QB and asks no permission of its
+	# own, so the permission-checked rows are what it is allowed to count. The
+	# lines are handed over as `items` too, since we are holding them -- which
+	# is what that argument is for, and saves the helper a second read.
+	ordered = get_committed_qty_map(sorted({line.parent for line in lines}), items=lines)
 	for line in lines:
 		line.committed_qty = flt(ordered.get(line.name))
 		line.uncommitted_qty = max(flt(line.qty) - line.committed_qty, 0.0)

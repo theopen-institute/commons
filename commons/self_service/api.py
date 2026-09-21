@@ -400,10 +400,24 @@ def get_change_rows(parent: str) -> list[dict]:
 
 	A child table, so `get_list` on the parent cannot bring it back -- and a queue
 	is unreadable without it: the whole content of a request is its diff.
-	`parent_doctype` is what makes this inherit the parent's permissions rather
-	than needing rows of its own.
+
+	`get_list` with `parent_doctype`, which is what applies the request's own
+	permissions to its rows: `frappe.database.query` inner-joins the child to
+	`Record Change Request` and puts the parent's conditions on the join.
+
+	This was a `frappe.get_all`, and the docstring claimed `parent_doctype` was
+	what made it inherit the parent's permissions. It was not -- `get_all` is
+	`ignore_permissions=True`, and the argument only names the parent for the
+	query builder. The read was nevertheless safe, because `_decorate` passes
+	only parents that came back from its own `get_list`; but that made it safe
+	by caller rather than by construction, and this is a module-level function.
+	Now it is neither, and the claim the old docstring made is true.
+
+	The redundant join costs nothing worth counting: `_decorate` already issues
+	one of these per request, so this changes the shape of those queries and not
+	how many there are.
 	"""
-	return frappe.get_all(
+	return frappe.get_list(
 		"Record Change Item",
 		filters={"parent": parent, "parenttype": DOCTYPE},
 		fields=["fieldname", "label", "current_value", "proposed_value"],
@@ -638,6 +652,13 @@ def decide_change(name: str, decision: str, note: str | None = None) -> dict:
 		)
 
 	doc = frappe.get_doc(DOCTYPE, name)
+	# `get_doc` asks no permission. Every branch below does check one -- `write`
+	# for the note, `submit` without a workflow, and `apply_workflow`
+	# read-checks through `get_transitions` -- so nothing was reachable that
+	# should not have been. But that made the safety a property of the order the
+	# branches happen to be in, which is not where a permission check belongs.
+	# Stated once, here, before anything reads the document.
+	doc.check_permission("read")
 
 	if note is not None:
 		# permlevel 1: a user without write access there has the change silently

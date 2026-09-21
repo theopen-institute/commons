@@ -20,7 +20,16 @@ simply opens with the field empty for the requester to pick.
 
 import frappe
 
+from commons.api import session_employee_filters
+
 DEPARTMENT_APPROVER = "Department Approver"
+
+# The requests this app draws an approver picker for, and so the only ones
+# `get_approvers` will answer about. HRMS's query also serves `Shift Request`,
+# which this app has no form for -- and a whitelisted method is reachable
+# without the page that names it, so what it answers for is written down rather
+# than left to whatever a caller puts in `filters`.
+PICKER_REQUESTS = ("Leave Application", "Expense Claim")
 
 
 def installed() -> bool:
@@ -33,6 +42,25 @@ def installed() -> bool:
 	neither.
 	"""
 	return bool(frappe.db.exists("DocType", DEPARTMENT_APPROVER, cache=True))
+
+
+def session_employee_name() -> str | None:
+	"""The caller's own active Employee id, or None.
+
+	A raw read, and narrowly so: it returns the caller's own id and nothing
+	else, so the only thing it can disclose is that somebody has created an
+	Employee row against the caller's own login. That is the same bounded
+	disclosure `api.session_employee_access` and `expense._session_employee_name`
+	make, and it is the right shape here for the reason that one gives -- a
+	permission-checked read answers `None` for a user whose `Employee` access is
+	gated, which would hand them an empty approver picker on a form they were
+	nonetheless allowed to open.
+
+	`session_employee_filters` rather than a bare `user_id`, so an employee who
+	has left is not still picking approvers: one definition of what makes an
+	Employee row this session's own, shared with every other reader of it.
+	"""
+	return frappe.db.get_value("Employee", session_employee_filters(), "name")
 
 
 @frappe.whitelist()
@@ -50,12 +78,59 @@ def get_approvers(
 	option's description (see `build_for_autosuggest`), so a picker offered
 	"Alice, Art-Head" -- a person's own name read as a list of two things. One
 	column, one name, no comma.
+
+	Whose approvers, though, is this module's answer and not the caller's. HRMS's
+	query asks no permission of any kind: it reads the `employee` named in
+	`filters` with `frappe.get_value`, walks that employee's department tree,
+	and -- when no approver is configured anywhere up it -- throws a message
+	naming the employee and their department. So a caller who could choose the
+	employee could name any id on the site and collect that person's name, their
+	department and their approver chain, including for employees this app's own
+	gate in `commons.safer_permissions` is withholding from them.
+
+	The employee is therefore the session's, never the payload's -- the same rule
+	`RequestType.request_employee` applies to the write, for the same reason, and
+	the reason is the same one that makes a self-service form self-service. A
+	payload naming somebody else is not refused here, only overruled: this is a
+	link query feeding a picker, and a picker that threw would put a permission
+	error under a search box.
+
+	Note that a permission check is *not* what settles this, and cannot be.
+	`procurement.get_procurement_approvers` gates on `create` because its query
+	enumerates every holder of an approving role, which is a directory read that
+	only a right can narrow. This query reveals nothing but the approvers of one
+	employee, and `create` on `Leave Application` is held by every member of
+	staff precisely so they can raise their own -- so gating on it would refuse
+	nobody. Scoping the employee is the whole of the fix.
 	"""
 	# Only ever reached as the link query of a form this app draws for `Leave
 	# Application` or `Expense Claim`, so HRMS is present by the time it is --
 	# but a whitelisted method is reachable without the page that names it.
 	if not installed():
 		return []
+
+	# Which request is being raised arrives in `filters`, not in `doctype`: that
+	# argument is the link field's target, which is always `User`. HRMS reads it
+	# from there too -- see its `filters.get("doctype")` branches.
+	#
+	# Normalised rather than trusted to be a dict. Through `search_link` it
+	# always is, but this endpoint is reachable directly, where a GET's `filters`
+	# arrives as a JSON string and could be a list. Anything that is not a dict
+	# names no request, and no request means no picker.
+	filters = frappe.parse_json(filters) if isinstance(filters, str) else filters
+	if not isinstance(filters, dict) or filters.get("doctype") not in PICKER_REQUESTS:
+		return []
+
+	# The one thing the caller does not get to choose. `None` for a login with no
+	# active employee record, which has no request to raise and so no approver to
+	# pick; the form itself has already said so -- see `EmployeeRequired.vue`.
+	employee = session_employee_name()
+	if not employee:
+		return []
+	filters = {**filters, "employee": employee}
+	# HRMS reads `department` from `filters` too, in preference to the employee's
+	# own, which would put the scoping back in the caller's hands one field over.
+	filters.pop("department", None)
 
 	from hrms.hr.doctype.department_approver.department_approver import (
 		get_approvers as hrms_approvers,

@@ -16,6 +16,7 @@ something HRMS does to expense claims and not to leave:
   charged to and the amount that opens as sanctioned are all settled server-side.
 """
 
+import json
 import logging
 from types import SimpleNamespace
 from unittest import TestCase
@@ -642,6 +643,23 @@ class TestExpensesUnavailable(TestCase):
 				api.decide_expense_claim("HR-EXP-1", "Approved")
 
 	def test_the_expense_rows_of_no_claims_are_no_rows(self):
-		"""`readable` vets the parents, and on this site there are none to vet."""
-		with patch.object(api.frappe, "parse_json", side_effect=lambda value: value):
-			self.assertEqual(api.get_expense_claim_lines(["HR-EXP-1"]), [])
+		"""An empty list rather than a throw, so the page renders an empty state.
+
+		`available()` is what answers here, and it is checked before the read
+		rather than after: `get_list` on `Expense Claim Detail` would ask
+		`get_meta` about a doctype this site does not have.
+
+		This used to be `readable`'s answer -- it checked availability on the
+		way to vetting the parent names -- and the vetting has since moved into
+		the framework, where `get_list` with `parent_doctype` applies the
+		parent's permissions. What had to stay behind was this shape: empty, not
+		a refusal.
+
+		The argument is a JSON string because that is what the endpoint's
+		annotation says and what `frappe.parse_json` is there to undo. An
+		earlier version of this test passed a Python list and patched
+		`parse_json` out, which `frappe.utils.typing_validations` rejected
+		before the body ever ran -- so it asserted nothing for as long as it has
+		been here.
+		"""
+		self.assertEqual(api.get_expense_claim_lines(json.dumps(["HR-EXP-1"])), [])

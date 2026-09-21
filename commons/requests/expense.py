@@ -479,23 +479,42 @@ def _expense_row(row: dict, context: frappe._dict) -> dict:
 def get_expense_claim_lines(claims: str) -> list[dict]:
 	"""The expense rows of several claims at once, for a list of them.
 
-	The parent names are vetted by `RequestType.readable`, whose docstring says
-	why this is not a child-table read over REST; the rows then follow from names
-	this user has already been allowed to see.
+	One `get_list` on the child table, with `parent_doctype` set. That is what
+	applies the parent's permissions: `frappe.database.query` inner-joins the
+	child to `Expense Claim` and puts the parent's conditions on the join --
+	role permissions, User Permissions, `if_owner`, and this app's own gate in
+	`commons.safer_permissions`, which is registered against `"*"` and so is
+	consulted here too. A claim this user may not read contributes no rows, and
+	nothing in this function decides that.
+
+	This used to vet the names itself, with `RequestType.readable` and then a
+	`frappe.get_all` -- which is `ignore_permissions=True`, so the vetting was
+	the only thing standing between the caller and every row. It was right, and
+	it was a second copy of a rule the framework already applies. The argument
+	for it was that a child table cannot be read over REST, which is true of
+	`/api/v2/document/<child doctype>` -- `document_list` never forwards a
+	`parent`, so the read is permission-checked against a doctype that has no
+	permissions and refuses everyone. It was never true of `get_list` itself.
 
 	`description` is a Text Editor field, so what comes out of the desk is HTML.
 	It is flattened to text on the way out: nothing on these pages renders markup
 	it was handed, and a description that arrives as text can be rendered as text
-	-- which is the version of this that cannot carry a script.
+	-- which is the version of this that cannot carry a script. That, and the
+	shape of the payload, is the whole of what is left for this endpoint to do.
 	"""
-	readable = EXPENSES.readable(frappe.parse_json(claims) or [])
-	if not readable:
+	# `available()` rather than `require_available()`: this answered with an
+	# empty list on a site without HRMS before the change above, because
+	# `readable` checked availability for it, and a payload shape is not worth
+	# changing while moving a permission check. It is also the guard that keeps
+	# the read below from asking `get_meta` about a doctype that is not here.
+	claims = frappe.parse_json(claims) or []
+	if not claims or not EXPENSES.available():
 		return []
 
-	lines = frappe.get_all(
+	lines = frappe.get_list(
 		EXPENSE_CLAIM_DETAIL,
 		parent_doctype=EXPENSE_CLAIM,
-		filters={"parent": ["in", readable]},
+		filters={"parent": ["in", claims]},
 		fields=LINE_FIELDS,
 		order_by="parent asc, idx asc",
 		limit_page_length=0,
