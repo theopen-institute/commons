@@ -12,6 +12,7 @@
   "column_break_membership",
   "member_type",
   "member_record",
+  "image",
   "contact_details_section",
   "member_email_address",
   "alternate_email_address",
@@ -76,6 +77,18 @@
    "reqd": 1
   },
   {
+   "fieldname": "image",
+   "label": "Photo",
+   "fieldtype": "Attach Image",
+   "fetch_from": "member_record.image",
+   "read_only": 1
+  },
+  {
+   "fieldname": "contact_details_section",
+   "fieldtype": "Section Break",
+   "label": "Contact Details"
+  },
+  {
    "fieldname": "member_email_address",
    "fieldtype": "Data",
    "in_global_search": 1,
@@ -90,10 +103,19 @@
    "options": "Email"
   },
   {
+   "fieldname": "column_break_arpi",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "phone_number",
    "fieldtype": "Data",
    "label": "Phone Number",
    "options": "Phone"
+  },
+  {
+   "fieldname": "public_info_tab",
+   "fieldtype": "Tab Break",
+   "label": "Public Info"
   },
   {
    "fieldname": "public_details_section",
@@ -115,20 +137,6 @@
    "fieldname": "cv",
    "fieldtype": "Attach",
    "label": "CV"
-  },
-  {
-   "fieldname": "public_info_tab",
-   "fieldtype": "Tab Break",
-   "label": "Public Info"
-  },
-  {
-   "fieldname": "contact_details_section",
-   "fieldtype": "Section Break",
-   "label": "Contact Details"
-  },
-  {
-   "fieldname": "column_break_arpi",
-   "fieldtype": "Column Break"
   }
  ],
  "links": [],
@@ -158,5 +166,7 @@
  "sort_order": "DESC",
  "states": [],
  "title_field": "full_name",
- "track_changes": 1
+ "track_changes": 1,
+ "image_field": "image",
+ "allow_rename": 1
 }
