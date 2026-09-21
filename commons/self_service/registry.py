@@ -389,6 +389,34 @@ def owner_value(doctype: str):
 	return parent.name if parent else None
 
 
+def _owner_value_raw(doctype: str):
+	"""`owner_value`, resolved without asking permission. Existence tests only.
+
+	The same answer `owner_value` gives, reached the way `owner_of` reaches
+	things: a raw read that returns one id and never record data, so the only
+	thing it can disclose is that a row exists against the caller's own login.
+	See `record_exists`, its one caller, for why that disclosure is the point
+	rather than a compromise -- and the module docstring for the rule both raw
+	reads here follow.
+
+	One level of chain, which is all `owner_value` resolves either: a policy
+	whose owner chains through a second policy is found by its own
+	`owner_field`, and `session_record` would refuse a parent that is not
+	singular in any case.
+	"""
+	current = policy(doctype)
+	if not current.get("owner_doctype"):
+		return frappe.session.user
+
+	parent = current["owner_doctype"]
+	parent_policy = policy(parent)
+	return frappe.db.get_value(
+		parent,
+		{parent_policy["owner_field"]: frappe.session.user, **(parent_policy.get("filters") or {})},
+		"name",
+	)
+
+
 def session_records(doctype: str, fieldnames: list[str] | None = None, limit: int = 0) -> list:
 	"""The records of `doctype` this session owns and may read.
 
@@ -450,9 +478,19 @@ def record_exists(doctype: str) -> bool:
 	employee marked Left -- reads as absent rather than as forbidden. That is the
 	honest answer: nothing is withholding it from them, it has stopped being
 	theirs.
+
+	The chain is walked rawly too, by `_owner_value_raw` rather than by
+	`owner_value`. That matters for a policy that chains: `owner_value` resolves
+	the owning record through `session_record`, which is permission-checked, so a
+	user withheld the *parent* could not be told that a child row of theirs
+	exists -- and on a site where one role grants read over both doctypes,
+	losing the child's read loses the parent's with it. The answer collapsed to
+	`missing`, which sends the reader to whoever creates records when the person
+	they want is whoever administers permissions. Raw here keeps the promise
+	`api._record_access` makes: the moment a row exists, this says so.
 	"""
 	current = policy(doctype)
-	value = owner_value(doctype)
+	value = _owner_value_raw(doctype)
 	if value is None:
 		return False
 	return bool(frappe.db.exists(doctype, {current["owner_field"]: value, **(current.get("filters") or {})}))
