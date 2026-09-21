@@ -18,10 +18,9 @@ import frappe
 from frappe.utils import flt
 
 from commons.api import session_employee
-from commons.core import workflow as wf
-from commons.core.doc_perms import roles_with_permission
-from commons.requests import approvals
-from commons.requests.approvers import department_head
+from commons.commons_core import workflow as wf
+from commons.commons_core.doc_perms import roles_with_permission
+from commons.requests import approvals, approvers
 from commons.requests.doctype.procurement_request.procurement_request import (
 	DOCTYPE as PROCUREMENT_REQUEST,
 )
@@ -44,6 +43,14 @@ class Procurement(approvals.RequestType):
 	"""
 
 	doctype = PROCUREMENT_REQUEST
+
+	# `Procurement Request` is this app's own doctype, so it is here on every
+	# site this app is -- and the section still does not work without ERPNext.
+	# A request names a Company, an Item and a UOM, it is charged to a
+	# Department against a Fiscal Year, it hands over to a Material Request, and
+	# the readout beside it is counted from those. See
+	# `approvals.RequestType.available` and `commons.commons_core.apps`.
+	requires_apps = ("erpnext",)
 
 	# The field a transition condition names when the workflow routes a request
 	# to one *person* rather than to a role -- see `procurement_workflow`, which
@@ -100,7 +107,15 @@ def get_procurement_permissions() -> dict:
 	`workflow` does ride along, because it is not form state: every page that
 	reads it also reads this, and refreshed one without the other after acting on
 	a request. `None` on a site running no Workflow, which the pages handle.
+
+	Answers rather than throws on a site with no ERPNext, for the reason
+	`approvals.RequestType.permissions` gives: this is what every page asks
+	before it draws anything, and `read: false` is what takes the section off
+	the navigation, the tabs and the badge.
 	"""
+	if not PROCUREMENT.available():
+		return _unavailable_permissions()
+
 	workflow = PROCUREMENT.workflow()
 	can_read = bool(frappe.has_permission(PROCUREMENT_REQUEST, "read"))
 	is_approver = bool(_approver_roles(workflow) & set(frappe.get_roles()))
@@ -113,6 +128,25 @@ def get_procurement_permissions() -> dict:
 		"workflow": wf.describe(workflow) if can_read else None,
 		"workflow_access": workflow_access,
 		"pending_workflow_actions": pending,
+		"approver_query": PROCUREMENT.approver_query,
+		"page_length": PROCUREMENT.page_length,
+	}
+
+
+def _unavailable_permissions() -> dict:
+	"""The same payload with every capability withheld.
+
+	Procurement's permissions are a different shape from leave's and expenses'
+	-- workflow access rather than an approve right -- so it says this for
+	itself rather than borrowing `approvals.RequestType.unavailable`. The two
+	agree on the field that matters: `read` false, and the page is gone.
+	"""
+	return {
+		"read": False,
+		"request": False,
+		"workflow": None,
+		"workflow_access": False,
+		"pending_workflow_actions": 0,
 		"approver_query": PROCUREMENT.approver_query,
 		"page_length": PROCUREMENT.page_length,
 	}
@@ -137,6 +171,7 @@ def get_procurement_request_defaults() -> dict:
 	than guessed at, and Frappe then applies the user's own default or says it
 	cannot decide -- which is better than a form that quietly picked one.
 	"""
+	PROCUREMENT.require_available()
 	frappe.has_permission(PROCUREMENT_REQUEST, "create", throw=True)
 
 	company = _default_company()
@@ -151,7 +186,7 @@ def get_procurement_request_defaults() -> dict:
 		# The department's head, and only the department's head. A request spends
 		# the department's budget, so the requester's own expense approver -- who
 		# signs off their personal claims -- is not an answer here.
-		"approver": department_head(employee.department if employee else None),
+		"approver": approvers.department_head(employee.department if employee else None),
 		"uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
 	}
 
@@ -159,6 +194,7 @@ def get_procurement_request_defaults() -> dict:
 @frappe.whitelist(methods=["POST"])
 def save_procurement_request(doc: str | dict, action: str | None = None) -> dict:
 	"""Insert or edit a request, optionally applying a Workflow action atomically."""
+	PROCUREMENT.require_available()
 	values = frappe.parse_json(doc) or {}
 	if not isinstance(values, dict):
 		frappe.throw(frappe._("A Procurement Request document is required."))
@@ -250,6 +286,7 @@ def _default_company() -> str | None:
 @frappe.whitelist()
 def get_my_procurement_requests() -> list[dict]:
 	"""One entry per request chain, showing the latest readable amendment."""
+	PROCUREMENT.require_available()
 	state_field = PROCUREMENT.state_field(PROCUREMENT.workflow())
 	requests = frappe.get_list(
 		PROCUREMENT_REQUEST,
@@ -298,6 +335,7 @@ def _replace_cancelled_requests(requests: list[dict]) -> list[dict]:
 @frappe.whitelist()
 def get_procurement_request_transitions(requests: str) -> dict[str, list[dict]]:
 	"""Workflow transitions Frappe currently permits for each readable request."""
+	PROCUREMENT.require_available()
 	names = frappe.parse_json(requests) or []
 	workflow = PROCUREMENT.workflow()
 	if not names or not workflow:
@@ -308,6 +346,7 @@ def get_procurement_request_transitions(requests: str) -> dict[str, list[dict]]:
 @frappe.whitelist()
 def get_procurement_workflow_queue(decided: int = 0) -> dict:
 	"""The requests waiting on this user, or the ones they have already decided."""
+	PROCUREMENT.require_available()
 	return _procurement_workflow_queue(bool(frappe.utils.cint(decided)))
 
 
@@ -457,6 +496,7 @@ def get_procurement_request_lines(requests: str) -> list[dict]:
 	`if_owner`; the lines then follow from names this user has already been
 	allowed to see.
 	"""
+	PROCUREMENT.require_available()
 	readable = PROCUREMENT.readable(frappe.parse_json(requests) or [])
 	if not readable:
 		return []
@@ -518,6 +558,7 @@ def get_procurement_approvers(
 	wide door to a directory query. Narrowing it costs nothing: a user who cannot
 	raise a request has no field to fill.
 	"""
+	PROCUREMENT.require_available()
 	frappe.has_permission(PROCUREMENT_REQUEST, "create", throw=True)
 	roles = _roles_that_may_approve()
 	if not roles:
@@ -562,8 +603,15 @@ def _roles_that_may_approve() -> set[str]:
 
 
 def _preferred_approvers(employee: str | None) -> set[str]:
-	"""Who this employee's expenses already go to, and their department's."""
-	if not employee:
+	"""Who this employee's expenses already go to, and their department's.
+
+	A sort order and nothing more, so all of it is skipped on a site without
+	HRMS: `Employee.expense_approver` and the `Department.expense_approvers`
+	table are both HRMS's, and neither exists to read there. The candidate set
+	is unchanged -- it comes from the doctype's own submit permission -- and the
+	picker simply falls back to sorting by name.
+	"""
+	if not employee or not approvers.installed():
 		return set()
 
 	record = frappe.db.get_value("Employee", employee, ["department", "expense_approver"], as_dict=True)

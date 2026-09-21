@@ -12,17 +12,18 @@ to the shell: what belongs in the navigation is a decision about the site, so it
 is held as documents a System Manager can see and change rather than as
 constants in a bundle.
 
-Two documents.
-
-`Commons Settings` is the name over everything -- one Single, one field, read by
-the sidebar header and by the browser tab.
-
 `Commons Workspace` is a named section of the navigation: a title, a mark, and
 the rows under it. A row is either one of the pages this app ships (see
 `pages.py`) or a `Self Service Record`. No page and no record may sit in two
 workspaces, and that is enforced on save: the sidebar has to be able to say
 which workspace the page you are looking at belongs to, and a page in two of
 them has no answer.
+
+The name over all of it is not here. `Commons Settings` used to be, on the
+grounds that the sidebar reads it -- but so do the browser tab and the desk's
+Awesome Bar, and what it holds is a fact about the app rather than about the
+navigation. It is `commons.commons_core.settings` now, and `api.py` puts the two
+answers together for the one caller that needs both at once.
 
 A site that has configured none of this is not a broken site. `workspaces.py`
 falls back to the one workspace this app used to hard-code, built from whatever

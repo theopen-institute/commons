@@ -18,6 +18,7 @@ from frappe import _
 from frappe.query_builder.functions import Sum
 from frappe.utils import flt
 
+from commons.commons_core import apps
 from commons.requests.procurement_workflow import open_request_states
 
 BUDGET = "Department Budget"
@@ -649,6 +650,15 @@ def request_summary(doc, cache=None):
 
 @frappe.whitelist()
 def get_budget_documents(request: str) -> list[dict]:
+	# Everything below counts Material Requests, so on a site with no ERPNext
+	# there is nothing to count rather than something to refuse. The doctype
+	# rather than the app, because it is the whole of what this function reads
+	# -- see `commons.commons_core.apps`. The document hooks in this module need no such
+	# guard: they are registered against `Material Request` and a doctype that is
+	# not here fires nothing.
+	if not apps.has_doctype("Material Request"):
+		return []
+
 	doc = frappe.get_doc("Procurement Request", request)
 	if not can_view_summary(doc):
 		return []

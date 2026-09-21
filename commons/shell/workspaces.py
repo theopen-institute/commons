@@ -20,9 +20,11 @@ default belongs in the frontend, where the build can see the icon class written
 down. See `pages.py`.
 
 *What is not there any more.* A row naming a record type that has since been
-disabled or deleted is dropped, and a workspace left with no rows at all is
-dropped with it: the switcher would otherwise offer somewhere with nothing in
-it, and the landing redirect would have nowhere to land.
+disabled or deleted is dropped, and so is one naming a page whose doctype this
+site does not have -- leave and expenses stand on HRMS, which is optional (see
+`pages.available`). A workspace left with no rows at all is dropped with it: the
+switcher would otherwise offer somewhere with nothing in it, and the landing
+redirect would have nowhere to land.
 
 Not settled here: whether *this user* may open any of it. Every row is sent to
 everyone, and the frontend hides the ones this user has no permission for -- the
@@ -38,6 +40,7 @@ invalidate for no measurable gain.
 import frappe
 
 from commons.self_service import registry
+from commons.shell import pages as page_list
 from commons.shell.pages import DEFAULT_REQUEST_PAGES, PAGES
 
 WORKSPACE = "Commons Workspace"
@@ -132,7 +135,12 @@ def _entry(row) -> dict | None:
 	group = row.item_group or None
 	if row.item_type == "Page":
 		key = PAGES.get(row.page)
-		if not key:
+		# A page nobody configured a key for, or one whose doctype is not on this
+		# site: the `Commons Workspace Item` Select offers all four whatever a
+		# site has installed, so a row naming leave on a site without HRMS is a
+		# saved row that no longer resolves -- the same case as a deleted record
+		# type below, and dropped the same way.
+		if not key or not page_list.available(key):
 			return None
 		return _item("page", key, group, label=row.label or None, icon=row.icon or None)
 
@@ -200,7 +208,7 @@ def _default() -> dict:
 				slug=policy["slug"],
 			)
 		)
-	items += [_item("page", key, REQUESTS_GROUP) for key in DEFAULT_REQUEST_PAGES]
+	items += [_item("page", key, REQUESTS_GROUP) for key in DEFAULT_REQUEST_PAGES if page_list.available(key)]
 	return {
 		"name": None,
 		"title": DEFAULT_TITLE,

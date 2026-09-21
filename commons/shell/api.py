@@ -11,36 +11,18 @@ Whitelisted, and the same answer either way. Nothing here is about the caller:
 the title is the site's name for itself, and the workspaces are what the site
 offers, not what this user may open -- see `workspaces.py` on why permission is
 the frontend's half of the answer.
+
+Only half of it is this module's. The navigation is; the name is the app's own
+setting and is read from `commons.commons_core.settings`, which owns the
+document behind it. They are answered together here because the page needs both
+before it can paint, which is a fact about the endpoint rather than about either
+of them.
 """
 
 import frappe
 
+from commons.commons_core.settings import title
 from commons.shell import workspaces
-
-SETTINGS = "Commons Settings"
-
-# What the sidebar says under the workspace when a site has not named itself.
-# Also the field's own default, so the two agree; this is what answers for a
-# site whose Single has never been saved, where there is no row to read at all.
-DEFAULT_TITLE = "Commons"
-
-
-def title() -> str:
-	"""The name over the navigation, and the browser tab's.
-
-	`Commons Settings` is a Single, so the field is a row in `tabSingles` rather
-	than a column -- between this app being installed and its first migrate
-	there is simply no row, and a site that has never opened the form has no
-	value in it. Both read as unset here rather than as an empty sidebar.
-
-	Read behind the same guard `workspaces.installed` explains: code lands
-	before migrate runs it, and for that one window there is no doctype to read
-	a Single of.
-	"""
-	stored = None
-	if frappe.db.exists("DocType", SETTINGS, cache=True):
-		stored = frappe.db.get_single_value(SETTINGS, "title")
-	return (stored or "").strip() or DEFAULT_TITLE
 
 
 @frappe.whitelist()

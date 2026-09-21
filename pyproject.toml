@@ -18,8 +18,10 @@ build-backend = "flit_core.buildapi"
 # Frappe Cloud uses this to pick a compatible Frappe version when installing the app
 [tool.bench.frappe-dependencies]
 frappe = ">=16.0.0,<17.0.0"
-erpnext = ">=16.0.0,<17.0.0"
-hrms = ">=16.0.0,<17.0.0"
+# ERPNext and HRMS are optional and so are not listed. Procurement needs
+# erpnext>=16.0.0,<17.0.0 and leave and expenses need hrms>=16.0.0,<17.0.0; a
+# site that wants those sections installs them alongside, and a site that does
+# not gets this app without them rather than not at all. See `commons.core.apps`.
 
 # These dependencies are only installed when developer mode is enabled
 [tool.bench.dev-dependencies]

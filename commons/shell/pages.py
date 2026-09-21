@@ -25,6 +25,10 @@ configuration. A workspace row may still override either, and an override is
 held to the icon palette for exactly that reason.
 """
 
+from commons.requests.expense import EXPENSES
+from commons.requests.leave import LEAVE
+from commons.requests.procurement import PROCUREMENT
+
 PAGES: dict[str, str] = {
 	"Announcements": "announcements",
 	"Leave Request": "leave",
@@ -38,3 +42,38 @@ PAGES: dict[str, str] = {
 # raises under another. This is the sidebar this app hard-coded before
 # workspaces were documents, and reproducing it exactly is the point.
 DEFAULT_REQUEST_PAGES: tuple[str, ...] = ("leave", "expense", "procurement")
+
+
+# The request section behind each page, for the pages that have one. The section
+# already knows both things the navigation needs to ask -- what doctype the page
+# stands on, and whether this site has what the section needs at all -- so this
+# points at it rather than restating either.
+#
+# Announcements has no entry: the page is ungated and reads nothing, which is
+# why it is also where bare `/commons` lands.
+PAGE_SECTIONS = {
+	"leave": LEAVE,
+	"expense": EXPENSES,
+	"procurement": PROCUREMENT,
+}
+
+# The doctype whose read permission decides whether a page is worth offering to
+# *this user*, which is a different question from whether the site has it at all
+# -- see `search._page_row`, the one caller.
+PAGE_DOCTYPES: dict[str, str] = {key: section.doctype for key, section in PAGE_SECTIONS.items()}
+
+
+def available(key: str) -> bool:
+	"""Whether this site has what the page behind this row needs.
+
+	The same answer the endpoints behind the page give -- literally the same
+	call, `approvals.RequestType.available` -- asked again here because the two
+	fail differently and both have to be right: an endpoint throws, and a row in
+	the navigation would instead offer somewhere that cannot load. Leave and
+	expenses are absent without HRMS and procurement without ERPNext; neither is
+	spelled out here, because the section says.
+
+	A page with no section behind it is always available.
+	"""
+	section = PAGE_SECTIONS.get(key)
+	return section is None or section.available()

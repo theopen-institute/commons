@@ -13,7 +13,7 @@ declare global {
 const bootTarget = window.website_button_url
 
 const targetCall = useCall<string>({
-  url: '/api/v2/method/commons.core.website_link.get_website_button_url',
+  url: '/api/v2/method/commons.commons_core.website_link.get_website_button_url',
   immediate: bootTarget === undefined,
 })
 
@@ -26,7 +26,7 @@ const targetCall = useCall<string>({
  * Settings -- and `frappe.auth` sends a fresh login through that same function,
  * so a button pointed by moving the home page moves where everyone lands at
  * login too. This setting is read here and by the desk sidebar, and nowhere in
- * the login path. See `commons/core/website_link.py`.
+ * the login path. See `commons/commons_core/website_link.py`.
  */
 export const websiteUrl = computed<string>(
   () => (bootTarget ?? targetCall.data ?? '').trim() || window.location.origin,

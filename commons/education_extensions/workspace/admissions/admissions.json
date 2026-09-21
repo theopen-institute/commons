@@ -1,0 +1,180 @@
+{
+ "charts": [
+  {
+   "chart_name": "Application Rate",
+   "label": "Application Rate"
+  }
+ ],
+ "content": "[{\"type\":\"chart\",\"data\":{\"chart_name\":\"Application Rate\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Open Applications\",\"col\":4}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Financial Aid Applications\",\"col\":4}},{\"type\":\"spacer\",\"data\":{\"col\":4}},{\"type\":\"quick_list\",\"data\":{\"quick_list_name\":\"Student Applicant\",\"col\":4}},{\"type\":\"quick_list\",\"data\":{\"quick_list_name\":\"Financial Aid Application\",\"col\":4}},{\"type\":\"spacer\",\"data\":{\"col\":4}},{\"type\":\"card\",\"data\":{\"card_name\":\"Program Masters\",\"col\":4}},{\"type\":\"card\",\"data\":{\"card_name\":\"Community Masters\",\"col\":4}},{\"type\":\"card\",\"data\":{\"card_name\":\"Configuration\",\"col\":4}}]",
+ "creation": "2022-04-26 20:39:04.749357",
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 1,
+ "icon": "customer",
+ "idx": 0,
+ "label": "Admissions",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Students",
+   "link_count": 0,
+   "link_to": "Student",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Configuration",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Education Settings",
+   "link_count": 0,
+   "link_to": "Education Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Program Masters",
+   "link_count": 4,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Academic Years",
+   "link_count": 0,
+   "link_to": "Academic Year",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Academic Terms",
+   "link_count": 0,
+   "link_to": "Academic Term",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Programs",
+   "link_count": 0,
+   "link_to": "Program",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Courses",
+   "link_count": 0,
+   "link_to": "Course",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Community Masters",
+   "link_count": 3,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Instructors",
+   "link_count": 0,
+   "link_to": "Instructor",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Students",
+   "link_count": 0,
+   "link_to": "Student",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Student Groups",
+   "link_count": 0,
+   "link_to": "Student Group",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2023-01-20 12:59:04.062176",
+ "modified_by": "peter@theopen.institute",
+ "module": "Education Extensions",
+ "name": "Admissions",
+ "owner": "peter@theopen.institute",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [
+  {
+   "document_type": "Student Applicant",
+   "label": "Student Applicant",
+   "quick_list_filter": "{\"workflow_state\":[\"not in\",[\"Admitted\",\"Not selected\"]]}"
+  },
+  {
+   "document_type": "Financial Aid Application",
+   "label": "Financial Aid Application",
+   "quick_list_filter": "{\"docstatus\":[\"=\",\"0\"]}"
+  }
+ ],
+ "restrict_to_domain": "Education",
+ "roles": [
+  {
+   "role": "Faculty"
+  }
+ ],
+ "sequence_id": 2.0,
+ "shortcuts": [
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "format": "{} Open",
+   "label": "Open Applications",
+   "link_to": "Student Applicant",
+   "stats_filter": "{\"workflow_state\":[\"not in\",[\"Admitted\",\"Not selected\",\"Admission Declined\"]]}",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "format": "{} Open",
+   "label": "Financial Aid Applications",
+   "link_to": "Financial Aid Application",
+   "stats_filter": "{\"docstatus\":[\"=\",\"0\"]}",
+   "type": "DocType"
+  }
+ ],
+ "title": "Admissions"
+}

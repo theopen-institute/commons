@@ -48,13 +48,11 @@ import unicodedata
 import frappe
 from frappe.boot import get_tree_view_doctypes
 
-from commons.requests.expense import EXPENSE_CLAIM
-from commons.requests.leave import LEAVE_APPLICATION
-from commons.requests.procurement import PROCUREMENT_REQUEST
+from commons.commons_core import settings
 from commons.self_service import registry
-from commons.shell import api as shell_api
+from commons.shell import pages as page_list
 from commons.shell import workspaces
-from commons.shell.pages import PAGES
+from commons.shell.pages import PAGE_DOCTYPES, PAGES
 
 # Where each shipped page lives, under `hooks.app_home`. The frontend's router
 # is the authority on these (`frontend/src/router.ts`) and this is a second copy
@@ -70,16 +68,6 @@ PAGE_PATHS: dict[str, str] = {
 	"leave": "/commons/requests/leave",
 	"expense": "/commons/requests/expenses",
 	"procurement": "/commons/requests/procurement",
-}
-
-# The doctype whose read permission decides whether a page is worth offering.
-# The three request sections each have one; announcements has none, because the
-# page is ungated -- every user of this app sees the same announcements, which
-# is why it is also where bare `/commons` lands.
-PAGE_DOCTYPES: dict[str, str] = {
-	"leave": LEAVE_APPLICATION,
-	"expense": EXPENSE_CLAIM,
-	"procurement": PROCUREMENT_REQUEST,
 }
 
 # What a page is called when the workspace row carrying it typed no override.
@@ -102,7 +90,7 @@ def awesomebar_results(txt: str) -> list[dict]:
 	if not keywords:
 		return []
 
-	suffix = shell_api.title()
+	suffix = settings.title()
 	found = []
 	for row in _rows():
 		matched = score(keywords, row["label"])
@@ -148,6 +136,14 @@ def _page_row(item: dict) -> dict | None:
 	"""One shipped page, or None if this user has no business being offered it."""
 	path = PAGE_PATHS.get(item["key"])
 	if not path:
+		return None
+
+	# `workspaces` has already dropped the rows whose doctype is not on this
+	# site, so in practice this only guards a caller that built an item some
+	# other way -- but `has_permission` reads the doctype's meta, and asking it
+	# about a doctype that does not exist is how that becomes a 500 rather than
+	# a missing row.
+	if not page_list.available(item["key"]):
 		return None
 
 	doctype = PAGE_DOCTYPES.get(item["key"])

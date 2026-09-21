@@ -1,0 +1,89 @@
+{
+ "charts": [
+  {
+   "chart_name": "Grade Distribution",
+   "label": "Grade Distribution"
+  }
+ ],
+ "content": "[{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Course Grades</span>\",\"col\":12}},{\"type\":\"paragraph\",\"data\":{\"text\":\"Course grades combine a number of different elements to describe an overall level of achievement for a program or module.\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Course Grade\",\"col\":3}},{\"type\":\"chart\",\"data\":{\"chart_name\":\"Grade Distribution\",\"col\":12}},{\"type\":\"card\",\"data\":{\"card_name\":\"Course Grade Masters\",\"col\":4}},{\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
+ "creation": "2022-10-10 10:13:13.683574",
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 1,
+ "icon": "quantity-1",
+ "idx": 0,
+ "label": "Course Grades",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Course Grade Masters",
+   "link_count": 2,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Course Grade Structure",
+   "link_count": 0,
+   "link_to": "Course Grade Structure",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Course Grade Criteria",
+   "link_count": 0,
+   "link_to": "Course Grade Criteria",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Grade Distribution",
+   "link_count": 0,
+   "link_to": "Grade Distribution",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2022-11-28 06:35:30.812136",
+ "modified_by": "peter@theopen.institute",
+ "module": "Education Extensions",
+ "name": "Course Grades",
+ "owner": "peter@theopen.institute",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [
+  {
+   "role": "Faculty"
+  }
+ ],
+ "sequence_id": 4.0,
+ "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Course Grade",
+   "link_to": "Course Grade",
+   "type": "DocType"
+  }
+ ],
+ "title": "Course Grades"
+}

@@ -43,7 +43,7 @@ own options. Neither path has a state name or a role name behind it here.
 
 import frappe
 
-from commons.core import workflow as wf
+from commons.commons_core import workflow as wf
 from commons.self_service import registry
 
 DOCTYPE = "Record Change Request"

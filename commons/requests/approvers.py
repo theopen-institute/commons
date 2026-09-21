@@ -9,9 +9,30 @@ would not have offered or removes one it would.
 It lives with requests rather than at the app root because every line of it is
 about an employee and a department. The app root is for what the session is; a
 department tree is not that.
+
+All of it is optional. The fields and tables read here -- `Department Approver`,
+and the `expense_approvers` table HRMS adds to ERPNext's `Department` -- ship
+with HRMS, which is not in `required_apps`. On a site without it every function
+here answers "nobody" rather than throwing, and the one caller that is not
+itself HRMS-only (procurement's blank form, which pre-fills a department head)
+simply opens with the field empty for the requester to pick.
 """
 
 import frappe
+
+DEPARTMENT_APPROVER = "Department Approver"
+
+
+def installed() -> bool:
+	"""Whether HRMS's approver tables are on this site.
+
+	The doctype rather than the app, and cached, for the reasons
+	`approvals.RequestType.available` gives. One check covers the whole module:
+	`Department Approver` and the `Department.expense_approvers` table that
+	points at it are written by the same `hrms.setup`, so a site has both or
+	neither.
+	"""
+	return bool(frappe.db.exists("DocType", DEPARTMENT_APPROVER, cache=True))
 
 
 @frappe.whitelist()
@@ -30,6 +51,12 @@ def get_approvers(
 	"Alice, Art-Head" -- a person's own name read as a list of two things. One
 	column, one name, no comma.
 	"""
+	# Only ever reached as the link query of a form this app draws for `Leave
+	# Application` or `Expense Claim`, so HRMS is present by the time it is --
+	# but a whitelisted method is reachable without the page that names it.
+	if not installed():
+		return []
+
 	from hrms.hr.doctype.department_approver.department_approver import (
 		get_approvers as hrms_approvers,
 	)
@@ -47,7 +74,7 @@ def department_head(department: str | None) -> str | None:
 	empty table: the caller gets `None` and the form opens blank so the requester
 	picks.
 	"""
-	if not department:
+	if not department or not installed():
 		return None
 	if frappe.db.get_value("Department", department, "disabled"):
 		return None
@@ -72,6 +99,6 @@ def default_expense_approver(employee: frappe._dict | None) -> str | None:
 	"""
 	if not employee:
 		return None
-	if employee.expense_approver:
+	if employee.get("expense_approver"):
 		return employee.expense_approver
 	return department_head(employee.department)

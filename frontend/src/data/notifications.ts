@@ -4,7 +4,7 @@ import { useCall } from 'frappe-ui'
 /**
  * The desk's notification widget, on this app's sidebar.
  *
- * The feed and its unread count come from `commons.core.notifications`, which
+ * The feed and its unread count come from `commons.commons_core.notifications`, which
  * exists because the desk reads the two from different places -- an endpoint
  * for the rows, boot for the count -- and this app has no boot. Marking things
  * read is core's own, unchanged: those endpoints are already scoped to the
@@ -37,7 +37,7 @@ export interface NotificationFeed {
 
 export function useNotificationFeed(limit: MaybeRefOrGetter<number> = 20) {
   const feed = useCall<NotificationFeed, { limit: number }>({
-    url: '/api/v2/method/commons.core.notifications.get_notification_feed',
+    url: '/api/v2/method/commons.commons_core.notifications.get_notification_feed',
     params: () => ({ limit: toValue(limit) }),
     immediate: false,
   })

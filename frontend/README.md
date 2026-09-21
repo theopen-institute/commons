@@ -109,6 +109,27 @@ take all arrive from it; where one does not, the outcomes are read off the
 deciding field's own options. `workflowStyle.ts` is the only place that turns
 the site's styling vocabulary into a colour.
 
+All three are optional, and each is absent for its own reason. `required_apps`
+names nothing at all: leave and expenses are HRMS doctypes end to end, and
+procurement spends against a Company, orders Items in a UOM and hands over to a
+Material Request, so it needs ERPNext. A site running bare Frappe gets this app
+with self-service, announcements, workspaces and the permission gate, and none
+of the three.
+
+Nothing in the browser knows any of that. The permissions endpoint for a section
+this site cannot run answers `read: false`, which is the same answer it gives a
+user who may not read one — and that is what already hides the sidebar row, the
+tabs, the badge and the search bar's "New leave request". The server drops the
+navigation rows too (`shell.pages.available`, which asks the section rather than
+restating it), so the desk's Awesome Bar does not offer a page that is not
+there, and every endpoint behind a missing section refuses rather than 500s.
+
+`approvals.RequestType.available` is the one question all of this comes down to,
+and `commons.commons_core.apps` is why it is asked two ways: leave and expenses name a
+doctype, because that doctype is the whole of what they touch, while procurement
+names ERPNext, because its own doctype is this app's and would answer yes on a
+site where nothing about the section works.
+
 ### Leave
 
 Two pages over HRMS's `Leave Application`:

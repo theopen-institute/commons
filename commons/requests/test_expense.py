@@ -29,12 +29,21 @@ from commons.requests import expense as api
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
 
 
+# Every test below is about a site that *has* HRMS, which is the only site
+# these endpoints have anything to say on. Availability is otherwise a database
+# lookup on every call -- see `approvals.RequestType.available` -- and
+# `TestExpensesUnavailable` is where the other answer is pinned.
+_available = patch.object(api.EXPENSES, "available", return_value=True)
+
+
 def setUpModule():
 	_logger.start()
+	_available.start()
 
 
 def tearDownModule():
 	_logger.stop()
+	_available.stop()
 
 
 def approval_status_field(options="Draft\nApproved\nRejected\nCancelled"):
@@ -578,3 +587,61 @@ class TestClaimTypes(TestCase):
 
 	def test_no_company_is_no_answer_rather_than_every_type(self):
 		self.assertEqual(api.claim_types(None), [])
+
+
+class TestExpensesUnavailable(TestCase):
+	"""A site that does not run HRMS, where `Expense Claim` is not a doctype.
+
+	The mirror of `TestLeaveUnavailable`, and it is a mirror because the rule is
+	the shared one -- see `approvals.RequestType.available`. What is pinned here
+	on top of leave's are the two endpoints expenses has and leave does not: the
+	blank form's defaults, which asks a permission question that would otherwise
+	read the missing doctype's meta, and the child-row read, which answers with
+	nothing rather than refusing because a list of no claims has no rows either
+	way.
+	"""
+
+	def setUp(self):
+		self.unavailable = patch.object(api.EXPENSES, "available", return_value=False)
+		self.unavailable.start()
+		self.addCleanup(self.unavailable.stop)
+
+	def test_the_permissions_payload_says_there_is_nothing_here(self):
+		payload = api.get_expense_permissions()
+		self.assertFalse(payload["read"])
+		self.assertFalse(payload["request"])
+		self.assertFalse(payload["approve"])
+		self.assertEqual(payload["decisions"], [])
+		self.assertEqual(payload["pending_approvals"], 0)
+
+	def test_the_queue_refuses(self):
+		with patch.object(api.frappe, "throw", side_effect=ValueError):
+			with self.assertRaises(ValueError):
+				api.get_expense_approval_queue()
+
+	def test_the_blank_form_refuses_before_the_permission_check(self):
+		"""`has_permission` reads the doctype's meta, which is what would throw."""
+		with (
+			patch.object(api.frappe, "has_permission", side_effect=AssertionError),
+			patch.object(api.frappe, "throw", side_effect=ValueError),
+		):
+			with self.assertRaises(ValueError):
+				api.get_expense_claim_defaults()
+
+	def test_raising_one_refuses(self):
+		with patch.object(api.frappe, "throw", side_effect=ValueError):
+			with self.assertRaises(ValueError):
+				api.request_expense_claim({"expenses": []})
+
+	def test_deciding_one_refuses_before_it_reads_the_vocabulary(self):
+		with (
+			patch.object(api.EXPENSES, "workflow", side_effect=AssertionError),
+			patch.object(api.frappe, "throw", side_effect=ValueError),
+		):
+			with self.assertRaises(ValueError):
+				api.decide_expense_claim("HR-EXP-1", "Approved")
+
+	def test_the_expense_rows_of_no_claims_are_no_rows(self):
+		"""`readable` vets the parents, and on this site there are none to vet."""
+		with patch.object(api.frappe, "parse_json", side_effect=lambda value: value):
+			self.assertEqual(api.get_expense_claim_lines(["HR-EXP-1"]), [])

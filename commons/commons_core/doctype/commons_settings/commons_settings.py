@@ -6,9 +6,9 @@ name, and a name is the site's to choose -- an organisation running this app
 does not necessarily call the thing its staff open "Commons".
 
 The default lives in two places on purpose. Here as the field's default, so the
-form opens filled in rather than blank; and in `commons.shell.api.DEFAULT_TITLE`,
-which is what answers for a site whose Single has never been saved and therefore
-has no row to read at all.
+form opens filled in rather than blank; and in
+`commons.commons_core.settings.DEFAULT_TITLE`, which is what answers for a site
+whose Single has never been saved and therefore has no row to read at all.
 """
 
 from frappe.model.document import Document

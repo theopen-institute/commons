@@ -12,10 +12,31 @@ use_json_request_body = True
 # Apps
 # ------------------
 
-# `Procurement Request` links to Item, UOM, Company and Supplier, and hands over
-# to Material Request, and the self-service registry below points at Employee and
-# writes to it, so the doctypes cannot migrate without ERPNext present.
-required_apps = ["erpnext", "hrms"]
+# Nothing but Frappe. This app uses ERPNext and HRMS where a site runs them and
+# takes the features that need them away where it does not -- see
+# `commons.commons_core.apps`, and `approvals.RequestType.available`, which is the one
+# question every such feature asks.
+#
+# Which features those are: leave and expenses are HRMS doctypes end to end, and
+# procurement spends against a Company, orders Items in a UOM and hands over to
+# a Material Request, so it needs ERPNext. What is left on a bare Frappe site is
+# self-service, announcements, workspaces, the permission gate and the desk
+# additions -- none of which reads another app's doctype.
+#
+# Two things had to change before this could be empty, and both are worth
+# knowing about before it is put back.
+#
+# The doctypes are not the obstacle. Frappe's app sync imports them with
+# `ignore_validate`, so a Link field naming a doctype that is not on the site
+# does not stop migrate; only writing a value into one fails, and a feature that
+# has taken itself away writes none.
+#
+# The fixtures were. A Custom Field naming an absent doctype raises
+# `LinkValidationError`, which `import_fixtures` does not catch and
+# `post_schema_updates` re-raises, so migrate aborts for the whole site. The
+# four this app adds to `Material Request` are asserted from a guarded hook
+# instead -- see `commons.requests.install`.
+required_apps = []
 
 # Where the SPA lives. Every section below is served from one bundle under this
 # prefix, so the route is written once.
@@ -29,15 +50,18 @@ website_route_rules = [
 ]
 
 # Almost nothing is left here, and that is the point. The desk icon ships as a
-# file under `commons/desktop_icon/`, the nine Custom Fields this app adds to
-# core and ERPNext doctypes ship as `commons/fixtures/custom_field.json`, and
-# both are written by Frappe's own sync on install and on every migrate. Neither
+# file under `commons/desktop_icon/`, the four Custom Fields this app adds to
+# Frappe's own doctypes ship as `commons/fixtures/custom_field.json`, and both
+# are written by Frappe's own sync on install and on every migrate. Neither
 # needs a hook, and a hook that re-asserted them would only be a second, quieter
 # copy of the same declaration.
 #
-# What is left are the two things no sync can do: dropping a cache whose key
-# `frappe.clear_cache` does not know about, and getting a changed `page_js` in
-# front of admins whose desks are still holding the last copy of it.
+# What is left are the three things no sync can do: dropping a cache whose key
+# `frappe.clear_cache` does not know about, getting a changed `page_js` in front
+# of admins whose desks are still holding the last copy of it, and writing the
+# four Custom Fields that name another app's doctypes -- which a fixture cannot,
+# because a fixture that cannot resolve breaks migrate for the whole site rather
+# than skipping itself. `commons.requests.install` says the rest.
 #
 # No approval chain, no self-service configuration and no Property Setters. Those
 # are a System Manager's to set up on a new site, and a deploy is not where they
@@ -48,10 +72,12 @@ website_route_rules = [
 after_install = [
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
+	"commons.requests.install.sync_procurement_custom_fields",
 ]
 after_migrate = [
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
+	"commons.requests.install.sync_procurement_custom_fields",
 ]
 
 # Modules are added to `modules.txt` after this app has already been installed
@@ -78,7 +104,7 @@ before_migrate = "commons.install.sync_module_defs"
 # One bundle, loaded after core's own `app_include_js`, so the classes it patches
 # already exist. It holds the "Website" button's target -- see
 # `commons/public/js/website_button.js`, whose server half is
-# `commons/core/website_link.py` -- and the Bikram Sambat readout that
+# `commons/commons_core/website_link.py` -- and the Bikram Sambat readout that
 # `commons/public/js/bikram_sambat/` puts on Date and Datetime fields, which
 # draws itself only on sites whose country is Nepal.
 app_include_js = "commons.bundle.js"
@@ -247,11 +273,11 @@ doc_events = {
 	# Who lands where is cached per user, and both ends of the rule can move it:
 	# a Role's home page or priority, and a User's own list of roles.
 	"Role": {
-		"on_update": "commons.core.home_page.clear_cache",
-		"on_trash": "commons.core.home_page.clear_cache",
+		"on_update": "commons.commons_core.home_page.clear_cache",
+		"on_trash": "commons.commons_core.home_page.clear_cache",
 	},
 	"User": {
-		"on_update": "commons.core.home_page.clear_user_cache",
+		"on_update": "commons.commons_core.home_page.clear_user_cache",
 	},
 	"Material Request": {
 		"validate": "commons.requests.budget.validate_material_request",
@@ -334,11 +360,11 @@ ignore_links_on_delete = ["Record Change Request"]
 # Request Events
 # ----------------
 # Core picks the home page from whichever of the user's roles the database
-# happened to return first -- see `commons/core/home_page.py`. That
+# happened to return first -- see `commons/commons_core/home_page.py`. That
 # loop cannot be ordered from outside and the hook core offers runs after it, so
 # the answer is settled here instead, early enough that login, `/` and the desk
 # boot all see it.
-before_request = ["commons.core.home_page.set_home_page_flag"]
+before_request = ["commons.commons_core.home_page.set_home_page_flag"]
 # after_request = ["commons.utils.after_request"]
 
 # Job Events
@@ -407,5 +433,5 @@ page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
 
 # The desk's "Website" button reads its target from the boot, so the sidebar does
 # not have to fetch a setting before it can render. See
-# `commons/core/website_link.py` for why this is not simply the home page.
-extend_bootinfo = "commons.core.website_link.extend_bootinfo"
+# `commons/commons_core/website_link.py` for why this is not simply the home page.
+extend_bootinfo = "commons.commons_core.website_link.extend_bootinfo"

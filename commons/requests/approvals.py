@@ -33,7 +33,8 @@ from commons.api import (
 	session_employee_access,
 	session_employee_filters,
 )
-from commons.core import workflow as wf
+from commons.commons_core import apps
+from commons.commons_core import workflow as wf
 
 # How an outcome reads when no Workflow is styling it. The names are Frappe's
 # Workflow State styles, so a badge or a button is coloured from one vocabulary
@@ -142,6 +143,88 @@ class RequestType:
 
 	page_length = PAGE_LENGTH
 	approver_query = APPROVER_QUERY
+
+	# Apps a section cannot work without, beyond its own doctype being here.
+	# Empty for a section whose doctype is the whole of the answer -- see
+	# `available`.
+	requires_apps: tuple[str, ...] = ()
+
+	# -- whether the site has this section at all ----------------------------
+
+	def available(self) -> bool:
+		"""Whether this site has what the section needs in order to work at all.
+
+		`required_apps` names only Frappe, so every section here is optional and
+		each one is absent for its own reason.
+
+		Leave and expenses are absent when their doctype is: `Leave Application`
+		and `Expense Claim` are HRMS's, and that doctype is the whole of what
+		the section touches.
+
+		Procurement's own doctype is this app's and is therefore always here,
+		so the doctype test would answer yes on a site where nothing about the
+		section works. What it is missing there is ERPNext, which it names in
+		`requires_apps` -- see `commons.commons_core.apps` on why that one is asked
+		about the app and these two about a doctype.
+		"""
+		if not all(apps.installed(app) for app in self.requires_apps):
+			return False
+		return apps.has_doctype(self.doctype)
+
+	def require_available(self) -> None:
+		"""Refuse an endpoint for a section this site does not have.
+
+		Said here rather than left to the `DoesNotExistError` `frappe.get_meta`
+		or a missing table would raise several frames in, so somebody calling one
+		of these directly is told what is actually missing -- the app, where an
+		app is what is missing, because "Procurement Request is not available"
+		would be a puzzle on a site where that doctype is plainly there. The
+		pages never reach this: `permissions` answers first, and a section it
+		says `read: false` for is drawn nowhere.
+		"""
+		if self.available():
+			return
+
+		missing = [app for app in self.requires_apps if not apps.installed(app)]
+		if missing:
+			frappe.throw(
+				frappe._("{0} needs {1}, which is not installed on this site.").format(
+					frappe._(self.doctype), ", ".join(missing)
+				),
+				frappe.DoesNotExistError,
+			)
+		frappe.throw(
+			frappe._("{0} is not available on this site.").format(frappe._(self.doctype)),
+			frappe.DoesNotExistError,
+		)
+
+	def unavailable(self) -> dict:
+		"""The permissions payload for a section this site does not have.
+
+		Every answer false and every list empty -- which is exactly the
+		placeholder the frontend already holds while the real answer is in
+		flight (`section.ts`'s `NONE`), so nothing in the browser has to learn
+		what an uninstalled app is. `read: false` is the whole of it: the sidebar
+		row, the tabs, the badge and the search bar's "New ..." all hang off it.
+
+		The employee fields are left blank rather than looked up. They are read
+		only by a page this answer has just taken away, and two queries to fill
+		in something nobody renders is two queries on every page load of a site
+		that does not have the section.
+		"""
+		return {
+			"read": False,
+			"request": False,
+			"employee_filters": {},
+			"employee_access": "missing",
+			"workflow": None,
+			"approve": False,
+			"pending_approvals": 0,
+			"decisions": [],
+			"page_length": self.page_length,
+			"approver_mandatory": False,
+			"approver_query": self.approver_query,
+		}
 
 	# -- the site's configuration -------------------------------------------
 
@@ -330,6 +413,7 @@ class RequestType:
 		Each row carries the outcomes this user may apply to it and how the row
 		itself reads, so the buttons and the badge are both the server's answer.
 		"""
+		self.require_available()
 		workflow = self.workflow()
 		admin = self.is_admin()
 
@@ -413,7 +497,7 @@ class RequestType:
 		permissions and `if_owner`, and the rows then follow from names this
 		user has already been allowed to see.
 		"""
-		if not names:
+		if not names or not self.available():
 			return []
 		return frappe.get_list(
 			self.doctype,
@@ -452,7 +536,15 @@ class RequestType:
 		queue is unaffected: those rows are labelled server-side by
 		`status_display`, because which outcomes a row accepts is a permission
 		question and has to be.
+
+		Answers rather than throws for a section this site does not have -- see
+		`unavailable`. This is the one endpoint that must: it is what every page
+		asks before it draws anything, and the answer it wants is "you have no
+		such section", not an error.
 		"""
+		if not self.available():
+			return self.unavailable()
+
 		workflow = self.workflow()
 		can_read = bool(frappe.has_permission(self.doctype, "read"))
 		can_approve = self.has_approvals_queue(workflow, can_read)
@@ -476,7 +568,13 @@ class RequestType:
 	# -- raising one ---------------------------------------------------------
 
 	def parse_request(self, doc: str | dict) -> dict:
-		"""The payload, once it is a document of this type and nothing else."""
+		"""The payload, once it is a document of this type and nothing else.
+
+		The availability check sits here because this is the first thing every
+		endpoint that raises one calls, and a section whose doctype is absent has
+		nothing to insert into.
+		"""
+		self.require_available()
 		values = frappe.parse_json(doc) or {}
 		if not isinstance(values, dict):
 			frappe.throw(frappe._("A {0} document is required.").format(self.doctype))
@@ -528,6 +626,7 @@ class RequestType:
 		`expense.decide_expense_claim`, whose sanctioned amounts HRMS then
 		revalidates against the decision they arrived with.
 		"""
+		self.require_available()
 		workflow = self.workflow()
 		offered = [option["value"] for option in self.decision_vocabulary(workflow)]
 		if verdict not in offered:

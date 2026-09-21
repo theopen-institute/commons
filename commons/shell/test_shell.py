@@ -25,7 +25,7 @@ from unittest.mock import patch
 
 import frappe
 
-from commons.shell import api, workspaces
+from commons.shell import workspaces
 from commons.shell.doctype.commons_workspace import commons_workspace as controller
 from commons.shell.doctype.commons_workspace.commons_workspace import CommonsWorkspace
 
@@ -40,6 +40,10 @@ def setUpModule():
 
 def tearDownModule():
 	_logger.stop()
+
+
+# What a site runs, unless a test says otherwise: everything this app can use.
+ALL_APPS = ("frappe", "erpnext", "hrms", "commons")
 
 
 def policy(doctype, label, slug, icon=None, nav_order=0):
@@ -66,14 +70,35 @@ def with_policies(test, *policies):
 	test.enterContext(patch.object(workspaces.registry, "policy", side_effect=lambda key: resolved[key]))
 
 
-def with_documents(test, parents, items, installed=True):
-	"""Stand in for the database with a fixed set of workspaces and their rows."""
-	# The doctype existence check in front of both queries. Patched as a whole
+def with_documents(test, parents, items, installed=True, absent=(), apps=ALL_APPS):
+	"""Stand in for the database with a fixed set of workspaces and their rows.
+
+	Three separate facts about the site, because resolving a row now asks three
+	separate questions and a stand-in that conflated them would pass while the
+	real thing failed.
+
+	`installed` is whether `Commons Workspace` itself is here -- the deploy
+	window `workspaces.installed` exists for. `absent` names other doctypes this
+	site does not have, such as `Leave Application` on a site running no HRMS.
+	`apps` is the site's installed apps, which is what procurement is missing
+	without ERPNext: its own doctype is this app's and is never absent. See
+	`shell.pages.available`, and `commons.commons_core.apps` on why the two are asked
+	differently.
+	"""
+	absent = set(absent)
+
+	# The doctype existence checks in front of the queries. Patched as a whole
 	# `frappe.db`, because site-less there is no connection for the proxy to
 	# hand an attribute back from.
-	test.enterContext(
-		patch.object(workspaces.frappe, "db", SimpleNamespace(exists=lambda *args, **kwargs: installed))
-	)
+	def exists(doctype, name=None, *args, **kwargs):
+		if doctype == "DocType":
+			if name == workspaces.WORKSPACE:
+				return installed
+			return name not in absent
+		return installed
+
+	test.enterContext(patch.object(workspaces.frappe, "db", SimpleNamespace(exists=exists)))
+	test.enterContext(patch.object(workspaces.frappe, "get_installed_apps", return_value=list(apps)))
 
 	def get_all(doctype, **kwargs):
 		rows = parents if doctype == workspaces.WORKSPACE else items
@@ -166,6 +191,92 @@ class TestDefaultWorkspace(TestCase):
 		with patch.object(workspaces.registry, "registered", return_value=[]):
 			rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["announcements", "leave", "expense", "procurement"])
+
+
+class TestPagesWhoseAppIsNotInstalled(TestCase):
+	"""Leave and expenses on a site that does not run HRMS.
+
+	HRMS is not in `required_apps` -- see `hooks.py` -- so `Leave Application`
+	and `Expense Claim` may simply not be doctypes here. A workspace row naming
+	one is then a saved row that no longer resolves, the same case as a record
+	type somebody deleted, and it is dropped the same way: the sidebar has to
+	agree with the endpoints behind the pages, which refuse
+	(`approvals.RequestType.available`), and with the desk's Awesome Bar, which
+	reads these same rows.
+
+	The `Commons Workspace Item` Select goes on offering all four pages whatever
+	a site has installed, which is why this is settled when the rows are read
+	rather than when they are saved.
+	"""
+
+	ABSENT = ("Leave Application", "Expense Claim")
+
+	def setUp(self):
+		with_policies(self, policy("Employee", "Profile", "employee"))
+
+	def test_the_default_workspace_keeps_only_the_sections_that_are_here(self):
+		with_documents(self, [], [], absent=self.ABSENT)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee", "procurement"])
+
+	def test_a_configured_row_naming_one_is_dropped(self):
+		with_documents(
+			self,
+			[parent("Staff")],
+			[
+				item("Staff", page="Announcements", idx=1),
+				item("Staff", page="Leave Request", group="Requests", idx=2),
+				item("Staff", page="Procurement", group="Requests", idx=3),
+			],
+			absent=self.ABSENT,
+		)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual([row["key"] for row in rows], ["announcements", "procurement"])
+
+	def test_a_workspace_left_holding_nothing_else_falls_back_to_the_default(self):
+		"""A workspace with no rows is dropped, and with it the last one is.
+
+		The switcher would otherwise offer somewhere empty and the landing
+		redirect would have nowhere to land -- so `workspaces()` answers with the
+		default, exactly as it does for a site that has configured none.
+		"""
+		with_documents(
+			self,
+			[parent("Time Off")],
+			[item("Time Off", page="Leave Request", idx=1)],
+			absent=self.ABSENT,
+		)
+		found = workspaces.workspaces()
+		self.assertEqual(len(found), 1)
+		self.assertIsNone(found[0]["name"])
+
+	def test_a_site_that_has_hrms_keeps_both(self):
+		"""The same rows, on the site the assertions above are the contrast to."""
+		with_documents(self, [], [])
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual(
+			[row["key"] for row in rows],
+			["announcements", "Employee", "leave", "expense", "procurement"],
+		)
+
+	def test_procurement_goes_with_erpnext_rather_than_with_a_doctype(self):
+		"""`Procurement Request` is this app's own, so the doctype is still here.
+
+		Which is exactly why the row cannot be decided by the doctype: without
+		ERPNext there is no Company to spend against, no Item to order and no
+		Material Request to hand over to, and a row offering that page would open
+		one that cannot load. The section names the app instead --
+		`Procurement.requires_apps` -- and this is the navigation agreeing.
+		"""
+		with_documents(self, [], [], apps=("frappe", "hrms", "commons"))
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee", "leave", "expense"])
+
+	def test_a_site_with_neither_keeps_the_pages_that_need_neither(self):
+		"""Bare Frappe: announcements and whatever self-service is configured."""
+		with_documents(self, [], [], absent=self.ABSENT, apps=("frappe", "commons"))
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee"])
 
 
 class TestConfiguredWorkspaces(TestCase):
@@ -329,32 +440,6 @@ class TestWorkspaceRows(TestCase):
 	def test_an_icon_from_the_palette_is_kept(self):
 		workspace(icon="lucide-inbox", rows=[row(1, page="Announcements", icon="lucide-plane")]).validate_rows()
 		self.assertFalse(self.throw.called)
-
-
-class TestTitle(TestCase):
-	"""What the app calls itself, and what answers when nobody has said."""
-
-	def title(self, stored, installed=True):
-		# The whole of `frappe.db`, not two of its methods: site-less there is no
-		# connection for the proxy to hand an attribute back from.
-		database = SimpleNamespace(
-			exists=lambda *args, **kwargs: installed,
-			get_single_value=lambda *args, **kwargs: stored,
-		)
-		with patch.object(api.frappe, "db", database):
-			return api.title()
-
-	def test_the_site_s_own_name_wins(self):
-		self.assertEqual(self.title("  Staff Portal  "), "Staff Portal")
-
-	def test_a_blank_setting_reads_as_unset(self):
-		self.assertEqual(self.title("   "), api.DEFAULT_TITLE)
-
-	def test_a_single_that_has_never_been_saved_reads_as_unset(self):
-		self.assertEqual(self.title(None), api.DEFAULT_TITLE)
-
-	def test_a_site_migrating_into_this_app_has_no_doctype_yet(self):
-		self.assertEqual(self.title("Staff Portal", installed=False), api.DEFAULT_TITLE)
 
 
 class TestBeforeMigrate(TestCase):

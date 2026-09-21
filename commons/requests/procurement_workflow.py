@@ -9,7 +9,7 @@ behind pointing at states and roles that were never going to exist.
 
 Reading the workflow itself, naming its state column and listing its
 transitions are not here: those are the same questions leave and expenses ask,
-and they are answered once in `commons.core.workflow`. What is here
+and they are answered once in `commons.commons_core.workflow`. What is here
 is only what is derived from *this* workflow's particular shape.
 
 The two derivations below both fall back to a conventional answer. A site with
@@ -19,7 +19,7 @@ happens to be shaped differently is read, not corrected. The fallbacks are a
 floor, never an override.
 """
 
-from commons.core import workflow as wf
+from commons.commons_core import workflow as wf
 
 # Spelled out rather than imported from the controller: `budget` reads this
 # module and the controller reads `budget`, so importing it here would close a

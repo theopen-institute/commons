@@ -26,16 +26,34 @@ class TestSessionEmployeeAccess(TestCase):
 		self.session.start()
 		self.addCleanup(self.session.stop)
 
-	def access(self, can_read, readable, exists):
-		"""`session_employee_access` over a site that answers these three ways."""
+	def access(self, can_read, readable, exists, employee_doctype=True):
+		"""`session_employee_access` over a site that answers these three ways.
+
+		Four, with `employee_doctype`. `Employee` is ERPNext's and ERPNext is
+		optional, so "is there a doctype to hold a record at all" is a separate
+		question from "is there a record" -- and it is a separate call, on the
+		same `frappe.db.exists`, which is why the stand-in answers by argument
+		rather than with one value for both.
+		"""
 		with (
 			patch.object(api.frappe, "has_permission", return_value=can_read),
 			patch.object(api.frappe, "get_list", return_value=readable),
 			# `frappe.db` is a Local proxy with no site behind it here, so the
 			# attribute is replaced rather than patched into.
-			patch.object(api.frappe, "db", SimpleNamespace(exists=Mock(return_value=exists))),
+			patch.object(api.frappe, "db", SimpleNamespace(exists=self.stub(exists, employee_doctype))),
 		):
 			return api.session_employee_access()
+
+	@staticmethod
+	def stub(row_exists, employee_doctype=True):
+		"""`frappe.db.exists` answering both questions this module asks of it."""
+
+		def exists(doctype, name=None, *args, **kwargs):
+			if doctype == "DocType":
+				return employee_doctype if name == api.EMPLOYEE else True
+			return row_exists
+
+		return Mock(side_effect=exists)
 
 	def test_a_record_the_permission_checked_read_returns_is_visible(self):
 		self.assertEqual(self.access(True, ["HR-EMP-00001"], True), "visible")
@@ -67,7 +85,7 @@ class TestSessionEmployeeAccess(TestCase):
 		record as withheld, when nothing is withholding it. It has stopped being
 		theirs, which is `missing`.
 		"""
-		exists = Mock(return_value=False)
+		exists = self.stub(False)
 		with (
 			patch.object(api.frappe, "has_permission", return_value=True),
 			patch.object(api.frappe, "get_list", return_value=[]) as get_list,
@@ -75,4 +93,27 @@ class TestSessionEmployeeAccess(TestCase):
 		):
 			api.session_employee_access()
 
+		# The last call, not the only one: the doctype test comes first.
 		self.assertEqual(get_list.call_args.kwargs["filters"], exists.call_args.args[1])
+
+	def test_a_site_with_no_employee_doctype_is_missing(self):
+		"""ERPNext is optional, and `Employee` is ERPNext's.
+
+		`missing` rather than a fourth answer, because it is the honest one:
+		nothing is withholding the record. Every caller is a request section, and
+		a section whose app is absent has already taken itself off the page --
+		so nobody is shown this. What it buys is that `commons.api` answers
+		rather than throwing, which is what its own docstring promises.
+		"""
+		self.assertEqual(self.access(True, [], True, employee_doctype=False), "missing")
+
+	def test_the_employee_read_asks_for_no_record_without_the_doctype(self):
+		"""And asks before `has_permission`, which would read the missing meta."""
+		with (
+			patch.object(api.frappe, "has_permission", side_effect=AssertionError),
+			patch.object(api.frappe, "get_list", side_effect=AssertionError),
+			patch.object(
+				api.frappe, "db", SimpleNamespace(exists=self.stub(True, employee_doctype=False))
+			),
+		):
+			self.assertIsNone(api.session_employee(["name"]))

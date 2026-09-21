@@ -8,11 +8,13 @@ handful of ways it can be absent.
 Nothing else. Domain endpoints live with their domain -- everything a person
 raises and waits on an approver for is `commons.requests`, the profile is
 `commons.self_service.api`, and anything that is really about Frappe rather
-than about this app is `commons.core`. If something here stops being an
+than about this app is `commons.commons_core`. If something here stops being an
 answer to "who am I", it belongs in one of those.
 """
 
 import frappe
+
+from commons.commons_core import apps
 
 EMPLOYEE = "Employee"
 
@@ -44,7 +46,16 @@ def session_employee(fieldnames: list[str]) -> frappe._dict | None:
 	one and you may not see it" -- which is fine for a caller that only wants the
 	record and wrong for one that has to explain its absence. `session_employee_access`
 	is that explanation; a page that renders an empty state should ask it.
+
+	`None` too on a site with no ERPNext, where `Employee` is not a doctype at
+	all. That is the third thing "there is no record" now covers, and it needs
+	no fourth answer: every caller is a request section, and a section whose app
+	is missing has already taken itself off the page -- see
+	`approvals.RequestType.available`. What this guard is for is the order of
+	those two checks, since `has_permission` reads the doctype's meta.
 	"""
+	if not apps.has_doctype(EMPLOYEE):
+		return None
 	if not frappe.has_permission(EMPLOYEE, "read"):
 		return None
 	rows = frappe.get_list(
@@ -92,7 +103,12 @@ def session_employee_access() -> str:
 	An employee marked `Left` reads as `missing` rather than `forbidden`, because
 	the filters apply to both halves. That is the honest answer: nothing is
 	withholding the record, it has stopped being theirs.
+
+	So does a site with no ERPNext, where there is no `Employee` doctype to hold
+	one. `missing` is right for the same reason: nothing is withholding it.
 	"""
+	if not apps.has_doctype(EMPLOYEE):
+		return "missing"
 	if frappe.has_permission(EMPLOYEE, "read") and frappe.get_list(
 		EMPLOYEE, filters=session_employee_filters(), pluck="name", limit_page_length=1
 	):

@@ -380,6 +380,9 @@ def get_expense_claim_defaults() -> dict:
 	an empty type list in particular is the site telling the claimant that
 	nothing has been set up to claim against yet.
 	"""
+	# Before the permission check rather than after: `has_permission` reads the
+	# doctype's meta, which on a site without HRMS is what would throw.
+	EXPENSES.require_available()
 	frappe.has_permission(EXPENSE_CLAIM, "create", throw=True)
 
 	employee = session_employee(

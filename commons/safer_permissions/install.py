@@ -6,7 +6,9 @@
 The gate column itself is two Custom Fields, one on each of the tables core keeps
 role permission flags in -- `Custom DocPerm` and `DocPerm`. They are declared in
 `commons/fixtures/custom_field.json` and written by Frappe's own fixture
-sync, so nothing here creates them.
+sync, so nothing here creates them. Both name a Frappe doctype, which is why
+they can stay a fixture at all -- see `commons.requests.install`, which is what
+became of the four that named ERPNext's.
 
 Deliberately not a `Permission Type`. That core extension point registers one
 record per doctype, can only be written during install, migrate or developer

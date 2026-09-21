@@ -1,0 +1,94 @@
+{
+ "charts": [],
+ "content": "[{\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Assesssments</span>\",\"col\":12}},{\"type\":\"paragraph\",\"data\":{\"text\":\"Assessments use a defined standard to evaluate a particular piece of student work (a portfolio, an exam, a practical, etc.)\",\"col\":12}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Assessments To Be Marked\",\"col\":4}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Assessments Needing Resubmission\",\"col\":4}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Assessments Pending Review\",\"col\":4}},{\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Student Reflection\",\"col\":4}},{\"type\":\"spacer\",\"data\":{\"col\":9}},{\"type\":\"card\",\"data\":{\"card_name\":\"Assessment Masters\",\"col\":4}}]",
+ "creation": "2022-09-15 17:08:31.720767",
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 1,
+ "icon": "milestone",
+ "idx": 0,
+ "label": "Assesssments",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Assessment Masters",
+   "link_count": 2,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Assessment Standard",
+   "link_count": 0,
+   "link_to": "Assessment Standard",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Assessment Criteria",
+   "link_count": 0,
+   "link_to": "Assessment Criteria",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2022-12-06 09:42:05.683580",
+ "modified_by": "peter@theopen.institute",
+ "module": "Education Extensions",
+ "name": "Assesssments",
+ "owner": "peter@theopen.institute",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [
+  {
+   "role": "Faculty"
+  }
+ ],
+ "sequence_id": 3.0,
+ "shortcuts": [
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "Assessments Pending Review",
+   "link_to": "Assessment",
+   "stats_filter": "{\"workflow_state\":[\"not in\",[\"Needs Assessment\",\"Waiting on Resubmission\"]],\"assessment_standardization_review\":[\"is\",\"not set\"]}",
+   "type": "DocType"
+  },
+  {
+   "color": "Red",
+   "doc_view": "List",
+   "format": "{}",
+   "label": "Assessments To Be Marked",
+   "link_to": "Assessment",
+   "stats_filter": "{\"workflow_state\":[\"=\",\"Needs Assessment\"]}",
+   "type": "DocType"
+  },
+  {
+   "color": "Red",
+   "doc_view": "List",
+   "format": "{}",
+   "label": "Student Reflection",
+   "link_to": "Student Reflection",
+   "stats_filter": "{\"docstatus\":[\"=\",\"0\"]}",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "format": "{}",
+   "label": "Assessments Needing Resubmission",
+   "link_to": "Assessment",
+   "stats_filter": "{\"workflow_state\":[\"=\",\"Waiting on Resubmission\"]}",
+   "type": "DocType"
+  }
+ ],
+ "title": "Assesssments"
+}

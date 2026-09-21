@@ -17,7 +17,7 @@ def get_context(context: dict) -> dict:
 	if frappe.session.user == "Guest":
 		frappe.throw(frappe._("You need to be logged in to access this page."), frappe.PermissionError)
 
-	from commons.core.website_link import get_website_button_url
+	from commons.commons_core.website_link import get_website_button_url
 	from commons.shell.api import get_shell
 
 	context.no_cache = 1

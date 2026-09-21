@@ -1,11 +1,33 @@
 """Request-list amendment handling without a running site."""
 
+import logging
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
-from commons.core import workflow as wf
+from commons.commons_core import workflow as wf
 from commons.requests import procurement as api
+
+# Every test below is about a site that *has* ERPNext, which is the only site
+# these endpoints have anything to say on. Availability is otherwise an
+# installed-apps lookup on every call -- see `approvals.RequestType.available`
+# -- and `TestProcurementUnavailable` is where the other answer is pinned.
+_available = patch.object(api.PROCUREMENT, "available", return_value=True)
+
+# `frappe._` reaches for the translation cache and, failing that, for a log file
+# neither of which a site-less run has. The messages here are the source strings
+# either way -- see `test_procurement_helpers`, which does the same.
+_logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
+
+
+def setUpModule():
+	_available.start()
+	_logger.start()
+
+
+def tearDownModule():
+	_available.stop()
+	_logger.stop()
 
 
 def request(name, docstatus=0, amended_from=None):
@@ -160,3 +182,72 @@ class TestProcurementAmendments(TestCase):
 		self.assertEqual(row.total_estimated_cost, 70.0)
 		self.assertEqual(row.approver_name, "Ann Approver")
 		self.assertEqual(row.requester_name, "Bob Buyer")
+
+
+class TestProcurementUnavailable(TestCase):
+	"""A site that does not run ERPNext.
+
+	The section's own doctype is still here -- `Procurement Request` is this
+	app's -- which is what makes this different from leave and expenses and why
+	`Procurement.requires_apps` names the app rather than a doctype. What is
+	missing is everything a request is *about*: the Company it is raised in, the
+	Items it orders, the Department Budget it is charged to and the Material
+	Request it becomes.
+
+	The permissions endpoint answers, because every page asks it before drawing
+	anything. Everything else refuses, and says which app is missing rather than
+	claiming a doctype that is plainly there is not.
+	"""
+
+	def setUp(self):
+		# Two patches for one fact, because `require_available` asks twice: once
+		# for the answer and once, when it is no, for which app to name. The
+		# module-level patch above says every site has ERPNext, so the first has
+		# to be overridden rather than merely re-derived from the second.
+		for stand_in in (
+			patch.object(api.PROCUREMENT, "available", return_value=False),
+			patch.object(api.approvals.apps, "installed", side_effect=lambda app: app != "erpnext"),
+		):
+			stand_in.start()
+			self.addCleanup(stand_in.stop)
+
+	def test_the_permissions_payload_says_there_is_nothing_here(self):
+		payload = api.get_procurement_permissions()
+		self.assertFalse(payload["read"])
+		self.assertFalse(payload["request"])
+		self.assertFalse(payload["workflow_access"])
+		self.assertIsNone(payload["workflow"])
+		self.assertEqual(payload["pending_workflow_actions"], 0)
+
+	def test_the_permissions_payload_asks_the_database_nothing(self):
+		with (
+			patch.object(api.PROCUREMENT, "workflow", side_effect=AssertionError),
+			patch.object(api.frappe, "has_permission", side_effect=AssertionError),
+		):
+			api.get_procurement_permissions()
+
+	def test_the_refusal_names_the_missing_app(self):
+		"""'Procurement Request is not available' would be a puzzle here."""
+		with patch.object(api.frappe, "throw", side_effect=ValueError) as throw:
+			with self.assertRaises(ValueError):
+				api.get_my_procurement_requests()
+		self.assertIn("erpnext", throw.call_args.args[0])
+
+	def test_every_other_endpoint_refuses(self):
+		calls = (
+			("defaults", lambda: api.get_procurement_request_defaults()),
+			("save", lambda: api.save_procurement_request({"title": "X"})),
+			("mine", lambda: api.get_my_procurement_requests()),
+			("transitions", lambda: api.get_procurement_request_transitions('["PR-1"]')),
+			("queue", lambda: api.get_procurement_workflow_queue()),
+			("lines", lambda: api.get_procurement_request_lines('["PR-1"]')),
+		)
+		# `get_procurement_approvers` is gated the same way and is deliberately
+		# not here: `frappe.validate_and_sanitize_search_inputs` wraps it and
+		# reaches the database before the body runs, so site-less it cannot be
+		# called at all. Its guard is the same one line as the six above.
+		for label, call in calls:
+			with self.subTest(endpoint=label):
+				with patch.object(api.frappe, "throw", side_effect=ValueError):
+					with self.assertRaises(ValueError):
+						call()

@@ -32,12 +32,21 @@ from commons.requests import leave as api
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
 
 
+# Every test below is about a site that *has* HRMS, which is the only site
+# these endpoints have anything to say on. Availability is otherwise a database
+# lookup on every call -- see `approvals.RequestType.available` -- and
+# `TestLeaveUnavailable` is where the other answer is pinned.
+_available = patch.object(api.LEAVE, "available", return_value=True)
+
+
 def setUpModule():
 	_logger.start()
+	_available.start()
 
 
 def tearDownModule():
 	_logger.stop()
+	_available.stop()
 
 
 def status_field(options="Open\nApproved\nRejected\nCancelled"):
@@ -422,3 +431,64 @@ class TestApprovalsQueueGate(TestCase):
 			patch.object(api.frappe, "get_roles", return_value=["Line Manager"]),
 		):
 			self.assertFalse(api.LEAVE.has_approvals_queue(active, can_read=False))
+
+
+class TestLeaveUnavailable(TestCase):
+	"""A site that does not run HRMS, where `Leave Application` is not a doctype.
+
+	HRMS is not in `required_apps`, so this is a supported site rather than a
+	broken one -- and what it has to do is disappear rather than fail. The
+	permissions endpoint is the one that carries that: `read: false` is what
+	takes the sidebar row, both tabs, the badge and the search bar's "New leave
+	request" off the page, and none of the frontend has to know why.
+
+	Everything else refuses, and refuses *first* -- before any of the calls that
+	would otherwise reach a table that is not there.
+	"""
+
+	def setUp(self):
+		self.unavailable = patch.object(api.LEAVE, "available", return_value=False)
+		self.unavailable.start()
+		self.addCleanup(self.unavailable.stop)
+
+	def test_the_permissions_payload_says_there_is_nothing_here(self):
+		payload = api.get_leave_permissions()
+		self.assertFalse(payload["read"])
+		self.assertFalse(payload["request"])
+		self.assertFalse(payload["approve"])
+		self.assertEqual(payload["decisions"], [])
+		self.assertEqual(payload["pending_approvals"], 0)
+
+	def test_the_permissions_payload_asks_the_database_nothing(self):
+		"""The one endpoint every page load makes, on a site with no such doctype.
+
+		Answered without a workflow lookup, a permission check or an employee
+		read -- all three of which would be spent to fill in fields that
+		`read: false` has already taken off the screen.
+		"""
+		with (
+			patch.object(api.LEAVE, "workflow", side_effect=AssertionError) as workflow,
+			patch.object(api.frappe, "has_permission", side_effect=AssertionError),
+			patch.object(api.approvals, "session_employee_access", side_effect=AssertionError),
+		):
+			api.get_leave_permissions()
+		self.assertFalse(workflow.called)
+
+	def test_the_queue_refuses(self):
+		with patch.object(api.frappe, "throw", side_effect=ValueError):
+			with self.assertRaises(ValueError):
+				api.get_leave_approval_queue()
+
+	def test_raising_one_refuses(self):
+		with patch.object(api.frappe, "throw", side_effect=ValueError):
+			with self.assertRaises(ValueError):
+				api.request_leave({"leave_type": "Casual"})
+
+	def test_deciding_one_refuses_before_it_reads_the_vocabulary(self):
+		"""Before `decision_vocabulary`, which reads the doctype's own meta."""
+		with (
+			patch.object(api.LEAVE, "workflow", side_effect=AssertionError),
+			patch.object(api.frappe, "throw", side_effect=ValueError),
+		):
+			with self.assertRaises(ValueError):
+				api.decide_leave_application("HR-LAP-1", "Approved")
