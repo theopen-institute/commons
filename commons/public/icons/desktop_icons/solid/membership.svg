@@ -1,0 +1,28 @@
+<svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+<!--
+     A membership card: the portrait panel on the left, the two lines of a
+     name and a number on the right. Membership is a standing held on a
+     register rather than an activity, and the card is the object that says
+     someone holds it.
+
+     A bare figure was the obvious draw and the wrong one. Users, Employees,
+     Faculty and Admissions are already figures, and a fifth would have to be
+     told apart from Admissions by its badge alone at the 32px the sidebar
+     renders. Inside the card the same head and shoulders stop being one more
+     person and become the photo on a credential. Two other ideas went the same
+     way: a rosette reads as an award, and a card carrying a star reads as a
+     tier rather than a membership, and its points close up to a blob at 32px.
+
+     The card is landscape where assessments is portrait, which is what keeps
+     the two rectangles apart down at sidebar size.
+
+     Same tile, colour and stroke as students.svg, which says why the desk's
+     container and this app's glyph idiom are both used here.
+-->
+<path d="M38.5714 0H15.4286C6.90761 0 0 6.90761 0 15.4286V38.5714C0 47.0924 6.90761 54 15.4286 54H38.5714C47.0924 54 54 47.0924 54 38.5714V15.4286C54 6.90761 47.0924 0 38.5714 0Z" fill="#184a83"/>
+<path d="M13.5 15.5H40.5C42.2 15.5 43.5 16.8 43.5 18.5V35.5C43.5 37.2 42.2 38.5 40.5 38.5H13.5C11.8 38.5 10.5 37.2 10.5 35.5V18.5C10.5 16.8 11.8 15.5 13.5 15.5Z" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="20.5" cy="24" r="3.25" stroke="#fff" stroke-width="3.5"/>
+<path d="M15.75 33.5C15.75 30.9 17.9 29.4 20.5 29.4C23.1 29.4 25.25 30.9 25.25 33.5" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M31 24H38.5" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
+<path d="M31 30.75H35.5" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
+</svg>
