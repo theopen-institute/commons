@@ -8,6 +8,28 @@ MEMBER_TYPES = ("Faculty", "Associate Faculty", "Fellow", "Student")
 
 
 class Member(Document):
+	# begin: auto-generated types
+	# This code is auto-generated. Do not modify anything in this block.
+
+	from typing import TYPE_CHECKING
+
+	if TYPE_CHECKING:
+		from frappe.types import DF
+
+		alternate_email_address: DF.Data | None
+		biography: DF.TextEditor | None
+		cv: DF.Attach | None
+		first_name: DF.Data
+		full_name: DF.Data | None
+		hide_from_website: DF.Check
+		last_name: DF.Data | None
+		member_email_address: DF.Data | None
+		member_record: DF.DynamicLink
+		member_type: DF.Link
+		middle_name: DF.Data | None
+		phone_number: DF.Data | None
+	# end: auto-generated types
+
 	def validate(self):
 		self.full_name = full_name(self)
 		self.validate_member_type()

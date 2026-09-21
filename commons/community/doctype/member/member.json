@@ -1,9 +1,9 @@
 {
+ "actions": [],
+ "autoname": "field:member_email_address",
+ "creation": "2026-09-21 11:53:07.409456",
  "doctype": "DocType",
- "name": "Member",
- "module": "Community",
  "engine": "InnoDB",
- "autoname": "hash",
  "field_order": [
   "first_name",
   "middle_name",
@@ -12,10 +12,12 @@
   "column_break_membership",
   "member_type",
   "member_record",
-  "column_break_contact",
+  "contact_details_section",
   "member_email_address",
   "alternate_email_address",
+  "column_break_arpi",
   "phone_number",
+  "public_info_tab",
   "public_details_section",
   "hide_from_website",
   "biography",
@@ -24,118 +26,137 @@
  "fields": [
   {
    "fieldname": "first_name",
-   "label": "First Name",
    "fieldtype": "Data",
-   "reqd": 1,
    "in_global_search": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "label": "First Name",
+   "reqd": 1
   },
   {
    "fieldname": "middle_name",
-   "label": "Middle Name",
-   "fieldtype": "Data"
+   "fieldtype": "Data",
+   "label": "Middle Name"
   },
   {
    "fieldname": "last_name",
-   "label": "Last Name",
    "fieldtype": "Data",
    "in_global_search": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "label": "Last Name"
   },
   {
    "fieldname": "full_name",
-   "label": "Full Name",
    "fieldtype": "Data",
-   "read_only": 1,
    "hidden": 1,
-   "no_copy": 1
+   "label": "Full Name",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "column_break_membership",
    "fieldtype": "Column Break"
   },
   {
+   "description": "Faculty, Associate Faculty, Fellow, or Student.",
    "fieldname": "member_type",
-   "label": "Member Type",
    "fieldtype": "Link",
-   "options": "DocType",
-   "reqd": 1,
-   "in_standard_filter": 1,
    "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Member Type",
    "link_filters": "[[\"DocType\", \"name\", \"in\", [\"Faculty\", \"Associate Faculty\", \"Fellow\", \"Student\"]]]",
-   "description": "Faculty, Associate Faculty, Fellow, or Student."
+   "options": "DocType",
+   "reqd": 1
   },
   {
    "fieldname": "member_record",
-   "label": "Member Record",
    "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Member Record",
    "options": "member_type",
-   "reqd": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "column_break_contact",
-   "fieldtype": "Column Break"
+   "reqd": 1
   },
   {
    "fieldname": "member_email_address",
-   "label": "Member Email Address",
    "fieldtype": "Data",
+   "in_global_search": 1,
+   "label": "Member Email Address",
    "options": "Email",
-   "in_global_search": 1
+   "unique": 1
   },
   {
    "fieldname": "alternate_email_address",
-   "label": "Alternate Email Address",
    "fieldtype": "Data",
+   "label": "Alternate Email Address",
    "options": "Email"
   },
   {
    "fieldname": "phone_number",
-   "label": "Phone Number",
    "fieldtype": "Data",
+   "label": "Phone Number",
    "options": "Phone"
   },
   {
    "fieldname": "public_details_section",
-   "label": "Public Details",
    "fieldtype": "Section Break"
   },
   {
-   "fieldname": "hide_from_website",
-   "label": "Hide from Website",
-   "fieldtype": "Check",
    "default": "0",
-   "description": "Keep this member off public listings and pages."
+   "description": "Keep this member off public listings and pages.",
+   "fieldname": "hide_from_website",
+   "fieldtype": "Check",
+   "label": "Hide from Website"
   },
   {
    "fieldname": "biography",
-   "label": "Biography",
-   "fieldtype": "Text Editor"
+   "fieldtype": "Text Editor",
+   "label": "Biography"
   },
   {
    "fieldname": "cv",
-   "label": "CV",
-   "fieldtype": "Attach"
+   "fieldtype": "Attach",
+   "label": "CV"
+  },
+  {
+   "fieldname": "public_info_tab",
+   "fieldtype": "Tab Break",
+   "label": "Public Info"
+  },
+  {
+   "fieldname": "contact_details_section",
+   "fieldtype": "Section Break",
+   "label": "Contact Details"
+  },
+  {
+   "fieldname": "column_break_arpi",
+   "fieldtype": "Column Break"
   }
  ],
+ "links": [],
+ "modified": "2026-09-21 11:56:46.616638",
+ "modified_by": "peter@theopen.institute",
+ "module": "Community",
+ "name": "Member",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
  "permissions": [
   {
-   "role": "System Manager",
-   "read": 1,
-   "write": 1,
    "create": 1,
    "delete": 1,
-   "report": 1,
+   "email": 1,
    "export": 1,
-   "share": 1,
    "print": 1,
-   "email": 1
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
   }
  ],
- "title_field": "full_name",
+ "row_format": "Dynamic",
  "show_title_field_in_link": 1,
- "track_changes": 1,
  "sort_field": "modified",
- "sort_order": "DESC"
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "full_name",
+ "track_changes": 1
 }
