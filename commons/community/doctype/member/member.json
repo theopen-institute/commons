@@ -10,6 +10,7 @@
   "member_id",
   "column_break_membership",
   "member_type",
+  "member_details",
   "contact_details_section",
   "first_name",
   "middle_name",
@@ -55,12 +56,11 @@
   },
   {
    "fieldname": "member_type",
-   "fieldtype": "Link",
+   "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Membership Category",
-   "link_filters": "[[\"DocType\", \"name\", \"in\", [\"Faculty\", \"Associate Faculty\", \"Fellow\", \"Student\"]]]",
-   "options": "DocType",
+   "options": "\nFaculty\nAssociate Faculty\nFellow\nStudent",
    "reqd": 1
   },
   {
@@ -150,11 +150,18 @@
   {
    "fieldname": "section_break_wgbn",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "member_details",
+   "fieldtype": "Dynamic Link",
+   "label": "Membership Details",
+   "options": "member_type",
+   "read_only": 1
   }
  ],
  "image_field": "image",
  "links": [],
- "modified": "2026-09-22 13:00:02.282334",
+ "modified": "2026-09-22 20:03:29.965325",
  "modified_by": "peter@theopen.institute",
  "module": "Community",
  "name": "Member",

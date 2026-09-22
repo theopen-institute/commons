@@ -31,7 +31,8 @@
    "fieldname": "member_id",
    "fieldtype": "Link",
    "label": "Member ID",
-   "options": "Member"
+   "options": "Member",
+   "unique": 1
   }
  ],
  "links": [],
