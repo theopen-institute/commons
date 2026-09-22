@@ -2,13 +2,13 @@ import { ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useCall } from 'frappe-ui'
 
 /**
- * The desk's To Do sidebar widget, on this app's sidebar.
+ * The staff portal's To Do sidebar widget.
  *
- * Both endpoints are the desk widget's own (`frappe/core/todos.py`) rather
- * than anything of this app's. The list, the count and what "mine" means are
- * one question, and a person crossing between the two sidebars all day must
- * not be told two different numbers -- so there is one answer, in Frappe's
- * Core module, and two front ends asking it.
+ * Both endpoints are `commons.commons_core.todos`, which the desk's own copy of
+ * this widget also asks (`commons/public/js/desk_todos.js`). The list, the
+ * count and what "mine" means are one question, and a person crossing between
+ * the two sidebars all day must not be told two different numbers, so there is
+ * one answer and two front ends asking it.
  *
  * What that answer is: open ToDos allocated to you, plus open ToDos you
  * created and never allocated. Not everything you are *permitted* to read --
@@ -73,7 +73,7 @@ watch(todoSort, (value) => localStorage.setItem(SORT_STORAGE_KEY, value))
 
 export function useOpenTodos(sortBy: MaybeRefOrGetter<TodoSort>) {
   const todos = useCall<OpenTodos, { sort_by: TodoSort }>({
-    url: '/api/v2/method/frappe.core.todos.get_open_todos',
+    url: '/api/v2/method/commons.commons_core.todos.get_open_todos',
     params: () => ({ sort_by: toValue(sortBy) }),
     immediate: false,
   })
@@ -87,7 +87,7 @@ export function useOpenTodos(sortBy: MaybeRefOrGetter<TodoSort>) {
 
 export function useCloseTodo() {
   return useCall<{ name: string; count: number }, { name: string }>({
-    url: '/api/v2/method/frappe.core.todos.close_todo',
+    url: '/api/v2/method/commons.commons_core.todos.close_todo',
     method: 'POST',
     immediate: false,
   })

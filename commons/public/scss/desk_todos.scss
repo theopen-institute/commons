@@ -1,0 +1,389 @@
+/**
+ * The desk's To Do widget.
+ *
+ * Every colour is one of core's own custom properties, so the panel follows the
+ * desk into dark mode and into whatever a site's theme does to those tokens. No
+ * frappe SCSS mixin is used and no frappe class is reused: this app's bundle is
+ * compiled on its own, and a selector borrowed from core's notification panel
+ * would break the day core restyles it. Everything here is `commons-todo-*`.
+ *
+ * Sizes and weights match the staff portal's copy of this widget
+ * (`frontend/src/components/AppTodoList.vue`), which is the design the two are
+ * meant to share. 13px at 1.5 for a row's title, 13px at 1.15 for its meta, and
+ * what separates them is colour rather than size.
+ */
+
+/* --------------------------------------------------------------------------
+ * The two rows that open it
+ * ----------------------------------------------------------------------- */
+
+.commons-todo-badge {
+	min-width: 20px;
+	padding: 1px 7px;
+	background-color: var(--surface-gray-2);
+	color: var(--ink-gray-6);
+	font-size: var(--text-sm);
+	line-height: 1.2;
+	text-align: center;
+	border-radius: var(--border-radius-full);
+}
+
+/* The row's anchor clips by default, which would cut the badge off. */
+.commons-todo-sidebar-item .standard-sidebar-item .item-anchor {
+	overflow: visible;
+}
+
+.commons-todo-navbar-icon {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+
+	.commons-todo-badge {
+		position: absolute;
+		top: -4px;
+		/* past the glyph's right edge, so two digits grow outwards rather than
+		   over the icon */
+		left: 60%;
+		min-width: 16px;
+		padding: 0 4px;
+		font-size: var(--text-xs);
+		line-height: 16px;
+	}
+}
+
+/* --------------------------------------------------------------------------
+ * The panel
+ * ----------------------------------------------------------------------- */
+
+.commons-todo-panel {
+	display: flex;
+	flex-direction: column;
+	width: 360px;
+	background-color: var(--surface-modal);
+	overflow: hidden;
+
+	&.hidden {
+		display: none;
+	}
+}
+
+/* Beside the rail, running the full height of the screen. */
+.commons-todo-panel--sidebar {
+	position: absolute;
+	top: 0;
+	left: 100%;
+	height: 100vh;
+	box-shadow: rgba(0, 0, 0, 0.1) 8px 0 8px;
+}
+
+/* Hanging under the navbar icon, capped so it cannot run off the bottom. */
+.commons-todo-panel--navbar {
+	position: absolute;
+	top: calc(100% + 8px);
+	right: 0;
+	max-height: min(32rem, calc(100vh - 80px));
+	border: 1px solid var(--outline-gray-1);
+	border-radius: var(--border-radius-md);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+	z-index: 1030;
+}
+
+.commons-todo-navbar {
+	position: relative;
+}
+
+.commons-todo-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--outline-gray-1);
+}
+
+.commons-todo-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	min-width: 0;
+	font-size: var(--text-base);
+	font-weight: 500;
+	color: var(--ink-gray-8);
+	white-space: nowrap;
+}
+
+.commons-todo-title-count {
+	font-size: var(--text-sm);
+	font-weight: 400;
+	color: var(--ink-gray-5);
+}
+
+.commons-todo-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: auto;
+}
+
+/* A native select wearing the pill the staff portal's Select draws. The chevron
+   is a real sprite icon rather than a background image, so it takes its colour
+   from the text and follows the theme. */
+.commons-todo-sort {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+
+	select {
+		appearance: none;
+		max-width: 160px;
+		border: none;
+		border-radius: var(--border-radius-full);
+		background-color: var(--surface-gray-2);
+		color: var(--ink-gray-8);
+		font-size: var(--text-sm);
+		line-height: 1.5;
+		padding: 3px 26px 3px 10px;
+		cursor: pointer;
+
+		&:hover,
+		&:focus {
+			background-color: var(--surface-gray-3);
+			outline: none;
+		}
+	}
+
+	.icon {
+		position: absolute;
+		right: 8px;
+		pointer-events: none;
+		stroke: var(--ink-gray-5);
+	}
+}
+
+.commons-todo-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: var(--border-radius-md);
+	cursor: pointer;
+
+	.icon {
+		stroke: var(--ink-gray-7);
+	}
+
+	&:hover {
+		background-color: var(--surface-gray-2);
+	}
+}
+
+.commons-todo-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 6px;
+}
+
+.commons-todo-group {
+	padding: 8px 8px 4px;
+	font-size: var(--text-sm);
+	color: var(--ink-gray-5);
+}
+
+.commons-todo-empty {
+	min-height: 220px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+}
+
+.commons-todo-empty-title {
+	font-size: var(--text-base);
+	font-weight: 500;
+	color: var(--ink-gray-7);
+}
+
+.commons-todo-empty-text {
+	margin-top: 4px;
+	font-size: var(--text-base);
+	color: var(--ink-gray-5);
+}
+
+.commons-todo-footer {
+	flex-shrink: 0;
+	display: block;
+	padding: 8px 12px;
+	text-align: center;
+	font-size: var(--text-sm);
+	color: var(--ink-gray-5);
+	border-top: 1px solid var(--outline-gray-1);
+
+	&:hover {
+		text-decoration: none;
+		color: var(--ink-gray-8);
+	}
+}
+
+/* --------------------------------------------------------------------------
+ * A row
+ * ----------------------------------------------------------------------- */
+
+.commons-todo-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 8px;
+	border-radius: var(--border-radius-md);
+	/* keeps rows level whether or not a ToDo carries a colour */
+	border-left: 2px solid transparent;
+
+	&:hover {
+		background-color: var(--surface-gray-2);
+	}
+
+	&.is-closing {
+		opacity: 0.4;
+		pointer-events: none;
+	}
+}
+
+.commons-todo-tick {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	margin-top: 2px;
+	padding: 0;
+	border: 1px solid var(--outline-gray-2);
+	border-radius: var(--border-radius-full);
+	background-color: transparent;
+	cursor: pointer;
+
+	.icon {
+		width: 12px;
+		height: 12px;
+		stroke: var(--ink-gray-5);
+		opacity: 0;
+		transition: opacity 0.15s ease-in-out;
+	}
+
+	&:hover,
+	&:focus-visible {
+		border-color: var(--outline-gray-4);
+
+		.icon {
+			opacity: 1;
+			stroke: var(--ink-gray-8);
+		}
+	}
+}
+
+.commons-todo-link {
+	flex: 1;
+	min-width: 0;
+	color: inherit;
+
+	&:hover {
+		text-decoration: none;
+	}
+}
+
+.commons-todo-text {
+	font-size: var(--text-sm);
+	line-height: 1.5;
+	color: var(--ink-gray-8);
+	/* two lines is enough to recognise a task without one long description
+	   pushing the rest of the list off screen */
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.commons-todo-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 8px;
+	margin-top: 2px;
+	font-size: var(--text-sm);
+	line-height: 1.15;
+	color: var(--ink-gray-5);
+}
+
+/* No width of its own: a long reference takes the line and the rest wraps under
+   it. Capping it is what once produced "Procurement Reque..." with the date
+   stacked beside it. */
+.commons-todo-ref {
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.commons-todo-due.is-overdue {
+	color: var(--ink-red-3);
+}
+
+.commons-todo-priority {
+	display: inline-flex;
+	align-items: center;
+	padding: 0 6px;
+	border-radius: var(--border-radius-full);
+	font-size: var(--text-xs);
+	line-height: 18px;
+	white-space: nowrap;
+
+	&.red {
+		color: var(--ink-red-3);
+		background-color: var(--surface-red-2);
+	}
+	&.amber {
+		color: var(--ink-amber-3);
+		background-color: var(--surface-amber-2);
+	}
+	&.blue {
+		color: var(--ink-blue-3);
+		background-color: var(--surface-blue-2);
+	}
+	&.gray {
+		color: var(--ink-gray-6);
+		background-color: var(--surface-gray-2);
+	}
+}
+
+/* --------------------------------------------------------------------------
+ * Narrow screens
+ * ----------------------------------------------------------------------- */
+
+/**
+ * Below the desk's mobile width the sidebar is `width: 0; overflow: hidden`,
+ * and still clipping at 220px once the drawer is open, because `.expanded`
+ * restores the width but not the overflow. An absolutely positioned panel
+ * inside it is laid out at the right size and then cropped to a sliver: in the
+ * DOM, measurable, and invisible.
+ *
+ * `fixed` is what escapes that, since nothing between here and the root
+ * establishes a containing block for fixed elements. Full screen, and above the
+ * drawer (1020), its overlay (1021) and the sidebar chrome (1022-1023).
+ */
+@media (max-width: 767.98px) {
+	.commons-todo-panel--sidebar,
+	.commons-todo-panel--navbar {
+		position: fixed;
+		inset: 0;
+		width: 100vw;
+		height: 100vh;
+		max-height: none;
+		border: none;
+		border-radius: 0;
+		z-index: 1024;
+	}
+}
