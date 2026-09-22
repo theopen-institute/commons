@@ -348,7 +348,7 @@ class TestTheAttendanceRegisterRow(TestCase):
 	It is deliberately *not* tested here that a student does not get the row.
 	That is `pages.PAGE_ACCESS`, which is a permission question about a person
 	rather than a fact about the site, and the default workspace does not ask it
-	-- the frontend and the Awesome Bar each do. See `commons.search`.
+	-- the frontend and the Awesome Bar each do. See `commons.shell.search`.
 	"""
 
 	ABSENT = ("Course Schedule", "Student Attendance")

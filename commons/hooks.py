@@ -89,7 +89,7 @@ after_migrate = [
 # -- and `Module Def` records are only written at install. Without one, migrate
 # cannot import a doctype that names the module, so this has to run before the
 # doctype sync, not after it.
-before_migrate = "commons.install.sync_module_defs"
+before_migrate = "commons.commons_core.install.sync_module_defs"
 
 # The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
 # Manage Dock on a developer-mode site and press Export to App, and it is written to
@@ -174,9 +174,9 @@ app_include_css = "commons.bundle.css"
 #
 # Two entries, of the two kinds there are. `make_qr_code` belongs to no section
 # and is useful to any template that wants an image -- it lives in
-# `commons/jinja.py`, which is where a helper goes when the section it came from
-# is not part of the answer. It came from the retired NepalERP app, whose own
-# hook is where sites that print QR codes first got the name.
+# `commons/commons_core/jinja.py`, which is where a helper goes when the section
+# it came from is not part of the answer. It came from the retired NepalERP app,
+# whose own hook is where sites that print QR codes first got the name.
 #
 # `party_statement` is the other kind: the statement section's own data function,
 # the same one the SPA calls over HTTP. It is here so the print format at
@@ -193,7 +193,7 @@ app_include_css = "commons.bundle.css"
 # `make_qr_code` reads nothing and so has nothing to check.
 jinja = {
 	"methods": [
-		"commons.jinja.make_qr_code",
+		"commons.commons_core.jinja.make_qr_code",
 		"commons.statement.api.party_statement",
 	],
 }
@@ -201,7 +201,7 @@ jinja = {
 # Installation
 # ------------
 
-# before_install = "commons.install.before_install"
+# before_install = "commons.commons_core.install.before_install"
 
 # Uninstallation
 # ------------
@@ -217,8 +217,8 @@ jinja = {
 
 # before_disable = "commons.uninstall.before_disable"
 # after_disable = "commons.uninstall.after_disable"
-# before_enable = "commons.install.before_enable"
-# after_enable = "commons.install.after_enable"
+# before_enable = "commons.commons_core.install.before_enable"
+# after_enable = "commons.commons_core.install.after_enable"
 
 # Integration Setup
 # ------------------
@@ -257,9 +257,9 @@ jinja = {
 # -----------
 # This app's pages, offered in the desk's own search box. The bar builds its
 # results from `frappe.boot` -- doctypes, reports, workspaces -- so a page under
-# `/commons` is invisible to it without this. See `commons/search.py`, which
-# also explains why it offers pages and not documents.
-awesomebar_search = ["commons.search.awesomebar_results"]
+# `/commons` is invisible to it without this. See `commons/shell/search.py`,
+# which also explains why it offers pages and not documents.
+awesomebar_search = ["commons.shell.search.awesomebar_results"]
 
 # Permissions
 # -----------
@@ -336,7 +336,7 @@ doc_events = {
 # Testing
 # -------
 
-# before_tests = "commons.install.before_tests"
+# before_tests = "commons.commons_core.install.before_tests"
 
 # Extend DocType Class
 # ------------------------------

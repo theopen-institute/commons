@@ -17,6 +17,13 @@ usual one: a template calling `party_statement` is asking this app a question
 about a party, and a template calling `make_qr_code` is only asking for an
 image.
 
+Here rather than at the app root because "belongs to no section" is what this
+module is for, and it is the same test stated the other way round: a helper that
+would make sense in an app with none of this one's sections is one of Frappe's
+own facilities being extended, which is `commons_core`. The name the hook
+exposes is the function's, not the module's, so moving the file changed nothing
+for the print formats already calling it.
+
 `make_qr_code` came from the retired NepalERP app, where it was the whole of
 what that app gave to Jinja. Print formats on live sites call it by that bare
 name, so the name and the return value are both fixed by the templates already

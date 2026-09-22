@@ -41,6 +41,16 @@ The desk builds "Employee List" and "New ToDo" in the browser out of
 `frappe.boot.user.can_read`, `can_search` and `can_create`, which are four
 arrays a page outside `/app` never receives. This sends the same four, so that
 bar can build the same rows.
+
+Why this is part of the shell
+-----------------------------
+It was at the app root, on the grounds that a hook Frappe calls is not any one
+section's. But what it searches is the navigation: every row it offers comes
+from `workspaces.py` and `pages.py`, and what it may offer comes from
+`PAGE_ACCESS` beside them. A search box is a second way into the sidebar rather
+than a thing of its own, so it belongs with the sidebar -- and the dependency
+already ran this way round, with `pages.py` naming `_page_row` as its one
+caller and nothing under `shell/` importing back into here.
 """
 
 import unicodedata

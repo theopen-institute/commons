@@ -17,7 +17,7 @@ import base64
 import io
 from unittest import TestCase
 
-from commons.jinja import make_qr_code
+from commons.commons_core.jinja import make_qr_code
 
 PREFIX = "data:image/png;base64,"
 

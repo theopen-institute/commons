@@ -17,17 +17,35 @@ tables behind the Role Permission Manager. `apps` would: it answers which apps
 and doctypes a site has, which is how every optional section decides whether it
 is here at all.
 
-The second thing is `Commons Settings` and `settings.py` -- what this app calls
-itself on the site that runs it. That is not an extension to Frappe, and it is
-the one exception to the test above: it is a fact about *the app*, and there is
-nowhere better for a fact about the app than the module named after it. It used
-to live with the navigation, which was one of its readers; the browser tab and
-the desk's Awesome Bar are two others.
+`jinja.py` is the newest of them and the plainest. `make_qr_code` is a template
+helper reachable from every print format, letter head and portal page on the
+site, it belongs to no section, and it would make perfect sense in an app that
+had none of this one's -- and the Jinja environment it is added to is Frappe's
+own. It was at the app root, which is where it went when the only thing that
+could be said about it was which section it *wasn't*.
 
-What is deliberately *not* here is what is left at the app root -- `api.py`, the
+The second thing is the two exceptions to the test above. Neither is an
+extension to Frappe; both are facts about *the app*, and there is nowhere better
+for a fact about the app than the module named after it.
+
+`Commons Settings` and `settings.py` are the first -- what this app calls itself
+on the site that runs it. It used to live with the navigation, which was one of
+its readers; the browser tab and the desk's Awesome Bar are two others.
+
+`install.py` is the second: the `before_migrate` hook that registers this app's
+modules with the site, so that a module added to `modules.txt` after the app was
+installed somewhere has a `Module Def` before the doctype sync looks for one.
+Its own docstring argues the move.
+
+Two exceptions is the ceiling. The test above is the only thing standing between
+this module and the place things go when nowhere else is obvious, and it stops
+being a test the third time it is waived -- so the next thing that is neither an
+extension to Frappe nor a fact about the app belongs with a section, or belongs
+in a module of its own.
+
+What is deliberately *not* here is what is left at the app root: `api.py`, the
 session's own identity, which is the one thing every section starts from and
-nothing in here needs -- and `install.py`, which registers this app's modules
-with the site.
+nothing in here needs.
 
 Why the name stutters
 ---------------------

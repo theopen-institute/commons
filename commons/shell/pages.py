@@ -79,7 +79,7 @@ PAGE_AVAILABILITY = {
 
 # The doctype whose read permission decides whether a page is worth offering to
 # *this user*, which is a different question from whether the site has it at all
-# -- see `search._page_row`, the one caller.
+# -- see `shell.search._page_row`, the one caller.
 #
 # `statement` is deliberately absent, and the absence is the point rather than an
 # omission. The doctype behind it is `GL Entry`, whose read permission is an

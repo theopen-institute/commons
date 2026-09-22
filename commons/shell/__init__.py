@@ -30,6 +30,11 @@ falls back to the one workspace this app used to hard-code, built from whatever
 self-service the site has, so an install that never opens the doctype keeps the
 sidebar it already had.
 
+`search.py` is the same navigation read through a search box rather than a
+sidebar -- this app's pages offered in the desk's Awesome Bar, and the desk's
+doctypes offered in this app's. It is here because every row it can offer comes
+from `workspaces.py` and `pages.py`; its own docstring says the rest.
+
 The frontend half is `frontend/src/data/shell.ts`. The split is the same one
 `registry.field_definitions` makes for a form: this side says which rows, in
 what order, under which heading, and what they are called; that side knows what

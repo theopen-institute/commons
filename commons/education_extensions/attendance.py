@@ -2,7 +2,7 @@
 
 Two questions and no data. Whether this site keeps a register at all, and
 whether this reader is one of the people it is for — the sidebar asks both
-before drawing a row, and `commons.search` asks them again before the desk's
+before drawing a row, and `commons.shell.search` asks them again before the desk's
 Awesome Bar offers the same page.
 
 There was a good deal more here. An earlier version of the register assembled

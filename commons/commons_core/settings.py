@@ -4,7 +4,7 @@ The document is `Commons Settings`, a Single with one field, and it lives here
 rather than with the navigation it names because it is a fact about the *app*
 rather than about the sidebar. The sidebar is one reader of it; the browser tab
 is another, and the desk's Awesome Bar labels this app's pages with it
-(`commons.search`). A second setting that had nothing to do with navigation
+(`commons.shell.search`). A second setting that had nothing to do with navigation
 would belong here too, which is the test that settled where it goes.
 
 Reading it is one line and one caveat, so the reader sits beside the document
