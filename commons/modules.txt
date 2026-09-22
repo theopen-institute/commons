@@ -1,3 +1,4 @@
+Auth0
 Commons Core
 Community
 Education Extensions
