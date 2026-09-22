@@ -9,6 +9,9 @@
 */
 :root {
   --sidebar-width: 220px;
+  /* The width the desk shrinks to: `.body-sidebar`'s own `width: 50px`, which
+     with its 8px of padding leaves room for a row's icon and nothing else. */
+  --sidebar-collapsed-width: 50px;
   --sidebar-hover-color: #f3f3f3;
   --sidebar-active-color: rgba(255, 255, 255, 1);
   --sidebar-border-color: #ededed;

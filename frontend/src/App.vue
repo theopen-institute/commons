@@ -35,7 +35,7 @@ import { DesktopShell, FrappeUIProvider } from 'frappe-ui'
 import AppGlobalSearch from '@/components/AppGlobalSearch.vue'
 import AppSearchDialog from '@/components/AppSearchDialog.vue'
 import AppSidebar from '@/components/AppSidebar.vue'
-import { closeSidebar, isMobile, sidebarOpen } from '@/data/sidebar'
+import { closeSidebar, isMobile, sidebarOpen, toggleSidebarCollapsed } from '@/data/sidebar'
 import {
 	canSearchDesk,
 	openGlobalSearch,
@@ -78,6 +78,16 @@ onKeyStroke(['g', 'G'], (event) => {
 	if (!(event.ctrlKey || event.metaKey)) return
 	event.preventDefault()
 	openGlobalSearch()
+})
+
+// The desk's Toggle Sidebar shortcut (`ctrl+/`, registered in its own
+// sidebar.js), for the widget on the sidebar's edge. Ignored below `md`, where
+// there is no narrow column to toggle to -- the drawer's own key is Escape.
+onKeyStroke('/', (event) => {
+	if (!(event.ctrlKey || event.metaKey)) return
+	if (isMobile.value) return
+	event.preventDefault()
+	toggleSidebarCollapsed()
 })
 </script>
 

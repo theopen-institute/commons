@@ -15,13 +15,16 @@
        Two shapes, and a media query rather than a JS breakpoint decides which
        -- so the panel is laid out by the same stylesheet that lays out the
        sidebar it sits beside, and cannot disagree with it. From `md` up it is
-       the desk's bar: 360px, flush against the sidebar's right edge. Below
-       that there is no column to sit beside, so it takes the screen. -->
+       the desk's bar: 360px, flush against the sidebar's right edge -- which
+       moves when the sidebar is collapsed, so the edge is read off the same
+       state the column is drawn from, and moves over the same 300ms. Below
+       `md` there is no column to sit beside, so it takes the screen. -->
 	<Teleport to="body">
 		<div
 			v-if="open"
 			ref="panel"
-			class="fixed inset-0 z-[1040] flex flex-col bg-surface-elevation-2 shadow-[8px_0_8px_rgba(0,0,0,0.1)] md:inset-y-0 md:left-[var(--sidebar-width)] md:right-auto md:w-[360px]"
+			class="fixed inset-0 z-[1040] flex flex-col bg-surface-elevation-2 shadow-[8px_0_8px_rgba(0,0,0,0.1)] transition-[left] duration-300 ease-in-out md:inset-y-0 md:left-[var(--sidebar-current-width)] md:right-auto md:w-[360px]"
+			:style="{ '--sidebar-current-width': sidebarWidth }"
 			role="dialog"
 			:aria-label="label"
 		>
@@ -51,7 +54,7 @@ import { useRoute } from 'vue-router'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
 import { Badge, Button, SidebarItem } from 'frappe-ui'
 import { badgeLabel } from '@/data/sidebarFeeds'
-import { closeSidebar } from '@/data/sidebar'
+import { closeSidebar, sidebarWidth } from '@/data/sidebar'
 
 withDefaults(
 	defineProps<{

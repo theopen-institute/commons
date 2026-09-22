@@ -1,5 +1,5 @@
-import { breakpointsTailwind, useBreakpoints } from '@vueuse/core'
-import { ref, watch } from 'vue'
+import { breakpointsTailwind, useBreakpoints, useStorage } from '@vueuse/core'
+import { computed, ref, watch } from 'vue'
 
 /**
  * The sidebar's mobile state.
@@ -34,3 +34,37 @@ export function closeSidebar() {
 watch(isMobile, (mobile) => {
   if (!mobile) closeSidebar()
 })
+
+/**
+ * The sidebar's desktop state: a full column, or the desk's icon-only rail.
+ *
+ * Stored under the desk's own key, and in the desk's own sense of it -- the
+ * desk writes `sidebar-expanded` from `expand_sidebar`
+ * (frappe/public/js/frappe/ui/sidebar/sidebar.js) as a bare `true`/`false`,
+ * which is what vueuse's boolean serializer reads and writes too. The two
+ * panels are served from one origin (`/app` and `/commons`) and sit in the
+ * same place on the screen, so a person who has narrowed one has said what
+ * they want of the other. Give it a key of its own to split them again.
+ */
+const sidebarExpanded = useStorage('sidebar-expanded', true)
+
+/** Whether the column is shrunk to icons. Only meaningful above `md`. */
+export const sidebarCollapsed = computed({
+  get: () => !sidebarExpanded.value,
+  set: (collapsed) => {
+    sidebarExpanded.value = !collapsed
+  },
+})
+
+export function toggleSidebarCollapsed() {
+  sidebarExpanded.value = !sidebarExpanded.value
+}
+
+/**
+ * What the column currently measures, for the things laid out against its
+ * right edge. A CSS length rather than a number so it stays the token the
+ * sidebar itself is drawn from -- see `--sidebar-collapsed-width` in index.css.
+ */
+export const sidebarWidth = computed(() =>
+  sidebarCollapsed.value ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)',
+)
