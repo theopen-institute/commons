@@ -27,6 +27,7 @@ from unittest.mock import patch
 
 import frappe
 
+from commons import testing
 from commons.requests import approvers
 from commons.requests import expense as expense_api
 from commons.requests import procurement as procurement_api
@@ -40,8 +41,12 @@ LINK_TARGET = "User"
 HRMS_QUERY = "hrms.hr.doctype.department_approver.department_approver.get_approvers"
 
 
+# Two conditions, and they are different facts: there is no site at all, or
+# there is one without HRMS on it. `site_suite` is outermost so a site-less run
+# is told the first rather than the second, which would be a guess.
+@testing.site_suite()
 @unittest.skipUnless(
-	frappe.db.exists("DocType", "Department Approver", cache=True),
+	testing.has_doctype("Department Approver"),
 	"HRMS is not on this site, so there is no approver query to scope.",
 )
 class TestApproversAreScopedToTheSession(unittest.TestCase):
@@ -134,6 +139,7 @@ class TestApproversAreScopedToTheSession(unittest.TestCase):
 		self.assertEqual(handed["employee"], "HR-EMP-MINE")
 
 
+@testing.site_suite()
 class TestChildRowsAreReadThroughGetList(unittest.TestCase):
 	"""That the child-table reads go through the permission-checked query.
 
@@ -167,7 +173,7 @@ class TestChildRowsAreReadThroughGetList(unittest.TestCase):
 		self.assertEqual(reads[0].kwargs.get("parent_doctype"), parent)
 
 	@unittest.skipUnless(
-		frappe.db.exists("DocType", "Procurement Request Item", cache=True),
+		testing.has_doctype("Procurement Request Item"),
 		"Procurement is not set up on this site.",
 	)
 	def test_procurement_lines_are_read_with_the_parents_permissions(self):
@@ -179,7 +185,7 @@ class TestChildRowsAreReadThroughGetList(unittest.TestCase):
 		)
 
 	@unittest.skipUnless(
-		frappe.db.exists("DocType", "Expense Claim Detail", cache=True),
+		testing.has_doctype("Expense Claim Detail"),
 		"HRMS is not on this site.",
 	)
 	def test_expense_lines_are_read_with_the_parents_permissions(self):

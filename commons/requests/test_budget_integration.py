@@ -6,9 +6,11 @@ from unittest.mock import patch
 import frappe
 from frappe.utils import add_days, today
 
+from commons import testing
 from commons.requests import budget
 
 
+@testing.site_suite()
 class TestDepartmentBudget(unittest.TestCase):
 	def setUp(self):
 		frappe.db.savepoint("budget_test")

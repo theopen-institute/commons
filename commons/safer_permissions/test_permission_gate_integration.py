@@ -17,6 +17,7 @@ import unittest
 import frappe
 
 from frappe.utils.fixtures import sync_fixtures
+from commons import testing
 from commons.safer_permissions.permissions import GATE
 
 DOCTYPE = "Branch"
@@ -35,6 +36,7 @@ GATED_USER = "gate-test-gated@example.com"
 OPEN_USER = "gate-test-open@example.com"
 
 
+@testing.site_suite()
 class TestPermissionGate(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):

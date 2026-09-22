@@ -25,6 +25,7 @@ import unittest
 
 import frappe
 
+from commons import testing
 from commons.safer_permissions.permissions import gate_applies, gate_satisfied
 from commons.self_service import api, registry
 
@@ -83,6 +84,7 @@ def satisfy_permission_gate(user: str, employee: str) -> None:
 	frappe.clear_cache(user=user)
 
 
+@testing.site_suite()
 class TestRecordChangeRequest(unittest.TestCase):
 	def setUp(self):
 		frappe.db.savepoint("self_service_test")
@@ -509,6 +511,7 @@ class TestRecordChangeRequest(unittest.TestCase):
 		self.assertIn(name, [row["name"] for row in api.get_change_queue()])
 
 
+@testing.site_suite()
 class TestBankAccountPolicy(unittest.TestCase):
 	"""The registry's second shape: many records per owner, owned through a chain.
 
@@ -726,6 +729,7 @@ class TestBankAccountPolicy(unittest.TestCase):
 		self.assertFalse(permissions["has_record"])
 
 
+@testing.site_suite()
 class TestRequestModes(unittest.TestCase):
 	"""Creating and deleting a record through the same request document.
 
@@ -978,6 +982,7 @@ class TestRequestModes(unittest.TestCase):
 		)
 
 
+@testing.site_suite()
 class TestFreeFormFields(unittest.TestCase):
 	"""A Link field whose target may not exist yet.
 

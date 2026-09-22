@@ -10,6 +10,7 @@ from commons.requests.doctype.procurement_request.procurement_request import (
 	DOCTYPE,
 	make_material_request,
 )
+from commons import testing
 from commons.requests.procurement_workflow import PROCUREMENT_REQUEST
 
 # This suite's own approval chain. Nothing installs one -- a site builds whatever
@@ -113,6 +114,7 @@ WORKFLOW_TRANSITIONS = (
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Currency", "Department", "User", "Item", "UOM"]
 
 
+@testing.site_suite()
 class ProcurementTestCase(IntegrationTestCase):
 	"""Shared fixtures. Not named `Test*`, so it is not collected on its own."""
 
