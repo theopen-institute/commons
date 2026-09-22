@@ -13,6 +13,15 @@ connections treat email as unique within a connection, and a site's own records
 are usually keyed or indexed by it too. So "does this person have an account"
 starts as a question about an address.
 
+It does not end there, because that uniqueness is *within a connection* and not
+across a tenant. An organisation that federates a staff directory has two Auth0
+accounts for the same person -- the one this site made in its database
+connection and the one their Azure AD or Google login created -- with different
+ids, different capabilities, and the same address. So every lookup here is
+narrowed to one connection, this site's unless a caller says otherwise, and
+`main_connection` is what decides which account is in it. `search_by_email` is
+the way to see all of them.
+
 What should be stored afterwards is the `user_id` -- `auth0|65f...` -- and not
 the address. An address can be changed, by the person or by an administrator, on
 either side and without the other being told; an integration that re-derives the
@@ -83,8 +92,25 @@ def get(user_id: str) -> dict | None:
 		raise
 
 
-def find(email: str) -> str | None:
-	"""The id of the account holding this address, or `None`.
+def main_connection(account: dict) -> str | None:
+	"""The connection an account's own identity is in, ignoring linked ones.
+
+	Auth0 puts the primary identity first in `identities` and appends linked
+	ones, and the account's `user_id` is that first identity's. So a database
+	account with a Google login linked into it reads as
+	`Username-Password-Authentication` here, which is correct: it is one account,
+	reached two ways, and its password lives in the database connection.
+
+	Not derived from the `user_id` prefix, which is the *provider* rather than
+	the connection -- `waad` is the provider for a connection an administrator
+	named `OI-Azure-AD`, and comparing the two never matches.
+	"""
+	identities = account.get("identities") or []
+	return identities[0].get("connection") if identities else None
+
+
+def find(email: str, connection: str | None = None) -> str | None:
+	"""The id of the account this site manages for this address, or `None`.
 
 	`users-by-email` rather than a search query: it is the endpoint Auth0
 	documents for exactly this, it is not subject to the search index's eventual
@@ -94,24 +120,38 @@ def find(email: str) -> str | None:
 	which is the grant most likely to be missing on an application set up only
 	to create accounts.
 
-	More than one match is possible in principle: the same address in two
-	connections on the same tenant. The first with an id is taken, because a
-	tenant that grew a second connection needs to say which one it means rather
-	than have this answer differently depending on the order Auth0 replied in.
-	Callers that care should use `search` and look at `identities`.
+	Narrowed to one connection -- this site's, unless a caller names another --
+	because an address is unique *within* a connection and not across a tenant.
+	A tenant with a staff directory federated in has two accounts for the same
+	person: the one it made in its database connection and the one their Azure
+	AD or Google login created. They are different accounts with different ids,
+	and only one of them has a password this site can do anything with.
+
+	Taking whichever Auth0 listed first is what this used to do, and it was
+	wrong in a way that only shows up on the tenants that have both: an
+	enterprise account came back, and asking for a password change ticket
+	against it earned "The user's main connection does not support this
+	operation". Which connection is meant is not something to leave to the order
+	rows come back in.
+
+	`None` where the address exists only in some other connection. That is the
+	honest answer to what this asks -- this site has no account for them -- and
+	a caller that wants every account regardless has `search_by_email`.
 	"""
+	wanted = connection or client.credentials().connection
 	for match in search_by_email(email):
-		if match.get("user_id"):
+		if match.get("user_id") and main_connection(match) == wanted:
 			return match["user_id"]
 	return None
 
 
 def search_by_email(email: str) -> list[dict]:
-	"""Every account holding this address, whole, in Auth0's order.
+	"""Every account holding this address, whole, in Auth0's order, every connection.
 
 	The unreduced answer behind `find`, for the callers that need to see more
 	than an id -- which connection an account is in, whether the address is
-	verified, what is in `app_metadata`.
+	verified, what is in `app_metadata`. This is where to look when `find`
+	answers `None` for somebody who plainly does have a login.
 	"""
 	return client.management("GET", "users-by-email", params={"email": email}) or []
 

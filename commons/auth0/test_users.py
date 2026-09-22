@@ -132,13 +132,31 @@ class Ensure(TestCase):
 		self.assertIn("read:users", str(raised.exception))
 
 
+def account(user_id, *connections):
+	"""One `users-by-email` row. The first connection given is the primary one."""
+	return {
+		"user_id": user_id,
+		"identities": [{"connection": name} for name in connections],
+	}
+
+
+# The two accounts one address really had on the tenant this was built for: a
+# staff directory federated in through Azure AD, and the database account with a
+# Google login linked into it. Auth0 listed the Azure one first.
+AZURE = account("waad|WiL-eB3i2-ReZLsBYwCBUNt2U6HfD6HAh_6fFr8Ck_Y", "OI-Azure-AD")
+DATABASE = account("auth0|5dde985629f9cd0e3203ee55", "Username-Password-Authentication", "google-oauth2")
+
+
 class Find(TestCase):
-	def find(self, matches):
-		with patch.object(users.client, "management", lambda *args, **kwargs: matches):
-			return users.find("a@b.c")
+	def find(self, matches, connection=None):
+		with (
+			patch.object(users.client, "management", lambda *args, **kwargs: matches),
+			patch.object(users.client, "credentials", lambda: FakeCredentials()),
+		):
+			return users.find("a@b.c", connection=connection)
 
 	def test_the_id_of_the_one_match(self):
-		self.assertEqual(self.find([{"user_id": "auth0|65f"}]), "auth0|65f")
+		self.assertEqual(self.find([account("auth0|65f", "Staff")]), "auth0|65f")
 
 	def test_no_match_is_none_rather_than_an_error(self):
 		self.assertIsNone(self.find([]))
@@ -146,6 +164,45 @@ class Find(TestCase):
 	def test_a_null_answer_is_not_an_error(self):
 		"""`management` returns `None` for an empty body."""
 		self.assertIsNone(self.find(None))
+
+	def test_an_account_in_another_connection_is_not_this_site_s(self):
+		"""A federated login is a different account with a different id."""
+		self.assertIsNone(self.find([AZURE], connection="Username-Password-Authentication"))
+
+	def test_the_database_account_wins_over_one_auth0_happens_to_list_first(self):
+		"""The regression: taking Auth0's first row returned the Azure AD account,
+		and asking it for a password change ticket earned a 400 -- "The user's main
+		connection does not support this operation"."""
+		found = self.find([AZURE, DATABASE], connection="Username-Password-Authentication")
+		self.assertEqual(found, "auth0|5dde985629f9cd0e3203ee55")
+
+	def test_a_linked_identity_does_not_move_an_account_out_of_its_connection(self):
+		"""`DATABASE` has Google linked into it; it is still one database account."""
+		self.assertEqual(
+			self.find([DATABASE], connection="Username-Password-Authentication"),
+			"auth0|5dde985629f9cd0e3203ee55",
+		)
+
+	def test_a_linked_identity_does_not_make_an_account_that_connection_s(self):
+		"""Matching on any identity rather than the primary would return it here."""
+		self.assertIsNone(self.find([DATABASE], connection="google-oauth2"))
+
+	def test_the_settings_connection_is_the_default(self):
+		"""`FakeCredentials` is `Staff`, so the database account is not this site's."""
+		self.assertIsNone(self.find([DATABASE]))
+		self.assertEqual(self.find([account("auth0|65f", "Staff")]), "auth0|65f")
+
+
+class MainConnection(TestCase):
+	def test_the_primary_identity_is_the_one_that_counts(self):
+		self.assertEqual(users.main_connection(DATABASE), "Username-Password-Authentication")
+
+	def test_an_account_with_no_identities_belongs_to_nothing(self):
+		self.assertIsNone(users.main_connection({"user_id": "auth0|65f"}))
+
+	def test_the_provider_is_not_the_connection(self):
+		"""`waad` is the provider; the connection is whatever it was named."""
+		self.assertEqual(users.main_connection(AZURE), "OI-Azure-AD")
 
 
 class Get(TestCase):

@@ -95,10 +95,15 @@ def ensure_user(email: str) -> str:
 
 @frappe.whitelist()
 def find_user(email: str) -> str | None:
-	"""The id of the account holding this address, or `None`.
+	"""The id of the account this site manages for this address, or `None`.
 
 	A read, so it makes nothing -- for a page that wants to show whether
 	somebody has an account before offering to create one.
+
+	This site's connection only. An address that exists on the tenant solely
+	through a federated login -- Azure AD, Google -- answers `None` here,
+	because that is a different account and not one this site made or can set a
+	password on. `users.find` says why that is the useful answer.
 	"""
 	_permitted()
 	return users.find(email)
