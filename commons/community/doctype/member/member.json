@@ -1,28 +1,33 @@
 {
  "actions": [],
- "autoname": "field:member_email_address",
+ "allow_rename": 1,
+ "autoname": "format:{member_id}",
  "creation": "2026-09-21 11:53:07.409456",
+ "default_view": "Image",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "member_id",
+  "column_break_membership",
+  "member_type",
+  "contact_details_section",
   "first_name",
   "middle_name",
   "last_name",
-  "full_name",
-  "column_break_membership",
-  "member_type",
-  "member_record",
-  "image",
-  "contact_details_section",
-  "member_email_address",
-  "alternate_email_address",
   "column_break_arpi",
+  "alternate_email_address",
   "phone_number",
+  "image",
   "public_info_tab",
   "public_details_section",
   "hide_from_website",
-  "biography",
-  "cv"
+  "section_break_nqkv",
+  "full_name",
+  "full_name_manual",
+  "column_break_khpa",
+  "cv",
+  "section_break_wgbn",
+  "biography"
  ],
  "fields": [
   {
@@ -30,8 +35,7 @@
    "fieldtype": "Data",
    "in_global_search": 1,
    "in_list_view": 1,
-   "label": "First Name",
-   "reqd": 1
+   "label": "First Name"
   },
   {
    "fieldname": "middle_name",
@@ -46,55 +50,23 @@
    "label": "Last Name"
   },
   {
-   "fieldname": "full_name",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Full Name",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
    "fieldname": "column_break_membership",
    "fieldtype": "Column Break"
   },
   {
-   "description": "Faculty, Associate Faculty, Fellow, or Student.",
    "fieldname": "member_type",
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Member Type",
+   "label": "Membership Category",
    "link_filters": "[[\"DocType\", \"name\", \"in\", [\"Faculty\", \"Associate Faculty\", \"Fellow\", \"Student\"]]]",
    "options": "DocType",
    "reqd": 1
   },
   {
-   "fieldname": "member_record",
-   "fieldtype": "Dynamic Link",
-   "in_list_view": 1,
-   "label": "Member Record",
-   "options": "member_type",
-   "reqd": 1
-  },
-  {
-   "fieldname": "image",
-   "label": "Photo",
-   "fieldtype": "Attach Image",
-   "fetch_from": "member_record.image",
-   "read_only": 1
-  },
-  {
    "fieldname": "contact_details_section",
    "fieldtype": "Section Break",
    "label": "Contact Details"
-  },
-  {
-   "fieldname": "member_email_address",
-   "fieldtype": "Data",
-   "in_global_search": 1,
-   "label": "Member Email Address",
-   "options": "Email",
-   "unique": 1
   },
   {
    "fieldname": "alternate_email_address",
@@ -137,14 +109,56 @@
    "fieldname": "cv",
    "fieldtype": "Attach",
    "label": "CV"
+  },
+  {
+   "fieldname": "member_id",
+   "fieldtype": "Data",
+   "in_global_search": 1,
+   "label": "Member ID",
+   "options": "Email",
+   "reqd": 1,
+   "set_only_once": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "image",
+   "fieldtype": "Attach Image",
+   "hidden": 1,
+   "label": "Image"
+  },
+  {
+   "fieldname": "section_break_nqkv",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_khpa",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "full_name",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Full Name",
+   "options": "doc.preferred_name or doc.generated_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "full_name_manual",
+   "fieldtype": "Data",
+   "label": "Full Name (Manual Override)"
+  },
+  {
+   "fieldname": "section_break_wgbn",
+   "fieldtype": "Section Break"
   }
  ],
+ "image_field": "image",
  "links": [],
- "modified": "2026-09-21 11:56:46.616638",
+ "modified": "2026-09-22 13:00:02.282334",
  "modified_by": "peter@theopen.institute",
  "module": "Community",
  "name": "Member",
- "naming_rule": "By fieldname",
+ "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {
@@ -161,12 +175,9 @@
   }
  ],
  "row_format": "Dynamic",
- "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
  "title_field": "full_name",
- "track_changes": 1,
- "image_field": "image",
- "allow_rename": 1
+ "track_changes": 1
 }

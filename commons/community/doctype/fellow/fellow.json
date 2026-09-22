@@ -1,110 +1,65 @@
 {
+ "actions": [],
+ "autoname": "format:{member_id}",
+ "creation": "2026-09-21 11:16:07.853339",
  "doctype": "DocType",
- "name": "Fellow",
- "module": "Community",
  "engine": "InnoDB",
- "autoname": "field:email_address",
  "field_order": [
-  "first_name",
-  "middle_name",
-  "last_name",
-  "full_name",
-  "email_address",
-  "member",
+  "member_id",
   "column_break_details",
   "start_date",
-  "end_date",
-  "image"
+  "end_date"
  ],
  "fields": [
-  {
-   "fieldname": "first_name",
-   "label": "First Name",
-   "fieldtype": "Data",
-   "reqd": 1,
-   "in_global_search": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "middle_name",
-   "label": "Middle Name",
-   "fieldtype": "Data"
-  },
-  {
-   "fieldname": "last_name",
-   "label": "Last Name",
-   "fieldtype": "Data",
-   "in_global_search": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "full_name",
-   "label": "Full Name",
-   "fieldtype": "Data",
-   "read_only": 1,
-   "hidden": 1,
-   "no_copy": 1
-  },
-  {
-   "fieldname": "email_address",
-   "label": "Email Address",
-   "fieldtype": "Data",
-   "options": "Email",
-   "reqd": 1,
-   "no_copy": 1,
-   "in_global_search": 1,
-   "in_list_view": 1,
-   "description": "Identifies this person across the community. Use Rename to change it."
-  },
-  {
-   "fieldname": "member",
-   "label": "Member",
-   "fieldtype": "Link",
-   "options": "Member",
-   "no_copy": 1,
-   "unique": 1
-  },
   {
    "fieldname": "column_break_details",
    "fieldtype": "Column Break"
   },
   {
    "fieldname": "start_date",
-   "label": "Start Date",
    "fieldtype": "Date",
-   "in_list_view": 1
+   "in_list_view": 1,
+   "label": "Start Date"
   },
   {
+   "description": "Leave empty while the appointment is current.",
    "fieldname": "end_date",
-   "label": "End Date",
    "fieldtype": "Date",
-   "description": "Leave empty while the appointment is current."
+   "label": "End Date"
   },
   {
-   "fieldname": "image",
-   "label": "Photo",
-   "fieldtype": "Attach Image"
+   "fieldname": "member_id",
+   "fieldtype": "Link",
+   "label": "Member ID",
+   "options": "Member"
   }
  ],
+ "links": [],
+ "modified": "2026-09-22 15:09:01.465446",
+ "modified_by": "peter@theopen.institute",
+ "module": "Community",
+ "name": "Fellow",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
  "permissions": [
   {
-   "role": "System Manager",
-   "read": 1,
-   "write": 1,
    "create": 1,
    "delete": 1,
-   "report": 1,
+   "email": 1,
    "export": 1,
-   "share": 1,
    "print": 1,
-   "email": 1
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
   }
  ],
- "title_field": "full_name",
+ "row_format": "Dynamic",
  "show_title_field_in_link": 1,
- "image_field": "image",
- "track_changes": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
- "allow_rename": 1
+ "states": [],
+ "title_field": "member_id",
+ "track_changes": 1
 }
