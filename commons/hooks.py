@@ -172,20 +172,28 @@ app_include_css = "commons.bundle.css"
 
 # What a print format, a letterhead or a web template on this site may call.
 #
-# One entry, and it is the whole reason the printed statement and the one in the
-# browser cannot drift. `party_statement` is the statement section's own data
-# function -- the same one the SPA calls over HTTP -- so the print format at
-# `commons/statement/print/statement.html` asks the app what somebody's balance
-# is rather than working it out again in Jinja. Which way a balance runs, which
-# accounts are left out because they belong to the lending module, how a running
-# balance reconciles with a total: all of that is answered once, in Python, for
-# both.
+# Two entries, of the two kinds there are. `make_qr_code` belongs to no section
+# and is useful to any template that wants an image -- it lives in
+# `commons/jinja.py`, which is where a helper goes when the section it came from
+# is not part of the answer. It came from the retired NepalERP app, whose own
+# hook is where sites that print QR codes first got the name.
 #
-# Exposed by name to every template on the site, not only to the formats this
-# app creates, which is why it does its own permission check rather than
-# trusting its caller -- see `commons.statement.parties.named`.
+# `party_statement` is the other kind: the statement section's own data function,
+# the same one the SPA calls over HTTP. It is here so the print format at
+# `commons/statement/print/statement.html` asks the app what somebody's balance
+# is rather than working it out again in Jinja, which is the whole reason the
+# printed statement and the one in the browser cannot drift. Which way a balance
+# runs, which accounts are left out because they belong to the lending module,
+# how a running balance reconciles with a total: all of that is answered once, in
+# Python, for both.
+#
+# Both are exposed by name to every template on the site, not only to the formats
+# this app creates. For `party_statement` that is why it does its own permission
+# check rather than trusting its caller -- see `commons.statement.parties.named`;
+# `make_qr_code` reads nothing and so has nothing to check.
 jinja = {
 	"methods": [
+		"commons.jinja.make_qr_code",
 		"commons.statement.api.party_statement",
 	],
 }

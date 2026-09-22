@@ -9,6 +9,10 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=16.0.0" # Installed and managed by bench.
+    # `commons.jinja.make_qr_code`. The `pil` extra is what pulls in Pillow,
+    # which `qrcode.make()` needs for its default image factory; Frappe happens
+    # to install Pillow too, but this app is what requires it here.
+    "qrcode[pil]",
 ]
 
 [build-system]
