@@ -28,10 +28,21 @@
 	border-radius: var(--border-radius-full);
 }
 
-/* The row's anchor clips by default, which would cut the badge off. */
-.commons-todo-sidebar-item .standard-sidebar-item .item-anchor {
-	overflow: visible;
-}
+/**
+ * No `overflow: visible` on the row's anchor, tempting as it looks.
+ *
+ * Core carries exactly that rule for its own notification row, and it is dead:
+ * `.item-anchor` is truncated (`overflow: hidden`) by a more specific selector
+ * in sidebar.scss, so core's override never applies and the bell's badge sits
+ * inside the clip regardless. Ours would have applied, only because this bundle
+ * is loaded after core's and wins on source order at equal specificity.
+ *
+ * What that bought was a bug. Collapsed, the rail is 50px and the anchor is
+ * clipped to 33px; with the clip off, the anchor grew to its content width and
+ * the label and badge hung out over the page. The badge fits inside the anchor
+ * when the sidebar is open, so there is nothing to rescue and nothing to
+ * override.
+ */
 
 .commons-todo-navbar-icon {
 	position: relative;
