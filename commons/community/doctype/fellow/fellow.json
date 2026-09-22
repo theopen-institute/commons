@@ -6,6 +6,7 @@
  "engine": "InnoDB",
  "field_order": [
   "member_id",
+  "fellowship_account",
   "column_break_details",
   "start_date",
   "end_date"
@@ -33,10 +34,16 @@
    "label": "Member ID",
    "options": "Member",
    "unique": 1
+  },
+  {
+   "fieldname": "fellowship_account",
+   "fieldtype": "Link",
+   "label": "Fellowship Account",
+   "options": "Department"
   }
  ],
  "links": [],
- "modified": "2026-09-22 15:09:01.465446",
+ "modified": "2026-09-22 19:57:28.442646",
  "modified_by": "peter@theopen.institute",
  "module": "Community",
  "name": "Fellow",

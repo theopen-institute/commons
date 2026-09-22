@@ -10,6 +10,7 @@ class Fellow(Document):
 		from frappe.types import DF
 
 		end_date: DF.Date | None
+		fellowship_account: DF.Link | None
 		member_id: DF.Link | None
 		start_date: DF.Date | None
 	# end: auto-generated types
