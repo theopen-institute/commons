@@ -121,16 +121,32 @@ def get_user(user_id: str) -> dict | None:
 
 
 @frappe.whitelist()
-def password_change_ticket(user_id: str, result_url: str | None = None) -> str:
+def password_change_ticket(
+	user_id: str,
+	result_url: str | None = None,
+	mark_email_as_verified: bool = False,
+	include_email_in_redirect: bool | None = None,
+) -> str:
 	"""A one-time URL where the holder of this account can set their password.
 
 	How somebody enrolled by this site first gets in; `users.create` explains
 	why they need it. The link is a credential for the seconds it lives -- it is
 	returned to the caller to be sent on, and should not be logged, printed or
 	put in a field.
+
+	`mark_email_as_verified` is exposed because the caller is the only thing
+	that knows how the link is being delivered, and that is what decides whether
+	using it proves anything -- `users.password_change_ticket` says which way
+	round. It is a claim that somebody owns an address, so it sits behind the
+	same role check as everything else here.
 	"""
 	_permitted()
-	return users.password_change_ticket(user_id, result_url=result_url)
+	return users.password_change_ticket(
+		user_id,
+		result_url=result_url,
+		mark_email_as_verified=mark_email_as_verified,
+		include_email_in_redirect=include_email_in_redirect,
+	)
 
 
 @frappe.whitelist()

@@ -280,3 +280,23 @@ class Tickets(TestCase):
 	def test_an_answer_without_a_ticket_is_an_error_rather_than_an_empty_link(self):
 		with self.assertRaises(Exception):
 			self.ticket({})
+
+	def test_marking_the_address_verified_is_off_unless_asked_for(self):
+		"""An account made on somebody's behalf has proved nothing yet."""
+		self.ticket({"ticket": "x"})
+		self.assertNotIn("mark_email_as_verified", self.sent["body"])
+
+	def test_marking_the_address_verified_is_a_boolean_not_the_string_true(self):
+		"""The same trap as `email_verified` -- Auth0 reads a string as a value."""
+		self.ticket({"ticket": "x"}, mark_email_as_verified=True)
+		self.assertIs(self.sent["body"]["mark_email_as_verified"], True)
+
+	def test_keeping_the_address_out_of_the_redirect_sends_a_real_false(self):
+		"""`"false"` is a non-empty string, so it means the opposite of itself."""
+		self.ticket({"ticket": "x"}, include_email_in_redirect=False)
+		self.assertIs(self.sent["body"]["includeEmailInRedirect"], False)
+
+	def test_no_opinion_on_the_redirect_leaves_the_tenant_default_alone(self):
+		"""`False` and "not given" are different instructions, so `None` sends nothing."""
+		self.ticket({"ticket": "x"})
+		self.assertNotIn("includeEmailInRedirect", self.sent["body"])

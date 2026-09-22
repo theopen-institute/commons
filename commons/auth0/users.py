@@ -275,7 +275,13 @@ def delete(user_id: str) -> None:
 			raise
 
 
-def password_change_ticket(user_id: str, result_url: str | None = None, ttl_seconds: int | None = None) -> str:
+def password_change_ticket(
+	user_id: str,
+	result_url: str | None = None,
+	ttl_seconds: int | None = None,
+	mark_email_as_verified: bool = False,
+	include_email_in_redirect: bool | None = None,
+) -> str:
 	"""A one-time URL where somebody can set their own password.
 
 	The answer to the question `create` raises -- an account exists, its
@@ -289,6 +295,20 @@ def password_change_ticket(user_id: str, result_url: str | None = None, ttl_seco
 	lifetime -- worth setting deliberately for a link that goes into a letter or
 	an onboarding mail rather than a session somebody is sitting in.
 
+	`mark_email_as_verified` closes the loop `create` opens. An account made
+	here starts unverified, because it was made on somebody's behalf and nobody
+	has yet shown they can read that mailbox. If the link reaches them by a
+	channel that proves as much -- a text message to the number on their record,
+	an invitation posted to an address on file -- then using it is that proof,
+	and this is how Auth0 is told. Left false where the link is mailed to the
+	address in question, which proves nothing until they act on it.
+
+	`include_email_in_redirect` decides whether the address is appended to
+	`result_url` as a query parameter when Auth0 sends them on. Auth0 includes
+	it unless told otherwise; pass `False` to keep it out of the landing page's
+	URL, its logs and its referrer headers. Sent only when given, so the
+	tenant's own default stands for callers with no opinion.
+
 	Needs `create:user_tickets`, which is a separate grant from the user scopes.
 	"""
 	body: dict = {"user_id": user_id}
@@ -296,6 +316,11 @@ def password_change_ticket(user_id: str, result_url: str | None = None, ttl_seco
 		body["result_url"] = result_url
 	if ttl_seconds:
 		body["ttl_sec"] = ttl_seconds
+	if mark_email_as_verified:
+		body["mark_email_as_verified"] = True
+	if include_email_in_redirect is not None:
+		# Auth0 spells this one in camelCase, alone among the fields here.
+		body["includeEmailInRedirect"] = include_email_in_redirect
 
 	ticket = client.management("POST", "tickets/password-change", json_body=body)
 	url = (ticket or {}).get("ticket")
