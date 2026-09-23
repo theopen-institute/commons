@@ -13,14 +13,14 @@
   Asmita actually done" — and no list of documents answers either question
   without being rearranged first.
 
-  What changed is that a cell is now a button. The register this replaces drew
-  the same grid as static glyphs and put every edit behind a modal with a
-  dropdown per student, so correcting one mark meant opening a form, finding the
-  name, choosing from four options and saving. Here one click is one mark and
-  the next click is the next one along: Present, Late, Absent, blank, round
-  again. The totals under each block come back from the server with every write,
-  so what a late arrival is worth is settled in one place and this component
-  never does arithmetic.
+  Nothing in the grid changes a mark. A session's row header and each of its
+  cells open that session's details (`AttendanceMarksDialog`), and marks are
+  changed there as a draft that is written only on Save. For a while a cell
+  was a button that moved one step round Present → Late → Absent → blank on
+  every click and saved straight away. A register is scrolled on a tablet in a
+  classroom, so stray taps changed real records without anyone noticing. A
+  click here can open a dialog, and that is all it can do. The totals are
+  worked out in `attendanceRegister.ts`, so this component does no arithmetic.
 -->
 
 <template>
@@ -63,16 +63,16 @@
             </th>
           </tr>
 
-          <tr
-            v-for="session in block.sessions"
-            :key="session.name"
-            class="group/row"
-            :class="busy.has(session.name) ? 'opacity-60' : ''"
-          >
+          <tr v-for="session in block.sessions" :key="session.name">
             <th
-              class="sticky left-0 z-10 border-b border-r border-outline-gray-2 bg-surface-white px-3 py-1.5 text-left font-normal"
+              class="sticky left-0 z-10 border-b border-r border-outline-gray-2 bg-surface-white p-0 text-left font-normal"
             >
-              <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-gray-1"
+                :title="`Open ${formatDate(session.schedule_date)}'s session`"
+                @click="emit('open', session, null)"
+              >
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-ink-gray-8">
                     {{ formatDate(session.schedule_date) }}
@@ -84,29 +84,8 @@
                     {{ session.session_details }}
                   </div>
                 </div>
-                <!-- Both always drawn rather than revealed on hover: half the
-                     people who keep a register are doing it on a tablet in a
-                     classroom, where there is no hover to reveal anything. -->
-                <div class="flex shrink-0 items-center gap-0.5">
-                  <button
-                    v-if="canMark && group.students.length"
-                    class="rounded p-1 text-ink-gray-4 hover:bg-surface-gray-2 hover:text-ink-gray-7"
-                    :title="`Mark all ${group.students.length} present`"
-                    :disabled="busy.has(session.name)"
-                    @click="emit('markAll', session)"
-                  >
-                    <span class="lucide-check-check size-4" />
-                  </button>
-                  <button
-                    v-if="canSchedule"
-                    class="rounded p-1 text-ink-gray-4 hover:bg-surface-gray-2 hover:text-ink-gray-7"
-                    title="Edit session"
-                    @click="emit('edit', session)"
-                  >
-                    <span class="lucide-pencil size-4" />
-                  </button>
-                </div>
-              </div>
+                <span class="lucide-chevron-right size-4 shrink-0 text-ink-gray-4" />
+              </button>
             </th>
 
             <td
@@ -121,12 +100,12 @@
               class="border-b border-l border-outline-gray-2 p-0 text-center"
             >
               <button
-                class="flex h-8 w-full items-center justify-center transition-colors"
-                :class="cellClass(markOf(session, student.student))"
-                :disabled="!canMark || busy.has(session.name)"
+                type="button"
+                class="flex h-8 w-full cursor-pointer items-center justify-center transition-colors hover:brightness-95"
+                :class="MARK_COLOURS[markOf(session, student.student)]"
                 :title="cellTitle(session, student)"
                 :aria-label="cellTitle(session, student)"
-                @click="emit('mark', session, student.student, nextMark(markOf(session, student.student)))"
+                @click="emit('open', session, student.student)"
               >
                 <span
                   v-if="glyph(markOf(session, student.student))"
@@ -202,7 +181,9 @@ import { formatDate, pluralise } from '@/data/format'
 import {
   formatHours,
   formatTime,
-  nextMark,
+  MARK_COLOURS,
+  MARK_GLYPHS,
+  MARK_LABELS,
   sessionTypeLabel,
   type GroupRegister,
   type GroupStudent,
@@ -210,44 +191,15 @@ import {
   type Session,
 } from '@/data/attendance'
 
-const props = defineProps<{
+defineProps<{
   group: GroupRegister
-  /** Whether cells are clickable. A reader without it still sees the register. */
-  canMark: boolean
-  /** Whether sessions may be added or changed. */
-  canSchedule: boolean
-  /** Sessions with a write in flight — their rows hold still until it lands. */
-  busy: Set<string>
 }>()
 
+/** A session's details were asked for — from its row, or from one student's
+ *  cell in it, in which case that student is picked out in the dialog. */
 const emit = defineEmits<{
-  mark: [session: Session, student: string, mark: Mark]
-  markAll: [session: Session]
-  edit: [session: Session]
+  open: [session: Session, student: string | null]
 }>()
-
-/**
- * How a mark reads.
- *
- * A tick, a clock and a cross rather than three coloured blocks: colour alone
- * is not a distinction everybody can make, and this grid is read at a glance by
- * whoever is covering the class. The colours are there too, because for
- * everybody else they are what makes a row of absences visible from across the
- * page.
- */
-const GLYPHS: Record<Mark, string> = {
-  Present: 'lucide-check',
-  Late: 'lucide-clock',
-  Absent: 'lucide-x',
-  '': '',
-}
-
-const CELLS: Record<Mark, string> = {
-  Present: 'bg-surface-green-2 text-ink-green-3',
-  Late: 'bg-surface-amber-2 text-ink-amber-3',
-  Absent: 'bg-surface-red-2 text-ink-red-3',
-  '': 'bg-surface-white',
-}
 
 /** What one cell says. A student with no `Student Attendance` row is unmarked,
  *  which the grid draws as blank and which is not the same as absent. */
@@ -256,12 +208,7 @@ function markOf(session: Session, student: string): Mark {
 }
 
 function glyph(mark: Mark): string {
-  return GLYPHS[mark]
-}
-
-function cellClass(mark: Mark): string {
-  const base = CELLS[mark]
-  return props.canMark ? `${base} hover:brightness-95 cursor-pointer` : base
+  return MARK_GLYPHS[mark]
 }
 
 /**
@@ -273,7 +220,7 @@ function cellClass(mark: Mark): string {
  */
 function cellTitle(session: Session, student: GroupStudent): string {
   const mark = markOf(session, student.student)
-  return `${student.student_name} · ${formatDate(session.schedule_date)} · ${mark || 'Not marked'}`
+  return `${student.student_name} · ${formatDate(session.schedule_date)} · ${MARK_LABELS[mark]}`
 }
 </script>
 

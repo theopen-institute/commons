@@ -264,22 +264,23 @@ budget each group spends priced beside it — see `docs/department-budgets.md`.
 taught it: sessions down the side, students across the top, one mark in each
 cell. It replaced a Vue app embedded in a desk form.
 
-**A cell is a button.** Clicking one cycles Present → Late → Absent → blank and
-saves immediately; the colour changes first and the server is asked afterwards,
-because marking a class is twenty of these in a row. A refusal puts the old mark
-back. Marking a whole session is one button in its row, and creating a session
-offers "everyone present" so that taking attendance is a tick and then the
-exceptions. Editing the session itself — date, times, type — is the only thing
-left in a dialog.
+**The grid is read-only.** Clicking a session's row, or any cell in it, opens
+that session's details (`AttendanceMarksDialog`), and that dialog is the only
+place a mark changes. Choices there are a draft: changed rows are highlighted,
+the Save button says how many marks it will write, and while there are unsaved
+changes an outside click or Escape does not close it. "All present" fills the
+draft; it saves nothing on its own. Creating a session still offers "everyone
+present", so taking attendance is a tick and then the exceptions. An earlier
+version had cells that cycled Present → Late → Absent → blank and saved on every
+click. That was quick, but a stray tap while scrolling on a tablet changed a
+real record and nothing on screen showed it.
 
 **The arithmetic is in `src/data/attendanceRegister.ts`**, which is pure and
 tested (`yarn test`). What a late arrival is worth — half the session's hours —
 is said once, in `CREDIT`, and the blocks and footings are built from it. That
 matters because the version this replaced said it in a template and got the
 group totals wrong in a way nobody could see: it footed the *first* group's
-hours under every group on the page. Because the totals are computed here, a
-mark changed on screen re-foots its block immediately rather than after a
-re-read.
+hours under every group on the page.
 
 **Nothing here has an endpoint of its own.** An earlier version of this page
 assembled the whole register in one custom API and answered in a single call,

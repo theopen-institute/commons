@@ -128,19 +128,23 @@
             </p>
           </div>
 
-          <AttendanceGrid
-            v-else
-            :group="group"
-            :can-mark="attendanceCan.mark"
-            :can-schedule="attendanceCan.schedule"
-            :busy="busy"
-            @mark="applyMark"
-            @mark-all="markAllPresent"
-            @edit="(session) => openDialog(group, session)"
-          />
+          <AttendanceGrid v-else :group="group" @open="openMarks" />
         </section>
       </template>
     </template>
+
+    <AttendanceMarksDialog
+      v-if="marksGroup"
+      v-model:open="marksOpen"
+      :group="marksGroup"
+      :course="course"
+      :session="marksSession"
+      :focus="marksFocus"
+      :can-mark="attendanceCan.mark"
+      :can-schedule="attendanceCan.schedule"
+      @saved="reloadRegister"
+      @edit-session="editFromMarks"
+    />
 
     <AttendanceSessionDialog
       v-if="dialogGroup"
@@ -159,9 +163,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Button, ErrorMessage, FormControl, Skeleton, toast } from 'frappe-ui'
+import { Button, ErrorMessage, FormControl, Skeleton } from 'frappe-ui'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import AttendanceGrid from '@/components/AttendanceGrid.vue'
+import AttendanceMarksDialog from '@/components/AttendanceMarksDialog.vue'
 import AttendanceSessionDialog from '@/components/AttendanceSessionDialog.vue'
 import { pluralise } from '@/data/format'
 import {
@@ -169,19 +174,10 @@ import {
   attendancePermissionsLoaded,
   courseChip,
   formatHours,
-  markValues,
-  newMark,
-  STUDENT_ATTENDANCE,
   termBounds,
   useAttendancePickers,
   useAttendanceRegister,
-  useDeleteDocument,
-  useInsertDocument,
-  useInsertDocuments,
-  useSetValue,
-  write,
   type GroupRegister,
-  type Mark,
   type Session,
 } from '@/data/attendance'
 
@@ -209,19 +205,29 @@ const pickers = useAttendancePickers()
 const registerData = useAttendanceRegister()
 const register = registerData.register
 
-const insertMark = useInsertDocument()
-const insertMarks = useInsertDocuments()
-const changeMark = useSetValue()
-const removeMark = useDeleteDocument()
-
-/** Sessions with a write in flight. Their rows hold still rather than accepting
- *  a second click that would race the first — which matters more here than
- *  usual, because a new mark has no id until the first write comes back. */
-const busy = ref(new Set<string>())
-
 const dialogOpen = ref(false)
 const dialogGroup = ref<GroupRegister | null>(null)
 const dialogSession = ref<Session | null>(null)
+
+/**
+ * The session whose details are open, held by name rather than as the object
+ * the grid handed over. A save re-reads the register, which builds new
+ * objects, and the dialog has to show the new ones: after a partial save it
+ * works out what is still unwritten against what the server now holds.
+ */
+const marksOpen = ref(false)
+const marksGroupName = ref('')
+const marksSessionName = ref('')
+const marksFocus = ref<string | null>(null)
+const marksGroup = computed(
+  () => register.value.groups.find((row) => row.name === marksGroupName.value) ?? null,
+)
+const marksSession = computed(
+  () =>
+    marksGroup.value?.blocks
+      .flatMap((block) => block.sessions)
+      .find((row) => row.name === marksSessionName.value) ?? null,
+)
 
 const bounds = termBounds(pickers.terms, term)
 
@@ -287,125 +293,19 @@ function openDialog(group: GroupRegister, session: Session | null) {
   dialogOpen.value = true
 }
 
-/**
- * One cell, changed.
- *
- * The colour flips first and the server is asked afterwards, because marking a
- * class is twenty of these in a row and a register that waited a round trip for
- * each would be slower to use than paper. The totals underneath follow
- * immediately rather than after a re-read: the arithmetic is in the browser, so
- * patching the one row it depends on is enough. A refusal puts the old mark
- * back and says why.
- */
-async function applyMark(session: Session, student: string, mark: Mark) {
-  const was = session.marks[student]?.mark ?? ''
-  const document = registerData.markDocument(session.name, student)
-  registerData.setMark(session.name, student, mark)
-
-  const saved = await hold(session.name, async () => {
-    if (!mark) {
-      // Nothing to delete: the cell was already blank, which is not a failure.
-      if (!document) return true
-      return (await write(removeMark, { doctype: STUDENT_ATTENDANCE, name: document })).ok
-    }
-    if (document) {
-      return (
-        await write(changeMark, {
-          doctype: STUDENT_ATTENDANCE,
-          name: document,
-          fieldname: JSON.stringify(markValues(mark)),
-        })
-      ).ok
-    }
-    const created = await write(insertMark, {
-      doc: JSON.stringify(newMark(session.name, student, mark)),
-    })
-    if (!created.ok || !created.data) return false
-    // The id the row was given, so the next click on this cell changes it
-    // rather than trying to create a second one.
-    registerData.setMark(session.name, student, mark, created.data.name)
-    return true
-  })
-
-  if (saved) return
-  registerData.setMark(session.name, student, was, document)
-  toast.error(writeError() ?? 'That mark could not be saved')
+function openMarks(session: Session, student: string | null) {
+  marksGroupName.value = session.group
+  marksSessionName.value = session.name
+  marksFocus.value = student
+  marksOpen.value = true
 }
 
-/**
- * Everybody present, for a session that already exists.
- *
- * The other half of the habit the new-session dialog serves: a class happened,
- * and the marking left to do is the exceptions. Split into the students who
- * have no row yet — one `insert_many`, and so one transaction — and the few who
- * have one that says something else.
- *
- * A failure here re-reads rather than undoing: several rows were in play and
- * some may have landed, and the register as the server has it is the only
- * honest thing to show.
- */
-async function markAllPresent(session: Session) {
-  const group = register.value.groups.find((row) => row.name === session.group)
+/** From a session's details to changing the session itself. One dialog at a
+ *  time: stacked, a Save in the one underneath would be out of sight. */
+function editFromMarks(session: Session) {
+  const group = marksGroup.value
   if (!group) return
-
-  const fresh = group.students.filter(
-    (row) => !registerData.markDocument(session.name, row.student),
-  )
-  const changed = group.students.filter((row) => {
-    const document = registerData.markDocument(session.name, row.student)
-    return document && session.marks[row.student]?.mark !== 'Present'
-  })
-  if (!fresh.length && !changed.length) return
-
-  for (const row of group.students) registerData.setMark(session.name, row.student, 'Present')
-
-  const saved = await hold(session.name, async () => {
-    if (fresh.length) {
-      const inserted = await write(insertMarks, {
-        docs: JSON.stringify(fresh.map((row) => newMark(session.name, row.student, 'Present'))),
-      })
-      if (!inserted.ok || !inserted.data) return false
-      // `insert_many` answers with the ids in the order it was given them.
-      fresh.forEach((row, index) =>
-        registerData.setMark(session.name, row.student, 'Present', inserted.data![index]),
-      )
-    }
-    for (const row of changed) {
-      const done = await write(changeMark, {
-        doctype: STUDENT_ATTENDANCE,
-        name: registerData.markDocument(session.name, row.student),
-        fieldname: JSON.stringify(markValues('Present')),
-      })
-      if (!done.ok) return false
-    }
-    return true
-  })
-
-  if (saved) return
-  toast.error(writeError() ?? 'Those marks could not be saved')
-  reloadRegister()
-}
-
-/** Hold a session's row still while a write is in flight. */
-async function hold(session: string, write: () => Promise<boolean>): Promise<boolean> {
-  busy.value = new Set(busy.value).add(session)
-  try {
-    return await write()
-  } finally {
-    const rest = new Set(busy.value)
-    rest.delete(session)
-    busy.value = rest
-  }
-}
-
-/** Whichever of the write calls has just refused, in the server's own words —
- *  a duplicate mark, a holiday, or a student who is not in the group. */
-function writeError(): string | undefined {
-  return (
-    insertMark.error?.message ??
-    insertMarks.error?.message ??
-    changeMark.error?.message ??
-    removeMark.error?.message
-  )
+  marksOpen.value = false
+  openDialog(group, session)
 }
 </script>

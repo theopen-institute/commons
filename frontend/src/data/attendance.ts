@@ -112,7 +112,8 @@ export {
   formatHours,
   formatTime,
   fromTimeInput,
-  nextMark,
+  markChanges,
+  MARKS,
   sessionTypeLabel,
   toTimeInput,
   UNTYPED_SESSION,
@@ -531,6 +532,39 @@ export async function write<Result, Params extends object>(
 ): Promise<{ ok: boolean; data: Result | null }> {
   const data = await call.submit(params)
   return { ok: !call.error, data }
+}
+
+/* -------------------------------------------------------------------------- */
+/* How a mark reads                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A tick, a clock and a cross rather than three coloured blocks: colour alone
+ * is not a distinction everybody can make, and the grid is read at a glance by
+ * whoever is covering the class. The colours are there too, because for
+ * everybody else they are what makes a row of absences visible from across the
+ * page. Shared by the grid and the session's details so the two never disagree
+ * about what a mark looks like.
+ */
+export const MARK_GLYPHS: Record<Mark, string> = {
+  Present: 'lucide-check',
+  Late: 'lucide-clock',
+  Absent: 'lucide-x',
+  '': '',
+}
+
+export const MARK_COLOURS: Record<Mark, string> = {
+  Present: 'bg-surface-green-2 text-ink-green-3',
+  Late: 'bg-surface-amber-2 text-ink-amber-3',
+  Absent: 'bg-surface-red-2 text-ink-red-3',
+  '': 'bg-surface-white',
+}
+
+export const MARK_LABELS: Record<Mark, string> = {
+  Present: 'Present',
+  Late: 'Late',
+  Absent: 'Absent',
+  '': 'Not marked',
 }
 
 export const STUDENT_ATTENDANCE = 'Student Attendance'

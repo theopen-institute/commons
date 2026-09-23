@@ -40,19 +40,45 @@ export const LATE = 'Late'
 export const ABSENT = 'Absent'
 export const UNMARKED = ''
 
-/** The order a cell cycles through when it is clicked, ending back at blank. */
-const CYCLE: Mark[] = [PRESENT, LATE, ABSENT, UNMARKED]
+/** The marks a session's details offer, in the order they are drawn. */
+export const MARKS: Mark[] = [PRESENT, LATE, ABSENT, UNMARKED]
+
+/** What a session's marks dialog has to write to turn what is stored into what
+ *  was chosen. */
+export interface MarkChanges {
+  /** Students with no `Student Attendance` row yet, and the mark to create. */
+  insert: { student: string; mark: Mark }[]
+  /** Existing rows whose mark changed. */
+  update: { name: string; mark: Mark }[]
+  /** Existing rows cleared back to unmarked. */
+  remove: string[]
+}
 
 /**
- * What one more click on a cell means.
+ * The writes between a session's stored marks and a draft of them.
  *
- * Present first, because that is what most of a register is and a teacher
- * marking a class taps once per student. Absent is two taps away rather than
- * one; late is between them because it is a kind of present. The fourth stop is
- * blank, so a mistake is undone by carrying on rather than by finding an undo.
+ * A student the draft leaves out is left alone rather than cleared: the draft
+ * says only what was chosen, so nothing is written for anybody it does not
+ * mention. A draft that matches what is stored is no writes at all, which is
+ * what lets the dialog say "no changes" and keep Save shut.
  */
-export function nextMark(mark: Mark): Mark {
-  return CYCLE[(CYCLE.indexOf(mark) + 1) % CYCLE.length]
+export function markChanges(
+  stored: Record<string, SessionMark>,
+  draft: Record<string, Mark>,
+): MarkChanges {
+  const changes: MarkChanges = { insert: [], update: [], remove: [] }
+  for (const [student, mark] of Object.entries(draft)) {
+    const row = stored[student]
+    if ((row?.mark ?? UNMARKED) === mark) continue
+    if (!row?.name) {
+      if (mark) changes.insert.push({ student, mark })
+    } else if (mark) {
+      changes.update.push({ name: row.name, mark })
+    } else {
+      changes.remove.push(row.name)
+    }
+  }
+  return changes
 }
 
 /**

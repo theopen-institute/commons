@@ -4,8 +4,8 @@ import {
   CREDIT,
   formatHours,
   formatTime,
+  markChanges,
   markFields,
-  nextMark,
   sessionHours,
   toMark,
   type GroupRow,
@@ -115,15 +115,30 @@ describe('what a mark means', () => {
   })
 })
 
-describe('what one more click means', () => {
-  it('offers present first, because that is what most of a register is', () => {
-    expect(nextMark('')).toBe('Present')
+describe('what saving a session\'s marks writes', () => {
+  const stored = {
+    asmita: { name: 'SA-1', mark: 'Present' as Mark },
+    bikash: { name: 'SA-2', mark: 'Absent' as Mark },
+  }
+
+  it('writes nothing for a draft that matches what is stored', () => {
+    expect(markChanges(stored, { asmita: 'Present', bikash: 'Absent', chandra: '' })).toEqual({
+      insert: [],
+      update: [],
+      remove: [],
+    })
   })
 
-  it('goes round rather than needing an undo', () => {
-    expect(nextMark('Present')).toBe('Late')
-    expect(nextMark('Late')).toBe('Absent')
-    expect(nextMark('Absent')).toBe('')
+  it('creates, changes and clears only what moved', () => {
+    expect(markChanges(stored, { asmita: 'Late', bikash: '', chandra: 'Present' })).toEqual({
+      insert: [{ student: 'chandra', mark: 'Present' }],
+      update: [{ name: 'SA-1', mark: 'Late' }],
+      remove: ['SA-2'],
+    })
+  })
+
+  it('leaves alone a student the draft does not mention', () => {
+    expect(markChanges(stored, {})).toEqual({ insert: [], update: [], remove: [] })
   })
 })
 

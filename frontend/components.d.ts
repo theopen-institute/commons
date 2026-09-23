@@ -20,6 +20,7 @@ declare module 'vue' {
     AppSidebarRow: typeof import('./src/components/AppSidebarRow.vue')['default']
     AppTodoList: typeof import('./src/components/AppTodoList.vue')['default']
     AttendanceGrid: typeof import('./src/components/AttendanceGrid.vue')['default']
+    AttendanceMarksDialog: typeof import('./src/components/AttendanceMarksDialog.vue')['default']
     AttendanceSessionDialog: typeof import('./src/components/AttendanceSessionDialog.vue')['default']
     BalanceHeadline: typeof import('./src/components/BalanceHeadline.vue')['default']
     BikramDatePicker: typeof import('./src/components/BikramDatePicker.vue')['default']

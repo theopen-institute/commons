@@ -3,9 +3,8 @@
 
   Deliberately not where attendance is taken. The register this replaces put a
   dropdown per student in this dialog, so marking a class of twenty meant twenty
-  selects in a scrolling modal and changing one student's mark later meant
-  opening the whole form again. Marks belong to the grid, where one click is one
-  mark and the totals move as you go.
+  selects in a scrolling modal. Marks are changed in the session's details
+  (`AttendanceMarksDialog`), which is opened from the grid.
 
   What is left here is the session itself, plus the one thing that genuinely
   belongs at the moment a session is created: saying that everybody was there.
@@ -92,9 +91,10 @@
 
       <p v-if="length" class="text-p-sm text-ink-gray-6">{{ length }}</p>
 
-      <!-- New sessions only. On an existing one the grid already holds every
-           mark, and a checkbox that silently overwrote them would be the one
-           destructive control on the page. -->
+      <!-- New sessions only. An existing session's marks are changed in its
+           details, where the changes can be seen before they are saved. A
+           checkbox here that overwrote them without showing them would be the
+           one destructive control on the page. -->
       <FormControl
         v-if="!session"
         v-model="form.mark_all"
@@ -195,7 +195,7 @@ function blankForm(): SessionForm {
     from_time: toTimeInput(session?.from_time ?? null),
     to_time: toTimeInput(session?.to_time ?? null),
     // New sessions open with everybody present, because that is what a class
-    // usually is. The exceptions are two clicks each in the grid afterwards.
+    // usually is. The exceptions are changed in the session's details afterwards.
     mark_all: !props.session,
   }
 }
@@ -309,7 +309,7 @@ async function send(close: () => void) {
         if (!marked.ok) {
           return fail(
             insertMarks.error,
-            'The session was added, but the marks were not. Mark them from the grid.',
+            'The session was added, but the marks were not. Open it from the grid to mark it.',
           )
         }
       }
