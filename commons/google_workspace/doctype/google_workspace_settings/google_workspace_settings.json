@@ -1,0 +1,100 @@
+{
+ "actions": [],
+ "creation": "2026-09-23 00:00:00",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "administrator_section",
+  "admin_email",
+  "column_break_admin",
+  "customer_id",
+  "org_unit_path",
+  "service_account_section",
+  "service_account_key",
+  "scopes_section",
+  "extra_scopes"
+ ],
+ "fields": [
+  {
+   "fieldname": "administrator_section",
+   "fieldtype": "Section Break",
+   "label": "Delegated Administrator"
+  },
+  {
+   "description": "Google will not let an application act on its own behalf, only on behalf of an administrator — so every account this app creates is created, in the audit log, by this person. It must be a super admin, or hold a custom role with the User Management privilege. Use a dedicated account rather than somebody's own: naming a person means the integration stops working the day they leave, in the middle of offboarding them.",
+   "fieldname": "admin_email",
+   "fieldtype": "Data",
+   "label": "Admin Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "column_break_admin",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "my_customer",
+   "description": "Leave this alone. my_customer means \"whichever customer the administrator above belongs to\", which is the right answer unless this site is a reseller acting across several.",
+   "fieldname": "customer_id",
+   "fieldtype": "Data",
+   "label": "Customer ID"
+  },
+  {
+   "default": "/",
+   "description": "Where new accounts are created when nothing says otherwise — for example /Staff. The organisational unit decides which policies and which licence assignment an account picks up, so a site that has set those up per unit should set this. The root is what the Admin console itself uses.",
+   "fieldname": "org_unit_path",
+   "fieldtype": "Data",
+   "label": "Default Org Unit Path"
+  },
+  {
+   "fieldname": "service_account_section",
+   "fieldtype": "Section Break",
+   "label": "Service Account"
+  },
+  {
+   "description": "The whole contents of the JSON key file, braces included, from the service account's Keys tab in Google Cloud. Not the OAuth client secret file — the one wanted here has client_email and private_key at its top level. Stored encrypted and never shown again once saved.\n\nSetting it up: in a Google Cloud project, enable the Admin SDK API, create a service account, and generate a JSON key. Then copy that service account's numeric OAuth client ID — the number, not its @...iam.gserviceaccount.com address — and in the Workspace Admin console go to Security → Access and data control → API controls → Domain-wide delegation, add that client ID, and paste the scopes below against it.",
+   "fieldname": "service_account_key",
+   "fieldtype": "Password",
+   "label": "Service Account Key (JSON)"
+  },
+  {
+   "description": "The scopes to authorise in the Admin console's domain-wide delegation screen, comma separated and exact:\n\nhttps://www.googleapis.com/auth/admin.directory.user,https://www.googleapis.com/auth/admin.directory.user.alias\n\nGoogle grants the intersection of what is asked for and what is authorised there, and says nothing about the difference — a scope that differs by a character is a scope that is not granted, and what comes back is a 403 hours later on a call that does not name it.",
+   "fieldname": "scopes_section",
+   "fieldtype": "Section Break",
+   "label": "Scopes"
+  },
+  {
+   "description": "Only for a site calling the Admin SDK for something this app does not wrap. One scope per line, or comma separated. Anything added here must also be added in the Admin console against the same service account, or the token request itself is refused.",
+   "fieldname": "extra_scopes",
+   "fieldtype": "Small Text",
+   "label": "Extra Scopes"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Google Workspace",
+ "name": "Google Workspace Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 0,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
