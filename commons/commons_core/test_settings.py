@@ -70,5 +70,6 @@ class TestOverrideEnabled(TestCase):
 				"unencoded_at_in_routes": False,
 				"user_permission_gate": False,
 				"sidebar_memory": True,
+				"derived_docfields": False,
 			},
 		)

@@ -28,6 +28,7 @@ class CommonsSettings(Document):
 		from frappe.types import DF
 
 		enable_bikram_sambat: DF.Check
+		enable_derived_docfields: DF.Check
 		enable_home_page_priority: DF.Check
 		enable_sidebar_memory: DF.Check
 		enable_unencoded_at_in_routes: DF.Check

@@ -48,5 +48,82 @@
   "fieldtype": "Check",
   "insert_after": "append",
   "description": "A role ticked here sees no records until a User Permission aimed at this doctype narrows it. <b>Has no effect unless Enable Require User Permission Gate is ticked in Commons Settings.</b>"
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Custom Field-derived_from",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Custom Field",
+  "fieldname": "derived_from",
+  "label": "Derived From",
+  "fieldtype": "Data",
+  "insert_after": "fetch_if_empty",
+  "description": "Show a value read live from a linked record instead of storing it: <code>link_field.target_field</code>, as in Fetch From. The target may itself be a derived field, which is how a value is reached through several links. The field becomes read-only and has no database column. <b>Has no effect unless Enable Derived Docfields is ticked in Commons Settings.</b>"
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Custom Field-derived_from_doctypes",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Custom Field",
+  "fieldname": "derived_from_doctypes",
+  "label": "Derived From DocTypes",
+  "fieldtype": "Small Text",
+  "insert_after": "derived_from",
+  "depends_on": "eval:doc.derived_from",
+  "description": "Only when the link in Derived From is a Dynamic Link: the doctypes it may point at, one per line. Each must have the target field. Rows pointing anywhere else read as empty."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Custom Field-derived_in_wildcard",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Custom Field",
+  "fieldname": "derived_in_wildcard",
+  "label": "Include in Wildcard Queries",
+  "fieldtype": "Check",
+  "insert_after": "derived_from_doctypes",
+  "depends_on": "eval:doc.derived_from",
+  "description": "Also return this field when code asks for every field (<code>fields=\"*\"</code>). Every such query then pays for the join, and code that writes those rows back may fail on the missing column, so leave this off unless you know the doctype is queried that way on purpose."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Customize Form Field-derived_from",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Customize Form Field",
+  "fieldname": "derived_from",
+  "label": "Derived From",
+  "fieldtype": "Data",
+  "insert_after": "fetch_if_empty",
+  "depends_on": "eval:doc.is_custom_field",
+  "description": "Show a value read live from a linked record instead of storing it: <code>link_field.target_field</code>, as in Fetch From. The target may itself be a derived field, which is how a value is reached through several links. The field becomes read-only and has no database column. <b>Has no effect unless Enable Derived Docfields is ticked in Commons Settings.</b>"
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Customize Form Field-derived_from_doctypes",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Customize Form Field",
+  "fieldname": "derived_from_doctypes",
+  "label": "Derived From DocTypes",
+  "fieldtype": "Small Text",
+  "insert_after": "derived_from",
+  "depends_on": "eval:doc.is_custom_field && doc.derived_from",
+  "description": "Only when the link in Derived From is a Dynamic Link: the doctypes it may point at, one per line. Each must have the target field. Rows pointing anywhere else read as empty."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Customize Form Field-derived_in_wildcard",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Customize Form Field",
+  "fieldname": "derived_in_wildcard",
+  "label": "Include in Wildcard Queries",
+  "fieldtype": "Check",
+  "insert_after": "derived_from_doctypes",
+  "depends_on": "eval:doc.is_custom_field && doc.derived_from",
+  "description": "Also return this field when code asks for every field (<code>fields=\"*\"</code>). Every such query then pays for the join, and code that writes those rows back may fail on the missing column, so leave this off unless you know the doctype is queried that way on purpose."
  }
 ]

@@ -61,6 +61,9 @@ ENABLE_PERMISSION_GATE = "enable_user_permission_gate"
 ENABLE_HOME_PAGE_PRIORITY = "enable_home_page_priority"
 # `commons/public/js/workspace_sidebar_memory.js`
 ENABLE_SIDEBAR_MEMORY = "enable_sidebar_memory"
+# `commons.derived_docfields`, which swaps core's query engine and document
+# classes, and `commons/public/js/derived_docfields.js`
+ENABLE_DERIVED_DOCFIELDS = "enable_derived_docfields"
 
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.
@@ -69,6 +72,7 @@ DESK_FEATURES = {
 	"unencoded_at_in_routes": ENABLE_UNENCODED_AT,
 	"user_permission_gate": ENABLE_PERMISSION_GATE,
 	"sidebar_memory": ENABLE_SIDEBAR_MEMORY,
+	"derived_docfields": ENABLE_DERIVED_DOCFIELDS,
 }
 
 

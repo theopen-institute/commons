@@ -12,9 +12,9 @@ delete is `for_reload=True`, which skips `on_trash` — so for Custom Fields the
 database column and everything in it are left alone, and only the definition is
 rewritten.
 
-`custom_field.json` — the nine fields this app adds to core and ERPNext
-doctypes. All nine are schema: code dereferences every one of them, and the app
-does not work without them. Order in the file matters where one field's
+`custom_field.json` — the ten fields this app adds to core's own doctypes. All
+ten are schema: code dereferences every one of them, and the app does not work
+without them. Order in the file matters where one field's
 `insert_after` names another.
 
 ## Why each field exists
@@ -57,3 +57,16 @@ including on requests raised directly. Header-level and singular on purpose: one
 request charges one department's budget. Note that enabling a Department
 accounting dimension would add a separate per-row `department` to Material
 Request Item, which is ERPNext's accounting attribution and not this.
+
+**`derived_from`**, **`derived_from_doctypes`** and **`derived_in_wildcard`** on
+`Custom Field` and `Customize Form Field` — what makes a Custom Field a derived
+field: the `link_field.target_field` it reads through, the doctypes a Dynamic
+Link may point at, and whether `fields="*"` includes it. Custom Field is where
+they are stored and where `commons.derived_docfields.registry` reads them; the
+copies on Customize Form Field are only the grid's, carried to and from the
+Custom Field by `commons.derived_docfields.extend_customize_form`, and hidden
+for standard fields, which have a column and can't be derived. Not on
+`DocField`: core never loads Custom Fields onto the doctypes that define
+doctypes, so a derived field can only ever be a Custom Field. Each description
+says the property is inert unless "Enable Derived Docfields" is ticked in
+Commons Settings.

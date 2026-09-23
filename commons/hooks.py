@@ -86,6 +86,9 @@ after_migrate = [
 	"commons.requests.install.sync_procurement_custom_fields",
 	"commons.statement.install.sync_statement_print_formats",
 	"commons.education_extensions.install.sync_attendance_custom_fields",
+	# A migrate is when a doctype along some derived field's path most often
+	# changes under it. Reports what no longer resolves; repairs nothing.
+	"commons.derived_docfields.validation.check_all",
 ]
 
 # Modules are added to `modules.txt` after this app has already been installed
@@ -309,6 +312,15 @@ doc_events = {
 	"User": {
 		"on_update": "commons.commons_core.home_page.clear_user_cache",
 	},
+	# Every derived field is a Custom Field, from whichever door it came in by.
+	# See `commons.derived_docfields.validation`.
+	"Custom Field": {
+		"before_validate": "commons.derived_docfields.validation.normalize",
+		"validate": "commons.derived_docfields.validation.check",
+		"on_update": "commons.derived_docfields.registry.clear",
+		# Not `on_trash`, which runs while the row is still there to be re-read.
+		"after_delete": "commons.derived_docfields.registry.clear",
+	},
 	"Material Request": {
 		"validate": "commons.requests.budget.validate_material_request",
 		"before_update_after_submit": "commons.requests.budget.protect_submitted_material_request",
@@ -402,12 +414,20 @@ ignore_links_on_delete = ["Record Change Request"]
 # loop cannot be ordered from outside and the hook core offers runs after it, so
 # the answer is settled here instead, early enough that login, `/` and the desk
 # boot all see it. Does nothing unless Commons Settings switches it on.
-before_request = ["commons.commons_core.home_page.set_home_page_flag"]
+#
+# The second swaps core's query engine for one that knows derived fields --
+# once per process, and inert per query until Commons Settings switches it on.
+# See `commons.derived_docfields.install`.
+before_request = [
+	"commons.commons_core.home_page.set_home_page_flag",
+	"commons.derived_docfields.install",
+]
 # after_request = ["commons.utils.after_request"]
 
 # Job Events
 # ----------
-# before_job = ["commons.utils.before_job"]
+# The workers run queries too, so they get the same engine the web does.
+before_job = ["commons.derived_docfields.install"]
 # after_job = ["commons.utils.after_job"]
 
 # after_file_upload = ["commons.utils.after_file_upload"]

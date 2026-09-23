@@ -11,7 +11,8 @@
   "enable_unencoded_at_in_routes",
   "enable_user_permission_gate",
   "enable_home_page_priority",
-  "enable_sidebar_memory"
+  "enable_sidebar_memory",
+  "enable_derived_docfields"
  ],
  "fields": [
   {
@@ -62,12 +63,19 @@
    "fieldname": "enable_sidebar_memory",
    "fieldtype": "Check",
    "label": "Enable Sidebar Memory"
+  },
+  {
+   "default": "0",
+   "description": "Lets a Custom Field show a value read live from a linked record, through its <b>Derived From</b> property, instead of storing a copy. Nothing is stored, so switching this off loses no data; derived fields simply read as empty. Suspect this first if lists, reports or forms of a doctype with derived fields start failing or showing wrong values.",
+   "fieldname": "enable_derived_docfields",
+   "fieldtype": "Check",
+   "label": "Enable Derived Docfields"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-23 00:00:00.000000",
+ "modified": "2026-09-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",
