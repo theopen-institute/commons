@@ -31,5 +31,38 @@
   "property": "image_field",
   "property_type": "Data",
   "value": "image"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Faculty-main-title_field",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocType",
+  "doc_type": "Faculty",
+  "property": "title_field",
+  "property_type": "Data",
+  "value": "full_name"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Associate Faculty-main-title_field",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocType",
+  "doc_type": "Associate Faculty",
+  "property": "title_field",
+  "property_type": "Data",
+  "value": "full_name"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Fellow-main-title_field",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocType",
+  "doc_type": "Fellow",
+  "property": "title_field",
+  "property_type": "Data",
+  "value": "full_name"
  }
 ]

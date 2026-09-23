@@ -18,7 +18,7 @@ rewritten.
 | `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, and the derived fields it adds to its own |
 | `custom_field_education.json` | The four fields the attendance register adds to Education's doctypes |
 | `custom_field_erpnext.json` | The four fields the requests section adds to ERPNext's doctypes |
-| `property_setter.json` | The image field of this app's member doctypes |
+| `property_setter.json` | The image and title fields of this app's member doctypes |
 
 All of the Custom Fields are schema: code dereferences every one of them, and
 the part of the app that reads them does not work without them. Order within a
@@ -172,3 +172,11 @@ whenever the DocType is saved, and in CI when it syncs too — before the Custom
 Field it names has been imported. Its name, `<doctype>-main-image_field`, is the
 one core gives this setting, so a site that pointed it somewhere by hand has
 that record replaced rather than a second one added.
+
+The title field of the same three, set to the derived `full_name`, so lists,
+link fields and breadcrumbs show the Member's name rather than their ID. It is a
+Property Setter for the same reason, and core also checks the title field when
+it saves a DocType. The DocType JSON still says `member_id`. When "Enable Derived
+Docfields" is off, queries leave `full_name` out rather than failing, and the
+desk shows the record's name, which is the member ID. It does the same for a
+record whose `member_id` is empty.
