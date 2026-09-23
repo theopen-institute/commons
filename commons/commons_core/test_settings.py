@@ -34,3 +34,41 @@ class TestTitle(TestCase):
 
 	def test_a_site_migrating_into_this_app_has_no_doctype_yet(self):
 		self.assertEqual(self.title("Staff Portal", installed=False), settings.DEFAULT_TITLE)
+
+
+class TestOverrideEnabled(TestCase):
+	def enabled(self, stored, installed=True):
+		database = SimpleNamespace(exists=lambda *args, **kwargs: installed)
+		doc = settings.frappe._dict({settings.ENABLE_PERMISSION_GATE: stored})
+		with (
+			patch.object(settings.frappe, "db", database),
+			patch.object(settings.frappe, "get_cached_doc", return_value=doc),
+		):
+			return settings.feature_enabled(settings.ENABLE_PERMISSION_GATE)
+
+	def test_ticking_the_switch_turns_the_override_on(self):
+		self.assertTrue(self.enabled(1))
+
+	def test_unticked_leaves_it_off(self):
+		self.assertFalse(self.enabled(0))
+
+	def test_a_field_nobody_has_saved_leaves_it_off(self):
+		"""Opt-in: a site that never asked gets core's behaviour."""
+		self.assertFalse(self.enabled(None))
+
+	def test_a_site_migrating_into_this_app_leaves_it_off(self):
+		self.assertFalse(self.enabled(1, installed=False))
+
+	def test_the_desk_is_told_each_browser_feature(self):
+		bootinfo = settings.frappe._dict()
+		with patch.object(settings, "feature_enabled", side_effect=lambda field: field == settings.ENABLE_SIDEBAR_MEMORY):
+			settings.extend_bootinfo(bootinfo)
+		self.assertEqual(
+			bootinfo.commons_features,
+			{
+				"bikram_sambat": False,
+				"unencoded_at_in_routes": False,
+				"user_permission_gate": False,
+				"sidebar_memory": True,
+			},
+		)

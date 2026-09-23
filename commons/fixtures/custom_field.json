@@ -23,7 +23,7 @@
   "fieldtype": "Int",
   "insert_after": "home_page",
   "default": "0",
-  "description": "Which Home Page wins when someone holds several roles that each name one. <b>Lowest number wins</b>; roles on the same number are settled by name, so the order is always the same on every site and every login. Only meaningful alongside Home Page above."
+  "description": "Which Home Page wins when someone holds several roles that each name one. <b>Lowest number wins</b>; roles on the same number are settled by name, so the order is always the same on every site and every login. Only meaningful alongside Home Page above. <b>Has no effect unless Enable Home Page Priority is ticked in Commons Settings.</b>"
  },
  {
   "doctype": "Custom Field",
@@ -34,7 +34,8 @@
   "fieldname": "require_user_permission",
   "label": "Require User Permission",
   "fieldtype": "Check",
-  "insert_after": "append"
+  "insert_after": "append",
+  "description": "A role ticked here sees no records until a User Permission aimed at this doctype narrows it. <b>Has no effect unless Enable Require User Permission Gate is ticked in Commons Settings.</b>"
  },
  {
   "doctype": "Custom Field",
@@ -45,6 +46,7 @@
   "fieldname": "require_user_permission",
   "label": "Require User Permission",
   "fieldtype": "Check",
-  "insert_after": "append"
+  "insert_after": "append",
+  "description": "A role ticked here sees no records until a User Permission aimed at this doctype narrows it. <b>Has no effect unless Enable Require User Permission Gate is ticked in Commons Settings.</b>"
  }
 ]

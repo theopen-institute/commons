@@ -29,7 +29,8 @@ so the sidebar does not have to fetch a setting before it can render.
 **`Role.home_page_priority`** — which role's Home Page wins when someone holds
 several that each name one. Core picks whichever role the database returned
 first; `commons.commons_core.home_page` orders them by this instead. Sits
-directly under the field it orders.
+directly under the field it orders. Inert unless "Enable Home Page Priority" is
+ticked in Commons Settings, which the field's description says.
 
 **`require_user_permission`** on `Custom DocPerm` and `DocPerm` — the gate. A
 role ticked here grants nothing until a User Permission exists for the user.
@@ -39,7 +40,9 @@ re-grants around this app's hooks for a shared document anyway — see the
 `commons.safer_permissions.permissions` docstring. Read by that module, and
 drawn in the Role Permission Manager by `public/js/permission_manager_gate.js`,
 which supplies its own translated label — so the `label` here is never shown to
-anyone.
+anyone. The description is, in a DocType's own Permissions table, and says that
+the tick is inert unless "Enable Require User Permission Gate" is ticked in
+Commons Settings.
 
 **`Material Request.procurement_request`**, **`Material Request Item.procurement_request`**
 and **`.procurement_request_item`** — back-references from the stock document to

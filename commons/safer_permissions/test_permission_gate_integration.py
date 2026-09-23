@@ -74,6 +74,8 @@ class TestPermissionGate(unittest.TestCase):
 	def setUp(self):
 		frappe.db.savepoint("permission_gate_test")
 		frappe.set_user("Administrator")
+		# Opt-in, so switched on for every test here and rolled back with the rest.
+		_switch_gate(on=True)
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
@@ -215,6 +217,33 @@ class TestPermissionGate(unittest.TestCase):
 
 		frappe.set_user(OPEN_USER)
 		_refuse_gated_report(REPORT)
+
+	def test_switching_the_gate_off_hands_everything_back_to_core(self):
+		"""The Commons Settings switch, through a real save and the document cache."""
+		from commons.safer_permissions.permissions import _refuse_gated_report
+
+		_switch_gate(on=False)
+
+		self.assertEqual(self.visible(GATED_USER), {MINE, THEIRS})
+		self.assertTrue(self.readable(GATED_USER, MINE))
+		frappe.set_user(GATED_USER)
+		_refuse_gated_report(REPORT)
+
+
+def _switch_gate(on: bool):
+	"""Tick or untick the gate in Commons Settings, the way a System Manager would.
+
+	Inside the test's savepoint, so `tearDown` rolls it back; its `clear_cache`
+	drops the cached copy this save leaves behind.
+	"""
+	from commons.commons_core.settings import ENABLE_PERMISSION_GATE, SETTINGS
+
+	user = frappe.session.user
+	frappe.set_user("Administrator")
+	settings = frappe.get_doc(SETTINGS)
+	settings.set(ENABLE_PERMISSION_GATE, 1 if on else 0)
+	settings.save()
+	frappe.set_user(user)
 
 
 def _register_gate():

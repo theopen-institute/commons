@@ -6,10 +6,10 @@
  * as before; this is a second way to read and to enter the same date, and if the
  * whole file failed to load, every field would still work.
  *
- * Switched on by `frappe.boot.sysdefaults.country`, the same signal ERPNext uses
- * to decide whether a site wants India-specific behaviour. A site that is not in
- * Nepal pays for one string comparison at startup and gets nothing else -- which
- * is what a shared-tools app owes the sites that installed it for something else.
+ * Switched on by "Enable Bikram Sambat Calendar" in Commons Settings, which the
+ * desk reads from `frappe.boot.commons_features`. A site that has not ticked it
+ * gets nothing -- not even the patches below -- which is what a shared-tools app
+ * owes the sites that installed it for something else.
  *
  * ## Why this is a prototype patch and not a subclass
  *
@@ -61,17 +61,17 @@ frappe.provide("commons.bikram_sambat");
 const READOUT_FIELDTYPES = ["Date", "Datetime"];
 
 /**
- * Sites in Nepal, and no one else.
+ * Sites that ticked the box in Commons Settings, and no one else.
  *
- * Read once: `sysdefaults` is part of boot, so it cannot change without a reload,
- * and this is consulted on every control that is built.
+ * Read once: the setting reaches the desk through boot, so it cannot change
+ * without a reload, and this is consulted on every control that is built.
  */
 let enabled = null;
 function is_enabled() {
 	// Only cache once boot has actually arrived: a patch that ran a moment too
 	// early would otherwise pin the answer to "no" for the rest of the session.
-	if (enabled === null && frappe.boot?.sysdefaults) {
-		enabled = frappe.boot.sysdefaults.country === "Nepal";
+	if (enabled === null && frappe.boot?.commons_features) {
+		enabled = frappe.boot.commons_features.bikram_sambat === true;
 	}
 	return enabled === true;
 }
@@ -305,6 +305,11 @@ function wrap(prototype, name, after) {
 	// Feature-detect rather than assume. If core reshapes these controls, the
 	// readout should quietly stop appearing, not throw on every form.
 	if (!date_control?.prototype) return;
+
+	// Boot has arrived and the site has not asked for this: leave the controls
+	// exactly as core built them. Before boot there is no answer yet, so the
+	// patches go on and `is_enabled` decides on each call instead.
+	if (frappe.boot?.commons_features && !is_enabled()) return;
 
 	wrap(date_control.prototype, "make_input", attach);
 

@@ -26,6 +26,11 @@ runs early enough (`frappe.app.init_request`, with the session already up) to se
 it. Role.home_page stays exactly what it has always been; this only decides which
 one of them is read.
 
+Opt-in: nothing here runs until "Enable Home Page Priority" is ticked in Commons
+Settings, and unticking it hands the choice straight back to core's loop. That
+flag is the one undocumented thing this leans on, and the first thing to rule
+out if people start landing somewhere unexpected after an upgrade.
+
 Two things core does are deliberately left alone. A user's personal
 `default_workspace` outranks every role rule -- core applies it last -- so a user
 who has one is skipped entirely here. And a user whose roles name no home page at
@@ -37,6 +42,8 @@ goes. This one is the landing page.
 """
 
 import frappe
+
+from commons.commons_core import settings
 
 FIELDNAME = "home_page_priority"
 
@@ -100,6 +107,11 @@ def set_home_page_flag() -> None:
 
 	if frappe.local.flags.home_page:
 		# Something upstream has decided already; do not second-guess it.
+		return
+
+	if not settings.feature_enabled(settings.ENABLE_HOME_PAGE_PRIORITY):
+		# Switched off, so core's first-role-found loop decides. Checked here rather
+		# than in `resolve`, so toggling it needs no cache cleared.
 		return
 
 	home_page = resolve(user)

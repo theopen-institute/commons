@@ -58,6 +58,10 @@ them. That is what sharing is for. The gate is about access nobody decided to
 give.
 
 Configured in one place: the Role Permission Manager, beside "Only if Creator".
+Opt-in, site-wide: nothing here enforces anything until "Enable Require User
+Permission Gate" is ticked in Commons Settings, and unticking it stands the gate
+down with the ticks intact -- the first thing to try when permissions misbehave
+after an upgrade. See `gate_scope`.
 
 The gate cannot demand a *particular* User Permission. That page renders
 checkboxes and nothing else, so a role row has nowhere to name one. What it can
@@ -74,6 +78,8 @@ Slip` opens that gate and shows every slip in the company. What it rules out is
 opening a gate by accident, which is the failure that actually happens.
 """
 
+from typing import Any
+
 import frappe
 
 # `import frappe` alone does not bind the submodule, and `gate_satisfied` calls
@@ -83,6 +89,8 @@ import frappe
 import frappe.permissions
 from frappe import _
 from frappe.utils import cint
+
+from commons.commons_core import settings
 
 # The marker field. The Role Permission Manager labels a permission checkbox by
 # title-casing its fieldname, so this reads "Require User Permission".
@@ -153,6 +161,13 @@ def gate_scope(user: str, doctype: str) -> str | None:
 	if user in ("Administrator", "Guest"):
 		return None
 
+	# Not switched on in Commons Settings. Everything the gate enforces asks here
+	# first -- the list condition, the document check, the report refusals and
+	# self-service -- so this one answer stands the whole module down, and the
+	# ticks stay where they are for when it is switched on.
+	if not gate_switched_on():
+		return None
+
 	# Nothing ticked on any role this user holds -- which is the answer for every
 	# doctype nobody has gated, and so the answer almost every time this is asked.
 	# A user with no read access at all lands here too: core already denies that,
@@ -166,6 +181,11 @@ def gate_scope(user: str, doctype: str) -> str | None:
 		return None
 
 	return OWN if ungated else NOTHING
+
+
+def gate_switched_on() -> bool:
+	"""Return True if a System Manager has switched the gate on for this site."""
+	return settings.feature_enabled(settings.ENABLE_PERMISSION_GATE)
 
 
 def gate_applies(user: str, doctype: str) -> bool:
@@ -288,15 +308,48 @@ def has_permission(doc=None, ptype: str | None = None, user: str | None = None, 
 # lets read the record -- which is anyone who may access the report. So both ends
 # are refused: making one, and reading one that already exists.
 #
-# All three wrappers below are a bare `@frappe.whitelist()`, so all three answer
-# a GET -- and `make_prepared_report` inserts a document on one, which is the
-# shape `commons_core.cache` shuts with `methods=["POST"]` for exactly this
-# reason. That is inherited rather than chosen: these three are
-# `override_whitelisted_methods` entries, so they stand in for core's own
-# functions at core's own addresses and have to accept what core accepts. A
-# narrower `methods` here would refuse desk traffic that core sends as a GET,
-# which would break reports rather than protect them. Said out loud so the next
+# Standing in front of core
+# -------------------------
+# The three wrappers are `override_whitelisted_methods` entries, and that is the
+# one part of this module no switch can take out: hooks are read before any
+# setting is, so the wrappers answer at core's addresses whether the gate is on
+# or not. What can be done is to make them as thin as possible, so that the
+# ways an upgrade could break them each end somewhere sensible:
+#
+#   core adds, drops or renames an argument
+#       Nothing is copied. Each wrapper takes the report's name and `**kwargs`
+#       and forwards through `frappe.call`, which hands core exactly the
+#       arguments core's own signature names today -- the same filtering the
+#       request handler would have done. Core's decorators (`run` is
+#       `@frappe.read_only()`) still apply, because it is core's function that
+#       runs.
+#   core moves or deletes one of the functions
+#       Looked up by its dotted path when a report is asked for, never imported
+#       at module load, so the rest of the app -- and every permission check --
+#       keeps working. The request that needed it gets a message that says
+#       what happened, and the Error Log gets the traceback.
+#   the gate's own check fails
+#       Refused, not waved through: this is a permission check, and failing open
+#       would hand a gated role the rows it exists to withhold. The message says
+#       how to get reports back -- untick the gate, and the check is never made.
+#   core stops calling one of these paths
+#       Then the override is silently bypassed and a gated role gets the report.
+#       Nothing at run time can see that happen, so `test_permission_gate`'s
+#       `CoreStillLooksTheSame` checks it against the installed Frappe -- run it
+#       after every upgrade.
+#
+# All three are a bare `@frappe.whitelist()`, so all three answer a GET -- and
+# `make_prepared_report` inserts a document on one, which is the shape
+# `commons_core.cache` shuts with `methods=["POST"]` for exactly this reason.
+# That is inherited rather than chosen: standing in for core at core's own
+# address, they have to accept what core accepts, and a narrower `methods` here
+# would refuse desk traffic that core sends as a GET. Said out loud so the next
 # reader does not take it for this app's decision about CSRF.
+
+# Core's own addresses, which are also the keys in `hooks.override_whitelisted_methods`.
+CORE_RUN = "frappe.desk.query_report.run"
+CORE_EXPORT = "frappe.desk.query_report.export_query"
+CORE_MAKE_PREPARED = "frappe.core.doctype.prepared_report.prepared_report.make_prepared_report"
 
 
 def gated_report_doctype(report_name: str | None, user: str | None = None) -> str | None:
@@ -306,7 +359,9 @@ def gated_report_doctype(report_name: str | None, user: str | None = None) -> st
 	or a user no gate applies to. The session is read only once there is something
 	to read it for, so deciding about no report at all needs no session.
 	"""
-	if not report_name:
+	# The switch first, so a site that has the gate off never reaches a line
+	# below -- which is what makes unticking it the way out if one of them breaks.
+	if not report_name or not gate_switched_on():
 		return None
 
 	ref_doctype = frappe.get_cached_value("Report", report_name, "ref_doctype")
@@ -333,8 +388,45 @@ def has_prepared_report_permission(
 	return gated_report_doctype(doc.report_name, user) is None
 
 
+def _core(path: str):
+	"""Core's own function at `path`, or a refusal that says why there is none."""
+	try:
+		return frappe.get_attr(path)
+	except Exception:
+		frappe.log_error(
+			title=f"Commons: {path} not found",
+			message=(
+				f"Commons forwards this endpoint to Frappe's {path}, and this version of Frappe "
+				"does not have it. Every report request that reaches it will fail until "
+				"`override_whitelisted_methods` in commons/hooks.py is updated.\n\n"
+			)
+			+ frappe.get_traceback(),
+		)
+		frappe.throw(
+			_(
+				"This report could not be run: this version of Frappe has changed in a way Commons "
+				"has not been updated for. Details are in the Error Log."
+			),
+			title=_("Report unavailable"),
+		)
+
+
 def _refuse_gated_report(report_name: str | None) -> None:
-	ref_doctype = gated_report_doctype(report_name)
+	try:
+		ref_doctype = gated_report_doctype(report_name)
+	except Exception:
+		# Fail closed. See "Standing in front of core" above.
+		frappe.log_error(title="Commons: permission gate check failed", message=frappe.get_traceback())
+		frappe.throw(
+			_(
+				"This report was not run because Commons could not check whether your access to it "
+				"is restricted. Details are in the Error Log. Unticking Enable Require User Permission "
+				"Gate in Commons Settings runs reports exactly as Frappe would."
+			),
+			frappe.PermissionError,
+			title=_("Not permitted"),
+		)
+
 	if not ref_doctype:
 		return
 
@@ -349,59 +441,36 @@ def _refuse_gated_report(report_name: str | None) -> None:
 
 
 @frappe.whitelist()
-def run_query_report(
-	report_name: str,
-	filters: str | dict | None = None,
-	user: str | None = None,
-	ignore_prepared_report: bool = False,
-	custom_columns: str | list | None = None,
-	is_tree: bool = False,
-	parent_field: str | None = None,
-	are_default_filters: bool = True,
-	js_filters: str | list | None = None,
-) -> dict:
-	"""`frappe.desk.query_report.run`, refused for gated roles."""
-	from frappe.desk.query_report import run
+def run_query_report(report_name: str | None = None, **kwargs: Any) -> dict:
+	"""`frappe.desk.query_report.run`, refused for gated roles.
 
+	`report_name` is optional here although core requires it, so that a request
+	without one reaches core and gets core's own error rather than a Python one
+	about this wrapper's signature.
+	"""
 	_refuse_gated_report(report_name)
-
-	return run(
-		report_name=report_name,
-		filters=filters,
-		user=user,
-		ignore_prepared_report=ignore_prepared_report,
-		custom_columns=custom_columns,
-		is_tree=is_tree,
-		parent_field=parent_field,
-		are_default_filters=are_default_filters,
-		js_filters=js_filters,
-	)
+	return frappe.call(_core(CORE_RUN), report_name=report_name, **kwargs)
 
 
 @frappe.whitelist()
-def make_prepared_report(report_name: str, filters: str | dict | list | None = None) -> dict:
+def make_prepared_report(report_name: str | None = None, **kwargs: Any) -> dict:
 	"""`frappe.core.doctype.prepared_report.prepared_report.make_prepared_report`, refused for gated roles.
 
 	Checked before delegating, so the background job is never enqueued -- core
 	inserts the record with `ignore_permissions=True`, and nothing downstream of
 	that asks again.
 	"""
-	from frappe.core.doctype.prepared_report.prepared_report import make_prepared_report as make
-
 	_refuse_gated_report(report_name)
-
-	return make(report_name=report_name, filters=filters)
+	return frappe.call(_core(CORE_MAKE_PREPARED), report_name=report_name, **kwargs)
 
 
 @frappe.whitelist()
-def export_query_report() -> None:
+def export_query_report(**kwargs: Any) -> None:
 	"""`frappe.desk.query_report.export_query`, refused for gated roles.
 
 	Checked before delegating, so a background export is never enqueued for a
-	user who may not have the rows.
+	user who may not have the rows. Core reads its arguments from `form_dict`
+	rather than its signature, so the report's name is read from there too.
 	"""
-	from frappe.desk.query_report import export_query
-
 	_refuse_gated_report(frappe.form_dict.get("report_name"))
-
-	return export_query()
+	return frappe.call(_core(CORE_EXPORT), **kwargs)

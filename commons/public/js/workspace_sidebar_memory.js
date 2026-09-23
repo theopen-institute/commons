@@ -20,7 +20,16 @@
 // untouched, which keeps the priority order upstream's to change. If core
 // reshapes this area the feature-detect below quietly disables us, and a stale
 // map is inert — worst case the sidebar falls back to today's behaviour.
+//
+// Opt-in: nothing is replaced unless "Enable Sidebar Memory" is ticked in
+// Commons Settings, and unticking it restores core's writer on the next reload.
+// Whatever this left in `sidebar_item_map` is not cleared then, and needs not
+// be: core's writer overwrites the stored map on its first write, so a stale
+// entry answers at most the one lookup before that.
 (() => {
+	const features = (frappe.boot && frappe.boot.commons_features) || {};
+	if (!features.sidebar_memory) return;
+
 	const Sidebar = frappe.ui && frappe.ui.Sidebar;
 	// Every method we lean on, including the two we only call.
 	const required = [

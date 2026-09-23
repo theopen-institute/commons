@@ -10,6 +10,12 @@
 // it adds saves itself: the page binds its change handler by delegation and
 // reads `data-ptype` off the element, which `add_check` sets from the fieldname.
 (() => {
+	// Not switched on in Commons Settings, so the gate enforces nothing, and a
+	// checkbox here would only claim otherwise. The page is left exactly as core
+	// draws it.
+	const features = (frappe.boot && frappe.boot.commons_features) || {};
+	if (!features.user_permission_gate) return;
+
 	const engine = frappe.PermissionEngine;
 	// Feature-detect rather than assume. If core reshapes this page, the gate
 	// should quietly stop being drawn, not throw on every row.

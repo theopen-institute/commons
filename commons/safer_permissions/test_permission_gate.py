@@ -5,7 +5,7 @@ this user's set of roles put them behind the gate, and have they got past it.
 Everything underneath is core's, and is stubbed here.
 """
 
-from unittest import TestCase
+from unittest import TestCase, addModuleCleanup
 from unittest.mock import patch
 
 import frappe
@@ -30,6 +30,41 @@ def perm(role, gated=False, right="read", permlevel=0, if_owner=False):
 
 def meta(*perms):
 	return frappe._dict(permissions=list(perms))
+
+
+def setUpModule():
+	# The site-wide switch reads Commons Settings, and there is no site here.
+	# Every class below is about the gate while it is on; `SwitchedOff` is the one
+	# that turns it off.
+	switch = patch.object(permissions, "gate_switched_on", return_value=True)
+	switch.start()
+	addModuleCleanup(switch.stop)
+
+
+class SwitchedOff(TestCase):
+	"""The Commons Settings switch stands every part of the gate down."""
+
+	def setUp(self):
+		switch = patch.object(permissions, "gate_switched_on", return_value=False)
+		switch.start()
+		self.addCleanup(switch.stop)
+
+		for name, value in (("get_roles", ["Employee"]), ("get_meta", meta(perm("Employee", gated=True)))):
+			stub = patch.object(permissions.frappe, name, return_value=value)
+			stub.start()
+			self.addCleanup(stub.stop)
+
+	def test_a_gated_role_is_no_longer_held_back(self):
+		self.assertIsNone(permissions.gate_scope("employee@example.com", DOCTYPE))
+
+	def test_lists_and_documents_are_left_to_core(self):
+		doc = frappe._dict(doctype=DOCTYPE, owner="someone-else@example.com")
+		self.assertEqual(permissions.permission_query_conditions("employee@example.com", DOCTYPE), "")
+		self.assertTrue(permissions.has_permission(doc=doc, user="employee@example.com"))
+
+	def test_reports_are_no_longer_refused(self):
+		with patch.object(permissions.frappe, "get_cached_value", return_value=DOCTYPE):
+			self.assertIsNone(permissions.gated_report_doctype("Salary Register", "employee@example.com"))
 
 
 class GateApplies(TestCase):
@@ -299,3 +334,154 @@ class PreparedReports(TestCase):
 
 	def test_a_doctype_level_check_has_nothing_to_refuse(self):
 		self.assertTrue(permissions.has_prepared_report_permission(doc=None, user="employee@example.com"))
+
+
+class Forwarding(TestCase):
+	"""The report wrappers hand core whatever core asks for, and nothing else."""
+
+	def call(self, wrapper, core, **request):
+		with (
+			patch.object(permissions, "_refuse_gated_report"),
+			patch.object(permissions, "_core", return_value=core),
+			patch.object(permissions.frappe, "form_dict", frappe._dict(request)),
+		):
+			return wrapper(**request)
+
+	def test_an_argument_core_adds_later_still_reaches_it(self):
+		def run(report_name, filters=None, argument_from_a_later_frappe=None):
+			return (report_name, filters, argument_from_a_later_frappe)
+
+		self.assertEqual(
+			self.call(
+				permissions.run_query_report,
+				run,
+				report_name="Salary Register",
+				filters="{}",
+				argument_from_a_later_frappe=1,
+			),
+			("Salary Register", "{}", 1),
+		)
+
+	def test_an_argument_core_no_longer_takes_is_dropped_not_fatal(self):
+		def make(report_name):
+			return report_name
+
+		self.assertEqual(
+			self.call(permissions.make_prepared_report, make, report_name="Salary Register", filters="{}", cmd="x"),
+			"Salary Register",
+		)
+
+	def test_export_is_refused_by_the_name_core_reads(self):
+		with (
+			patch.object(permissions, "_refuse_gated_report") as refuse,
+			patch.object(permissions, "_core", return_value=lambda: None),
+			patch.object(permissions.frappe, "form_dict", frappe._dict(report_name="Salary Register")),
+		):
+			permissions.export_query_report(report_name="Salary Register")
+		refuse.assert_called_once_with("Salary Register")
+
+
+class FailingGracefully(TestCase):
+	"""What a report request gets when an upgrade has moved something."""
+
+	def setUp(self):
+		def throw(message, exc=frappe.ValidationError, **kwargs):
+			raise exc(message)
+
+		# `frappe.throw` and `log_error` both reach for `frappe.local`, which only a
+		# request or a site has. What is under test is which one is raised, and why.
+		for stub in (
+			patch.object(permissions, "_", lambda text: text),
+			patch.object(permissions.frappe, "throw", throw),
+			patch.object(permissions.frappe, "log_error"),
+			patch.object(permissions.frappe, "get_traceback", return_value=""),
+		):
+			stub.start()
+			self.addCleanup(stub.stop)
+
+	def test_a_core_function_that_has_moved_is_a_clear_error(self):
+		with patch.object(permissions.frappe, "get_attr", side_effect=AttributeError("gone")):
+			with self.assertRaises(frappe.ValidationError) as raised:
+				permissions._core(permissions.CORE_RUN)
+		self.assertIn("Error Log", str(raised.exception))
+		permissions.frappe.log_error.assert_called_once()
+
+	def test_a_gate_check_that_breaks_refuses_rather_than_waving_through(self):
+		with patch.object(permissions, "gated_report_doctype", side_effect=KeyError("ref_doctype")):
+			with self.assertRaises(frappe.PermissionError) as raised:
+				permissions._refuse_gated_report("Salary Register")
+		self.assertIn("Commons Settings", str(raised.exception))
+
+	def test_with_the_gate_off_the_check_is_never_made(self):
+		"""So unticking it is a way out even when the check itself is what broke."""
+		with (
+			patch.object(permissions, "gate_switched_on", return_value=False),
+			patch.object(permissions.frappe, "get_cached_value", side_effect=AssertionError("asked")),
+		):
+			permissions._refuse_gated_report("Salary Register")
+
+
+class CoreStillLooksTheSame(TestCase):
+	"""Run after every Frappe upgrade: what the report overrides assume of core.
+
+	The one failure nothing at run time can notice is core no longer calling one
+	of these paths -- the override is then simply never reached, and a gated role
+	gets the report. So this checks the installed Frappe itself.
+	"""
+
+	OVERRIDES = {
+		permissions.CORE_RUN: "commons.safer_permissions.permissions.run_query_report",
+		permissions.CORE_EXPORT: "commons.safer_permissions.permissions.export_query_report",
+		permissions.CORE_MAKE_PREPARED: "commons.safer_permissions.permissions.make_prepared_report",
+	}
+
+	def test_hooks_override_exactly_these_paths(self):
+		from commons import hooks
+
+		self.assertEqual(hooks.override_whitelisted_methods, self.OVERRIDES)
+
+	def core_function(self, path):
+		"""The definition at `path`, read from core's source rather than imported.
+
+		Importing `frappe.desk.query_report` sets up a file logger relative to the
+		working directory, which a site-less run from anywhere but `sites/` does not
+		have. Reading the source asks the same question without running any of it.
+		"""
+		import ast
+		import importlib.util
+
+		module, _, name = path.rpartition(".")
+		with open(importlib.util.find_spec(module).origin, encoding="utf-8") as file:
+			tree = ast.parse(file.read())
+		return next(
+			(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name),
+			None,
+		)
+
+	def test_each_core_function_still_exists_where_it_did(self):
+		for path in self.OVERRIDES:
+			with self.subTest(path=path):
+				self.assertIsNotNone(self.core_function(path))
+
+	def test_core_still_names_the_report_the_way_the_gate_reads_it(self):
+		for path in (permissions.CORE_RUN, permissions.CORE_MAKE_PREPARED):
+			with self.subTest(path=path):
+				arguments = self.core_function(path).args
+				self.assertIn("report_name", [arg.arg for arg in arguments.args + arguments.kwonlyargs])
+
+	def test_the_desk_still_calls_each_path(self):
+		import os
+
+		root = os.path.join(os.path.dirname(frappe.__file__), "public", "js")
+		source = ""
+		for directory, _, files in os.walk(root):
+			if "dist" in directory or "node_modules" in directory:
+				continue
+			for name in files:
+				if name.endswith((".js", ".vue", ".ts")):
+					with open(os.path.join(directory, name), encoding="utf-8", errors="ignore") as file:
+						source += file.read()
+
+		for path in self.OVERRIDES:
+			with self.subTest(path=path):
+				self.assertIn(path, source)

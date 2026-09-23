@@ -35,8 +35,15 @@
 // navigation would push a duplicate history entry and break the back button.
 //
 // If core reshapes this area the feature-detect below quietly disables us, and
-// the worst case is today's behaviour.
+// the worst case is today's behaviour. If it reshapes it in a way the detect
+// cannot see, unticking "Enable Literal @ in Desk URLs" in Commons Settings
+// leaves `make_url` unwrapped from the next reload on.
+//
+// Opt-in: nothing is wrapped unless that box is ticked, and a boot that does
+// not mention it at all counts as unticked.
 (() => {
+	const features = (frappe.boot && frappe.boot.commons_features) || {};
+	if (!features.unencoded_at_in_routes) return;
 	if (!frappe.router || typeof frappe.router.make_url !== "function") return;
 
 	const make_url = frappe.router.make_url;

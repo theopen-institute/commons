@@ -114,7 +114,7 @@ before_migrate = "commons.commons_core.install.sync_module_defs"
 # `commons/public/js/website_button.js`, whose server half is
 # `commons/commons_core/website_link.py` -- and the Bikram Sambat readout that
 # `commons/public/js/bikram_sambat/` puts on Date and Datetime fields, which
-# draws itself only on sites whose country is Nepal.
+# draws itself only where Commons Settings switches it on.
 app_include_js = "commons.bundle.js"
 app_include_css = "commons.bundle.css"
 
@@ -355,8 +355,16 @@ doc_events = {
 #
 # Query and Script Reports run the report author's SQL and consult neither
 # permission hook, so a gated role cannot be shown one safely -- not even with
-# its User Permission in place. These two wrappers refuse them; everything else
+# its User Permission in place. These three wrappers refuse them; everything else
 # about the reports is untouched.
+#
+# The one piece of the gate that stays in place with the gate switched off in
+# Commons Settings, because hooks are read before any setting is. The wrappers
+# then check nothing and forward to core. They are written to survive core
+# changing underneath them -- see "Standing in front of core" in
+# `commons.safer_permissions.permissions` -- and
+# `test_permission_gate.CoreStillLooksTheSame` checks these paths against the
+# installed Frappe: run it after every upgrade.
 override_whitelisted_methods = {
 	"frappe.desk.query_report.run": "commons.safer_permissions.permissions.run_query_report",
 	"frappe.desk.query_report.export_query": "commons.safer_permissions.permissions.export_query_report",
@@ -393,7 +401,7 @@ ignore_links_on_delete = ["Record Change Request"]
 # happened to return first -- see `commons/commons_core/home_page.py`. That
 # loop cannot be ordered from outside and the hook core offers runs after it, so
 # the answer is settled here instead, early enough that login, `/` and the desk
-# boot all see it.
+# boot all see it. Does nothing unless Commons Settings switches it on.
 before_request = ["commons.commons_core.home_page.set_home_page_flag"]
 # after_request = ["commons.utils.after_request"]
 
@@ -464,4 +472,7 @@ page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
 # The desk's "Website" button reads its target from the boot, so the sidebar does
 # not have to fetch a setting before it can render. See
 # `commons/commons_core/website_link.py` for why this is not simply the home page.
-extend_bootinfo = "commons.commons_core.website_link.extend_bootinfo"
+extend_bootinfo = [
+	"commons.commons_core.website_link.extend_bootinfo",
+	"commons.commons_core.settings.extend_bootinfo",
+]

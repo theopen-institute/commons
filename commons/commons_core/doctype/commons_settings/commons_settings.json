@@ -5,7 +5,13 @@
  "document_type": "Setup",
  "engine": "InnoDB",
  "field_order": [
-  "title"
+  "title",
+  "enable_bikram_sambat",
+  "core_overrides_section",
+  "enable_unencoded_at_in_routes",
+  "enable_user_permission_gate",
+  "enable_home_page_priority",
+  "enable_sidebar_memory"
  ],
  "fields": [
   {
@@ -14,12 +20,54 @@
    "fieldname": "title",
    "fieldtype": "Data",
    "label": "Title"
+  },
+  {
+   "default": "0",
+   "description": "Shows each Date and Datetime field's value in Bikram Sambat beside it, and offers a Bikram Sambat calendar for picking one. Dates are still stored in the Gregorian calendar. Takes effect when each user reloads the page.",
+   "fieldname": "enable_bikram_sambat",
+   "fieldtype": "Check",
+   "label": "Enable Bikram Sambat Calendar"
+  },
+  {
+   "collapsible": 1,
+   "description": "Opt-in features that change how Frappe itself behaves, not just what Commons adds on top of it. They depend on details of Frappe's code that an upgrade can change without warning. If something in the desk or in permissions stops working the way it should, especially just after an upgrade, try switching these off first. Changes to the desk take effect when each user reloads the page.",
+   "fieldname": "core_overrides_section",
+   "fieldtype": "Section Break",
+   "label": "Core Behaviour Overrides"
+  },
+  {
+   "default": "0",
+   "description": "Keeps @ unescaped in desk addresses, so a record named after an email address reads /desk/member/name@example.org rather than /desk/member/name%40example.org. Suspect this first if moving between desk pages leaves extra entries in the Back button's history, or opens the wrong record.",
+   "fieldname": "enable_unencoded_at_in_routes",
+   "fieldtype": "Check",
+   "label": "Enable Literal @ in Desk URLs"
+  },
+  {
+   "default": "0",
+   "description": "Adds a Require User Permission checkbox to the Role Permission Manager. A role with it ticked sees no records until a User Permission narrows it, and cannot run Query or Script Reports on that doctype. Unticking this WIDENS ACCESS: those roles fall back to Frappe's own rules and see every record their permissions grant, and the checkbox disappears from the Role Permission Manager. The ticks are kept, and take effect again when this is ticked. Suspect this first if users get empty lists, or 'Not permitted' on documents and reports their roles should reach.",
+   "fieldname": "enable_user_permission_gate",
+   "fieldtype": "Check",
+   "label": "Enable Require User Permission Gate"
+  },
+  {
+   "default": "0",
+   "description": "Uses each Role's Home Page Priority to decide where someone holding several roles lands after logging in: the lowest number wins. Without it, Frappe uses the first role the database happens to return. Suspect this first if people land on the wrong page after logging in, or opening the site root goes somewhere unexpected.",
+   "fieldname": "enable_home_page_priority",
+   "fieldtype": "Check",
+   "label": "Enable Home Page Priority"
+  },
+  {
+   "default": "0",
+   "description": "Remembers which workspace sidebar each page was reached from, so reloading it keeps that sidebar rather than switching to the one for the page's module. Suspect this first if the workspace sidebar is missing, shows the wrong workspace, or stops changing when you navigate.",
+   "fieldname": "enable_sidebar_memory",
+   "fieldtype": "Check",
+   "label": "Enable Sidebar Memory"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-19 00:00:00.000000",
+ "modified": "2026-09-23 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

@@ -1,4 +1,5 @@
-"""This app's own settings, and the one thing in them so far: what it is called.
+"""This app's own settings: what it is called, and the switches for the places it
+changes Frappe's own behaviour.
 
 The document is `Commons Settings`, a Single with one field, and it lives here
 rather than with the navigation it names because it is a fact about the *app*
@@ -37,3 +38,60 @@ def title() -> str:
 	if frappe.db.exists("DocType", SETTINGS, cache=True):
 		stored = frappe.db.get_single_value(SETTINGS, "title")
 	return (stored or "").strip() or DEFAULT_TITLE
+
+
+# Optional features
+# -----------------
+# Each is opt-in: a site that never ticked one runs Frappe's own behaviour.
+
+# `commons/public/js/bikram_sambat/`. Additive -- nothing is stored in Bikram
+# Sambat -- so it sits in the form's main section, not among the overrides.
+ENABLE_BIKRAM_SAMBAT = "enable_bikram_sambat"
+
+# Core behaviour overrides: the places this app changes how Frappe itself
+# behaves, rather than adding beside it, and which lean on details of core that
+# an upgrade can move. Each has a switch so that a site whose desk or
+# permissions start misbehaving can rule them out first, without a deploy.
+
+# `commons/public/js/unencoded_at_in_routes.js`
+ENABLE_UNENCODED_AT = "enable_unencoded_at_in_routes"
+# `commons.safer_permissions`, and the checkbox it draws in the Role Permission Manager
+ENABLE_PERMISSION_GATE = "enable_user_permission_gate"
+# `commons.commons_core.home_page`, which preempts core's `get_home_page`
+ENABLE_HOME_PAGE_PRIORITY = "enable_home_page_priority"
+# `commons/public/js/workspace_sidebar_memory.js`
+ENABLE_SIDEBAR_MEMORY = "enable_sidebar_memory"
+
+# What the desk is told, under `frappe.boot.commons_features`: each key is the
+# name the browser half checks, and each value the field that switches it.
+DESK_FEATURES = {
+	"bikram_sambat": ENABLE_BIKRAM_SAMBAT,
+	"unencoded_at_in_routes": ENABLE_UNENCODED_AT,
+	"user_permission_gate": ENABLE_PERMISSION_GATE,
+	"sidebar_memory": ENABLE_SIDEBAR_MEMORY,
+}
+
+
+def feature_enabled(fieldname: str) -> bool:
+	"""Whether a site has switched on the feature behind an `ENABLE_*` field.
+
+	Off until somebody says otherwise. A Check with no row in `tabSingles` --
+	a site that has never saved the form, or saved it before the field existed --
+	reads as 0, which is exactly that; so does a site with no doctype yet.
+
+	Read through the document cache rather than `get_single_value`: the gate asks
+	this on every permission check and the home page on every request, and a
+	save clears the cached copy.
+	"""
+	if not frappe.db.exists("DocType", SETTINGS, cache=True):
+		return False
+	return bool(frappe.get_cached_doc(SETTINGS).get(fieldname))
+
+
+def extend_bootinfo(bootinfo: "frappe._dict") -> None:
+	"""Tell the desk which of its patches to install.
+
+	Read once, when the scripts load, so a change reaches a user on their next reload.
+	The home page is not here: it is decided on the server, per request.
+	"""
+	bootinfo.commons_features = {key: feature_enabled(field) for key, field in DESK_FEATURES.items()}

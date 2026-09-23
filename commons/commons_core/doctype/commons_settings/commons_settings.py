@@ -1,6 +1,10 @@
-"""What this app calls itself on the site that runs it.
+"""What this app calls itself on the site that runs it, and which of Frappe's
+own behaviours it is allowed to change.
 
-One field, because one thing was hard-coded: the sidebar said `Commons` under
+The second half is `commons.commons_core.settings.feature_enabled`. Each of
+those is opt-in: a site gets core's behaviour until somebody ticks the box.
+
+The title came first, because one thing was hard-coded: the sidebar said `Commons` under
 the workspace whatever the site was, and the browser tab said it too. That is a
 name, and a name is the site's to choose -- an organisation running this app
 does not necessarily call the thing its staff open "Commons".
@@ -23,6 +27,11 @@ class CommonsSettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		enable_bikram_sambat: DF.Check
+		enable_home_page_priority: DF.Check
+		enable_sidebar_memory: DF.Check
+		enable_unencoded_at_in_routes: DF.Check
+		enable_user_permission_gate: DF.Check
 		title: DF.Data | None
 	# end: auto-generated types
 
