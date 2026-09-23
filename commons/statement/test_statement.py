@@ -442,11 +442,12 @@ class TestWhoMayReadSomebodyElsesStatement(TestCase):
 class TestThePrintFormatsThatGetInstalled(TestCase):
 	"""One per party doctype the site has, and none for the ones it has not.
 
-	The trap this avoids is the one `commons.requests.install` documents: every
+	The trap this avoids is set out in `commons.statement.install`: every
 	doctype named here belongs to another app and every one is optional. A
-	format shipped as a file would be imported on every site whatever it named
-	-- Frappe's import sets `ignore_links`, so it would not even fail -- leaving
-	each site with print formats attached to doctypes it does not have.
+	format shipped as a fixture would be imported on every site whatever it
+	named -- unlike a Custom Field, a Print Format for a missing doctype does not
+	fail -- leaving each site with print formats attached to doctypes it does
+	not have.
 	"""
 
 	def with_site(self, doctypes=(), party_types=()):

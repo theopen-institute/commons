@@ -1,21 +1,25 @@
 """App-level migrate hook: registering this app's modules.
 
 Most of what this app adds to other apps' doctypes is declared rather than
-created. The four Custom Fields it puts on Frappe's own doctypes are in
-`commons/fixtures/custom_field.json`, written by Frappe's fixture sync on
-install and every migrate; the desk icon is a file under `desktop_icon/`, written
-by the model sync. Neither needs a hook. The hooks left in `hooks.py` do only
-what no sync can: `commons.self_service.install` drops a cache whose key
-`frappe.clear_cache` does not know about, `commons.safer_permissions.install`
-gets a changed `page_js` in front of admins whose desks still hold the last copy
-of it, and `commons.requests.install` writes the four fields that name ERPNext
-doctypes -- which a fixture cannot, because ERPNext is optional and a fixture
-that cannot resolve aborts migrate for the whole site rather than skipping
-itself.
+created. Every Custom Field it adds -- to Frappe's doctypes, to ERPNext's and
+Education's, and the derived fields on its own -- is under `commons/fixtures/`,
+written by Frappe's fixture sync on install and every migrate; the fields for
+an app a site may not have are in a file of that app's own, which a site
+without it skips (`commons/fixtures/README.md`). The desk icon is a file under
+`desktop_icon/`, written by the model sync. None of that needs a hook. The hooks
+left in `hooks.py` do only what no sync can: `commons.self_service.install`
+drops a cache whose key `frappe.clear_cache` does not know about,
+`commons.safer_permissions.install` gets a changed `page_js` in front of admins
+whose desks still hold the last copy of it, and `commons.statement.install`
+creates a print format for each party type a site has set up, where none
+exists yet.
 
 Workflows, self-service configuration and Property Setters are a System Manager's
 to set up on a new site, and the app ships none of them -- not as a seed, not as
-a fixture, not at all.
+a fixture, not at all. The one exception is `commons/fixtures/property_setter.json`,
+which points the image field of this app's own member doctypes at the derived
+`image` it ships beside them: a property of the app's schema, not a site's
+configuration of it.
 
 About that desk icon. It ships as a file in `commons/desktop_icon/`,
 which `frappe.model.sync` imports on every migrate -- `desktop_icon` is one of its

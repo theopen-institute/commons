@@ -1,0 +1,35 @@
+[
+ {
+  "doctype": "Property Setter",
+  "name": "Faculty-main-image_field",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocType",
+  "doc_type": "Faculty",
+  "property": "image_field",
+  "property_type": "Data",
+  "value": "image"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Associate Faculty-main-image_field",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocType",
+  "doc_type": "Associate Faculty",
+  "property": "image_field",
+  "property_type": "Data",
+  "value": "image"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Fellow-main-image_field",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocType",
+  "doc_type": "Fellow",
+  "property": "image_field",
+  "property_type": "Data",
+  "value": "image"
+ }
+]

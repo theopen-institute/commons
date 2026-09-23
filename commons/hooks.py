@@ -31,11 +31,13 @@ use_json_request_body = True
 # does not stop migrate; only writing a value into one fails, and a feature that
 # has taken itself away writes none.
 #
-# The fixtures were. A Custom Field naming an absent doctype raises
-# `LinkValidationError`, which `import_fixtures` does not catch and
-# `post_schema_updates` re-raises, so migrate aborts for the whole site. The
-# four this app adds to `Material Request` are asserted from a guarded hook
-# instead -- see `commons.requests.install`.
+# The fixtures were, once: a Custom Field naming an absent doctype used to raise
+# `LinkValidationError`, which escaped `import_fixtures` and aborted migrate for
+# the whole site. On Frappe 16.34 it raises `DoesNotExistError` instead, which
+# `import_fixtures` catches, skipping that file. So the fields this app adds to
+# ERPNext and Education are fixtures, one file per app --
+# `commons/fixtures/README.md` says why that is safe, and
+# `commons.commons_core.test_fixtures` fails if it stops being.
 required_apps = []
 
 # Where the SPA lives. Every section below is served from one bundle under this
@@ -50,31 +52,29 @@ website_route_rules = [
 ]
 
 # Almost nothing is left here, and that is the point. The desk icon ships as a
-# file under `commons/desktop_icon/`, the four Custom Fields this app adds to
-# Frappe's own doctypes ship as `commons/fixtures/custom_field.json`, and both
-# are written by Frappe's own sync on install and on every migrate. Neither
-# needs a hook, and a hook that re-asserted them would only be a second, quieter
+# file under `commons/desktop_icon/`; every Custom Field this app adds, to
+# Frappe's doctypes, to ERPNext's and Education's, and the derived fields on its
+# own, ships under `commons/fixtures/`, as does the one Property Setter. All of it
+# is written by Frappe's own sync on install and on every migrate. None of it
+# needs a hook, and a hook that re-asserted it would only be a second, quieter
 # copy of the same declaration.
 #
-# What is left are the three things no sync can do: dropping a cache whose key
+# What is left are the things no sync can do: dropping a cache whose key
 # `frappe.clear_cache` does not know about, getting a changed `page_js` in front
-# of admins whose desks are still holding the last copy of it, and writing the
-# four Custom Fields that name another app's doctypes -- which a fixture cannot,
-# because a fixture that cannot resolve breaks migrate for the whole site rather
-# than skipping itself. `commons.requests.install` says the rest.
+# of admins whose desks are still holding the last copy of it, and creating the
+# statement print formats -- one per party type the site has actually set up,
+# and only where none exists yet, neither of which a fixture can say. See
+# `commons.statement.install`.
 #
-# No approval chain, no self-service configuration and no Property Setters. Those
-# are a System Manager's to set up on a new site, and a deploy is not where they
-# get made. The app ships none of them in any form, and the code reads whatever a
-# site has rather than assuming any particular shape -- see
-# `commons.requests.procurement_workflow` and
-# `commons.self_service.registry`.
+# No approval chain and no self-service configuration. Those are a System
+# Manager's to set up on a new site, and a deploy is not where they get made.
+# The app ships none of them in any form, and the code reads whatever a site has
+# rather than assuming any particular shape -- see
+# `commons.requests.procurement_workflow` and `commons.self_service.registry`.
 after_install = [
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
-	"commons.requests.install.sync_procurement_custom_fields",
 	"commons.statement.install.sync_statement_print_formats",
-	"commons.education_extensions.install.sync_attendance_custom_fields",
 ]
 after_migrate = [
 	# The other half of `before_migrate`'s module registration: records for
@@ -83,9 +83,7 @@ after_migrate = [
 	"commons.commons_core.install.drop_stale_module_defs",
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
-	"commons.requests.install.sync_procurement_custom_fields",
 	"commons.statement.install.sync_statement_print_formats",
-	"commons.education_extensions.install.sync_attendance_custom_fields",
 	# A migrate is when a doctype along some derived field's path most often
 	# changes under it. Reports what no longer resolves; repairs nothing.
 	"commons.derived_docfields.validation.check_all",

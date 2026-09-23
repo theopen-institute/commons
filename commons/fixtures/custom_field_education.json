@@ -1,0 +1,49 @@
+[
+ {
+  "doctype": "Custom Field",
+  "name": "Course Schedule-custom_session_type",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Course Schedule",
+  "fieldname": "custom_session_type",
+  "label": "Session Type",
+  "fieldtype": "Data",
+  "insert_after": "color",
+  "description": "What kind of session this was. The attendance register groups and totals by it."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Course Schedule-custom_session_details",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Course Schedule",
+  "fieldname": "custom_session_details",
+  "label": "Session Details",
+  "fieldtype": "Data",
+  "insert_after": "custom_session_type"
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Student Attendance-custom_late",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Student Attendance",
+  "fieldname": "custom_late",
+  "label": "Late",
+  "fieldtype": "Check",
+  "insert_after": "status",
+  "description": "Present, but not from the start. Counts as half the session's hours."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Academic Term-custom_inactive",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Academic Term",
+  "fieldname": "custom_inactive",
+  "label": "Inactive",
+  "fieldtype": "Check",
+  "insert_after": "term_name",
+  "description": "A term that was run once and is not offered again. Hidden from the attendance register's term picker."
+ }
+]

@@ -315,8 +315,8 @@ so a row that is there is a register that exists.
 
 The section is absent without the education module — `Course Schedule` and
 `Student Attendance` are what it is made of. Beyond that it stands on four
-Custom Fields this app asserts on install
-(`commons/education_extensions/install.py`): a session's type and details, the
+Custom Fields this app ships as fixtures
+(`commons/fixtures/custom_field_education.json`): a session's type and details, the
 `custom_late` flag, and `custom_inactive` on `Academic Term` for retiring a term
 from the picker. `custom_session_type` is free text on purpose — the vocabulary
 is the school's, the dialog offers whatever is already in use, and a fifth kind

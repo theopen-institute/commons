@@ -4,17 +4,24 @@ One `Print Format` per party doctype the site actually has, because a print
 format is attached to exactly one doctype and a statement can be printed for a
 Customer, a Student, a Supplier or an Employee.
 
-Written from a hook rather than shipped as files, and the reason is the one
-`commons.requests.install` sets out at length: every doctype named here belongs
-to another app and every one of them is optional. `Customer` and `Supplier`
-arrive with ERPNext, `Student` with Education, and a site may have none of them.
-A standard print format shipped as a file would be imported on every site
-whatever it named -- Frappe's import sets `ignore_links`, so it would not fail,
-which is worse than failing: every site would grow a print format attached to a
-doctype it does not have, offered in lists and printing nothing.
+Written from a hook rather than shipped as a fixture, for three reasons, any
+one of which would do.
 
-So the rule is the same one that module uses: assert what this site can hold,
-and be silent about the rest.
+* **Whether to create one is a question about data.** A statement needs the
+  doctype to be a Party Type *on this site* -- `Employee` is on every site with
+  HRMS and is only a party where somebody has made it one -- and a fixture can
+  only say "this record exists", not "if that one does".
+* **A missing doctype would not be skipped.** The Custom Fields this app adds
+  to optional apps are fixtures because a missing doctype makes them fail in a
+  way Frappe's fixture import catches (`commons/fixtures/README.md`). A Print
+  Format does not fail: the import sets `ignore_links`, and its validation only
+  looks the doctype up, finding nothing and carrying on. Every site would grow a
+  print format attached to a doctype it does not have, offered in lists and
+  printing nothing.
+* **A fixture is re-imported over whatever is there**, on every migrate, which
+  is the opposite of what these records want (below).
+
+So the rule is: assert what this site can hold, and be silent about the rest.
 
 Created, not maintained
 -----------------------
