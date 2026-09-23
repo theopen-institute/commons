@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import frappe
 
-from commons.google_workspace import api, client
+from commons.api_integrations.google_workspace import api, client
 
 ALLOWED = ["System Manager", "Employee"]
 NOT_ALLOWED = ["Employee"]
@@ -269,7 +269,7 @@ class NothingDeletes(TestCase):
 		self.assertFalse(hasattr(api, "delete_user"))
 
 	def test_the_library_still_can(self):
-		from commons.google_workspace import users
+		from commons.api_integrations.google_workspace import users
 
 		self.assertTrue(callable(users.delete))
 

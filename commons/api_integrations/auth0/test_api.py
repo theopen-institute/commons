@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import frappe
 
-from commons.auth0 import api
+from commons.api_integrations.auth0 import api
 
 
 def throw(message, exc=Exception, **kwargs):
@@ -55,7 +55,7 @@ class Gate(TestCase):
 
 
 class Recorded:
-	"""`commons.auth0.users`, answering rather than calling Auth0."""
+	"""`commons.api_integrations.auth0.users`, answering rather than calling Auth0."""
 
 	def ensure(self, email, **fields):
 		return "auth0|ensured"
@@ -94,7 +94,7 @@ class Surface(TestCase):
 		return found
 
 	def test_nothing_hands_out_a_management_token(self):
-		"""The shape this section replaced. See the module docstring on why.
+		"""The shape this integration replaced. See the module docstring on why.
 
 		Named rather than inspected: a check against the returned value would
 		pass for an endpoint that had not been written yet, and this is a rule

@@ -1,16 +1,16 @@
-"""The settings against a real site: bench --site SITE execute commons.auth0.test_settings_integration.run
+"""The settings against a real site: bench --site SITE execute commons.api_integrations.auth0.test_settings_integration.run
 
 Rollback-only, and it never reaches Auth0. Every test here stops at the
 credential layer -- what the Single holds, what the database holds underneath
-it, and who is allowed to ask -- because that is the half of this section a
+it, and who is allowed to ask -- because that is the half of this integration a
 mocked test cannot check and the half a network test would check least
 reliably. How the tenant answers is `test_client` and `test_users`, in full,
 site-less.
 
-What is worth pinning here is the claim the section is built on: that the
-credential is not readable. `commons.auth0` says the secret is encrypted in
+What is worth pinning here is the claim the integration is built on: that the
+credential is not readable. `commons.api_integrations.auth0` says the secret is encrypted in
 `__Auth`, absent from the document's own row, and unreadable once saved, and
-that claim is the reason this is an app module rather than a Server Script. It
+that claim is the reason this is app code rather than a Server Script. It
 is a claim about Frappe's `Password` fieldtype rather than about any code here,
 which is exactly the kind of thing that stops being true in a version bump
 without anybody noticing.
@@ -26,7 +26,7 @@ import unittest
 import frappe
 
 from commons import testing
-from commons.auth0 import api, client
+from commons.api_integrations.auth0 import api, client
 
 SECRET = "integration-test-secret"
 DOMAIN = "integration-test.eu.auth0.com"
@@ -87,7 +87,7 @@ class TestAuth0Settings(unittest.TestCase):
 		self.assertEqual(client.credentials().client_secret, SECRET)
 
 	def test_the_secret_is_not_in_the_doctype_s_own_row(self):
-		"""The claim `commons.auth0` is built on: a `Password` field lives in `__Auth`.
+		"""The claim `commons.api_integrations.auth0` is built on: a `Password` field lives in `__Auth`.
 
 		A masked `Data` field would put the secret here in plain text, where a
 		report, a fixture export or anybody who can read the table would have
@@ -148,7 +148,7 @@ class TestAuth0Settings(unittest.TestCase):
 	# Who may ask
 
 	def test_a_session_without_the_role_is_refused(self):
-		"""The whole of the security of the HTTP surface -- see `commons.auth0.api`."""
+		"""The whole of the security of the HTTP surface -- see `commons.api_integrations.auth0.api`."""
 		self.configure()
 		frappe.set_user(self.ordinary_user())
 		self.assertNotIn(api.ROLE, frappe.get_roles())
@@ -183,7 +183,7 @@ class TestAuth0Settings(unittest.TestCase):
 def run():
 	"""Run this suite against a site by hand, verbosely.
 
-	`bench --site SITE execute commons.auth0.test_settings_integration.run`
+	`bench --site SITE execute commons.api_integrations.auth0.test_settings_integration.run`
 	"""
 	original_user = frappe.session.user
 	frappe.set_user("Administrator")

@@ -3,7 +3,7 @@
 Nothing here knows about a doctype, a field or a record. These take an address
 or an Auth0 user id and return an account or an id, and whatever on this site
 wants to hold on to the result decides that for itself -- a document event, a
-button, a Server Script, a patch. That is the whole reason this is a section of
+button, a Server Script, a patch. That is the whole reason this is a package of
 its own rather than five lines inside somebody's controller.
 
 Addresses in, ids out
@@ -48,7 +48,7 @@ from urllib.parse import quote
 import frappe
 from frappe import _
 
-from commons.auth0 import client
+from commons.api_integrations.auth0 import client
 
 # "A user with this email already exists in this connection."
 ALREADY_EXISTS = 409

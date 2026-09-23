@@ -1,8 +1,7 @@
-Auth0
+API Integrations
 Commons Core
 Community
 Education Extensions
-Google Workspace
 Requests
 Safer Permissions
 Self Service

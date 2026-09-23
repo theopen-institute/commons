@@ -3,7 +3,7 @@
 Site-less. `frappe.throw` logs its message through `frappe.local`, which only a
 request or a site has, so it is replaced with a plain raise wherever a decision
 rather than a message is what is under test -- the same technique
-`commons.auth0.test_client` uses and for the same reason.
+`commons.api_integrations.auth0.test_client` uses and for the same reason.
 
 Nothing here talks to Google and nothing here signs an assertion. `_issue` is
 the boundary: everything above it is this app's, everything below it is
@@ -20,7 +20,7 @@ from unittest.mock import patch
 
 import frappe
 
-from commons.google_workspace import client
+from commons.api_integrations.google_workspace import client
 
 KEY = {
 	"type": "service_account",
@@ -28,6 +28,13 @@ KEY = {
 	"private_key": "-----BEGIN PRIVATE KEY-----\nnot a real one\n-----END PRIVATE KEY-----\n",
 	"token_uri": "https://oauth2.googleapis.com/token",
 }
+
+# Two scopes this app does not ask for, for the `extra_scopes` tests. Real ones,
+# so the test exercises the same prefix check a site's paste would.
+EXTRA = (
+	"https://www.googleapis.com/auth/admin.directory.group",
+	"https://www.googleapis.com/auth/admin.directory.orgunit",
+)
 
 DOMAIN = {
 	"admin_email": "directory-bot@example.org",
@@ -127,13 +134,11 @@ class Scopes(TestCase):
 
 	def test_extra_scopes_can_be_pasted_comma_separated(self):
 		"""Which is how the Admin console's own field spells them."""
-		raw = "https://www.googleapis.com/auth/admin.directory.group,https://www.googleapis.com/auth/admin.directory.orgunit"
-		self.assertEqual(len(client.extra_scopes(raw)), 2)
+		self.assertEqual(len(client.extra_scopes(",".join(EXTRA))), 2)
 
 	def test_extra_scopes_can_be_pasted_one_per_line(self):
 		"""Which is how the documentation lists them."""
-		raw = "https://www.googleapis.com/auth/admin.directory.group\nhttps://www.googleapis.com/auth/admin.directory.orgunit\n"
-		self.assertEqual(len(client.extra_scopes(raw)), 2)
+		self.assertEqual(len(client.extra_scopes("\n".join(EXTRA) + "\n")), 2)
 
 	def test_a_stray_line_is_not_turned_into_a_scope(self):
 		"""One bad entry otherwise gets the whole token request refused."""

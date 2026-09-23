@@ -10,7 +10,7 @@ that was the same for every account, and `email_verified` sent as the string
 from unittest import TestCase
 from unittest.mock import patch
 
-from commons.auth0 import client, users
+from commons.api_integrations.auth0 import client, users
 
 
 def throw(message, exc=Exception, **kwargs):

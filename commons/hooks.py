@@ -77,6 +77,10 @@ after_install = [
 	"commons.education_extensions.install.sync_attendance_custom_fields",
 ]
 after_migrate = [
+	# The other half of `before_migrate`'s module registration: records for
+	# modules this app no longer has, removed once the sync has moved whatever
+	# used to name them. See `commons.commons_core.install.drop_stale_module_defs`.
+	"commons.commons_core.install.drop_stale_module_defs",
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
 	"commons.requests.install.sync_procurement_custom_fields",

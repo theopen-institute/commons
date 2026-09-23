@@ -2,14 +2,14 @@
 
 This site is a register of who exists; Google Workspace is where those people
 get a mailbox and a company address. Something has to make an account in the
-second for a person in the first, and this section is that something -- as a
+second for a person in the first, and this integration is that something -- as a
 library of plain functions, not as a feature. It knows nothing about any
 doctype. What gets a Workspace account, when, and where the resulting id is kept
 are decisions for whatever is wired to it, and those decisions are made
 elsewhere.
 
-It is deliberately the same shape as `commons.auth0`, because it is the same
-problem: a settings Single holding a credential, one way in that carries the
+It is deliberately the same shape as `commons.api_integrations.auth0`, because
+it is the same problem: a settings Single holding a credential, one way in that carries the
 token, a library of operations over addresses and ids, and a whitelisted surface
 with a role check on it. Where it differs from Auth0 it differs because Google
 does, and each of those places says so.
@@ -20,18 +20,20 @@ What is here
 function, `directory`, that makes an authenticated Admin SDK call with it.
 `users` is the set of operations built on that -- find, create, create-or-find,
 update, suspend, delete, password, photo, aliases. `api` is the whitelisted
-surface for a Server Script or the desk. `doctype/google_workspace_settings` is
-where a System Manager puts the service account and the administrator it acts
-as.
+surface for a Server Script or the desk.
+`commons.api_integrations.doctype.google_workspace_settings` is where a System
+Manager puts the service account and the administrator it acts as -- it sits in
+the module's own doctype folder rather than here, for the reason
+`commons.api_integrations` gives.
 
 The Directory API is large and `users` covers what has been needed. Everything
-else is a call rather than a change to this section, because `client.directory`
+else is a call rather than a change to this integration, because `client.directory`
 is public and carries the token, the retry and the error handling::
 
 	client.directory("GET", "orgunits", params={"customerId": "my_customer"})
 	client.directory("GET", f"users/{key}/tokens")
 
-with one caveat that has no equivalent in the Auth0 section: a call needing a
+with one caveat that has no equivalent in the Auth0 integration: a call needing a
 scope this app does not already ask for will fail until that scope is added
 *twice* -- in `Extra Scopes` on the settings, and in the Admin console's
 domain-wide delegation screen. See `client.SCOPES`.
@@ -50,7 +52,7 @@ app never knows anybody's password. Google has nothing of the kind for an
 account an administrator created, so a credential has to be generated here,
 returned to whoever is enrolling, and delivered by them. `users.generate_password`
 and `users.set_password` are that, and `users.create` explains the consequences
--- including why the request body of exactly two calls in this section is the
+-- including why the request body of exactly two calls in this integration is the
 one thing that must never reach an Error Log, and what `client._send` does about
 it.
 
@@ -58,7 +60,7 @@ it.
 creates an account, answers 200, and then takes its time: a `GET` seconds later
 can still be a 404, a photo upload can fail against an account that plainly
 exists, and an alias can take hours to start receiving mail. Anything this
-section does after a create belongs in a background job that can retry, not on
+integration does after a create belongs in a background job that can retry, not on
 the line after it. `users.create` says which calls are affected.
 
 And one way it is worse than Auth0 for reasons that are not technical: an Auth0

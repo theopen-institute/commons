@@ -14,7 +14,7 @@ Who may call these
 an address or a Google id and no document, so there is no record to check a
 permission against and no per-user rule to apply: whoever can call them can make
 an account for any address in the domain. A site wiring this to a doctype -- a
-button on a record, a hook on save -- should call `commons.google_workspace.users`
+button on a record, a hook on save -- should call `commons.api_integrations.google_workspace.users`
 directly from that controller and check the permission on *that record* instead,
 which is a real check rather than this one. These are for the administrative
 case and for Server Scripts.
@@ -24,7 +24,7 @@ Why these are not the Auth0 endpoints with the names changed
 Two differences, and both are the same difference: a Workspace account costs
 money and holds a person's mail.
 
-*Nothing here deletes.* `commons.google_workspace.users.delete` exists and is
+*Nothing here deletes.* `commons.api_integrations.google_workspace.users.delete` exists and is
 not wrapped. Deleting takes somebody's mailbox and their Drive with it and holds
 their address for twenty days afterwards, and that is not a thing to be one
 mistyped id away from over HTTP. `suspend_user` is what offboarding wants and is
@@ -32,15 +32,15 @@ reversible; a controller that genuinely means to delete calls the library.
 
 *Creating is a purchase.* Whatever is wired to `ensure_user` is wired to a
 recurring bill, so it is idempotent by construction -- see
-`commons.google_workspace.users.ensure` -- and safe to call again after a
+`commons.api_integrations.google_workspace.users.ensure` -- and safe to call again after a
 timeout, a retry, or somebody pressing the button twice.
 
 Why these take named arguments and not a body
 ----------------------------------------------
-`commons.auth0.api.ensure_user` takes an address and nothing else, on the
+`commons.api_integrations.auth0.api.ensure_user` takes an address and nothing else, on the
 grounds that a whitelisted method forwarding an arbitrary body to an identity
 provider is a way to set anything at all on somebody else's account from a
-browser. That reasoning is right and the same conclusion would make this section
+browser. That reasoning is right and the same conclusion would make this integration
 useless, because the fields are the point: a Server Script here has to be able
 to send a phone number and a recovery address.
 
@@ -56,7 +56,7 @@ Credentials in return values
 `ensure_user` and `set_user_password` return a password. There is no way around
 that -- Google has no equivalent of Auth0's one-time ticket, so an account this
 app creates is reachable only by a credential this app generates -- and it makes
-those two the only endpoints in either section whose *response body* is a
+those two the only endpoints in either integration whose *response body* is a
 secret.
 
 It is good for one sign-in, because both set `changePasswordAtNextLogin`. It
@@ -72,7 +72,7 @@ Calling this from a Server Script
 unlike a script calling a script it returns a value::
 
 	answer = frappe.call(
-		"commons.google_workspace.api.ensure_user",
+		"commons.api_integrations.google_workspace.api.ensure_user",
 		email=doc["company_email"],
 		given_name=doc["first_name"],
 		family_name=doc["last_name"],
@@ -92,7 +92,7 @@ status code on an exception that may not have one.
 import frappe
 from frappe import _
 
-from commons.google_workspace import client, users
+from commons.api_integrations.google_workspace import client, users
 
 # Who may reach the domain over HTTP. See the module docstring on why this is a
 # role and not a document permission.
@@ -330,7 +330,7 @@ def update_user(
 	setting a job title removes any other organisation entry. For an account
 	this app created that is exactly right, because it put the single entry
 	there; for one maintained in the Admin console as well it is worth knowing
-	before the first call. `commons.google_workspace.users.update` shows the
+	before the first call. `commons.api_integrations.google_workspace.users.update` shows the
 	read-append-write for the other case.
 
 	Not reachable here: the primary address. Changing it renames the account and
@@ -446,7 +446,7 @@ def set_user_photo(user_key: str, file_url: str) -> dict:
 	A `File` rather than the bytes, because that is what both callers actually
 	have: the SPA uploads through Frappe's own uploader and gets a `file_url`
 	back, and a Server Script has one on a record. The library takes bytes --
-	`commons.google_workspace.users.set_photo` -- for anything that does not.
+	`commons.api_integrations.google_workspace.users.set_photo` -- for anything that does not.
 
 	`encodings=[]` on `get_content` is not a detail. Left to itself it tries
 	`utf-8-sig`, `utf-8`, `windows-1250` and `windows-1252` in turn and returns a
@@ -457,7 +457,7 @@ def set_user_photo(user_key: str, file_url: str) -> dict:
 
 	Called straight after `ensure_user` this will sometimes fail against an
 	account that was genuinely created, because a new account is not immediately
-	addressable -- see `commons.google_workspace.users`. Somewhere that can retry
+	addressable -- see `commons.api_integrations.google_workspace.users`. Somewhere that can retry
 	is where this belongs.
 	"""
 	_permitted()

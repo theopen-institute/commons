@@ -3,7 +3,7 @@
 Nothing here knows about a doctype, a field or a record. These take an address
 or a Google user id and return an account or an id, and whatever on this site
 wants to hold on to the result decides that for itself -- a document event, a
-button, a Server Script, a patch. That is the whole reason this is a section of
+button, a Server Script, a patch. That is the whole reason this is a package of
 its own rather than twenty lines inside somebody's controller.
 
 Addresses in, ids out
@@ -39,10 +39,10 @@ and anything else that follows belong in a background job that can retry --
 
 Passwords, and why there are any
 --------------------------------
-The Auth0 section never knows anybody's password: it creates an account with a
+The Auth0 integration never knows anybody's password: it creates an account with a
 random one, throws it away, and hands out a one-time ticket instead. Google has
 no ticket. An account an administrator creates is reachable only by a password
-that administrator sets, so this section generates one, returns it, and says
+that administrator sets, so this integration generates one, returns it, and says
 plainly that it is a credential in transit from the moment it does.
 
 `generate_password` makes one. `create` and `set_password` take one or make
@@ -69,7 +69,7 @@ from urllib.parse import quote
 import frappe
 from frappe import _
 
-from commons.google_workspace import client
+from commons.api_integrations.google_workspace import client
 
 # "Entity already exists." What an insert answers when the address is already a
 # primary address or an alias somewhere in the domain.
@@ -172,7 +172,7 @@ def get(user_key: str) -> dict | None:
 	Worth knowing that a 404 here is also what a just-created account answers
 	for a while. That is the propagation delay the module docstring describes,
 	and it is indistinguishable from an absence at this level -- which is why
-	nothing in this section polls for an account it has just made.
+	nothing in this integration polls for an account it has just made.
 	"""
 	try:
 		return client.directory("GET", f"users/{_segment(user_key)}")
@@ -268,8 +268,8 @@ def create(
 	know which domains are owned, and asking would be a call and a scope for a
 	guess the answer to which is already about to arrive.
 
-	On the password. One is generated if none is given, and unlike the Auth0
-	section's equivalent it is *not* thrown away -- it cannot be, because there
+	On the password. One is generated if none is given, and unlike the
+	Auth0 integration's equivalent it is *not* thrown away -- it cannot be, because there
 	is no ticket flow to reach the account by afterwards. But it is not returned
 	either, because this function returns an id. A caller that wants a usable
 	account makes the password itself, keeps it, and passes it::
@@ -324,7 +324,7 @@ def ensure(
 	whether an account exists, so it is what gets asked, and the lookup is the
 	recovery rather than the test.
 
-	This matters more here than in the Auth0 section, because the thing being
+	This matters more here than in the Auth0 integration, because the thing being
 	created is billed. A button pressed twice, a retried job, a document saved
 	again: each of those is a duplicate account and a monthly charge if the
 	answer to "does it exist" is worked out anywhere other than at Google.
@@ -424,7 +424,7 @@ def set_password(
 	"""Set a password on an existing account, and return the one that was set.
 
 	The answer to the question `create` raises -- an account exists and nobody
-	can sign in to it -- and the nearest thing this section has to Auth0's
+	can sign in to it -- and the nearest thing this integration has to Auth0's
 	password change ticket, which is to say not very near. Auth0 hands out a URL
 	that only its holder can use once; this hands back a credential that works
 	for anybody who reads it, until it is used.
@@ -474,8 +474,9 @@ def delete(user_key: str) -> None:
 
 	Read `suspend` first. This destroys the mailbox and the Drive contents
 	unless they were transferred beforehand, which is a separate API this
-	section does not wrap, and the address is held for twenty days -- not freed,
-	not reusable, and not available to `ensure` -- before it can be used again.
+	integration does not wrap, and the address is held for twenty days -- not
+	freed, not reusable, and not available to `ensure` -- before it can be used
+	again.
 
 	Deliberately not reachable over HTTP. `api` offers no wrapper for this on
 	purpose; a controller that means it calls this directly, having checked a

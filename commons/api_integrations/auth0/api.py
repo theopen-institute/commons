@@ -14,13 +14,13 @@ Who may call these
 an address or an Auth0 id and no document, so there is no record to check a
 permission against and no per-user rule to apply: whoever can call them can make
 an account for any address on the tenant. A site wiring this to a doctype -- a
-button on a record, a hook on save -- should call `commons.auth0.users` directly
+button on a record, a hook on save -- should call `commons.api_integrations.auth0.users` directly
 from that controller and check the permission on *that record* instead, which is
 a real check rather than this one. These are for the administrative case and for
 Server Scripts.
 
 What is not here, and must not be added, is an endpoint that returns a
-Management API token. That is the shape this section replaced -- one Server
+Management API token. That is the shape this integration replaced -- one Server
 Script fetching a token for others to use -- and it cannot be done safely. A
 Server Script of type API has no return value; it answers by writing to
 `frappe.response`, which *is* the body of the HTTP request that started the
@@ -34,7 +34,7 @@ Calling this from a Server Script
 `frappe.call` in the sandbox resolves dotted paths to whitelisted methods, and
 unlike a script calling a script it returns a value::
 
-	user_id = frappe.call("commons.auth0.api.ensure_user", email=doc["member_id"])
+	user_id = frappe.call("commons.api_integrations.auth0.api.ensure_user", email=doc["member_id"])
 	frappe.db.set_value(doc["doctype"], doc["name"], "custom_auth0_id", user_id)
 
 That is the whole of what those scripts need to contain now: no domain, no
@@ -45,7 +45,7 @@ code on an exception that may not have one.
 import frappe
 from frappe import _
 
-from commons.auth0 import client, users
+from commons.api_integrations.auth0 import client, users
 
 # Who may reach the tenant over HTTP. See the module docstring on why this is a
 # role and not a document permission.

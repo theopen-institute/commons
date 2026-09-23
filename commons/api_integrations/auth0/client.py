@@ -1,6 +1,6 @@
 """The way in to Auth0: the credentials, the management token, and one call.
 
-Everything this section does to Auth0 goes through `management` below, and
+Everything this integration does to Auth0 goes through `management` below, and
 `management` is public for exactly that reason. The Management API has a few
 hundred endpoints; `users` wraps the handful this app has needed so far, and
 anything else is one line at the call site rather than a change to this file::
@@ -291,7 +291,7 @@ def _send(method: str, url: str, bearer: str | None, json_body: dict | None, par
 	helper calls `raise_for_status` and hands back an `HTTPError` whose status
 	the caller then has to dig for -- and `users.ensure` is built entirely
 	around telling one status from the others. It also calls `frappe.log_error`
-	on every exception, so the 409 this section treats as an ordinary outcome
+	on every exception, so the 409 this integration treats as an ordinary outcome
 	would file an Error Log every time an account already existed.
 
 	The session is still Frappe's, so the bench's retry behaviour on 5xx and any

@@ -9,7 +9,7 @@ credential that can only be changed by a deploy is a credential nobody rotates.
 own row, an ordinary read of the document gives back a placeholder rather than
 the key, and it is not carried out by a report, by the REST API, or by a fixture
 export. It is read with `get_password`, and the one place that does is
-`commons.google_workspace.client.settings`.
+`commons.api_integrations.google_workspace.client.settings`.
 
 A `Password` field holding two kilobytes of JSON looks odd in the form and is
 right anyway. `__Auth.password` is a `TEXT` column, so it fits with room to
@@ -20,12 +20,12 @@ backup, and in front of anybody who can open this doctype. It is pasted once.
 
 Read permission is System Manager and nobody else, and even they cannot see the
 key once it is saved. That is worth preserving if a role is ever added here: the
-rest of this section is built so that no caller ever needs the credential, only
-the actions it authorises. See `commons.google_workspace.api` on why nothing
+rest of this integration is built so that no caller ever needs the credential, only
+the actions it authorises. See `commons.api_integrations.google_workspace.api` on why nothing
 hands a token out.
 
 What has to be true elsewhere for this to work is in
-`commons.google_workspace.client`: the service account's numeric client id
+`commons.api_integrations.google_workspace.client`: the service account's numeric client id
 authorised for `client.SCOPES` in the Admin console's domain-wide delegation
 screen, and the administrator named here able to manage users. Neither is
 visible from this site, and getting either wrong produces the same
@@ -67,8 +67,8 @@ class GoogleWorkspaceSettings(Document):
 		looks correctly configured. The cache key is built from the service
 		account and the administrator, so neither a changed key nor a changed
 		scope would displace it on its own; see
-		`commons.google_workspace.client.cache_key`.
+		`commons.api_integrations.google_workspace.client.cache_key`.
 		"""
-		from commons.google_workspace import client
+		from commons.api_integrations.google_workspace import client
 
 		client.forget_token()

@@ -49,6 +49,14 @@ and it is admitted on the same grounds as the first. `Commons Settings` is there
 because a fact about *the app* belongs in the module named after the app; so is
 this. Everything else under `commons_core` is an extension to Frappe and would
 make sense in an app with none of this one's sections, which this would not.
+
+The other direction
+-------------------
+`drop_stale_module_defs` is the second half, and it runs from `after_migrate`
+rather than this one's `before_migrate`. Modules get renamed and merged --
+`Auth0` and `Google Workspace` became `API Integrations` -- and core has no
+notion of that at all, because `add_module_defs` runs at install, when there is
+nothing yet to remove. Its own docstring argues the hook it is on.
 """
 
 APP = "commons"
@@ -93,3 +101,54 @@ def sync_module_defs() -> None:
 		record.app_name = APP
 		record.module_name = module
 		record.insert(ignore_permissions=True, ignore_if_duplicate=True)
+
+
+def drop_stale_module_defs() -> None:
+	"""Remove `Module Def` records for modules this app no longer has.
+
+	The other half of `sync_module_defs`, and the one core has never needed:
+	`add_module_defs` runs at install, when there is nothing to remove. A module
+	that is renamed, merged into another or dropped outright leaves its record
+	behind on every site that already had the app -- and a `Module Def` with
+	nothing in it is not inert, it is a name in the doctype dropdown and an
+	empty module in the desk's module list, for as long as nobody goes and
+	deletes it by hand on each site.
+
+	`API Integrations` is what made this a standing need rather than a tidy-up.
+	`Auth0` was a module of its own before the integrations were gathered under
+	one, so every site carrying this app has a record for a module that no
+	longer exists.
+
+	Deliberately in `after_migrate` while its counterpart is in
+	`before_migrate`. Addition has to happen before the doctype sync, or the
+	sync cannot import a doctype naming a module the site has never heard of.
+	Removal has to happen after it, because until the sync has run the doctype
+	still names the *old* module -- so a removal running first would find the
+	record still in use, skip it, and leave the site needing a second migrate to
+	converge. That is the shape this module's own docstring complains about
+	elsewhere, and it is avoidable here by picking the right hook.
+
+	`app_name` is the guard that keeps this to this app's own records: another
+	app's modules are not this one's to reconcile, and neither are the ones a
+	site made by hand.
+
+	`LinkExistsError` is the other guard, and it is the one that matters. A
+	module is still named by anything that lives in it -- a doctype, a report, a
+	page, a workspace -- and Frappe's own link check is a better answer to
+	"is this really unused" than any list of tables that would have to be kept
+	up to date here. Something still pointing at it means it is not stale, so it
+	is left exactly where it is rather than removed with a flag that would
+	silently break whatever was pointing.
+	"""
+	import frappe
+
+	current = set(frappe.get_module_list(APP))
+	for name in frappe.get_all("Module Def", filters={"app_name": APP}, pluck="name"):
+		if name in current:
+			continue
+		try:
+			frappe.delete_doc("Module Def", name, ignore_permissions=True)
+		except frappe.LinkExistsError:
+			# Still in use, so not stale. Left alone, and reconsidered on the
+			# next migrate once whatever names it has moved or gone.
+			pass

@@ -1,6 +1,6 @@
 """The way in to Google Workspace: the delegation, the token, and one call.
 
-Everything this section does to Google goes through `directory` below, and
+Everything this integration does to Google goes through `directory` below, and
 `directory` is public for exactly that reason. The Admin SDK has a great many
 endpoints; `users` wraps the handful this app has needed so far, and anything
 else is one line at the call site rather than a change to this file::
@@ -10,7 +10,7 @@ else is one line at the call site rather than a change to this file::
 
 Why a service account acting as somebody
 -----------------------------------------
-The Auth0 section asks for a token on its own behalf and gets one. There is no
+The Auth0 integration asks for a token on its own behalf and gets one. There is no
 such thing here. The Directory API will not act for an application, only for an
 administrator, so a token is obtained by a service account *impersonating* one
 -- domain-wide delegation -- and every call this app makes is made, as far as
@@ -30,7 +30,7 @@ The administrator is a real account and outlives nothing. Naming a person means
 the integration stops the day they leave, mid-offboarding, which is the worst
 available moment. A dedicated admin account is not a nicety.
 
-The credential is a private key. `client_secret` in the Auth0 section is a
+The credential is a private key. `client_secret` in the Auth0 integration is a
 string Auth0 can revoke; this is an RSA private key that signs assertions, and
 it is held the same way and for the same reasons -- a `Password` field,
 encrypted in `__Auth`, read by `settings` and returned by nothing.
@@ -46,7 +46,7 @@ caches one per credentials object, which on a bench means per worker, per hour,
 per process -- so the token exchange happens far more often than it needs to.
 It is held in Redis instead, with an expiry a little shorter than Google's own,
 so it is dropped before it stops working rather than after. Redis rather than a
-field beside the key, for the reason `commons.auth0.client` gives at length: a
+field beside the key, for the reason `commons.api_integrations.auth0.client` gives at length: a
 live token that can create and delete every account in the domain does not
 belong in the database or in every backup of it.
 
@@ -80,7 +80,7 @@ from frappe.utils import get_request_session
 
 SETTINGS = "Google Workspace Settings"
 
-# Every path in this section is relative to this. The Admin SDK lives on its own
+# Every path in this integration is relative to this. The Admin SDK lives on its own
 # host rather than under googleapis.com/admin, and the `directory/v1` is the API
 # rather than the version of the host.
 BASE = "https://admin.googleapis.com/admin/directory/v1/"
@@ -114,7 +114,7 @@ DEFAULT_ORG_UNIT_PATH = "/"
 
 # Dropped from the cache this many seconds before Google says it expires, so a
 # call that starts just under the wire still has a token that is good when it
-# lands. Proportionally larger than the Auth0 section's margin of the same name
+# lands. Proportionally larger than the Auth0 integration's margin of the same name
 # because the token it guards lives an hour rather than a day.
 EXPIRY_MARGIN = 300
 
@@ -204,7 +204,7 @@ def available() -> bool:
 	being pressed.
 
 	It does not check that the key parses. A site that has pasted something
-	wrong has configured this section, badly, and should be told so by
+	wrong has configured this integration, badly, and should be told so by
 	`credentials` in a sentence naming the problem rather than by a button
 	quietly disappearing.
 	"""

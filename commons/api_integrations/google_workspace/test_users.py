@@ -3,14 +3,14 @@
 Site-less. `client.directory` is the boundary -- everything below it is tested
 in `test_client` -- so it is replaced here with something that records what it
 was called with and answers what the test wants. `frappe.throw` is replaced for
-the reason `commons.auth0.test_client` gives.
+the reason `commons.api_integrations.auth0.test_client` gives.
 """
 
 import base64
 from unittest import TestCase
 from unittest.mock import patch
 
-from commons.google_workspace import client, users
+from commons.api_integrations.google_workspace import client, users
 
 CREDENTIALS = client.Credentials(
 	key={"client_email": "commons@example-project.iam.gserviceaccount.com"},

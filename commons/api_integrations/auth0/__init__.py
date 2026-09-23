@@ -2,7 +2,7 @@
 
 This site is a register of who exists; Auth0 is where those people sign in.
 Something has to make an account in the second for a person in the first, and
-this section is that something -- as a library of plain functions, not as a
+this integration is that something -- as a library of plain functions, not as a
 feature. It knows nothing about any doctype. What gets an Auth0 account, when,
 and where the resulting id is kept are decisions for whatever is wired to it,
 and those decisions are made elsewhere.
@@ -13,18 +13,20 @@ What is here
 function, `management`, that makes an authenticated call with it. `users` is the
 set of user operations built on that -- find, create, create-or-find, update,
 delete, password ticket, verification mail. `api` is the whitelisted surface for
-a Server Script or the desk. `doctype/auth0_settings` is where a System Manager
-puts the tenant and its credentials.
+a Server Script or the desk. `commons.api_integrations.doctype.auth0_settings`
+is where a System Manager puts the tenant and its credentials -- it sits in the
+module's own doctype folder rather than here, because a Frappe module owns its
+doctypes at one fixed path and an integration under it is a plain package.
 
 The Management API is large and `users` covers what has been needed. Everything
-else is a call rather than a change to this section, because `client.management`
+else is a call rather than a change to this integration, because `client.management`
 is public and carries the token, the retry and the error handling::
 
 	client.management("GET", "roles")
 	client.management("POST", f"users/{user_id}/roles", json_body={"roles": [...]})
 
-Why an app module and not a Server Script
-------------------------------------------
+Why app code and not a Server Script
+-------------------------------------
 This replaced five Server Scripts with a copy of the same twenty lines in each,
 and a copy of the client secret in each. The secret is the obvious problem and
 not the only one.

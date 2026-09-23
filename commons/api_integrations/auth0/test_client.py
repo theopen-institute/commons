@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import frappe
 
-from commons.auth0 import client
+from commons.api_integrations.auth0 import client
 
 TENANT = {
 	"domain": "example.eu.auth0.com",
