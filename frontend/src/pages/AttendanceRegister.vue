@@ -14,7 +14,12 @@
     </template>
   </AppPageHeader>
 
-  <div class="px-5 py-4">
+  <!-- Wider than the other pages' max-w-3xl, because the register is a grid
+       with one 40px column per student and a group of twenty needs about
+       1,100px. Wider groups scroll sideways inside the grid, as they already
+       did. Capped so the pickers and a small group's columns don't spread
+       across a wide monitor. -->
+  <div class="mx-auto max-w-6xl px-5 py-4">
     <!-- Refused rather than arrived. The sidebar already hides this row from
          anybody who cannot mark attendance, so almost nobody reaches this —
          somebody following a link they were sent does, and a blank page would
