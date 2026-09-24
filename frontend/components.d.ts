@@ -24,6 +24,7 @@ declare module 'vue' {
     AttendanceSessionDialog: typeof import('./src/components/AttendanceSessionDialog.vue')['default']
     BalanceHeadline: typeof import('./src/components/BalanceHeadline.vue')['default']
     BikramDatePicker: typeof import('./src/components/BikramDatePicker.vue')['default']
+    CaptureInvoiceDialog: typeof import('./src/components/CaptureInvoiceDialog.vue')['default']
     ChangeDiff: typeof import('./src/components/ChangeDiff.vue')['default']
     ChangeRequestList: typeof import('./src/components/ChangeRequestList.vue')['default']
     DepartmentBudgetCard: typeof import('./src/components/DepartmentBudgetCard.vue')['default']

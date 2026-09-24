@@ -1,0 +1,54 @@
+{
+ "actions": [],
+ "creation": "2026-09-23 00:00:00",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "api_key",
+  "model"
+ ],
+ "fields": [
+  {
+   "description": "An API key from the Claude Console (platform.claude.com), under API Keys. Use a key made for this site alone, in a workspace with a spending limit, so it can be revoked without affecting anything else. Stored encrypted and never shown again once saved. Every document read on this site is billed to this key, at a few cents a page.",
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key",
+   "length": 255
+  },
+  {
+   "default": "claude-opus-5",
+   "description": "Which Claude model reads documents. Leave it as claude-opus-5 unless there is a reason to change it: claude-sonnet-5 costs about 40% as much, and is worth trying if invoices come out right with it.",
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "API Integrations",
+ "name": "Claude Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 0,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

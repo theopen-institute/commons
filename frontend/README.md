@@ -81,6 +81,9 @@ The sections inside it are two things:
 - **Bank Reconciliation** (`/banking`) — a bank account's statement, line by
   line, with loan repayments booked from deposits. See
   [Bank Reconciliation](#bank-reconciliation).
+- **Document Capture** (`/capture`) — a scanned supplier's invoice, read by
+  Claude and drafted as a Purchase Invoice with the scan attached. See
+  [Document Capture](#document-capture).
 - **Attendance** (`/attendance`) — the one section addressed to somebody in
   their capacity as staff rather than as a person with a payslip: a term of a
   course, and who was at it. Nothing is raised and nobody approves it, and it
@@ -366,6 +369,33 @@ ranked by the page instead.
 The row is gated on write on `Bank Transaction`. ERPNext's candidate search
 (`get_linked_payments`) reads vouchers without a permission check, so the page
 is only offered to whoever keeps the books.
+
+## Document Capture
+
+`/capture` takes a photo or PDF of a supplier's invoice and drafts a Purchase
+Invoice from it. The server side is `commons.document_capture.purchase_invoice`
+(read, suggest, preview, create), and the scan is read by
+`commons.api_integrations.claude`.
+
+The page writes nothing. Choosing a scan sends it to be read, and nothing is
+stored at that point. The dialog then shows the scan beside the draft, with the
+reason for each suggestion: the supplier (by tax number or name), each line's
+expense account (from this company's earlier invoices), and the taxes (from
+this supplier's last invoice, or a template). The totals are ERPNext's own, from
+`preview`, and they are compared with the total printed on the scan. "Create
+draft invoice" inserts it as a draft, making the supplier first if asked, and
+then attaches the scan through Frappe's upload. Nothing is submitted.
+
+Bikram Sambat dates come back as printed and are converted in
+`src/data/captureRules.ts` with the date picker's tables, which `yarn test`
+covers.
+
+**What it needs configured.** An API key in **Claude Settings** (System Manager
+only). Without one the row is left out. The model defaults to `claude-opus-5`.
+Each read costs a few cents, and each person is limited to 60 reads an hour.
+
+The row is gated on create on `Purchase Invoice`, the same test the endpoints
+make before anything is sent to Claude.
 
 ## Permissions
 

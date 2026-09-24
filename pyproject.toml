@@ -13,6 +13,10 @@ dependencies = [
     # which `qrcode.make()` needs for its default image factory; Frappe happens
     # to install Pillow too, but this app is what requires it here.
     "qrcode[pil]",
+    # `commons.api_integrations.claude`, which reads scanned documents for
+    # `commons.document_capture`. 1.x is the major line the code is written
+    # against (`httpx2` underneath, server-side fallbacks on the beta API).
+    "anthropic>=1.8,<2",
 ]
 
 [build-system]

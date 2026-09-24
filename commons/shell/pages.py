@@ -28,6 +28,7 @@ held to the icon palette for exactly that reason.
 from collections.abc import Callable
 
 from commons.banking import reconciliation
+from commons.document_capture import purchase_invoice
 from commons.education_extensions import attendance
 from commons.requests.expense import EXPENSES
 from commons.requests.leave import LEAVE
@@ -42,6 +43,7 @@ PAGES: dict[str, str] = {
 	"Procurement": "procurement",
 	"Attendance": "attendance",
 	"Bank Reconciliation": "reconciliation",
+	"Document Capture": "capture",
 }
 
 # What the default workspace holds when a site has configured no workspace of
@@ -81,6 +83,10 @@ PAGE_AVAILABILITY = {
 	# whole, for the same reason attendance is not tied to Education: the two
 	# doctypes are what the page is made of.
 	"reconciliation": reconciliation.available,
+	# Absent without ERPNext, and without a Claude key to read scans with: a page
+	# that could only say "not set up" once somebody had chosen a file is left
+	# out instead.
+	"capture": purchase_invoice.available,
 }
 
 # The doctype whose read permission decides whether a page is worth offering to
@@ -112,6 +118,10 @@ PAGE_ACCESS: dict[str, Callable[[], bool]] = {
 	# permission, so the page is offered only to somebody who could keep this
 	# account's books in the desk. See `reconciliation.can_reconcile`.
 	"reconciliation": reconciliation.can_reconcile,
+	# Everything the page makes is a Purchase Invoice, so it is offered to
+	# whoever may create one. Read would offer it to people who could read the
+	# scan back and not save it, and every read is billed.
+	"capture": purchase_invoice.can_capture,
 }
 
 

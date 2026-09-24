@@ -81,6 +81,7 @@ PAGE_PATHS: dict[str, str] = {
 	"procurement": "/commons/requests/procurement",
 	"attendance": "/commons/attendance",
 	"reconciliation": "/commons/banking",
+	"capture": "/commons/capture",
 }
 
 # What a page is called when the workspace row carrying it typed no override.

@@ -67,6 +67,16 @@ const routes: RouteRecordRaw[] = [
     meta: { page: 'reconciliation' },
   },
   {
+    // A scan in, a draft Purchase Invoice out. `/capture` rather than
+    // `/purchase-invoices`, because it is where documents are read from scans
+    // and bank statements are the next it should take. `search.py` holds the
+    // same path.
+    path: '/capture',
+    name: 'DocumentCapture',
+    component: () => import('@/pages/DocumentCapture.vue'),
+    meta: { page: 'capture' },
+  },
+  {
     // Where the Requests tile lands: which of the two sections opens depends on
     // permissions that haven't loaded yet, so a component decides.
     //

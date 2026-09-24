@@ -5,8 +5,8 @@ them a mailbox, sends a message, takes a payment. Each of those is an account
 with a third party, a credential to keep, a token to mint, and a handful of
 calls -- and each of them is a package under here.
 
-What is here now is `auth0` and `google_workspace`. What is expected is more of
-them, which is the whole reason this module exists.
+What is here now is `auth0`, `google_workspace` and `claude`. What is expected
+is more of them, which is the whole reason this module exists.
 
 Why one module and not one per service
 ---------------------------------------

@@ -70,11 +70,13 @@ STATEMENT_PAGE = "statement"
 # capacity as staff rather than as a person with a payslip and a leave balance.
 ATTENDANCE_PAGE = "attendance"
 
-# And the page the Accounts group holds, on a site that keeps bank statements.
-# Its own heading for the reason Teaching has one: it is addressed to somebody in
+# And the pages the Accounts group holds: reconciliation on a site that keeps
+# bank statements, and document capture on one that can read scans. Their own
+# heading for the reason Teaching has one: they are addressed to somebody in
 # their capacity as staff, here as whoever keeps the books.
 ACCOUNTS_GROUP = "Accounts"
 RECONCILIATION_PAGE = "reconciliation"
+CAPTURE_PAGE = "capture"
 
 
 def workspaces() -> list[dict]:
@@ -249,6 +251,8 @@ def _default() -> dict:
 	# `PAGE_ACCESS` whether this reader is somebody who reconciles.
 	if page_list.available(RECONCILIATION_PAGE):
 		items.append(_item("page", RECONCILIATION_PAGE, ACCOUNTS_GROUP))
+	if page_list.available(CAPTURE_PAGE):
+		items.append(_item("page", CAPTURE_PAGE, ACCOUNTS_GROUP))
 	return {
 		"name": None,
 		"title": DEFAULT_TITLE,

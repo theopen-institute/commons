@@ -1,6 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import { useCall } from 'frappe-ui'
 import { attendanceGate } from './attendance'
+import { captureGate } from './capture'
 import { reconciliationGate } from './reconciliation'
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from 'vue-router'
 import { requestSection, type RequestSection, type RequestSectionKey } from './requests/sections'
@@ -39,6 +40,7 @@ export type PageKey =
   | 'statement'
   | 'attendance'
   | 'reconciliation'
+  | 'capture'
   | RequestSectionKey
 
 /**
@@ -137,6 +139,17 @@ const PAGES: Record<PageKey, PageChrome> = {
     routeName: 'BankReconciliation',
     section: null,
     gate: reconciliationGate,
+  },
+  // Offered to whoever may create a Purchase Invoice, the server's own test,
+  // because that is all the page makes and every read of a scan is billed. See
+  // `commons.document_capture.purchase_invoice.can_capture`.
+  capture: {
+    label: 'Document Capture',
+    icon: 'lucide-scan-text',
+    to: { name: 'DocumentCapture' },
+    routeName: 'DocumentCapture',
+    section: null,
+    gate: captureGate,
   },
   leave: fromSection('leave'),
   expense: fromSection('expense'),

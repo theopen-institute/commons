@@ -25,6 +25,7 @@ from unittest.mock import patch
 
 import frappe
 
+from commons.api_integrations.claude import client as claude
 from commons.shell import workspaces
 from commons.shell.doctype.commons_workspace import commons_workspace as controller
 from commons.shell.doctype.commons_workspace.commons_workspace import CommonsWorkspace
@@ -70,7 +71,7 @@ def with_policies(test, *policies):
 	test.enterContext(patch.object(workspaces.registry, "policy", side_effect=lambda key: resolved[key]))
 
 
-def with_documents(test, parents, items, installed=True, absent=(), apps=ALL_APPS):
+def with_documents(test, parents, items, installed=True, absent=(), apps=ALL_APPS, claude_key=False):
 	"""Stand in for the database with a fixed set of workspaces and their rows.
 
 	Three separate facts about the site, because resolving a row now asks three
@@ -84,8 +85,13 @@ def with_documents(test, parents, items, installed=True, absent=(), apps=ALL_APP
 	without ERPNext: its own doctype is this app's and is never absent. See
 	`shell.pages.available`, and `commons.commons_core.apps` on why the two are asked
 	differently.
+
+	`claude_key` is whether `Claude Settings` holds a key, which is a fourth
+	fact and not a doctype: document capture needs ERPNext and a key both. Off
+	by default, as it is on a fresh site.
 	"""
 	absent = set(absent)
+	test.enterContext(patch.object(claude, "available", return_value=claude_key))
 
 	# The doctype existence checks in front of the queries. Patched as a whole
 	# `frappe.db`, because site-less there is no connection for the proxy to
@@ -448,6 +454,41 @@ class TestTheReconciliationRow(TestCase):
 		)
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["reconciliation"])
+
+
+class TestTheCaptureRow(TestCase):
+	"""Document capture, after reconciliation under Accounts, on a site that
+	can read scans. Whether a *reader* gets it is `PAGE_ACCESS` again."""
+
+	def setUp(self):
+		with_policies(self, policy("Employee", "Profile", "employee"))
+
+	def test_is_offered_last_under_accounts_once_there_is_a_key(self):
+		with_documents(self, [], [], claude_key=True)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual([row["key"] for row in rows[-2:]], ["reconciliation", "capture"])
+		self.assertEqual(rows[-1]["group"], "Accounts")
+		self.assertIsNone(rows[-1]["label"])
+
+	def test_is_absent_without_a_key(self):
+		with_documents(self, [], [])
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertNotIn("capture", [row["key"] for row in rows])
+
+	def test_is_absent_without_erpnext(self):
+		with_documents(self, [], [], absent=("Purchase Invoice",), claude_key=True)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertNotIn("capture", [row["key"] for row in rows])
+
+	def test_a_configured_row_names_it_by_its_desk_wording(self):
+		with_documents(
+			self,
+			[parent("Finance")],
+			[item("Finance", page="Document Capture", idx=1)],
+			claude_key=True,
+		)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual([row["key"] for row in rows], ["capture"])
 
 
 class TestConfiguredWorkspaces(TestCase):

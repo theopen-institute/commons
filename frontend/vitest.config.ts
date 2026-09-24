@@ -16,7 +16,12 @@ import path from 'path'
  */
 export default defineConfig({
   resolve: {
-    alias: { '@': path.resolve(__dirname, 'src') },
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+      // The Bikram Sambat tables, which `captureRules.ts` converts scanned
+      // dates with. The same alias `vite.config.js` gives the app.
+      '@bikram': path.resolve(__dirname, '../commons/public/js/bikram_sambat'),
+    },
   },
   test: {
     environment: 'node',
