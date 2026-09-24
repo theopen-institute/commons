@@ -68,6 +68,23 @@ class Member(Document):
 		# link is checked against.
 		name = frappe.db.get_value(self.member_type, {"member_id": self.name})
 
+		# The detail record is named `format:{member_id}`, the same string as this
+		# Member, so one made before its link was set (or left behind by a deleted
+		# Member) sits at our name with an empty or dangling `member_id`. Inserting
+		# would collide with it; it is this member's record, so claim it instead.
+		if not name and frappe.db.exists(self.member_type, self.name):
+			details = frappe.get_doc(self.member_type, self.name)
+			if details.member_id and details.member_id != self.name and frappe.db.exists("Member", details.member_id):
+				frappe.throw(
+					_("{0} {1} already exists and belongs to Member {2}").format(
+						_(self.member_type), frappe.bold(self.name), frappe.bold(details.member_id)
+					),
+					frappe.DuplicateEntryError,
+				)
+			details.member_id = self.name
+			details.save(ignore_permissions=True)
+			name = details.name
+
 		if not name:
 			details = frappe.new_doc(self.member_type)
 			details.member_id = self.name
