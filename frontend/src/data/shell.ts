@@ -1,6 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import { useCall } from 'frappe-ui'
 import { attendanceGate } from './attendance'
+import { reconciliationGate } from './reconciliation'
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from 'vue-router'
 import { requestSection, type RequestSection, type RequestSectionKey } from './requests/sections'
 
@@ -33,7 +34,12 @@ import { requestSection, type RequestSection, type RequestSectionKey } from './r
  */
 
 /** One of the pages this app ships, as a workspace row may name it. */
-export type PageKey = 'announcements' | 'statement' | 'attendance' | RequestSectionKey
+export type PageKey =
+  | 'announcements'
+  | 'statement'
+  | 'attendance'
+  | 'reconciliation'
+  | RequestSectionKey
 
 /**
  * A permission answer a row waits on, for a page that is not a request section.
@@ -119,6 +125,18 @@ const PAGES: Record<PageKey, PageChrome> = {
     routeName: 'AttendanceRegister',
     section: null,
     gate: attendanceGate,
+  },
+  // Gated for the register's reason and a sharper one: ERPNext's candidate
+  // search reads vouchers without asking permission, so the page is offered
+  // only to whoever may write a Bank Transaction. See
+  // `commons.banking.reconciliation.can_reconcile`.
+  reconciliation: {
+    label: 'Bank Reconciliation',
+    icon: 'lucide-landmark',
+    to: { name: 'BankReconciliation' },
+    routeName: 'BankReconciliation',
+    section: null,
+    gate: reconciliationGate,
   },
   leave: fromSection('leave'),
   expense: fromSection('expense'),

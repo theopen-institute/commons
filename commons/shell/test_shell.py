@@ -172,6 +172,7 @@ class TestDefaultWorkspace(TestCase):
 				("page", "expense", "Requests"),
 				("page", "procurement", "Requests"),
 				("page", "attendance", "Teaching"),
+				("page", "reconciliation", "Accounts"),
 			],
 		)
 
@@ -194,7 +195,7 @@ class TestDefaultWorkspace(TestCase):
 			rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["announcements", "statement", "leave", "expense", "procurement", "attendance"],
+			["announcements", "statement", "leave", "expense", "procurement", "attendance", "reconciliation"],
 		)
 
 
@@ -224,7 +225,7 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["announcements", "Employee", "statement", "procurement", "attendance"],
+			["announcements", "Employee", "statement", "procurement", "attendance", "reconciliation"],
 		)
 
 	def test_a_configured_row_naming_one_is_dropped(self):
@@ -264,7 +265,16 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["announcements", "Employee", "statement", "leave", "expense", "procurement", "attendance"],
+			[
+				"announcements",
+				"Employee",
+				"statement",
+				"leave",
+				"expense",
+				"procurement",
+				"attendance",
+				"reconciliation",
+			],
 		)
 
 	def test_procurement_goes_with_erpnext_rather_than_with_a_doctype(self):
@@ -279,7 +289,10 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		# `GL Entry` goes with ERPNext, so a site without it has no ledger either
 		# -- named here rather than inferred from `apps`, because the stand-in
 		# answers the two questions separately and so does the code under test.
-		with_documents(self, [], [], absent=("GL Entry",), apps=("frappe", "hrms", "commons"))
+		# `Bank Transaction` goes with it for the same reason.
+		with_documents(
+			self, [], [], absent=("GL Entry", "Bank Transaction"), apps=("frappe", "hrms", "commons")
+		)
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows], ["announcements", "Employee", "leave", "expense", "attendance"]
@@ -287,7 +300,9 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 
 	def test_a_site_with_neither_keeps_the_pages_that_need_neither(self):
 		"""Bare Frappe: announcements and whatever self-service is configured."""
-		with_documents(self, [], [], absent=(*self.ABSENT, "GL Entry"), apps=("frappe", "commons"))
+		with_documents(
+			self, [], [], absent=(*self.ABSENT, "GL Entry", "Bank Transaction"), apps=("frappe", "commons")
+		)
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee", "attendance"])
 
@@ -360,11 +375,13 @@ class TestTheAttendanceRegisterRow(TestCase):
 		with_documents(self, [], [])
 		rows = workspaces.workspaces()[0]["items"]
 		row = next(row for row in rows if row["key"] == "attendance")
-		# Last, under its own heading, and unnamed like every shipped page.
+		# After the requests, under its own heading, and unnamed like every
+		# shipped page.
 		self.assertEqual(row["group"], "Teaching")
 		self.assertIsNone(row["label"])
 		self.assertIsNone(row["icon"])
-		self.assertEqual(rows[-1]["key"], "attendance")
+		keys = [row["key"] for row in rows]
+		self.assertEqual(keys.index("attendance"), keys.index("procurement") + 1)
 
 	def test_is_absent_where_it_does_not(self):
 		with_documents(self, [], [], absent=self.ABSENT)
@@ -394,6 +411,43 @@ class TestTheAttendanceRegisterRow(TestCase):
 		)
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["announcements"])
+
+
+class TestTheReconciliationRow(TestCase):
+	"""Bank reconciliation, absent on a site that keeps no bank statements.
+
+	As with the register, whether a *reader* gets the row is `PAGE_ACCESS`
+	and is not asked by the default workspace.
+	"""
+
+	def setUp(self):
+		with_policies(self, policy("Employee", "Profile", "employee"))
+
+	def test_is_offered_last_under_accounts(self):
+		with_documents(self, [], [])
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual(rows[-1]["key"], "reconciliation")
+		self.assertEqual(rows[-1]["group"], "Accounts")
+		self.assertIsNone(rows[-1]["label"])
+
+	def test_is_absent_without_bank_transactions(self):
+		with_documents(self, [], [], absent=("Bank Transaction",))
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertNotIn("reconciliation", [row["key"] for row in rows])
+
+	def test_is_absent_without_bank_accounts(self):
+		with_documents(self, [], [], absent=("Bank Account",))
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertNotIn("reconciliation", [row["key"] for row in rows])
+
+	def test_a_configured_row_names_it_by_its_desk_wording(self):
+		with_documents(
+			self,
+			[parent("Finance")],
+			[item("Finance", page="Bank Reconciliation", idx=1)],
+		)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertEqual([row["key"] for row in rows], ["reconciliation"])
 
 
 class TestConfiguredWorkspaces(TestCase):

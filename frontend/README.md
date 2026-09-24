@@ -78,6 +78,9 @@ The sections inside it are two things:
 - **Account Balance** (`/account`) — a statement rather than a request: what
   this person owes the organisation and what it owes them. One page, one call,
   no approvals tab. See [Account Balance](#account-balance).
+- **Bank Reconciliation** (`/banking`) — a bank account's statement, line by
+  line, with loan repayments booked from deposits. See
+  [Bank Reconciliation](#bank-reconciliation).
 - **Attendance** (`/attendance`) — the one section addressed to somebody in
   their capacity as staff rather than as a person with a payslip: a term of a
   course, and who was at it. Nothing is raised and nobody approves it, and it
@@ -332,6 +335,37 @@ readable by every student and guardian on the site, and the register is a whole
 cohort's marks on one screen. It is offered to whoever may *write* a mark. See
 `commons.education_extensions.attendance.can_mark`, which the navigation and the
 desk's Awesome Bar ask, and which the browser asks for itself.
+
+## Bank Reconciliation
+
+`/banking?account=…&from=…&to=…` is one company bank account's statement lines
+for a period, in place of the desk's Bank Reconciliation Tool. The tool's
+server functions are sound and every write here but one is one of them
+(`src/data/reconciliation.ts` lists them). The page keeps the modal rule: the
+list is read-only, a line opens a dialog, and each tab there (loan repayment,
+match existing, payment entry, journal entry, details) holds a draft with its
+own button. After a line is fully reconciled, the dialog moves on to the next
+open one.
+
+**Loan repayments.** For a deposit, the dialog suggests the borrower and says
+why: the party on the line, the borrower's name in the description, or an
+account or phone number seen on their earlier repayments. The logic is in
+`src/data/reconciliationRules.ts`, tested by `yarn test`, together with how it
+scored against register.localhost's history. Booking goes through
+`commons.banking.reconciliation.create_loan_repayments`, which makes the same
+Loan Repayment the desk would and matches it in one transaction. A deposit can
+be split across several loans.
+
+**What it needs configured.** Lending 16 refuses every Loan Repayment until a
+Loan Demand Offset Order is set on the Loan Product or the Company. The Loan
+Product's repayment account has to be the bank's GL account; if it is not, the
+endpoint refuses before submitting. Lending's own bank-rec matching query is
+broken upstream (it returns no `rank`), so uncleared repayments are read and
+ranked by the page instead.
+
+The row is gated on write on `Bank Transaction`. ERPNext's candidate search
+(`get_linked_payments`) reads vouchers without a permission check, so the page
+is only offered to whoever keeps the books.
 
 ## Permissions
 

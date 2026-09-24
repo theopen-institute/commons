@@ -53,6 +53,20 @@ const routes: RouteRecordRaw[] = [
     meta: { page: 'attendance' },
   },
   {
+    // One bank account's statement for a period. Like the register, the
+    // account, the dates and the view are in the query string, because "OI
+    // Checking for July" is a view of this page and a link worth sending. See
+    // `BankReconciliation.vue`.
+    //
+    // `/banking` rather than `/reconciliation`: it is where a bank account's
+    // books are kept, and a page for importing statements would sit beside
+    // it. `search.py` holds the same path.
+    path: '/banking',
+    name: 'BankReconciliation',
+    component: () => import('@/pages/BankReconciliation.vue'),
+    meta: { page: 'reconciliation' },
+  },
+  {
     // Where the Requests tile lands: which of the two sections opens depends on
     // permissions that haven't loaded yet, so a component decides.
     //

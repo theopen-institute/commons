@@ -27,6 +27,7 @@ held to the icon palette for exactly that reason.
 
 from collections.abc import Callable
 
+from commons.banking import reconciliation
 from commons.education_extensions import attendance
 from commons.requests.expense import EXPENSES
 from commons.requests.leave import LEAVE
@@ -40,6 +41,7 @@ PAGES: dict[str, str] = {
 	"Expense Claim": "expense",
 	"Procurement": "procurement",
 	"Attendance": "attendance",
+	"Bank Reconciliation": "reconciliation",
 }
 
 # What the default workspace holds when a site has configured no workspace of
@@ -75,6 +77,10 @@ PAGE_AVAILABILITY = {
 	# of, and `attendance.available` asks about those two rather than about
 	# which app happens to bring them.
 	"attendance": attendance.available,
+	# Absent on a site that keeps no bank statements. Not tied to ERPNext as a
+	# whole, for the same reason attendance is not tied to Education: the two
+	# doctypes are what the page is made of.
+	"reconciliation": reconciliation.available,
 }
 
 # The doctype whose read permission decides whether a page is worth offering to
@@ -101,6 +107,11 @@ PAGE_DOCTYPES: dict[str, str] = {key: section.doctype for key, section in PAGE_S
 # the same call the endpoints make -- see `attendance.can_mark`.
 PAGE_ACCESS: dict[str, Callable[[], bool]] = {
 	"attendance": attendance.can_mark,
+	# Read is too wide here as well, and for a sharper reason than a
+	# cohort's marks: ERPNext's candidate search reads vouchers without asking
+	# permission, so the page is offered only to somebody who could keep this
+	# account's books in the desk. See `reconciliation.can_reconcile`.
+	"reconciliation": reconciliation.can_reconcile,
 }
 
 
