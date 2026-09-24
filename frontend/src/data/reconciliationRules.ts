@@ -427,3 +427,122 @@ export function proposeAmount(unallocatedRemaining: number, outstanding: number)
   if (left <= 0) return 0
   return outstanding > 0 ? Math.min(left, money(outstanding)) : left
 }
+
+/* -------------------------------------------------------------------------- */
+/* Where an account stands                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** A statement line still to account for, as the standing reads it. */
+export interface OpenLine {
+  date: string
+  deposit: number
+  withdrawal: number
+  unallocated_amount: number
+}
+
+export interface StandingInput {
+  /** Today, as `YYYY-MM-DD`. Passed in so the arithmetic is testable. */
+  today: string
+  /** The date of the latest statement line on the account, or null for none. */
+  lastLineDate: string | null
+  /** Every line on the account with money left to account for, any date. */
+  open: OpenLine[]
+  /** Every entry posted to the bank's GL account up to today. */
+  book: number | null
+  /** Only the entries that have cleared, that is been matched to a statement
+   *  line, up to today. */
+  cleared: number | null
+  /** The bank's latest recorded closing balance, and the books' cleared
+   *  balance on that same date. */
+  statement: { balance: number; date: string; clearedThen: number | null } | null
+}
+
+export interface Standing {
+  lastLineDate: string | null
+  /** Whole days from the latest line to today. */
+  daysSinceLastLine: number | null
+  openCount: number
+  /** What the open lines add to the bank's side, deposits positive. */
+  openNet: number
+  oldestOpen: string | null
+  /** The last day up to which every line is accounted for: the latest line's
+   *  date if nothing is open, otherwise the day before the oldest open line.
+   *  Null for an account with no lines at all. */
+  reconciledThrough: string | null
+  book: number | null
+  cleared: number | null
+  /** Entries in the books that no statement line accounts for yet: cheques
+   *  not yet presented, transfers not yet imported. */
+  awaitingStatement: number | null
+  /**
+   * Whether the bank and the books agree, as of the latest recorded statement
+   * balance.
+   *
+   * On that date the bank's balance should be what the books have cleared,
+   * plus the open lines dated up to it, which are money the bank has moved
+   * and the books have not yet matched. Anything left over is unexplained: a
+   * statement line never imported, or a voucher cleared against the wrong
+   * line. Zero means the two agree.
+   */
+  check: {
+    date: string
+    statement: number
+    expected: number
+    unexplained: number
+  } | null
+}
+
+function signedUnallocated(line: OpenLine): number {
+  return line.deposit > 0 ? line.unallocated_amount : -line.unallocated_amount
+}
+
+function daysBetween(from: string, to: string): number {
+  const toUtc = (value: string) => {
+    const [y, m, d] = value.slice(0, 10).split('-').map(Number)
+    return Date.UTC(y, m - 1, d)
+  }
+  return Math.round((toUtc(to) - toUtc(from)) / 86_400_000)
+}
+
+function previousDay(date: string): string {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10)
+}
+
+export function standing(input: StandingInput): Standing {
+  const open = input.open.filter((line) => line.unallocated_amount > 0.005)
+  const oldestOpen = open.reduce<string | null>(
+    (oldest, line) => (!oldest || line.date < oldest ? line.date : oldest),
+    null,
+  )
+  const openNet = money(open.reduce((sum, line) => sum + signedUnallocated(line), 0))
+
+  let check: Standing['check'] = null
+  const statement = input.statement
+  if (statement && statement.clearedThen !== null) {
+    const openThen = money(
+      open.filter((line) => line.date <= statement.date).reduce((sum, line) => sum + signedUnallocated(line), 0),
+    )
+    const expected = money(statement.clearedThen + openThen)
+    check = {
+      date: statement.date,
+      statement: money(statement.balance),
+      expected,
+      unexplained: money(statement.balance - expected),
+    }
+  }
+
+  return {
+    lastLineDate: input.lastLineDate,
+    daysSinceLastLine: input.lastLineDate ? daysBetween(input.lastLineDate, input.today) : null,
+    openCount: open.length,
+    openNet,
+    oldestOpen,
+    reconciledThrough: oldestOpen ? previousDay(oldestOpen) : input.lastLineDate,
+    book: input.book === null ? null : money(input.book),
+    cleared: input.cleared === null ? null : money(input.cleared),
+    awaitingStatement:
+      input.book === null || input.cleared === null ? null : money(input.book - input.cleared),
+    check,
+  }
+}

@@ -9,6 +9,7 @@ import {
   proposeAmount,
   proposedReference,
   repaymentCandidates,
+  standing,
   suggestLoans,
   type Candidate,
   type LoanRow,
@@ -387,5 +388,72 @@ describe('proposeAmount', () => {
     expect(proposeAmount(5000, 30000)).toBe(5000)
     expect(proposeAmount(5000, 3000)).toBe(3000)
     expect(proposeAmount(0, 3000)).toBe(0)
+  })
+})
+
+describe('standing', () => {
+  const base = {
+    today: '2026-09-24',
+    lastLineDate: '2026-07-10',
+    open: [],
+    book: 2_061_967.56,
+    cleared: 2_012_467.56,
+    statement: null,
+  }
+  const open = (date: string, deposit: number, withdrawal = 0, unallocated = deposit || withdrawal) => ({
+    date,
+    deposit,
+    withdrawal,
+    unallocated_amount: unallocated,
+  })
+
+  it('says how long ago the statement ends', () => {
+    expect(standing(base).daysSinceLastLine).toBe(76)
+  })
+
+  it('is reconciled through the last line when nothing is open', () => {
+    expect(standing(base).reconciledThrough).toBe('2026-07-10')
+    expect(standing(base).openCount).toBe(0)
+  })
+
+  it('is reconciled through the day before the oldest open line', () => {
+    const found = standing({ ...base, open: [open('2026-05-03', 1500), open('2026-02-07', 5000)] })
+    expect(found.reconciledThrough).toBe('2026-02-06')
+    expect(found.oldestOpen).toBe('2026-02-07')
+    expect(found.openCount).toBe(2)
+    expect(found.openNet).toBe(6500)
+  })
+
+  it('counts an open withdrawal against the bank, and only its unallocated part', () => {
+    expect(standing({ ...base, open: [open('2026-05-03', 0, 2000, 500), open('2026-05-04', 1000)] }).openNet).toBe(500)
+  })
+
+  it('puts the difference between book and cleared down to entries awaiting the statement', () => {
+    expect(standing(base).awaitingStatement).toBe(49_500)
+  })
+
+  it('agrees with a statement that the cleared balance and the open lines explain', () => {
+    const found = standing({
+      ...base,
+      open: [open('2026-06-01', 5000), open('2026-08-01', 3000)],
+      statement: { balance: 105_000, date: '2026-06-30', clearedThen: 100_000 },
+    })
+    // The August line is after the statement's date and plays no part.
+    expect(found.check).toEqual({ date: '2026-06-30', statement: 105_000, expected: 105_000, unexplained: 0 })
+  })
+
+  it('reports what the books cannot explain', () => {
+    const found = standing({ ...base, statement: { balance: 99_000, date: '2026-06-30', clearedThen: 100_000 } })
+    expect(found.check?.unexplained).toBe(-1000)
+  })
+
+  it('has no check without a recorded statement balance', () => {
+    expect(standing(base).check).toBeNull()
+  })
+
+  it('says nothing for an account with no lines', () => {
+    const found = standing({ ...base, lastLineDate: null })
+    expect(found.daysSinceLastLine).toBeNull()
+    expect(found.reconciledThrough).toBeNull()
   })
 })

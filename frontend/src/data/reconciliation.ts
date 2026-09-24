@@ -3,8 +3,11 @@ import { useCall } from 'frappe-ui'
 import {
   OPEN_LOAN_STATUSES,
   type Candidate,
+  standing,
   type LoanRow,
+  type OpenLine,
   type RepaymentHistory,
+  type Standing,
   type RepaymentRow,
   type TransactionRow,
 } from './reconciliationRules'
@@ -249,6 +252,112 @@ function dayBefore(date: string): string {
   const [year, month, day] = date.split('-').map(Number)
   const previous = new Date(Date.UTC(year, month - 1, day - 1))
   return previous.toISOString().slice(0, 10)
+}
+
+/**
+ * Where an account stands today, whatever period is on screen: how far its
+ * statement runs, how far it is reconciled, and whether the bank and the books
+ * agree. See `standing` in `reconciliationRules.ts` for the arithmetic.
+ *
+ * The book balance is a sum over `GL Entry` through the document API, which
+ * is permission-checked like every other read here. ERPNext's own
+ * `get_balance_on` would give the same figure but is not whitelisted.
+ */
+export function useStanding() {
+  const lastLine = documentList<{ date: string }>(BANK_TRANSACTION)
+  const openLines = documentList<OpenLine>(BANK_TRANSACTION)
+  const ledger = documentList<{ debit: number | null; credit: number | null }>('GL Entry')
+  const clearedNow = useCall<number, { bank_account: string; till_date: string; company: string }>({
+    url: `${TOOL}.get_account_balance`,
+    immediate: false,
+  })
+  const clearedThen = useCall<number, { bank_account: string; till_date: string; company: string }>({
+    url: `${TOOL}.get_account_balance`,
+    immediate: false,
+  })
+  const statement = useCall<
+    { balance: number; date: string | null },
+    { bank_account: string; date: string }
+  >({ url: `${BANK_ACCOUNT_API}.get_closing_balance_as_per_statement`, immediate: false })
+
+  const value = ref<Standing | null>(null)
+  const loading = ref(false)
+  const error = ref<Error | null>(null)
+
+  async function load(account: BankAccountRow | null) {
+    if (!account?.company || !account.account) {
+      value.value = null
+      return
+    }
+    const today = localToday()
+    const company = account.company
+    loading.value = true
+    error.value = null
+    try {
+      const [last, open, sums, cleared, recorded] = await Promise.all([
+        fetchRows(lastLine, {
+          fields: JSON.stringify(['date']),
+          filters: JSON.stringify([
+            ['bank_account', '=', account.name],
+            ['docstatus', '=', 1],
+          ]),
+          order_by: 'date desc',
+          limit: 1,
+        }),
+        fetchRows(openLines, {
+          fields: JSON.stringify(['date', 'deposit', 'withdrawal', 'unallocated_amount']),
+          filters: JSON.stringify([
+            ['bank_account', '=', account.name],
+            ['docstatus', '=', 1],
+            ['unallocated_amount', '>', 0],
+          ]),
+          limit: PAGE.transactions,
+        }),
+        // In the account's own currency, which is what the statement is in.
+        fetchRows(ledger, {
+          fields: JSON.stringify([
+            { SUM: 'debit_in_account_currency', as: 'debit' },
+            { SUM: 'credit_in_account_currency', as: 'credit' },
+          ]),
+          filters: JSON.stringify([
+            ['account', '=', account.account],
+            ['is_cancelled', '=', 0],
+            ['posting_date', '<=', today],
+          ]),
+          limit: 1,
+        }),
+        fetchRows(clearedNow, { bank_account: account.name, till_date: today, company }),
+        fetchRows(statement, { bank_account: account.name, date: today }),
+      ])
+      // A zero with no date is ERPNext's way of saying none was recorded.
+      const recordedDate = recorded.date ? String(recorded.date).slice(0, 10) : null
+      const then = recordedDate
+        ? await fetchRows(clearedThen, { bank_account: account.name, till_date: recordedDate, company })
+        : null
+      const totals = sums[0] ?? { debit: 0, credit: 0 }
+      value.value = standing({
+        today,
+        lastLineDate: last[0]?.date ?? null,
+        open,
+        book: (totals.debit ?? 0) - (totals.credit ?? 0),
+        cleared,
+        statement: recordedDate ? { balance: recorded.balance, date: recordedDate, clearedThen: then } : null,
+      })
+    } catch (problem) {
+      error.value = problem as Error
+      value.value = null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { load, standing: value, loading, error }
+}
+
+/** Today in the reader's own calendar, not UTC's. */
+function localToday(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
 /* -------------------------------------------------------------------------- */

@@ -46,6 +46,7 @@ declare module 'vue' {
     ReconciliationList: typeof import('./src/components/ReconciliationList.vue')['default']
     ReconciliationLoanPanel: typeof import('./src/components/ReconciliationLoanPanel.vue')['default']
     ReconciliationMatchPanel: typeof import('./src/components/ReconciliationMatchPanel.vue')['default']
+    ReconciliationStanding: typeof import('./src/components/ReconciliationStanding.vue')['default']
     ReconciliationVoucherPanel: typeof import('./src/components/ReconciliationVoucherPanel.vue')['default']
     RecordFieldControl: typeof import('./src/components/RecordFieldControl.vue')['default']
     RequestGate: typeof import('./src/components/RequestGate.vue')['default']

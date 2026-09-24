@@ -116,6 +116,8 @@ function openDialog() {
   dialogOpen.value = true
 }
 
+defineExpose({ openDialog })
+
 const actions = computed<DialogAction[]>(() => [
   {
     label: 'Save',

@@ -60,8 +60,25 @@
       </div>
 
       <template v-else-if="bankAccount">
-        <div class="mt-4">
+        <ReconciliationStanding
+          class="mt-4"
+          :standing="standingData.standing.value"
+          :currency="currency"
+          @record="balancesPanel?.openDialog()"
+          @show-open="showOpenLines"
+        />
+        <ErrorMessage
+          v-if="standingData.error.value"
+          :message="`Where this account stands could not be worked out: ${standingData.error.value.message}`"
+          class="mt-2"
+        />
+
+        <h2 class="mt-5 text-p-sm font-medium text-ink-gray-7">
+          {{ formatDate(from) }} to {{ formatDate(to) }}
+        </h2>
+        <div class="mt-1.5">
           <ReconciliationBalances
+            ref="balancesPanel"
             :balances="balances.balances.value"
             :bank-account="bankAccount"
             :currency="currency"
@@ -189,6 +206,7 @@ import AppPageHeader from '@/components/AppPageHeader.vue'
 import ReconciliationBalances from '@/components/ReconciliationBalances.vue'
 import ReconciliationDialog from '@/components/ReconciliationDialog.vue'
 import ReconciliationList, { type RowHint } from '@/components/ReconciliationList.vue'
+import ReconciliationStanding from '@/components/ReconciliationStanding.vue'
 import { formatDate, pluralise } from '@/data/format'
 import {
   inView,
@@ -198,6 +216,7 @@ import {
   useBalances,
   useBankAccounts,
   useLoanBook,
+  useStanding,
   useTransactions,
   write,
   type TransactionView,
@@ -230,6 +249,8 @@ const router = useRouter()
 const accounts = useBankAccounts()
 const transactions = useTransactions()
 const balances = useBalances()
+const standingData = useStanding()
+const balancesPanel = ref<InstanceType<typeof ReconciliationBalances> | null>(null)
 const loanBook = useLoanBook()
 const auto = useAutoReconcile()
 
@@ -317,8 +338,25 @@ watch(
   },
 )
 
+/** The period's balances and the account's standing, which every write and
+ *  every recorded statement balance moves. */
 function loadBalances() {
   balances.load(account.value, from.value, to.value)
+  standingData.load(account.value)
+}
+
+/** From the standing's open-line count to the lines themselves: every open
+ *  line, back to the oldest, whatever the period was. */
+function showOpenLines() {
+  const oldest = standingData.standing.value?.oldestOpen
+  view.value = 'unreconciled'
+  search.value = ''
+  if (oldest && oldest < from.value) from.value = oldest
+  if (to.value < localToday()) to.value = localToday()
+}
+
+function localToday() {
+  return isoDate(new Date())
 }
 
 function reload() {
