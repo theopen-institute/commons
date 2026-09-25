@@ -8,3 +8,4 @@ Self Service
 Shell
 Statement
 Derived Docfields
+Email Extensions

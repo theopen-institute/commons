@@ -1,0 +1,87 @@
+"""Who a template's email goes to.
+
+Site-less, like the settings tests: `recipients` only reads a doctype's meta and,
+through a link, one record's address, and both are stubbed here.
+"""
+
+from types import SimpleNamespace
+from unittest import TestCase
+from unittest.mock import patch
+
+from commons.email_extensions import api
+
+
+def meta(**fields):
+	"""A doctype's meta holding `fieldname=(fieldtype, options)`."""
+	docfields = {
+		fieldname: SimpleNamespace(fieldname=fieldname, fieldtype=fieldtype, options=options)
+		for fieldname, (fieldtype, options) in fields.items()
+	}
+	return SimpleNamespace(get_field=docfields.get)
+
+
+class Record(dict):
+	def __init__(self, doctype, **values):
+		super().__init__(values)
+		self.doctype = doctype
+
+
+class TestRecipients(TestCase):
+	def recipients(self, record, fieldnames, fields, linked=None):
+		linked = linked or {}
+		with (
+			patch.object(api.frappe, "get_meta", return_value=meta(**fields)),
+			patch.object(api, "address_of", side_effect=lambda dt, name: linked.get((dt, name), [])),
+		):
+			return api.recipients(record, fieldnames)
+
+	def test_an_address_is_used_as_it_stands(self):
+		record = Record("Fees", contact_email="a@example.org")
+		self.assertEqual(
+			self.recipients(record, "contact_email", {"contact_email": ("Data", "Email")}),
+			["a@example.org"],
+		)
+
+	def test_a_dynamic_link_is_followed_to_the_record_it_names(self):
+		# The Payment Entry the old scripts put `HR-EMP-00008` in the To box for.
+		record = Record("Payment Entry", party_type="Employee", party="HR-EMP-00008")
+		self.assertEqual(
+			self.recipients(
+				record,
+				"party",
+				{"party": ("Dynamic Link", "party_type"), "party_type": ("Link", "DocType")},
+				linked={("Employee", "HR-EMP-00008"): ["t@example.org"]},
+			),
+			["t@example.org"],
+		)
+
+	def test_a_link_already_holding_an_address_is_not_followed(self):
+		record = Record("Loan Repayment", applicant_type="Student", applicant="s@example.org")
+		fields = {"applicant": ("Dynamic Link", "applicant_type")}
+		with patch.object(api, "address_of") as address_of:
+			with patch.object(api.frappe, "get_meta", return_value=meta(**fields)):
+				self.assertEqual(api.recipients(record, "applicant"), ["s@example.org"])
+		address_of.assert_not_called()
+
+	def test_several_fields_in_order_without_repeats_and_empties_skipped(self):
+		record = Record("Student Applicant", student_email_id="a@example.org", guardian_email="", alt="a@example.org, b@example.org")
+		fields = {f: ("Data", "Email") for f in ("student_email_id", "guardian_email", "alt")}
+		self.assertEqual(
+			self.recipients(record, "student_email_id, guardian_email, missing, alt", fields),
+			["a@example.org", "b@example.org"],
+		)
+
+	def test_a_plain_value_that_is_neither_address_nor_link_is_skipped(self):
+		record = Record("Fees", student_name="Asha")
+		self.assertEqual(self.recipients(record, "student_name", {"student_name": ("Data", None)}), [])
+
+	def test_no_field_named_means_no_one(self):
+		self.assertEqual(self.recipients(Record("Fees"), None, {}), [])
+
+
+class TestAddressesIn(TestCase):
+	def test_invalid_parts_are_dropped(self):
+		self.assertEqual(api.addresses_in("a@example.org; not an address"), ["a@example.org"])
+
+	def test_nothing_valid_is_empty(self):
+		self.assertEqual(api.addresses_in("HR-EMP-00008"), [])

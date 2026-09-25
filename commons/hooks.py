@@ -499,4 +499,7 @@ page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
 extend_bootinfo = [
 	"commons.commons_core.website_link.extend_bootinfo",
 	"commons.commons_core.settings.extend_bootinfo",
+	# Which Email Templates each doctype's forms offer, so a form can draw its
+	# Email menu without asking. See `commons.email_extensions`.
+	"commons.email_extensions.api.extend_bootinfo",
 ]

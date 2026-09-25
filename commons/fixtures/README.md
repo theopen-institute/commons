@@ -15,7 +15,7 @@ rewritten.
 
 | File | What it holds |
 | --- | --- |
-| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, and the derived fields it adds to its own |
+| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eight on Email Template, and the derived fields it adds to its own |
 | `custom_field_education.json` | The four fields the attendance register adds to Education's doctypes |
 | `custom_field_erpnext.json` | The four fields the requests section adds to ERPNext's doctypes |
 | `property_setter.json` | The image and title fields of this app's member doctypes |
@@ -97,6 +97,21 @@ for standard fields, which have a column and can't be derived. Not on
 doctypes, so a derived field can only ever be a Custom Field. Each description
 says the property is inert unless "Enable Derived Docfields" is ticked in
 Commons Settings.
+
+**The Form Button tab on `Email Template`** — `email_doctype`,
+`email_condition`, `custom_recipient_fieldname`, `custom_sending_account`,
+`attach_document_print` and `custom_print_format`, with a tab break and a
+column break for the layout. What a template needs to say for a form to send
+it in one step: which doctype's forms offer it, when, to whom, from which
+account and with which print. Read by `commons.email_extensions`, which draws
+the Email menu on those forms and fills the composer from them. Every one but
+`email_condition` was first added by hand on the site the module was written
+for, where the templates already carry values in them, and they keep the names
+they were given there, `custom_` prefix and `custom_tab_break_ybjfo` included:
+a fixture replaces a record by name, so a tidier name would have left the old
+field standing beside the new one rather than replacing it. The recipient
+field is an Autocomplete rather than the Data it started as, so the form can
+offer the doctype's address and link fields; both are the same column.
 
 ### This app's own doctypes (`custom_field.json`)
 
