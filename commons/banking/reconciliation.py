@@ -145,6 +145,67 @@ def create_loan_repayments(
 	}
 
 
+# The voucher types a draft on the board can be, which are the ones ERPNext's
+# reconciliation can match (`bank_reconciliation_doctypes`, with lending's two).
+DRAFT_VOUCHERS = (
+	"Payment Entry",
+	"Journal Entry",
+	"Purchase Invoice",
+	"Sales Invoice",
+	"Loan Repayment",
+	"Loan Disbursement",
+)
+
+
+@frappe.whitelist(methods=["POST"])
+def submit_and_reconcile(bank_transaction: str, voucher_type: str, voucher: str) -> dict:
+	"""Submit a draft voucher and match it to a statement line, in one transaction.
+
+	What the board offers when a statement line is paired with a draft: the
+	payment somebody started and never submitted, which the bank has since
+	shown. ERPNext can only match a submitted voucher (a draft has no GL
+	entries to clear), so the two steps are needed. They are one request for the
+	reason `create_loan_repayments` is: if the match is refused, the submit
+	goes too, rather than leaving the voucher posted with no statement line
+	accounting for it.
+
+	The voucher is submitted as it stands in the database, not as the page last
+	read it, and goes through its full submit: validation, `submit`
+	permission and the site's server scripts. It is matched as `Matched`, not
+	`Voucher Created`, because it existed before the statement line was dealt
+	with; ERPNext's `unreconcile_transaction` would otherwise cancel it later.
+	"""
+	if voucher_type not in DRAFT_VOUCHERS:
+		frappe.throw(_("{0} cannot be matched to a statement line.").format(voucher_type))
+
+	transaction = frappe.get_doc(BANK_TRANSACTION, bank_transaction)
+	transaction.check_permission("write")
+	if transaction.docstatus != 1:
+		frappe.throw(_("Only a submitted bank transaction can be reconciled."))
+	if flt(transaction.unallocated_amount) <= 0:
+		frappe.throw(_("Bank transaction {0} is already fully reconciled.").format(transaction.name))
+
+	document = frappe.get_doc(voucher_type, voucher)
+	if document.docstatus != 0:
+		frappe.throw(_("{0} {1} is not a draft.").format(voucher_type, voucher))
+	document.submit()
+
+	from erpnext.accounts.doctype.bank_reconciliation_tool.bank_reconciliation_tool import (
+		reconcile_vouchers,
+	)
+
+	reconciled = reconcile_vouchers(
+		transaction.name,
+		json.dumps([{"payment_doctype": voucher_type, "payment_name": document.name}]),
+	)
+	return {
+		"transaction": reconciled.name,
+		"status": reconciled.status,
+		"unallocated_amount": reconciled.unallocated_amount,
+		"voucher": document.name,
+	}
+
+
 def _validated_lines(transaction, repayments) -> list[dict]:
 	"""The lines, checked against the deposit before anything is written.
 

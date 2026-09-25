@@ -25,7 +25,7 @@
       <thead>
         <tr class="text-left text-ink-gray-5">
           <th class="border-b border-outline-gray-2 px-3 py-2 font-medium">Date</th>
-          <th class="border-b border-outline-gray-2 px-3 py-2 font-medium">Description</th>
+          <th class="w-full border-b border-outline-gray-2 px-3 py-2 font-medium">Description</th>
           <th class="border-b border-outline-gray-2 px-3 py-2 text-right font-medium">Amount</th>
           <th class="hidden border-b border-outline-gray-2 px-3 py-2 text-right font-medium sm:table-cell">
             Unallocated
@@ -39,7 +39,11 @@
           :key="row.name"
           :ref="(el) => (rowElements[index] = el as HTMLElement | null)"
           class="cursor-pointer"
-          :class="index === cursor ? 'bg-surface-gray-2' : 'hover:bg-surface-gray-1'"
+          :class="
+            index === cursor
+              ? 'bg-surface-gray-2'
+              : 'hover:bg-surface-gray-1'
+          "
           :aria-selected="index === cursor"
           @click="open(index)"
         >

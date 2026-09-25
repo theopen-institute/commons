@@ -3,11 +3,9 @@ import { useCall } from 'frappe-ui'
 import {
   OPEN_LOAN_STATUSES,
   type Candidate,
-  standing,
+  type BookEntry,
   type LoanRow,
-  type OpenLine,
   type RepaymentHistory,
-  type Standing,
   type RepaymentRow,
   type TransactionRow,
 } from './reconciliationRules'
@@ -184,6 +182,17 @@ export function useBankAccounts() {
   }
 }
 
+/** Record the bank's closing figure for a date. A `Bank Account Balance` row,
+ *  which is where ERPNext's newer banking screens keep it too, so the figure
+ *  is there the next time anybody opens either. */
+export function useSetStatementBalance() {
+  return useCall<unknown, { bank_account: string; date: string; balance: number }>({
+    url: `${BANK_ACCOUNT_API}.set_closing_balance_as_per_statement`,
+    method: 'POST',
+    immediate: false,
+  })
+}
+
 export interface Balances {
   /** What the books say the bank held the day before the period opens. */
   opening: number | null
@@ -196,168 +205,326 @@ export interface Balances {
   statementDate: string | null
 }
 
-export function useBalances() {
+/** The period's four figures. The books' two are ERPNext's cleared balance,
+ *  the "balance as per ERP" its own tool heads the page with; the statement's
+ *  is the latest `Bank Account Balance` recorded on or before the period's end. */
+export function usePeriodBalances() {
   const opening = useCall<number, { bank_account: string; till_date: string; company: string }>({
     url: `${TOOL}.get_account_balance`,
     immediate: false,
   })
-  const cleared = useCall<number, { bank_account: string; till_date: string; company: string }>({
+  const closing = useCall<number, { bank_account: string; till_date: string; company: string }>({
     url: `${TOOL}.get_account_balance`,
     immediate: false,
   })
-  const statement = useCall<
-    { balance: number; date: string | null },
-    { bank_account: string; date: string }
-  >({ url: `${BANK_ACCOUNT_API}.get_closing_balance_as_per_statement`, immediate: false })
-
-  const balances = ref<Balances>({ opening: null, cleared: null, statement: null, statementDate: null })
-  const loading = ref(false)
+  const statement = useCall<{ balance: number; date: string | null }, { bank_account: string; date: string }>({
+    url: `${BANK_ACCOUNT_API}.get_closing_balance_as_per_statement`,
+    immediate: false,
+  })
+  const empty: Balances = { opening: null, cleared: null, statement: null, statementDate: null }
+  const balances = ref<Balances>(empty)
 
   async function load(account: BankAccountRow | null, from: string, to: string) {
-    if (!account?.company) return
-    loading.value = true
-    try {
-      const [openingValue, clearedValue, statementValue] = await Promise.all([
-        opening.submit({ bank_account: account.name, till_date: dayBefore(from), company: account.company }),
-        cleared.submit({ bank_account: account.name, till_date: to, company: account.company }),
-        statement.submit({ bank_account: account.name, date: to }),
-      ])
-      balances.value = {
-        opening: openingValue,
-        cleared: clearedValue,
-        // A zero with no date is ERPNext's way of saying none was recorded.
-        statement: statementValue?.date ? statementValue.balance : null,
-        statementDate: statementValue?.date ?? null,
-      }
-    } finally {
-      loading.value = false
+    if (!account?.company || !from || !to) return
+    balances.value = empty
+    const [openingValue, closingValue, recorded] = await Promise.all([
+      opening.submit({ bank_account: account.name, till_date: dayBefore(from), company: account.company }),
+      closing.submit({ bank_account: account.name, till_date: to, company: account.company }),
+      statement.submit({ bank_account: account.name, date: to }),
+    ])
+    // A zero with no date is ERPNext's way of saying none was recorded.
+    const date = recorded?.date ? String(recorded.date).slice(0, 10) : null
+    balances.value = {
+      opening: openingValue,
+      cleared: closingValue,
+      statement: date ? recorded!.balance : null,
+      statementDate: date,
     }
   }
 
-  return { load, balances, loading }
-}
-
-/** Record the bank's closing figure for a date. A `Bank Account Balance` row,
- *  which is where ERPNext's newer banking screens keep it too, so the figure
- *  is there the next time anybody opens either. */
-export function useSetStatementBalance() {
-  return useCall<unknown, { bank_account: string; date: string; balance: number }>({
-    url: `${BANK_ACCOUNT_API}.set_closing_balance_as_per_statement`,
-    method: 'POST',
-    immediate: false,
-  })
+  return { load, balances }
 }
 
 function dayBefore(date: string): string {
   const [year, month, day] = date.split('-').map(Number)
-  const previous = new Date(Date.UTC(year, month - 1, day - 1))
-  return previous.toISOString().slice(0, 10)
+  return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10)
+}
+
+interface ReportRow {
+  posting_date?: string
+  payment_document?: string
+  payment_entry?: string
+  debit?: number
+  credit?: number
+  against_account?: string | null
+  reference_no?: string | null
+}
+
+export interface StatementReport {
+  /** The entries no statement line accounts for as of the day. */
+  entries: BookEntry[]
 }
 
 /**
- * Where an account stands today, whatever period is on screen: how far its
- * statement runs, how far it is reconciled, and whether the bank and the books
- * agree. See `standing` in `reconciliationRules.ts` for the arithmetic.
+ * ERPNext's Bank Reconciliation Statement report, for one bank account on
+ * one day.
  *
- * The book balance is a sum over `GL Entry` through the document API, which
- * is permission-checked like every other read here. ERPNext's own
- * `get_balance_on` would give the same figure but is not whitelisted.
+ * The report is where ERPNext itself lists the entries that have not cleared,
+ * across every voucher type that can touch a bank account (lending adds loan
+ * repayments and disbursements through a hook). It is also the computation
+ * behind the "balance as per ERP" the page quotes, so the board's right-hand
+ * column is exactly what that balance leaves out. A report run is permission-checked by the
+ * report's roles: Accounts User, Accounts Manager and Auditor.
  */
-export function useStanding() {
-  const lastLine = documentList<{ date: string }>(BANK_TRANSACTION)
-  const openLines = documentList<OpenLine>(BANK_TRANSACTION)
-  const ledger = documentList<{ debit: number | null; credit: number | null }>('GL Entry')
-  const clearedNow = useCall<number, { bank_account: string; till_date: string; company: string }>({
-    url: `${TOOL}.get_account_balance`,
+function useStatementReport() {
+  const call = useCall<{ result: (ReportRow | unknown[])[] }, { report_name: string; filters: string }>({
+    url: `${METHOD}/frappe.desk.query_report.run`,
     immediate: false,
   })
-  const clearedThen = useCall<number, { bank_account: string; till_date: string; company: string }>({
-    url: `${TOOL}.get_account_balance`,
-    immediate: false,
-  })
-  const statement = useCall<
-    { balance: number; date: string | null },
-    { bank_account: string; date: string }
-  >({ url: `${BANK_ACCOUNT_API}.get_closing_balance_as_per_statement`, immediate: false })
 
-  const value = ref<Standing | null>(null)
-  const loading = ref(false)
+  async function run(account: BankAccountRow, date: string): Promise<StatementReport> {
+    const answer = await fetchRows(call, {
+      report_name: 'Bank Reconciliation Statement',
+      filters: JSON.stringify({
+        account: account.account,
+        report_date: date,
+        company: account.company,
+        include_pos_transactions: 1,
+      }),
+    })
+    const rows = answer.result.filter((row): row is ReportRow => !!row && !Array.isArray(row))
+    const entries = rows
+      .filter((row) => row.payment_document && row.payment_entry)
+      .map((row) => ({
+        doctype: row.payment_document!,
+        name: row.payment_entry!,
+        date: String(row.posting_date ?? '').slice(0, 10),
+        debit: row.debit ?? 0,
+        credit: row.credit ?? 0,
+        against: row.against_account ?? null,
+        reference: row.reference_no ?? null,
+      }))
+    return { entries }
+  }
+
+  return { run }
+}
+
+/** The entries the bank has not seen yet, as of today: the right-hand column
+ *  of the "to reconcile" view. */
+export function useUnmatchedEntries() {
+  const report = useStatementReport()
+  const entries = ref<BookEntry[]>([])
+  const loaded = ref(false)
   const error = ref<Error | null>(null)
 
   async function load(account: BankAccountRow | null) {
-    if (!account?.company || !account.account) {
-      value.value = null
+    if (!account?.account || !account.company) {
+      entries.value = []
       return
     }
-    const today = localToday()
-    const company = account.company
-    loading.value = true
     error.value = null
     try {
-      const [last, open, sums, cleared, recorded] = await Promise.all([
+      entries.value = (await report.run(account, isoToday())).entries
+      loaded.value = true
+    } catch (problem) {
+      error.value = problem as Error
+      entries.value = []
+    }
+  }
+
+  return { load, entries, loaded, error }
+}
+
+/**
+ * Drafts that will post to the bank's GL account when submitted.
+ *
+ * One read per voucher type, because each names the bank account in a field of
+ * its own: `paid_from` or `paid_to` on a Payment Entry, an accounts row on a
+ * Journal Entry, `cash_bank_account` on a paid Purchase Invoice, a payment row
+ * on a POS Sales Invoice, and `payment_account` or `disbursement_account` on
+ * lending's two. All through Frappe's permission-checked reads, so a draft
+ * somebody may not see is not shown to them. The two child tables go through
+ * `frappe.client.get_list` with their parent, like every child read here.
+ *
+ * Read regardless of the period on screen. A draft's date is whatever it was
+ * when somebody started it, and it may well change before it is submitted, so
+ * it says little about which statement the money belongs to.
+ */
+export function useDraftEntries() {
+  const paymentsIn = documentList<{ name: string; posting_date: string; received_amount: number; party_name: string | null; reference_no: string | null }>('Payment Entry')
+  const paymentsOut = documentList<{ name: string; posting_date: string; paid_amount: number; party_name: string | null; reference_no: string | null }>('Payment Entry')
+  const journalRows = useCall<
+    { parent: string; debit_in_account_currency: number; credit_in_account_currency: number }[],
+    { doctype: string; parent: string; fields: string; filters: string; limit_page_length: number }
+  >({ url: `${CLIENT}.get_list`, immediate: false })
+  const journals = documentList<{ name: string; posting_date: string; title: string | null; cheque_no: string | null }>('Journal Entry')
+  const purchases = documentList<{ name: string; posting_date: string; paid_amount: number; supplier_name: string | null; bill_no: string | null }>('Purchase Invoice')
+  const posRows = useCall<
+    { parent: string; amount: number }[],
+    { doctype: string; parent: string; fields: string; filters: string; limit_page_length: number }
+  >({ url: `${CLIENT}.get_list`, immediate: false })
+  const sales = documentList<{ name: string; posting_date: string; customer_name: string | null }>('Sales Invoice')
+  const repayments = documentList<{ name: string; posting_date: string; amount_paid: number; applicant: string; reference_number: string | null }>(LOAN_REPAYMENT)
+  const disbursements = documentList<{ name: string; disbursement_date: string; disbursed_amount: number; applicant: string; reference_number: string | null }>('Loan Disbursement')
+
+  const drafts = ref<BookEntry[]>([])
+  const error = ref<Error | null>(null)
+
+  async function load(account: BankAccountRow | null, lending: boolean) {
+    const gl = account?.account
+    if (!gl) {
+      drafts.value = []
+      return
+    }
+    error.value = null
+    const draft = (field: string) => JSON.stringify([['docstatus', '=', 0], [field, '=', gl]])
+    const list = (fields: string[], filters: string) => ({ fields: JSON.stringify(fields), filters, limit: PAGE.repayments })
+    const child = (doctype: string, parent: string, fields: string[]) => ({
+      doctype,
+      parent,
+      fields: JSON.stringify(fields),
+      filters: JSON.stringify([['docstatus', '=', 0], ['account', '=', gl]]),
+      limit_page_length: PAGE.repayments,
+    })
+    try {
+      const [inRows, outRows, jeRows, piRows, siRows, lrRows, ldRows] = await Promise.all([
+        fetchRows(paymentsIn, list(['name', 'posting_date', 'received_amount', 'party_name', 'reference_no'], draft('paid_to'))),
+        fetchRows(paymentsOut, list(['name', 'posting_date', 'paid_amount', 'party_name', 'reference_no'], draft('paid_from'))),
+        fetchRows(journalRows, child('Journal Entry Account', 'Journal Entry', ['parent', 'debit_in_account_currency', 'credit_in_account_currency'])),
+        fetchRows(
+          purchases,
+          list(
+            ['name', 'posting_date', 'paid_amount', 'supplier_name', 'bill_no'],
+            JSON.stringify([['docstatus', '=', 0], ['is_paid', '=', 1], ['cash_bank_account', '=', gl]]),
+          ),
+        ),
+        fetchRows(posRows, child('Sales Invoice Payment', 'Sales Invoice', ['parent', 'amount'])),
+        lending
+          ? fetchRows(repayments, list(['name', 'posting_date', 'amount_paid', 'applicant', 'reference_number'], draft('payment_account')))
+          : [],
+        lending
+          ? fetchRows(disbursements, list(['name', 'disbursement_date', 'disbursed_amount', 'applicant', 'reference_number'], draft('disbursement_account')))
+          : [],
+      ])
+
+      // A journal or a POS invoice can touch the account on more than one
+      // row; each is one entry, net.
+      const net = <Row extends { parent: string }>(rows: Row[], amount: (row: Row) => number) => {
+        const totals = new Map<string, number>()
+        for (const row of rows) totals.set(row.parent, (totals.get(row.parent) ?? 0) + amount(row))
+        return totals
+      }
+      const jeNet = net(jeRows, (row) => row.debit_in_account_currency - row.credit_in_account_currency)
+      const siNet = net(siRows, (row) => row.amount)
+      const [jeDocs, siDocs] = await Promise.all([
+        jeNet.size
+          ? fetchRows(journals, list(['name', 'posting_date', 'title', 'cheque_no'], JSON.stringify([['name', 'in', [...jeNet.keys()]]])))
+          : [],
+        siNet.size
+          ? fetchRows(sales, list(['name', 'posting_date', 'customer_name'], JSON.stringify([['name', 'in', [...siNet.keys()]]])))
+          : [],
+      ])
+
+      const entry = (doctype: string, name: string, date: string, amount: number, against: string | null, reference: string | null): BookEntry => ({
+        doctype,
+        name,
+        date: String(date ?? '').slice(0, 10),
+        debit: amount > 0 ? amount : 0,
+        credit: amount < 0 ? -amount : 0,
+        against,
+        reference,
+        draft: true,
+      })
+      drafts.value = [
+        ...inRows.map((row) => entry('Payment Entry', row.name, row.posting_date, row.received_amount, row.party_name, row.reference_no)),
+        ...outRows.map((row) => entry('Payment Entry', row.name, row.posting_date, -row.paid_amount, row.party_name, row.reference_no)),
+        ...jeDocs.map((row) => entry('Journal Entry', row.name, row.posting_date, jeNet.get(row.name) ?? 0, row.title, row.cheque_no)),
+        ...piRows.map((row) => entry('Purchase Invoice', row.name, row.posting_date, -row.paid_amount, row.supplier_name, row.bill_no)),
+        ...siDocs.map((row) => entry('Sales Invoice', row.name, row.posting_date, siNet.get(row.name) ?? 0, row.customer_name, null)),
+        ...lrRows.map((row) => entry(LOAN_REPAYMENT, row.name, row.posting_date, row.amount_paid, row.applicant, row.reference_number)),
+        ...ldRows.map((row) => entry('Loan Disbursement', row.name, row.disbursement_date, -row.disbursed_amount, row.applicant, row.reference_number)),
+      ]
+        .filter((row) => row.debit || row.credit)
+        .sort((a, b) => a.date.localeCompare(b.date))
+    } catch (problem) {
+      error.value = problem as Error
+      drafts.value = []
+    }
+  }
+
+  return { load, drafts, error }
+}
+
+/** Submit a draft and match it to a statement line, in one transaction. See
+ *  `commons.banking.reconciliation.submit_and_reconcile`. */
+export function useSubmitAndReconcile() {
+  return useCall<
+    { transaction: string; status: string; unallocated_amount: number; voucher: string },
+    { bank_transaction: string; voucher_type: string; voucher: string }
+  >({ url: `${COMMONS}.submit_and_reconcile`, method: 'POST', immediate: false })
+}
+
+function isoToday(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+export interface Progress {
+  /** The latest statement line imported: how far the bank's side is known. */
+  lastLineDate: string | null
+  /** The statement's currency, off that line: a Bank Account names none. */
+  currency: string | null
+  /** The dates of every line still open, for saying how many fall outside the
+   *  period on screen. */
+  openDates: string[]
+}
+
+/** How far the statement runs, and where its open lines are. Independent of
+ *  the period on screen. */
+export function useProgress() {
+  const lastLine = documentList<{ date: string; currency: string | null }>(BANK_TRANSACTION)
+  const openLines = documentList<{ date: string }>(BANK_TRANSACTION)
+
+  const progress = ref<Progress | null>(null)
+  const error = ref<Error | null>(null)
+
+  async function load(account: BankAccountRow | null) {
+    if (!account) {
+      progress.value = null
+      return
+    }
+    error.value = null
+    const base = [
+      ['bank_account', '=', account.name],
+      ['docstatus', '=', 1],
+    ]
+    try {
+      const [last, open] = await Promise.all([
         fetchRows(lastLine, {
-          fields: JSON.stringify(['date']),
-          filters: JSON.stringify([
-            ['bank_account', '=', account.name],
-            ['docstatus', '=', 1],
-          ]),
+          fields: JSON.stringify(['date', 'currency']),
+          filters: JSON.stringify(base),
           order_by: 'date desc',
           limit: 1,
         }),
         fetchRows(openLines, {
-          fields: JSON.stringify(['date', 'deposit', 'withdrawal', 'unallocated_amount']),
-          filters: JSON.stringify([
-            ['bank_account', '=', account.name],
-            ['docstatus', '=', 1],
-            ['unallocated_amount', '>', 0],
-          ]),
+          fields: JSON.stringify(['date']),
+          filters: JSON.stringify([...base, ['unallocated_amount', '>', 0]]),
           limit: PAGE.transactions,
         }),
-        // In the account's own currency, which is what the statement is in.
-        fetchRows(ledger, {
-          fields: JSON.stringify([
-            { SUM: 'debit_in_account_currency', as: 'debit' },
-            { SUM: 'credit_in_account_currency', as: 'credit' },
-          ]),
-          filters: JSON.stringify([
-            ['account', '=', account.account],
-            ['is_cancelled', '=', 0],
-            ['posting_date', '<=', today],
-          ]),
-          limit: 1,
-        }),
-        fetchRows(clearedNow, { bank_account: account.name, till_date: today, company }),
-        fetchRows(statement, { bank_account: account.name, date: today }),
       ])
-      // A zero with no date is ERPNext's way of saying none was recorded.
-      const recordedDate = recorded.date ? String(recorded.date).slice(0, 10) : null
-      const then = recordedDate
-        ? await fetchRows(clearedThen, { bank_account: account.name, till_date: recordedDate, company })
-        : null
-      const totals = sums[0] ?? { debit: 0, credit: 0 }
-      value.value = standing({
-        today,
+      progress.value = {
         lastLineDate: last[0]?.date ?? null,
-        open,
-        book: (totals.debit ?? 0) - (totals.credit ?? 0),
-        cleared,
-        statement: recordedDate ? { balance: recorded.balance, date: recordedDate, clearedThen: then } : null,
-      })
+        currency: last[0]?.currency ?? null,
+        openDates: open.map((line) => line.date),
+      }
     } catch (problem) {
       error.value = problem as Error
-      value.value = null
-    } finally {
-      loading.value = false
+      progress.value = null
     }
   }
 
-  return { load, standing: value, loading, error }
-}
-
-/** Today in the reader's own calendar, not UTC's. */
-function localToday(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return { load, progress, error }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -386,45 +553,40 @@ const TRANSACTION_FIELDS = [
 
 export function useTransactions() {
   const list = documentList<TransactionRow>(BANK_TRANSACTION)
-  const older = documentList<{ name: string; date: string }>(BANK_TRANSACTION)
+  const beforeList = documentList<TransactionRow>(BANK_TRANSACTION)
+  const afterList = documentList<TransactionRow>(BANK_TRANSACTION)
   const rows = ref<TransactionRow[]>([]) as Ref<TransactionRow[]>
-  /** Unreconciled lines dated before the period, which the old tool simply
-   *  did not show. The oldest date is what the page offers to widen to. */
-  const earlier = ref<{ count: number; oldest: string | null }>({ count: 0, oldest: null })
   const loading = ref(false)
   const loaded = ref(false)
   const error = ref<Error | null>(null)
 
-  async function load(bankAccount: string, from: string, to: string) {
+  /**
+   * The period's lines, and with `outside` also every line still open on
+   * either side of it. Those are the ones the desk tool lost: a deposit nobody
+   * dealt with last month simply dropped out of this month's dates.
+   */
+  async function load(bankAccount: string, from: string, to: string, outside = false) {
     if (!bankAccount) return
     loading.value = true
     error.value = null
+    const base = [
+      ['bank_account', '=', bankAccount],
+      ['docstatus', '=', 1],
+    ]
+    const read = (call: typeof list, filters: unknown[]) =>
+      fetchRows(call, {
+        fields: JSON.stringify(TRANSACTION_FIELDS),
+        filters: JSON.stringify([...base, ...filters]),
+        order_by: 'date asc, creation asc',
+        limit: PAGE.transactions,
+      })
     try {
-      const [lines, before] = await Promise.all([
-        fetchRows(list, {
-          fields: JSON.stringify(TRANSACTION_FIELDS),
-          filters: JSON.stringify([
-            ['bank_account', '=', bankAccount],
-            ['docstatus', '=', 1],
-            ['date', 'between', [from, to]],
-          ]),
-          order_by: 'date asc, creation asc',
-          limit: PAGE.transactions,
-        }),
-        fetchRows(older, {
-          fields: JSON.stringify(['name', 'date']),
-          filters: JSON.stringify([
-            ['bank_account', '=', bankAccount],
-            ['docstatus', '=', 1],
-            ['unallocated_amount', '>', 0],
-            ['date', '<', from],
-          ]),
-          order_by: 'date asc',
-          limit: PAGE.transactions,
-        }),
+      const [inside, before, after] = await Promise.all([
+        read(list, [['date', 'between', [from, to]]]),
+        outside ? read(beforeList, [['date', '<', from], ['unallocated_amount', '>', 0]]) : [],
+        outside ? read(afterList, [['date', '>', to], ['unallocated_amount', '>', 0]]) : [],
       ])
-      rows.value = lines
-      earlier.value = { count: before.length, oldest: before[0]?.date ?? null }
+      rows.value = [...before, ...inside, ...after]
       loaded.value = true
     } catch (problem) {
       error.value = problem as Error
@@ -440,7 +602,7 @@ export function useTransactions() {
     rows.value = rows.value.map((row) => (row.name === name ? { ...row, ...values } : row))
   }
 
-  return { load, patch, rows, earlier, loading, loaded, error }
+  return { load, patch, rows, loading, loaded, error }
 }
 
 /** Whether a line is in the chosen view. `Reconciled` is ERPNext's own status;

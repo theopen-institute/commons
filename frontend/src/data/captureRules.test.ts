@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  checks,
   draftFrom,
   draftProblems,
   invoicePayload,
   isoDate,
   isTaxed,
+  lineFixes,
   lineProblem,
+  rowsMatchSubtotal,
   totalMatches,
   type Reading,
   type ScannedInvoice,
@@ -31,6 +34,7 @@ function scanned(overrides: Partial<ScannedInvoice> = {}): ScannedInvoice {
     currency: 'NPR',
     lines: [{ description: 'Internet 6 months', quantity: 1, rate: 10000, amount: 10000 }],
     discount: null,
+    subtotal: 10000,
     taxes: [{ label: 'VAT 13%', rate: 13, amount: 1300 }],
     total: 11300,
     notes: [],
@@ -60,6 +64,7 @@ function reading(overrides: Partial<Reading> = {}): Reading {
 function totals(overrides: Partial<Totals> = {}): Totals {
   return {
     currency: 'NPR',
+    total: 10000,
     net_total: 10000,
     discount_amount: 0,
     taxes: [{ description: 'VAT', amount: 1300 }],
@@ -125,17 +130,109 @@ describe('draftFrom', () => {
   })
 })
 
+function flexLine() {
+  const extracted = scanned({ lines: [{ description: 'Flex print', quantity: 3, rate: 1500, amount: 4800 }] })
+  return draftFrom(reading({ extracted }), '2026-09-23').lines[0]
+}
+
 describe('lineProblem', () => {
   it('says nothing about a line that adds up', () => {
     const [line] = draftFrom(reading(), '2026-09-23').lines
+    expect(line.amount).toBe(10000)
     expect(lineProblem(line)).toBeNull()
   })
 
-  it('points at a line whose printed amount is not quantity times rate', () => {
-    const extracted = scanned({ lines: [{ description: 'Flex print', quantity: 3, rate: 1500, amount: 4800 }] })
-    const [line] = draftFrom(reading({ extracted }), '2026-09-23').lines
-    expect(lineProblem(line)).toContain('4800')
-    expect(lineProblem(line)).toContain('4500')
+  it('points at a row whose total is not quantity times rate, and says it is as printed', () => {
+    const problem = lineProblem(flexLine())
+    expect(problem).toContain('As printed')
+    expect(problem).toContain('4800')
+    expect(problem).toContain('4500')
+  })
+
+  it('follows the draft, so it clears once the reader fixes the row and returns if they break it', () => {
+    const line = flexLine()
+    line.rate = 1600
+    expect(lineProblem(line)).toBeNull()
+    line.qty = 2
+    expect(lineProblem(line)).not.toContain('As printed')
+  })
+
+  it('has nothing to say about a line with no row total', () => {
+    const line = flexLine()
+    line.amount = null
+    expect(lineProblem(line)).toBeNull()
+  })
+})
+
+describe('lineFixes', () => {
+  it('offers the rate that makes the row total, or the total that the rate makes', () => {
+    const line = flexLine()
+    line.amount = 4800
+    line.qty = 3
+    line.rate = 1500
+    expect(lineFixes(line).map((fix) => fix.values)).toEqual([{ rate: 1600 }, { amount: 4500 }])
+  })
+
+  it('books one of the total where no rate to the cent would make it', () => {
+    const line = flexLine()
+    line.amount = 100
+    line.rate = 33
+    expect(lineFixes(line)[0].values).toEqual({ qty: 1, rate: 100 })
+  })
+
+  it('offers nothing for a line that adds up', () => {
+    expect(lineFixes(draftFrom(reading(), '2026-09-23').lines[0])).toEqual([])
+  })
+})
+
+describe('rowsMatchSubtotal', () => {
+  it('accepts a subtotal printed before the discount or after it', () => {
+    const draft = draftFrom(reading(), '2026-09-23')
+    expect(rowsMatchSubtotal(draft, scanned())).toBe(true)
+    draft.discount_amount = 500
+    expect(rowsMatchSubtotal(draft, scanned({ subtotal: 9500 }))).toBe(true)
+  })
+
+  it('catches a line that is missing', () => {
+    const draft = draftFrom(reading(), '2026-09-23')
+    expect(rowsMatchSubtotal(draft, scanned({ subtotal: 12000 }))).toBe(false)
+  })
+
+  it('has no opinion where no subtotal is printed', () => {
+    expect(rowsMatchSubtotal(draftFrom(reading(), '2026-09-23'), scanned({ subtotal: null }))).toBeNull()
+  })
+})
+
+describe('checks', () => {
+  function stages(overrides: Partial<ScannedInvoice> = {}, sums: Partial<Totals> = {}) {
+    const extracted = scanned(overrides)
+    const draft = draftFrom(reading({ extracted }), '2026-09-23')
+    return checks(draft, extracted, totals(sums))
+  }
+
+  it('agrees at every stage for a bill that adds up', () => {
+    expect(stages().map((check) => [check.key, check.matches])).toEqual([
+      ['lines', true],
+      ['tax', true],
+      ['total', true],
+    ])
+  })
+
+  it('puts a wrong tax at the tax stage, not the lines', () => {
+    const found = stages({}, { total_taxes_and_charges: 0, taxes: [], grand_total: 10000, rounded_total: 10000 })
+    expect(found.find((check) => check.key === 'lines')?.matches).toBe(true)
+    expect(found.find((check) => check.key === 'tax')?.matches).toBe(false)
+  })
+
+  it('compares the lines with the row totals where no subtotal is printed', () => {
+    const lines = stages({ subtotal: null })[0]
+    expect(lines.source).toBe('sum of the row totals')
+    expect(lines.scan).toBe(10000)
+  })
+
+  it('leaves the tax out where neither the scan nor the draft has any', () => {
+    const found = stages({ taxes: [], total: 10000 }, { total_taxes_and_charges: 0, taxes: [], grand_total: 10000, rounded_total: 10000 })
+    expect(found.map((check) => check.key)).toEqual(['lines', 'total'])
   })
 })
 

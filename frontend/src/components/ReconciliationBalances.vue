@@ -1,7 +1,9 @@
 <!--
-  The three figures a reconciliation is for: what the books say the bank held,
-  what the bank says it held, and the difference, which is zero when the
-  period is done.
+  The period's four figures: what the books say the bank held at its start and
+  at its end, what the bank's statement says it held at the end, and the
+  difference, which is zero when the period is done. The books' figures are
+  ERPNext's cleared balance ("balance as per ERP"): only what has been matched
+  to a statement line.
 
   The desk tool asked for the statement's closing balance in a field it never
   saved, so it was typed again every time the tool was opened. Here it is
@@ -18,7 +20,7 @@
       </div>
     </div>
     <div class="rounded-4 border border-outline-gray-2 px-3 py-2">
-      <div class="text-p-xs text-ink-gray-5">Cleared balance, as per books</div>
+      <div class="text-p-xs text-ink-gray-5">Closing, as per books</div>
       <div class="mt-0.5 text-base-medium tabular-nums text-ink-gray-8">
         {{ figure(balances.cleared) }}
       </div>

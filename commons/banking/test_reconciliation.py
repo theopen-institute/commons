@@ -148,3 +148,41 @@ class TestTheSplitIsCheckedFirst(TestCase):
 		self.refused(line(), [], "at least one loan")
 		self.refused(line(), [{"loan": "LOAN-A", "amount": 0}], "has no amount")
 		self.refused(line(), [{"amount": 100}], "names a loan")
+
+
+class TestSubmittingADraftToMatchIt(TestCase):
+	"""`submit_and_reconcile` refuses before it submits anything."""
+
+	def setUp(self):
+		self.enterContext(patch.object(reconciliation.frappe, "throw", side_effect=_raise))
+		self.enterContext(patch.object(reconciliation, "flt", side_effect=_flt))
+		self.submitted = []
+		self.docs = {
+			("Bank Transaction", "BT-OPEN"): SimpleNamespace(
+				name="BT-OPEN", docstatus=1, unallocated_amount=5000, check_permission=lambda perm: None
+			),
+			("Bank Transaction", "BT-DONE"): SimpleNamespace(
+				name="BT-DONE", docstatus=1, unallocated_amount=0, check_permission=lambda perm: None
+			),
+			("Payment Entry", "PE-SUBMITTED"): SimpleNamespace(
+				name="PE-SUBMITTED", docstatus=1, submit=lambda: self.submitted.append("PE-SUBMITTED")
+			),
+		}
+		self.enterContext(
+			patch.object(reconciliation.frappe, "get_doc", side_effect=lambda doctype, name: self.docs[(doctype, name)])
+		)
+
+	def refused(self, says, *args):
+		with self.assertRaises(ValueError) as refusal:
+			reconciliation.submit_and_reconcile(*args)
+		self.assertIn(says, str(refusal.exception))
+		self.assertEqual(self.submitted, [])
+
+	def test_a_voucher_type_reconciliation_cannot_match_is_refused(self):
+		self.refused("cannot be matched", "BT-OPEN", "Expense Claim", "HR-EXP-1")
+
+	def test_a_fully_reconciled_line_is_refused(self):
+		self.refused("already fully reconciled", "BT-DONE", "Payment Entry", "PE-SUBMITTED")
+
+	def test_a_voucher_that_is_not_a_draft_is_refused(self):
+		self.refused("is not a draft", "BT-OPEN", "Payment Entry", "PE-SUBMITTED")

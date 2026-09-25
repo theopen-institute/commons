@@ -41,6 +41,7 @@
           label="Bank account"
           :options="accountOptions"
           :disabled="!accounts.loaded.value"
+          :description="importedTo"
         />
         <FormControl v-model="from" type="date" label="From" />
         <FormControl v-model="to" type="date" label="To" />
@@ -60,50 +61,14 @@
       </div>
 
       <template v-else-if="bankAccount">
-        <ReconciliationStanding
-          class="mt-4"
-          :standing="standingData.standing.value"
+        <ReconciliationBalances
+          class="mt-5"
+          :balances="periodBalances.balances.value"
+          :bank-account="bankAccount"
           :currency="currency"
-          @record="balancesPanel?.openDialog()"
-          @show-open="showOpenLines"
+          :to="to"
+          @saved="loadProgress"
         />
-        <ErrorMessage
-          v-if="standingData.error.value"
-          :message="`Where this account stands could not be worked out: ${standingData.error.value.message}`"
-          class="mt-2"
-        />
-
-        <h2 class="mt-5 text-p-sm font-medium text-ink-gray-7">
-          {{ formatDate(from) }} to {{ formatDate(to) }}
-        </h2>
-        <div class="mt-1.5">
-          <ReconciliationBalances
-            ref="balancesPanel"
-            :balances="balances.balances.value"
-            :bank-account="bankAccount"
-            :currency="currency"
-            :to="to"
-            @saved="loadBalances"
-          />
-        </div>
-
-        <!-- The desk tool showed only the lines inside its dates, so a
-             deposit nobody had dealt with last month simply disappeared. -->
-        <div
-          v-if="transactions.earlier.value.count"
-          class="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-4 border border-outline-amber-3 bg-surface-amber-2 px-3 py-2 text-p-sm text-ink-gray-8"
-        >
-          <span>
-            {{ pluralise(transactions.earlier.value.count, 'older line') }} still to reconcile, from
-            {{ formatDate(transactions.earlier.value.oldest) }}.
-          </span>
-          <Button
-            size="sm"
-            variant="subtle"
-            label="Include them"
-            @click="from = transactions.earlier.value.oldest!"
-          />
-        </div>
 
         <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
           <TabButtons v-model="view" :options="viewOptions" />
@@ -114,9 +79,51 @@
           </div>
         </div>
 
+        <!-- What the period leaves out, and the drafts. Both are added to the
+             board on request rather than by moving the dates, so the figures
+             above stay the period's. -->
+        <div
+          v-if="outsideCount || (view === 'unreconciled' && draftData.drafts.value.length)"
+          class="mt-3 flex flex-wrap items-center gap-2"
+        >
+          <div
+            v-if="outsideCount"
+            class="flex items-center gap-2 rounded-4 bg-surface-amber-2 px-3 py-1 text-p-sm text-ink-gray-8"
+          >
+            <span class="lucide-calendar-x size-4 text-ink-amber-7" />
+            <span v-if="!outside">{{ outsideLabel }} outside these dates</span>
+            <span v-else>Including {{ outsideLabel }} from outside these dates</span>
+            <Button size="sm" variant="ghost" :label="outside ? 'Hide them' : 'Show them'" @click="outside = !outside" />
+          </div>
+          <Button
+            v-if="view === 'unreconciled' && draftData.drafts.value.length"
+            size="sm"
+            variant="subtle"
+            icon-left="lucide-file-pen"
+            :label="withDrafts ? 'Hide drafts' : `Include ${pluralise(draftData.drafts.value.length, 'draft')}`"
+            title="Unsubmitted vouchers that will post to this account when submitted"
+            @click="withDrafts = !withDrafts"
+          />
+        </div>
+
+        <ErrorMessage
+          v-if="progressData.error.value"
+          :message="progressData.error.value.message"
+          class="mt-4"
+        />
         <ErrorMessage
           v-if="transactions.error.value"
           :message="transactions.error.value.message"
+          class="mt-4"
+        />
+        <ErrorMessage
+          v-if="draftData.error.value"
+          :message="`Drafts could not be read: ${draftData.error.value.message}`"
+          class="mt-4"
+        />
+        <ErrorMessage
+          v-if="unmatched.error.value"
+          :message="`The entries not yet on the statement could not be read: ${unmatched.error.value.message}`"
           class="mt-4"
         />
         <ErrorMessage
@@ -129,19 +136,34 @@
           <Skeleton v-for="n in 6" :key="n" class="h-11 w-full rounded-4" />
         </div>
 
+        <!-- What is left to reconcile, both halves of it: the lines and the
+             entries the two open rows of the check above are made of. -->
+        <template v-else-if="view === 'unreconciled'">
+          <ReconciliationBoard
+            class="mt-3"
+            :lines="visible"
+            :entries="boardEntries"
+            :names="loanBook.book.value.names"
+            :currency="currency"
+            @open="openLine"
+            @pair="openPair"
+          />
+          <p class="mt-2 text-p-xs text-ink-gray-5">
+            Drag a line onto its entry, or an entry onto its line, to match them. Click a statement line for
+            everything else: a loan repayment, a new payment or journal entry.
+          </p>
+        </template>
+
         <div v-else-if="!visible.length" class="mt-12 text-center">
           <span class="lucide-circle-check mx-auto size-8 text-ink-gray-4" />
           <p class="mt-2 text-base-medium text-ink-gray-7">
             {{
               search.trim()
                 ? 'No line matches that filter'
-                : view === 'unreconciled'
-                  ? 'Everything in this period is reconciled'
-                  : 'No statement lines in this period'
+                : !transactions.rows.value.length
+                  ? 'No statement lines between these dates'
+                  : 'No reconciled lines between these dates'
             }}
-          </p>
-          <p v-if="!search.trim() && !transactions.rows.value.length" class="mt-1 text-p-sm text-ink-gray-5">
-            Lines arrive through Bank Statement Import in the desk.
           </p>
         </div>
 
@@ -160,6 +182,14 @@
         </template>
       </template>
     </template>
+
+    <ReconciliationPairDialog
+      v-model:open="pairOpen"
+      :line="pairLine"
+      :entry="pairEntry"
+      :currency="currency"
+      @done="onPaired"
+    />
 
     <ReconciliationDialog
       v-model:open="dialogOpen"
@@ -203,28 +233,33 @@ import {
   type DialogAction,
 } from 'frappe-ui'
 import AppPageHeader from '@/components/AppPageHeader.vue'
-import ReconciliationBalances from '@/components/ReconciliationBalances.vue'
 import ReconciliationDialog from '@/components/ReconciliationDialog.vue'
 import ReconciliationList, { type RowHint } from '@/components/ReconciliationList.vue'
-import ReconciliationStanding from '@/components/ReconciliationStanding.vue'
+import ReconciliationBoard from '@/components/ReconciliationBoard.vue'
+import ReconciliationPairDialog from '@/components/ReconciliationPairDialog.vue'
+import ReconciliationBalances from '@/components/ReconciliationBalances.vue'
 import { formatDate, pluralise } from '@/data/format'
 import {
   inView,
   reconciliationCan,
   reconciliationGate,
   useAutoReconcile,
-  useBalances,
   useBankAccounts,
   useLoanBook,
-  useStanding,
+  usePeriodBalances,
+  useProgress,
+  useDraftEntries,
+  useUnmatchedEntries,
   useTransactions,
   write,
   type TransactionView,
 } from '@/data/reconciliation'
 import {
   amountOf,
+  daysBetween,
   money,
   suggestLoans,
+  type BookEntry,
   type Suggestion,
   type TransactionRow,
 } from '@/data/reconciliationRules'
@@ -248,9 +283,10 @@ const router = useRouter()
 
 const accounts = useBankAccounts()
 const transactions = useTransactions()
-const balances = useBalances()
-const standingData = useStanding()
-const balancesPanel = ref<InstanceType<typeof ReconciliationBalances> | null>(null)
+const progressData = useProgress()
+const periodBalances = usePeriodBalances()
+const unmatched = useUnmatchedEntries()
+const draftData = useDraftEntries()
 const loanBook = useLoanBook()
 const auto = useAutoReconcile()
 
@@ -261,6 +297,10 @@ const from = ref('')
 const to = ref('')
 const view = ref<TransactionView>('unreconciled')
 const search = ref('')
+/** Whether the list also shows the open lines dated outside the period. */
+const outside = ref(false)
+/** Whether the board lists drafts that will post to this account. */
+const withDrafts = ref(false)
 
 function isoDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -288,11 +328,15 @@ watch(
 
 watch(accounts.loaded, (ready) => {
   if (!ready) return
+  // The desk tool's period, the last month. Open lines before it are not
+  // lost: the page says how many there are and adds them on request.
   const period = defaultPeriod()
   from.value = queryValue('from') || period.from
   to.value = queryValue('to') || period.to
   const views: TransactionView[] = ['unreconciled', 'reconciled', 'all']
   view.value = views.find((value) => value === queryValue('view')) ?? 'unreconciled'
+  outside.value = queryValue('outside') === '1'
+  withDrafts.value = queryValue('drafts') === '1'
   bankAccount.value = queryValue('account') || accounts.accounts.value[0]?.name || ''
 })
 
@@ -302,7 +346,9 @@ const account = computed(
 
 /** The statement's currency, read off its lines, since a Bank Account names
  *  none of its own. */
-const currency = computed(() => transactions.rows.value[0]?.currency ?? null)
+const currency = computed(
+  () => transactions.rows.value[0]?.currency ?? progressData.progress.value?.currency ?? null,
+)
 
 const accountOptions = computed(() =>
   accounts.accounts.value.map((row) => ({
@@ -312,7 +358,7 @@ const accountOptions = computed(() =>
 )
 
 // Replace rather than push: changing a filter is not somewhere you went.
-watch([bankAccount, from, to, view], () => {
+watch([bankAccount, from, to, view, outside, withDrafts], () => {
   router.replace({
     query: {
       ...route.query,
@@ -320,14 +366,79 @@ watch([bankAccount, from, to, view], () => {
       from: from.value || undefined,
       to: to.value || undefined,
       view: view.value === 'unreconciled' ? undefined : view.value,
+      outside: outside.value ? '1' : undefined,
+      drafts: withDrafts.value ? '1' : undefined,
     },
   })
 })
 
-watch([bankAccount, from, to], () => {
+watch([bankAccount, from, to, outside], () => {
   if (!bankAccount.value || !from.value || !to.value) return
-  transactions.load(bankAccount.value, from.value, to.value)
-  loadBalances()
+  loadLines()
+})
+
+watch([account, from, to], () => periodBalances.load(account.value, from.value, to.value))
+
+watch(account, () => {
+  progressData.load(account.value)
+  unmatched.load(account.value)
+})
+
+// Lending decides whether loan drafts are read, and its answer can arrive
+// after the account does.
+watch(
+  () => [account.value?.name, reconciliationCan.value.repayLoans],
+  () => draftData.load(account.value, reconciliationCan.value.repayLoans),
+)
+
+function inPeriod(date: string) {
+  return date >= from.value && date <= to.value
+}
+
+function loadLines() {
+  return transactions.load(bankAccount.value, from.value, to.value, outside.value)
+}
+
+/** Open lines dated before or after the period, from the account's progress,
+ *  which reads every open line whatever the dates. */
+const outsideLines = computed(
+  () => (progressData.progress.value?.openDates ?? []).filter((date) => !inPeriod(date)).length,
+)
+const outsideEntries = computed(() => unmatched.entries.value.filter((entry) => !inPeriod(entry.date)).length)
+const outsideCount = computed(() => outsideLines.value + outsideEntries.value)
+/** "3 open lines and one entry", whichever of the two there are. */
+const outsideLabel = computed(() =>
+  [
+    outsideLines.value && pluralise(outsideLines.value, 'open line'),
+    outsideEntries.value && pluralise(outsideEntries.value, 'open entry', 'open entries'),
+  ]
+    .filter(Boolean)
+    .join(' and '),
+)
+
+/** The entries the board shows: the period's, or all of them with the
+ *  outside toggle on, then the drafts (whatever their dates, see
+ *  `useDraftEntries`) if asked for, narrowed by the same filter as the lines. */
+const boardEntries = computed(() => {
+  const words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const drafts = withDrafts.value ? draftData.drafts.value : []
+  return [...unmatched.entries.value, ...drafts].filter((entry) => {
+    if (!entry.draft && !outside.value && !inPeriod(entry.date)) return false
+    if (!words.length) return true
+    const haystack = [entry.name, entry.doctype, entry.against, entry.reference, String(entry.debit || entry.credit)]
+      .join(' ')
+      .toLowerCase()
+    return words.every((word) => haystack.includes(word))
+  })
+})
+
+/** "Statement imported to Jul 18, 2026 · 68 days ago", under the account
+ *  picker: how far the bank's side is known, before any dates are chosen. */
+const importedTo = computed(() => {
+  const last = progressData.progress.value?.lastLineDate
+  if (!last) return progressData.progress.value ? 'No statement imported yet' : undefined
+  const days = daysBetween(last, isoDate(new Date()))
+  return `Statement imported to ${formatDate(last)} · ${days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`}`
 })
 
 // The loan book belongs to the account's company, not to the period.
@@ -338,30 +449,19 @@ watch(
   },
 )
 
-/** The period's balances and the account's standing, which every write and
- *  every recorded statement balance moves. */
-function loadBalances() {
-  balances.load(account.value, from.value, to.value)
-  standingData.load(account.value)
+/** The figures every write moves: whether the books match the bank, and the
+ *  period's cleared balances. Also what a recorded bank balance moves. */
+function loadProgress() {
+  progressData.load(account.value)
+  periodBalances.load(account.value, from.value, to.value)
+  unmatched.load(account.value)
+  draftData.load(account.value, reconciliationCan.value.repayLoans)
 }
 
-/** From the standing's open-line count to the lines themselves: every open
- *  line, back to the oldest, whatever the period was. */
-function showOpenLines() {
-  const oldest = standingData.standing.value?.oldestOpen
-  view.value = 'unreconciled'
-  search.value = ''
-  if (oldest && oldest < from.value) from.value = oldest
-  if (to.value < localToday()) to.value = localToday()
-}
-
-function localToday() {
-  return isoDate(new Date())
-}
 
 function reload() {
-  transactions.load(bankAccount.value, from.value, to.value)
-  loadBalances()
+  loadLines()
+  loadProgress()
   if (reconciliationCan.value.repayLoans) loanBook.load(account.value)
 }
 
@@ -372,7 +472,9 @@ function reload() {
 const counts = computed(() => {
   const rows = transactions.rows.value
   return {
-    unreconciled: rows.filter((row) => inView(row, 'unreconciled')).length,
+    unreconciled:
+      rows.filter((row) => inView(row, 'unreconciled')).length +
+      boardEntries.value.filter((entry) => !entry.draft).length,
     reconciled: rows.filter((row) => inView(row, 'reconciled')).length,
     all: rows.length,
   }
@@ -486,18 +588,10 @@ function nextOpen(): string | null {
 }
 
 function onDone(name: string, unallocated: number) {
-  const row = transactions.rows.value.find((line) => line.name === name)
-  if (row) {
-    const total = Math.abs(amountOf(row))
-    transactions.patch(name, {
-      unallocated_amount: unallocated,
-      allocated_amount: money(total - unallocated),
-      status: unallocated > 0.005 ? 'Unreconciled' : 'Reconciled',
-    })
-  }
-  // Balances and the loan book (outstanding amounts, uncleared repayments)
-  // have moved too. Neither is waited for.
-  loadBalances()
+  patchLine(name, unallocated)
+  // How far the account is reconciled, and the loan book (outstanding
+  // amounts, uncleared repayments), have moved too. Neither is waited for.
+  loadProgress()
   if (reconciliationCan.value.repayLoans) loanBook.load(account.value)
 
   if (unallocated > 0.005) return
@@ -507,6 +601,34 @@ function onDone(name: string, unallocated: number) {
     toast.success('That was the last line to reconcile here')
     dialogOpen.value = false
   }
+}
+
+const pairOpen = ref(false)
+const pairLine = ref<TransactionRow | null>(null)
+const pairEntry = ref<BookEntry | null>(null)
+
+function openPair(line: TransactionRow, entry: BookEntry) {
+  pairLine.value = line
+  pairEntry.value = entry
+  pairOpen.value = true
+}
+
+/** A pair matched from the board: the line's new amounts patched in, and the
+ *  figures that moved read again. Nothing advances, unlike the line dialog:
+ *  the board is already showing what is left. */
+function onPaired(name: string, unallocated: number) {
+  patchLine(name, unallocated)
+  loadProgress()
+}
+
+function patchLine(name: string, unallocated: number) {
+  const row = transactions.rows.value.find((line) => line.name === name)
+  if (!row) return
+  transactions.patch(name, {
+    unallocated_amount: unallocated,
+    allocated_amount: money(Math.abs(amountOf(row)) - unallocated),
+    status: unallocated > 0.005 ? 'Unreconciled' : 'Reconciled',
+  })
 }
 
 function onUpdated(name: string, values: Partial<TransactionRow>) {
@@ -552,8 +674,8 @@ const autoActions = computed<DialogAction[]>(() => [
           autoProblem.value = done.error?.message || 'Auto-match could not run'
           return
         }
-        await transactions.load(bankAccount.value, from.value, to.value)
-        loadBalances()
+        await loadLines()
+        loadProgress()
         const matched = before - counts.value.unreconciled
         toast.success(
           matched > 0

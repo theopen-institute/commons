@@ -9,7 +9,8 @@ import {
   proposeAmount,
   proposedReference,
   repaymentCandidates,
-  standing,
+  likelyPairs,
+  daysBetween,
   suggestLoans,
   type Candidate,
   type LoanRow,
@@ -265,6 +266,7 @@ describe('references', () => {
   it('treats the bank’s dash as no reference', () => {
     expect(meaningfulReference('-')).toBe('')
     expect(meaningfulReference(' 0 ')).toBe('')
+    expect(meaningfulReference('---')).toBe('')
     expect(meaningfulReference('CHQ 004512')).toBe('CHQ 004512')
   })
 
@@ -391,69 +393,43 @@ describe('proposeAmount', () => {
   })
 })
 
-describe('standing', () => {
-  const base = {
-    today: '2026-09-24',
-    lastLineDate: '2026-07-10',
-    open: [],
-    book: 2_061_967.56,
-    cleared: 2_012_467.56,
-    statement: null,
-  }
-  const open = (date: string, deposit: number, withdrawal = 0, unallocated = deposit || withdrawal) => ({
+describe('likelyPairs', () => {
+  const entry = (name: string, debit: number, credit: number, date: string) => ({
+    doctype: 'Journal Entry',
+    name,
+    date,
+    debit,
+    credit,
+    against: null,
+    reference: null,
+  })
+  const line = (name: string, deposit: number, withdrawal: number, date: string) => ({
+    name,
     date,
     deposit,
     withdrawal,
-    unallocated_amount: unallocated,
+    unallocated_amount: deposit || withdrawal,
   })
 
-  it('says how long ago the statement ends', () => {
-    expect(standing(base).daysSinceLastLine).toBe(76)
+  it('pairs the same amount going the same way', () => {
+    const pairs = likelyPairs([line('L1', 5000, 0, '2026-06-01')], [entry('E1', 0, 5000, '2026-06-01'), entry('E2', 5000, 0, '2026-06-03')])
+    expect([...pairs]).toEqual([['L1', 'Journal Entry:E2']])
   })
 
-  it('is reconciled through the last line when nothing is open', () => {
-    expect(standing(base).reconciledThrough).toBe('2026-07-10')
-    expect(standing(base).openCount).toBe(0)
+  it('prefers a posted entry to a draft, even a nearer one', () => {
+    const pairs = likelyPairs(
+      [line('L1', 5000, 0, '2026-06-01')],
+      [{ ...entry('DRAFT', 5000, 0, '2026-06-01'), draft: true }, entry('POSTED', 5000, 0, '2026-06-09')],
+    )
+    expect([...pairs]).toEqual([['L1', 'Journal Entry:POSTED']])
   })
 
-  it('is reconciled through the day before the oldest open line', () => {
-    const found = standing({ ...base, open: [open('2026-05-03', 1500), open('2026-02-07', 5000)] })
-    expect(found.reconciledThrough).toBe('2026-02-06')
-    expect(found.oldestOpen).toBe('2026-02-07')
-    expect(found.openCount).toBe(2)
-    expect(found.openNet).toBe(6500)
-  })
-
-  it('counts an open withdrawal against the bank, and only its unallocated part', () => {
-    expect(standing({ ...base, open: [open('2026-05-03', 0, 2000, 500), open('2026-05-04', 1000)] }).openNet).toBe(500)
-  })
-
-  it('puts the difference between book and cleared down to entries awaiting the statement', () => {
-    expect(standing(base).awaitingStatement).toBe(49_500)
-  })
-
-  it('agrees with a statement that the cleared balance and the open lines explain', () => {
-    const found = standing({
-      ...base,
-      open: [open('2026-06-01', 5000), open('2026-08-01', 3000)],
-      statement: { balance: 105_000, date: '2026-06-30', clearedThen: 100_000 },
-    })
-    // The August line is after the statement's date and plays no part.
-    expect(found.check).toEqual({ date: '2026-06-30', statement: 105_000, expected: 105_000, unexplained: 0 })
-  })
-
-  it('reports what the books cannot explain', () => {
-    const found = standing({ ...base, statement: { balance: 99_000, date: '2026-06-30', clearedThen: 100_000 } })
-    expect(found.check?.unexplained).toBe(-1000)
-  })
-
-  it('has no check without a recorded statement balance', () => {
-    expect(standing(base).check).toBeNull()
-  })
-
-  it('says nothing for an account with no lines', () => {
-    const found = standing({ ...base, lastLineDate: null })
-    expect(found.daysSinceLastLine).toBeNull()
-    expect(found.reconciledThrough).toBeNull()
+  it('gives each entry one partner, the nearest in date', () => {
+    const pairs = likelyPairs(
+      [line('L1', 5000, 0, '2026-06-01'), line('L2', 5000, 0, '2026-06-20')],
+      [entry('E1', 5000, 0, '2026-06-19')],
+    )
+    expect([...pairs]).toEqual([['L2', 'Journal Entry:E1']])
   })
 })
+

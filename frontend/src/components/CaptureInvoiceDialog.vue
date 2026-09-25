@@ -218,11 +218,28 @@
                   step="0.01"
                   :error="errors[`rate-${index}`]"
                 />
-                <div>
-                  <span class="block text-xs text-ink-gray-5">Amount</span>
-                  <span class="mt-2 block text-right text-base tabular-nums text-ink-gray-8">
-                    {{ formatExact(lineAmount(line), currency) }}
-                  </span>
+                <FormControl
+                  v-model.number="line.amount"
+                  type="number"
+                  label="Row total"
+                  step="0.01"
+                  :placeholder="String(lineAmount(line))"
+                />
+              </div>
+
+              <!-- A row whose figures do not multiply out. Flagged rather than
+                   corrected, with a button for each figure it could trust. -->
+              <div v-if="lineProblem(line)" class="mt-2 rounded-4 bg-surface-amber-2 px-3 py-2 text-p-sm text-ink-gray-8">
+                <p>{{ lineProblem(line) }}</p>
+                <div class="mt-1.5 flex flex-wrap gap-2">
+                  <Button
+                    v-for="fix in lineFixes(line)"
+                    :key="fix.label"
+                    size="sm"
+                    variant="subtle"
+                    :label="fix.label"
+                    @click="Object.assign(line, fix.values)"
+                  />
                 </div>
               </div>
 
@@ -243,9 +260,13 @@
               >
                 {{ line.review ? 'Check this: ' : '' }}{{ line.reason }}
               </p>
-              <p v-if="lineProblem(line)" class="mt-1 text-p-xs text-ink-amber-3">{{ lineProblem(line) }}</p>
             </li>
           </ul>
+
+          <p v-if="subtotalMatches === false" :class="[warningBox, 'mt-3']">
+            The row totals add up to {{ formatExact(rowsTotal, currency) }}, but the scan's subtotal is
+            {{ formatExact(scanned.subtotal, currency) }}. A line may be missing, extra or misread.
+          </p>
 
           <Button class="mt-3" variant="subtle" icon-left="lucide-plus" label="Add line" @click="addLine" />
         </section>
@@ -313,29 +334,53 @@
                 </tr>
               </tbody>
             </table>
-            <div
-              v-if="totals"
-              class="flex items-start gap-2 border-t border-outline-gray-1 px-3 py-2 text-p-sm"
-              :class="matches === false ? 'bg-surface-amber-2 text-ink-gray-8' : 'text-ink-gray-6'"
+            <!-- The draft against the scan, a stage at a time, so a total that
+                 is out can be traced to where it goes out. -->
+            <table v-if="totals" class="w-full border-t border-outline-gray-1 text-p-sm">
+              <thead>
+                <tr class="text-ink-gray-5">
+                  <th class="px-3 pb-1 pt-2 text-left font-normal">Against the scan</th>
+                  <th class="px-3 pb-1 pt-2 text-right font-normal">Scan</th>
+                  <th class="px-3 pb-1 pt-2 text-right font-normal">This draft</th>
+                  <th class="w-8" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="check in stageChecks"
+                  :key="check.key"
+                  :class="check.matches === false ? 'bg-surface-amber-2 text-ink-gray-8' : 'text-ink-gray-7'"
+                >
+                  <td class="px-3 py-1.5">
+                    {{ check.label }}
+                    <span v-if="check.source" class="text-ink-gray-5">· {{ check.source }}</span>
+                  </td>
+                  <td class="px-3 py-1.5 text-right tabular-nums">
+                    {{ check.scan === null ? '—' : formatExact(check.scan, totals.currency) }}
+                  </td>
+                  <td class="px-3 py-1.5 text-right tabular-nums">{{ formatExact(check.draft, totals.currency) }}</td>
+                  <td class="pr-3">
+                    <span
+                      class="block size-4"
+                      :class="
+                        check.matches === true
+                          ? 'lucide-circle-check text-ink-green-7'
+                          : check.matches === false
+                            ? 'lucide-triangle-alert text-ink-amber-3'
+                            : 'lucide-minus text-ink-gray-4'
+                      "
+                      :aria-label="check.matches === true ? 'Matches' : check.matches === false ? 'Differs' : 'Nothing to check'"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p
+              v-if="firstDifference"
+              class="border-t border-outline-gray-1 bg-surface-amber-2 px-3 py-2 text-p-sm text-ink-gray-8"
             >
-              <span
-                class="mt-0.5 size-4 shrink-0"
-                :class="
-                  matches === true
-                    ? 'lucide-circle-check text-ink-green-7'
-                    : matches === false
-                      ? 'lucide-triangle-alert text-ink-amber-3'
-                      : 'lucide-info text-ink-gray-5'
-                "
-              />
-              <span v-if="matches === true">Matches the total printed on the scan.</span>
-              <span v-else-if="matches === false">
-                The scan says {{ formatExact(scanned.total, totals.currency) }} is payable, and this draft comes to
-                {{ formatExact(totals.grand_total, totals.currency) }}. Check the lines, the tax and the discount
-                against the paper.
-              </span>
-              <span v-else>The scan shows no total to check against.</span>
-            </div>
+              {{ firstDifference }}
+            </p>
             <div
               v-if="totals && currencyDiffers"
               class="border-t border-outline-gray-1 bg-surface-amber-2 px-3 py-2 text-p-sm text-ink-gray-8"
@@ -375,10 +420,13 @@ import {
   invoicePayload,
   isoDate,
   isTaxed,
+  checks,
   lineAmount,
+  lineFixes,
   lineProblem,
   printedDate,
-  totalMatches,
+  rowsMatchSubtotal,
+  rowTotal,
   type Draft,
   type DraftLine,
   type Reading,
@@ -418,6 +466,7 @@ const EMPTY: ScannedInvoice = {
   currency: null,
   lines: [],
   discount: null,
+  subtotal: null,
   taxes: [],
   total: null,
   notes: [],
@@ -662,7 +711,24 @@ watch(
   () => previewSoon(),
 )
 
-const matches = computed(() => (totals.value ? totalMatches(scanned.value.total, totals.value) : null))
+const rowsTotal = computed(() => draft.lines.reduce((sum, line) => sum + rowTotal(line), 0))
+const subtotalMatches = computed(() => rowsMatchSubtotal(draft, scanned.value))
+
+const stageChecks = computed(() => (totals.value ? checks(draft, scanned.value, totals.value) : []))
+
+/** Where to look, said once: the first stage that differs, since a
+ *  difference there carries through to every stage after it. */
+const firstDifference = computed(() => {
+  const first = stageChecks.value.find((check) => check.matches === false)
+  if (!first) return null
+  if (first.key === 'lines') {
+    return draft.lines.some(lineProblem)
+      ? 'The lines do not match the scan. Start with the rows flagged above.'
+      : 'The lines do not match the scan. Check each quantity and rate, and the discount, against the paper.'
+  }
+  if (first.key === 'tax') return 'The lines match, but the tax does not. Check which taxes apply.'
+  return 'The lines and tax match, but the total does not. Check for a charge, rounding or discount the draft leaves out.'
+})
 
 const currencyDiffers = computed(
   () => Boolean(scanned.value.currency && totals.value && scanned.value.currency !== totals.value.currency),

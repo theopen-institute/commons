@@ -350,6 +350,27 @@ match existing, payment entry, journal entry, details) holds a draft with its
 own button. After a line is fully reconciled, the dialog moves on to the next
 open one.
 
+**The period's figures.** Under the account and the dates, four figures:
+opening and closing balance as per books (ERPNext's cleared balance), the
+bank's closing balance recorded on or before the period's end, and the
+difference. The account picker says how far the statement has been imported.
+
+The "to reconcile" view shows both halves of what is left side by side:
+statement lines with no entry, and entries with no statement line (read
+from ERPNext's Bank Reconciliation Statement report). Likely pairs (same amount,
+same direction, nearest date) are flagged. Dragging one onto the other, or
+pressing Match on a likely pair, opens a confirm dialog, and ERPNext's
+`reconcile_vouchers` runs on Save. A note says when open items fall outside
+the dates, and "Show them" adds them to the board without moving the dates.
+
+"Include drafts" adds unsubmitted vouchers that will post to the bank's account
+when submitted: Payment Entries, Journal Entries, paid Purchase Invoices, POS
+Sales Invoices, and lending's repayments and disbursements. They are read
+whatever the period, marked as drafts, and left out of the column total,
+because they are not in the ledger. A line paired with a draft is
+matched by `commons.banking.reconciliation.submit_and_reconcile`, which
+submits the draft as it stands and matches it in one transaction.
+
 **Loan repayments.** For a deposit, the dialog suggests the borrower and says
 why: the party on the line, the borrower's name in the description, or an
 account or phone number seen on their earlier repayments. The logic is in

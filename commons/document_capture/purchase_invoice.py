@@ -187,6 +187,7 @@ SCHEMA = _object(
 			),
 		},
 		"discount": _nullable(NUMBER, "A discount on the whole invoice, as a positive amount."),
+		"subtotal": _nullable(NUMBER, "The lines' total before tax, as printed."),
 		"taxes": {
 			"type": "array",
 			"items": _object(
@@ -223,7 +224,11 @@ and day as printed; do not convert them. Mark Gregorian dates "AD". If both are 
 printed, give the Gregorian one.
 - lines are the goods or services charged for. Leave out taxes, discounts and \
 totals. quantity is 1 when none is printed; rate is the price per unit before \
-tax; amount is the line's total before tax.
+tax; amount is the line's total before tax, as printed. Copy all three as \
+printed even when quantity times rate does not equal the amount: the bookkeeper \
+checks each line, and a corrected figure would hide what is on the paper.
+- subtotal is the total of the lines before tax, where one is printed (often \
+"Sub total", "Total" or "Taxable amount"); null where there is none.
 - taxes are VAT, GST, sales tax or similar charges added on top, each with its \
 printed rate and amount. Leave out tax withheld by the buyer (TDS).
 - currency: NPR for rupees on a Nepali invoice, INR on an Indian one, USD for \
@@ -757,6 +762,7 @@ def preview(invoice: dict, new_supplier: bool = False) -> dict:
 	document = _build(invoice, supplier_to_come=new_supplier)
 	return {
 		"currency": document.currency,
+		"total": document.total,
 		"net_total": document.net_total,
 		"discount_amount": document.discount_amount,
 		"taxes": [
