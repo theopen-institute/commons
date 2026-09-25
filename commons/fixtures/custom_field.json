@@ -646,5 +646,47 @@
   "insert_after": "message_sb",
   "depends_on": "eval:doc.channel == 'Email'",
   "description": "Send this template's message in place of the one below. Its subject is used when Subject above is left blank. Write it against the document's fields (<code>{{ program }}</code>), as in any template; <code>doc</code>, <code>alert</code> and <code>comments</code> work too. Recipients, sender and attachments are still set here."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Notification-send_delay_minutes",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Notification",
+  "fieldname": "send_delay_minutes",
+  "label": "Delay Sending (minutes)",
+  "fieldtype": "Int",
+  "insert_after": "sender_email",
+  "depends_on": "eval:doc.channel == 'Email'",
+  "non_negative": 1,
+  "description": "Hold the email in the queue this long before it is sent. It shows as Scheduled on the document's timeline meanwhile, with Send Now and Don't Send on the form; cancelling the document takes it back. 0 sends it straight away."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Notification-once_across_amendments",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Notification",
+  "fieldname": "once_across_amendments",
+  "label": "Once Across Amendments",
+  "fieldtype": "Check",
+  "insert_after": "send_delay_minutes",
+  "depends_on": "eval:doc.channel == 'Email'",
+  "description": "Don't email about a document amended from one this notification already emailed about, as when a submitted payment is cancelled, corrected and submitted again. If the earlier email was taken back when that document was cancelled, the amended one is still sent."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Communication-notification",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Communication",
+  "fieldname": "notification",
+  "label": "Sent by Notification",
+  "fieldtype": "Link",
+  "options": "Notification",
+  "insert_after": "email_template",
+  "read_only": 1,
+  "search_index": 1,
+  "description": "The Notification whose email this is, when it is one. Set by Commons as the email is queued."
  }
 ]

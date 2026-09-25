@@ -137,3 +137,38 @@ class TestMJML(TestCase):
 		html = self.compile(self.section("{% if n &lt; 3 %}few{% endif %} {{ a &gt; b }}"))
 		self.assertIn("{% if n < 3 %}few{% endif %}", html)
 		self.assertIn("{{ a > b }}", html)
+
+
+class TestOnceAcrossAmendments(TestCase):
+	"""Whether a Notification already emailed about a version a document was amended from."""
+
+	def sent_before(self, chain, emailed, amended_from="PE-1-1"):
+		"""`chain` maps each version to the one it was amended from; `emailed` is the versions emailed about."""
+		from types import SimpleNamespace
+
+		from commons.email_extensions.notification import TemplateNotificationMixin
+
+		database = SimpleNamespace(
+			exists=lambda doctype, filters: filters["reference_name"] in emailed,
+			get_value=lambda doctype, name, field: chain.get(name),
+		)
+		notification = SimpleNamespace(name="Payment Receipt")
+		doc = SimpleNamespace(doctype="Payment Entry", get=lambda field: amended_from if field == "amended_from" else None)
+		with patch("commons.email_extensions.notification.frappe.db", database):
+			return TemplateNotificationMixin._sent_for_earlier_version(notification, doc)
+
+	def test_an_original_emailed_about_is_not_emailed_about_again(self):
+		self.assertTrue(self.sent_before({"PE-1-1": "PE-1"}, emailed={"PE-1"}))
+
+	def test_an_original_whose_email_was_taken_back_is_emailed_about(self):
+		# Taken back with its cancelled document, the Communication is gone.
+		self.assertFalse(self.sent_before({"PE-1-1": "PE-1"}, emailed=set()))
+
+	def test_the_whole_chain_of_corrections_is_followed(self):
+		self.assertTrue(self.sent_before({"PE-1-2": "PE-1-1", "PE-1-1": "PE-1"}, emailed={"PE-1"}, amended_from="PE-1-1"))
+
+	def test_a_document_amended_from_nothing_has_no_earlier_version(self):
+		self.assertFalse(self.sent_before({}, emailed={"PE-1"}, amended_from=None))
+
+	def test_a_chain_that_loops_ends(self):
+		self.assertFalse(self.sent_before({"PE-1-1": "PE-1", "PE-1": "PE-1-1"}, emailed=set()))

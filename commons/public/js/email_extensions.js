@@ -190,6 +190,73 @@
 		},
 	});
 
+	// A Notification's email still waiting (`commons.email_extensions.scheduled`):
+	// said above the form, with Send Now and Don't Send, each confirmed first.
+	// Asked only on the doctypes some Notification delays for, which come with
+	// the boot, so an ordinary form asks nothing.
+	const SCHEDULED = "commons.email_extensions.scheduled";
+
+	const show_waiting = async (frm) => {
+		const delayed = frappe.boot.commons_delayed_doctypes || [];
+		if (frm.is_new() || !delayed.includes(frm.doctype)) return;
+		const asked_for = frm.docname;
+		const rows = await frappe.xcall(`${SCHEDULED}.scheduled`, { doctype: frm.doctype, name: asked_for }, "GET");
+		if (frm.docname !== asked_for) return; // the form has moved on to another record meanwhile
+		// The layout's message area appends a block per call, so a refresh
+		// replaces the one drawn last time rather than adding another beside it.
+		$(frm.layout.message).find(".cm-waiting").closest(".form-message").remove();
+		if (!rows || !rows.length) return;
+		const lines = rows.map(
+			(row) => `<div class="cm-waiting" data-queue="${frappe.utils.escape_html(row.queue)}"
+				style="display:flex;align-items:center;gap:var(--padding-sm);flex-wrap:wrap">
+				<span>${__("Email {0} to {1} is scheduled for {2}.", [
+					`<b>${frappe.utils.escape_html(row.subject || "")}</b>`,
+					frappe.utils.escape_html(row.recipients || ""),
+					frappe.utils.escape_html(frappe.datetime.str_to_user(row.send_after)),
+				])}</span>
+				<span style="margin-left:auto;display:flex;gap:var(--padding-xs)">
+					<button type="button" class="btn btn-xs btn-default" data-action="send-now">${__("Send Now")}</button>
+					<button type="button" class="btn btn-xs btn-default" data-action="dont-send">${__("Don't Send")}</button>
+				</span>
+			</div>`
+		);
+		frm.dashboard.set_headline_alert(lines.join(""), "blue");
+		// The headline is drawn in the layout's message area, not the dashboard.
+		$(frm.layout.wrapper)
+			.off("click.cm-waiting")
+			.on("click.cm-waiting", ".cm-waiting [data-action]", (e) => {
+				const queue = $(e.currentTarget).closest(".cm-waiting").data("queue");
+				const action = $(e.currentTarget).data("action");
+				const [question, method] =
+					action === "send-now"
+						? [__("Send this email now?"), "send_now"]
+						: [__("Don't send this email? It will be removed from the queue."), "dont_send"];
+				frappe.confirm(question, async () => {
+					await frappe.xcall(`${SCHEDULED}.${method}`, { doctype: frm.doctype, name: frm.docname, queue });
+					frappe.show_alert({
+						message: action === "send-now" ? __("Sending within a minute or so.") : __("Not sent."),
+						indicator: "green",
+					});
+					frm.reload_doc();
+				});
+			});
+	};
+
+	frappe.ui.form.on("*", "refresh", (frm) => {
+		show_waiting(frm).catch(() => {});
+	});
+
+	// A Notification saved in this tab updates where the forms above look.
+	frappe.ui.form.on("Notification", {
+		after_save(frm) {
+			const delayed = new Set(frappe.boot.commons_delayed_doctypes || []);
+			if (frm.doc.enabled && frm.doc.channel === "Email" && frm.doc.send_delay_minutes > 0) {
+				delayed.add(frm.doc.document_type);
+			}
+			frappe.boot.commons_delayed_doctypes = [...delayed];
+		},
+	});
+
 	// A Notification's Email Template (`commons.email_extensions.notification`):
 	// the ones written for its doctype, and the ones written for none.
 	frappe.ui.form.on("Notification", {

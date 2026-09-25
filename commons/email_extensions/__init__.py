@@ -39,7 +39,11 @@ The rest of the module is about what gets sent, and where:
   buttons are placed inside it, at `<!--workflow-actions-->` or before
   `</body>`.
 * `notification` -- a Notification may send an Email Template's content in
-  place of its own message.
+  place of its own message, and may say not to email again about an
+  amendment of a document it already emailed about.
+* `scheduled` -- a Notification's email held back for a while, shown on the
+  form with Send Now and Don't Send, and taken back if its document is
+  cancelled first.
 * `commons/public/js/email_designer.bundle.js` -- a drag-and-drop designer
   for an MJML template (GrapesJS and its MJML plugin), opened from the
   template's form and loaded only then. Its canvas is compiled by mrml's

@@ -44,12 +44,17 @@ ADDRESS_FIELDS = (
 
 
 def extend_bootinfo(bootinfo: "frappe._dict") -> None:
-	"""Tell the desk which templates each doctype's forms offer.
+	"""Tell the desk which templates each doctype's forms offer, and where emails may be waiting.
 
 	Empty, rather than an error, on a site whose fields haven't been migrated
 	in yet: code lands before migrate runs, and the boot must not fail in
 	between.
 	"""
+	from commons.email_extensions import scheduled
+
+	# And which doctypes' forms may have a Notification's email waiting.
+	bootinfo.commons_delayed_doctypes = scheduled.delayed_doctypes()
+
 	meta = frappe.get_meta(TEMPLATE)
 	if not (meta.has_field(DOCTYPE_FIELD) and meta.has_field(CONDITION_FIELD)):
 		bootinfo.commons_email_templates = []

@@ -23,13 +23,27 @@ template, as the composer gives them.
 How: for one call, the template's subject and body stand in for the
 Notification's own, and core does the rest -- recipients, sender, attachments,
 the Communication, the queue. Nothing of core's sending is copied here.
+
+Two more things a Notification can say, both for a receipt sent on submit
+(`commons.email_extensions.scheduled` has the rest):
+
+* **Delay Sending (minutes)** -- its email waits that long in the queue, and is
+  taken back if the document is cancelled meanwhile.
+* **Once Across Amendments** -- a document amended from one this Notification
+  already emailed about is not emailed again. Correcting a submitted payment
+  is cancel, amend and submit, and the payer should hear about the payment
+  once, not once per correction. A condition of `not doc.amended_from` would
+  go too far: if the first email was taken back with its cancelled document,
+  the corrected one is the only receipt there will be.
 """
 
 from contextlib import contextmanager
 
 import frappe
 from frappe import _
+from frappe.utils import now_datetime
 
+from commons.email_extensions import scheduled
 from commons.email_extensions.api import TEMPLATE
 
 FIELD = "email_template"
@@ -58,10 +72,37 @@ class TemplateNotificationMixin:
 			self.subject, self.message = subject, message
 
 	def send_an_email(self, doc, context):
+		since = now_datetime()
 		if not self.get(FIELD):
-			return super().send_an_email(doc, context)
-		with self._template_content(doc, context) as merged:
-			return super().send_an_email(doc, merged)
+			result = super().send_an_email(doc, context)
+		else:
+			with self._template_content(doc, context) as merged:
+				result = super().send_an_email(doc, merged)
+		scheduled.mark_sent(self, doc, since)
+		return result
+
+	def send(self, doc):
+		if self.get(scheduled.ONCE_FIELD) and self.channel == "Email" and self._sent_for_earlier_version(doc):
+			return
+		return super().send(doc)
+
+	def _sent_for_earlier_version(self, doc) -> bool:
+		"""Whether this Notification emailed about a version `doc` was amended from.
+
+		Only an email that went out, or is still due to, counts: one taken back
+		with its cancelled document was deleted (`scheduled.take_back`), so a
+		corrected payment whose first receipt never left still sends one.
+		"""
+		name, seen = doc.get("amended_from"), set()
+		while name and name not in seen and len(seen) < 50:
+			seen.add(name)
+			if frappe.db.exists(
+				"Communication",
+				{"reference_doctype": doc.doctype, "reference_name": name, scheduled.MARK_FIELD: self.name},
+			):
+				return True
+			name = frappe.db.get_value(doc.doctype, name, "amended_from")
+		return False
 
 	def validate(self):
 		super().validate()

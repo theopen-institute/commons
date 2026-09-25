@@ -15,7 +15,7 @@ rewritten.
 
 | File | What it holds |
 | --- | --- |
-| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template and one on Notification, and the derived fields it adds to its own |
+| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, and the derived fields it adds to its own |
 | `custom_field_education.json` | The four fields the attendance register adds to Education's doctypes |
 | `custom_field_erpnext.json` | The four fields the requests section adds to ERPNext's doctypes |
 | `property_setter.json` | The image and title fields of this app's member doctypes, and which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification |
@@ -129,6 +129,18 @@ while a template is named, and Subject stops being mandatory, since the
 template's subject stands in for a blank one. They replace no property a site
 had set: none of the three had a Property Setter on the site this was written
 for.
+
+**`Notification.send_delay_minutes`** and **`.once_across_amendments`**, and
+**`Communication.notification`** — a Notification's email held back, taken back,
+and not repeated; read by `commons.email_extensions.scheduled` and
+`commons.email_extensions.notification`. The delay holds the queued email that
+long (the scheduler already honours `send_after`); "once across amendments"
+skips a document amended from one already emailed about. Both matter for a
+receipt sent on submit, where correcting a payment is cancel, amend, submit.
+`Communication.notification` records which Notification an email came from, as
+it is queued: nothing else tells a Notification's email from one somebody wrote,
+and only a Notification's are the module's to take back or to count. Indexed,
+since both of those look it up.
 
 ### This app's own doctypes (`custom_field.json`)
 

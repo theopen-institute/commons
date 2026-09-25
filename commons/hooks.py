@@ -330,6 +330,11 @@ doc_events = {
 	"Loan Repayment": {
 		"before_submit": "commons.banking.reconciliation.post_on_value_date",
 	},
+	# A cancelled document's Notification emails that are still waiting in the
+	# queue are not sent. See `commons.email_extensions.scheduled`.
+	"*": {
+		"on_cancel": "commons.email_extensions.scheduled.cancel_pending",
+	},
 	# A template designed in MJML is sent as the HTML it compiles to, compiled
 	# here on every save. See `commons.email_extensions.mjml`.
 	"Email Template": {
