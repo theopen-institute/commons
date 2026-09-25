@@ -15,36 +15,52 @@
   Outside clicks and Escape do not close it, because a read costs money and a
   draft takes a few minutes to check. The close button does, and the page keeps
   the reading so it can be reopened as it was left.
+
+  It is the height of the screen, never taller. The header and the button that
+  saves stay put, and the scan and the draft scroll separately beneath them, so
+  either can be read at any point in the other. `bare`, because frappe-ui's own
+  frame pads its body and footer and lets the whole overlay scroll instead.
 -->
 
 <template>
-  <Dialog v-model:open="open" :dismissible="false" size="7xl" position="top" :actions="actions">
-    <template #title>
-      <div class="pr-8">
-        <h2 class="text-lg font-semibold text-ink-gray-8">Draft a purchase invoice</h2>
-        <p class="mt-0.5 text-p-sm text-ink-gray-5">
-          Read from the scan by {{ reading?.model }}. Check each field against the scan. Nothing is saved
-          until you create the draft.
-        </p>
-      </div>
-    </template>
+  <Dialog v-model:open="open" :dismissible="false" size="7xl" bare>
+    <template #default="{ close }">
+      <!-- 6rem is what the overlay leaves around a centred dialog: its own
+           1rem padding and the content's 2rem margin, above and below. -->
+      <div class="flex h-[calc(100dvh-6rem)] flex-col">
+        <header class="flex shrink-0 items-start justify-between gap-4 border-b border-outline-gray-1 px-5 py-4">
+          <div class="min-w-0">
+            <h2 class="text-lg font-semibold text-ink-gray-8">Draft a purchase invoice</h2>
+            <p class="mt-0.5 text-p-sm text-ink-gray-5">
+              Read from the scan by {{ reading?.model }}. Check each field against the scan. Nothing is saved
+              until you create the draft.
+            </p>
+          </div>
+          <Button variant="ghost" icon="lucide-x" aria-label="Close" @click="close" />
+        </header>
 
-    <div v-if="reading" class="grid gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-      <!-- The scan. Sticky on a wide screen, so it stays beside whichever
-           part of the draft is being checked. -->
-      <figure class="lg:sticky lg:top-0 lg:self-start">
-        <div class="overflow-hidden rounded-4 border border-outline-gray-2 bg-surface-gray-2">
-          <iframe v-if="isPdf" :src="scanUrl" class="h-[50vh] w-full lg:h-[75vh]" title="The scanned invoice" />
-          <a v-else :href="scanUrl" target="_blank" rel="noopener" title="Open the scan full size">
-            <img :src="scanUrl" alt="The scanned invoice" class="max-h-[50vh] w-full object-contain lg:max-h-[75vh]" />
-          </a>
-        </div>
-        <figcaption class="mt-1 truncate text-p-xs text-ink-gray-5">
-          {{ file?.name }} · attached to the invoice when it is created
-        </figcaption>
-      </figure>
+        <div
+          v-if="reading"
+          class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,2fr)_minmax(0,3fr)] lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:grid-rows-1"
+        >
+          <!-- The scan, scrolling on its own. A PDF fills the column and
+               scrolls inside its viewer; an image is shown at the column's
+               width and the column scrolls down it. -->
+          <figure
+            class="flex min-h-0 flex-col border-b border-outline-gray-1 bg-surface-gray-1 p-4 lg:border-b-0 lg:border-r"
+          >
+            <div class="min-h-0 flex-1 overflow-auto rounded-4 border border-outline-gray-2 bg-surface-white">
+              <iframe v-if="isPdf" :src="scanUrl" class="size-full" title="The scanned invoice" />
+              <a v-else :href="scanUrl" target="_blank" rel="noopener" title="Open the scan full size">
+                <img :src="scanUrl" alt="The scanned invoice" class="block w-full" />
+              </a>
+            </div>
+            <figcaption class="mt-1 shrink-0 truncate text-p-xs text-ink-gray-5">
+              {{ file?.name }} · attached to the invoice when it is created
+            </figcaption>
+          </figure>
 
-      <div class="min-w-0 space-y-6">
+          <div class="min-h-0 min-w-0 space-y-6 overflow-y-auto px-5 py-4">
         <!-- What should stop a reader before they read on. -->
         <div v-if="!scanned.is_invoice" :class="warningBox">
           <p class="text-base-medium text-ink-gray-8">This may not be a supplier's invoice</p>
@@ -203,12 +219,16 @@
               </div>
 
               <div class="mt-2 grid grid-cols-3 gap-3">
+                <!-- Three figures, each as read and each the reader's to
+                     correct from the paper. None is ever worked out from the
+                     others; a missing or disagreeing one is ringed. -->
                 <FormControl
                   v-model.number="line.qty"
                   type="number"
                   label="Quantity"
                   min="0"
                   step="any"
+                  :class="{ [flagged]: flags.get(line.key)?.qty }"
                   :error="errors[`qty-${index}`]"
                 />
                 <FormControl
@@ -216,6 +236,7 @@
                   type="number"
                   label="Rate"
                   step="0.01"
+                  :class="{ [flagged]: flags.get(line.key)?.rate }"
                   :error="errors[`rate-${index}`]"
                 />
                 <FormControl
@@ -223,25 +244,15 @@
                   type="number"
                   label="Row total"
                   step="0.01"
-                  :placeholder="String(lineAmount(line))"
+                  :class="{ [flagged]: flags.get(line.key)?.amount }"
                 />
               </div>
-
-              <!-- A row whose figures do not multiply out. Flagged rather than
-                   corrected, with a button for each figure it could trust. -->
-              <div v-if="lineProblem(line)" class="mt-2 rounded-4 bg-surface-amber-2 px-3 py-2 text-p-sm text-ink-gray-8">
-                <p>{{ lineProblem(line) }}</p>
-                <div class="mt-1.5 flex flex-wrap gap-2">
-                  <Button
-                    v-for="fix in lineFixes(line)"
-                    :key="fix.label"
-                    size="sm"
-                    variant="subtle"
-                    :label="fix.label"
-                    @click="Object.assign(line, fix.values)"
-                  />
-                </div>
-              </div>
+              <p v-if="flags.get(line.key)?.message" class="mt-1.5 text-p-xs text-ink-amber-3">
+                {{ flags.get(line.key)?.message }}
+              </p>
+              <p v-else-if="rateFromTotal(line)" class="mt-1.5 text-p-xs text-ink-gray-5">
+                No rate is printed, so the row total is taken as the rate.
+              </p>
 
               <LinkControl
                 :model-value="line.expense_account || null"
@@ -263,10 +274,6 @@
             </li>
           </ul>
 
-          <p v-if="subtotalMatches === false" :class="[warningBox, 'mt-3']">
-            The row totals add up to {{ formatExact(rowsTotal, currency) }}, but the scan's subtotal is
-            {{ formatExact(scanned.subtotal, currency) }}. A line may be missing, extra or misread.
-          </p>
 
           <Button class="mt-3" variant="subtle" icon-left="lucide-plus" label="Add line" @click="addLine" />
         </section>
@@ -304,11 +311,20 @@
 
         <section>
           <h3 class="text-base-medium text-ink-gray-8">Totals</h3>
+          <!-- The scan's printed figures against one another, before ERPNext
+               comes into it. A misread digit usually shows here first. -->
+          <div v-if="scanIssues.length" :class="[warningBox, 'mt-3']">
+            <p class="text-base-medium text-ink-gray-8">The scan's own figures do not agree</p>
+            <ul class="mt-1 list-disc space-y-0.5 pl-4">
+              <li v-for="(issue, index) in scanIssues" :key="index">{{ issue }}</li>
+            </ul>
+            <p class="mt-1">Something was probably misread. Check these figures against the paper.</p>
+          </div>
           <div class="mt-3 rounded-4 border border-outline-gray-1">
             <div v-if="!totals" class="px-3 py-3 text-p-sm text-ink-gray-5">
               <template v-if="preview.loading">Working out the totals…</template>
               <template v-else-if="previewProblem">{{ previewProblem }}</template>
-              <template v-else>The totals appear once there is a supplier and every line has an account.</template>
+              <template v-else>The totals appear once there is a supplier and every line has a quantity, a rate and an account.</template>
             </div>
             <table v-else class="w-full text-base">
               <tbody class="text-ink-gray-7">
@@ -391,15 +407,21 @@
           </div>
         </section>
 
-        <ErrorMessage v-if="create.error" :message="create.error.message" />
+          </div>
+        </div>
+
+        <footer class="flex shrink-0 items-center justify-end gap-3 border-t border-outline-gray-1 px-5 py-3">
+          <ErrorMessage v-if="create.error" :message="create.error.message" class="mr-auto min-w-0" />
+          <Button variant="solid" label="Create draft invoice" :loading="busy" @click="save(close)" />
+        </footer>
       </div>
-    </div>
+    </template>
   </Dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch, watchEffect } from 'vue'
-import { Button, Dialog, ErrorMessage, FormControl, toast, type DialogAction } from 'frappe-ui'
+import { Button, Dialog, ErrorMessage, FormControl, toast } from 'frappe-ui'
 import { useDebounceFn } from '@vueuse/core'
 import BikramDatePicker from './BikramDatePicker.vue'
 import LinkControl from './LinkControl.vue'
@@ -421,12 +443,11 @@ import {
   isoDate,
   isTaxed,
   checks,
-  lineAmount,
-  lineFixes,
+  lineFlags,
   lineProblem,
   printedDate,
-  rowsMatchSubtotal,
-  rowTotal,
+  rateFromTotal,
+  scanProblems,
   type Draft,
   type DraftLine,
   type Reading,
@@ -711,10 +732,14 @@ watch(
   () => previewSoon(),
 )
 
-const rowsTotal = computed(() => draft.lines.reduce((sum, line) => sum + rowTotal(line), 0))
-const subtotalMatches = computed(() => rowsMatchSubtotal(draft, scanned.value))
+/** A ring on a figure that is missing or does not multiply out. On the input
+ *  itself, not the whole control, so the label stays as it is. */
+const flagged = '[&_input]:ring-2 [&_input]:ring-outline-amber-3'
+const flags = computed(() => new Map(draft.lines.map((line) => [line.key, lineFlags(line)])))
 
-const stageChecks = computed(() => (totals.value ? checks(draft, scanned.value, totals.value) : []))
+const scanIssues = computed(() => scanProblems(draft, scanned.value))
+
+const stageChecks = computed(() => (totals.value ? checks(scanned.value, totals.value) : []))
 
 /** Where to look, said once: the first stage that differs, since a
  *  difference there carries through to every stage after it. */
@@ -726,8 +751,15 @@ const firstDifference = computed(() => {
       ? 'The lines do not match the scan. Start with the rows flagged above.'
       : 'The lines do not match the scan. Check each quantity and rate, and the discount, against the paper.'
   }
-  if (first.key === 'tax') return 'The lines match, but the tax does not. Check which taxes apply.'
-  return 'The lines and tax match, but the total does not. Check for a charge, rounding or discount the draft leaves out.'
+  // "Match" only for a stage that did: one the scan prints nothing for has not
+  // been checked, and saying it matched would be a claim nobody made.
+  const matched = stageChecks.value
+    .filter((check) => check.key !== first.key && check.matches === true)
+    .map((check) => (check.key === 'lines' ? 'lines' : 'tax'))
+  const verb = matched.length === 1 && matched[0] === 'tax' ? 'matches' : 'match'
+  const before = matched.length ? `The ${matched.join(' and ')} ${verb}, but ` : ''
+  if (first.key === 'tax') return `${before || 'The '}tax does not match the scan. Check which taxes apply.`
+  return `${before || 'The '}total does not match the scan. Check for a charge, rounding or discount the draft leaves out.`
 })
 
 const currencyDiffers = computed(
@@ -769,12 +801,4 @@ async function save(close: () => void) {
   }
 }
 
-const actions = computed<DialogAction[]>(() => [
-  {
-    label: 'Create draft invoice',
-    variant: 'solid',
-    loading: busy.value,
-    onClick: ({ close }) => save(close),
-  },
-])
 </script>

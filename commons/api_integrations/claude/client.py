@@ -30,6 +30,8 @@ request, and nothing here calls `frappe.log_error` with the call's locals in
 scope.
 """
 
+from contextlib import contextmanager
+
 import anthropic
 import frappe
 from frappe import _
@@ -107,25 +109,56 @@ def create_message(**params):
 	`params` is everything but the model, the betas and the fallbacks, which
 	this function supplies. Returns the SDK's `BetaMessage`.
 	"""
+	held = _held()
+	with _errors(held["model"]):
+		return _client(held, TIMEOUT).beta.messages.create(
+			model=held["model"], betas=BETAS, fallbacks="default", **params
+		)
+
+
+def stream_message(on_text=None, timeout: float = TIMEOUT, **params):
+	"""The same call, streamed, for work done outside a web request.
+
+	A background job has no gunicorn limit to stay under, so it can give the
+	call a longer `timeout` and a larger `max_tokens`, and streaming keeps the
+	connection alive while a long answer is written. `on_text` is called with
+	each piece of text as it arrives, which is how a job reports progress.
+	Returns the SDK's final `BetaMessage`, exactly as `create_message` would.
+	"""
+	held = _held()
+	with _errors(held["model"]):
+		with _client(held, timeout).beta.messages.stream(
+			model=held["model"], betas=BETAS, fallbacks="default", **params
+		) as stream:
+			if on_text:
+				for text in stream.text_stream:
+					on_text(text)
+			return stream.get_final_message()
+
+
+def _held() -> dict:
 	held = settings()
 	if not held.get("api_key"):
 		fail(_("Claude is not set up on this site. Add an API key in Claude Settings."))
+	return held
 
-	client = anthropic.Anthropic(api_key=held["api_key"], timeout=TIMEOUT, max_retries=0)
+
+def _client(held: dict, timeout: float):
+	return anthropic.Anthropic(api_key=held["api_key"], timeout=timeout, max_retries=0)
+
+
+@contextmanager
+def _errors(model_name: str):
+	"""Every way the call can fail, as a `ClaudeError` a person can read."""
 	try:
-		return client.beta.messages.create(
-			model=held["model"],
-			betas=BETAS,
-			fallbacks="default",
-			**params,
-		)
+		yield
 	except anthropic.AuthenticationError:
 		fail(_("Anthropic did not accept the API key in Claude Settings."), 401)
 	except anthropic.PermissionDeniedError:
-		fail(_("The API key in Claude Settings is not allowed to use {0}.").format(held["model"]), 403)
+		fail(_("The API key in Claude Settings is not allowed to use {0}.").format(model_name), 403)
 	except anthropic.NotFoundError:
 		fail(
-			_("Anthropic has no model called {0}. Check the model in Claude Settings.").format(held["model"]),
+			_("Anthropic has no model called {0}. Check the model in Claude Settings.").format(model_name),
 			404,
 		)
 	except anthropic.RateLimitError:

@@ -1,7 +1,8 @@
 import { computed, ref, type Ref } from 'vue'
-import { useCall } from 'frappe-ui'
+import { upload, useCall } from 'frappe-ui'
 import {
   OPEN_LOAN_STATUSES,
+  money,
   type Candidate,
   type BookEntry,
   type LoanRow,
@@ -9,6 +10,7 @@ import {
   type RepaymentRow,
   type TransactionRow,
 } from './reconciliationRules'
+import type { ExistingLine, StatementReading } from './statementImport'
 
 /**
  * The bank reconciliation page's reads and writes.
@@ -881,6 +883,56 @@ export function useCreateLoanRepayments() {
   >({ url: `${COMMONS}.create_loan_repayments`, method: 'POST', immediate: false })
 }
 
+/* Accounting dimensions ---------------------------------------------------- */
+
+/** One of the company's accounting dimensions, as
+ *  `commons.banking.reconciliation.accounting_dimensions` answers it. */
+export interface AccountingDimension {
+  fieldname: string
+  label: string
+  document_type: string
+  /** The company's default value, if it names one. */
+  default: string | null
+  mandatory_for_pl: boolean
+  mandatory_for_bs: boolean
+}
+
+/** Values for the dimensions an entry carries, keyed by fieldname. */
+export type DimensionValues = Record<string, string | null>
+
+/**
+ * The company's dimensions, and which must be set.
+ *
+ * ERPNext refuses to submit a voucher whose GL entries leave out a dimension
+ * marked mandatory for that kind of account, and a bank line's own entry is
+ * against a Balance Sheet account. So the entry forms ask for every mandatory
+ * dimension up front. Read through this app's endpoint because an Accounts
+ * User may not read `Accounting Dimension` itself.
+ */
+export function useAccountingDimensions() {
+  const call = useCall<AccountingDimension[], { company: string }>({
+    url: `${COMMONS}.accounting_dimensions`,
+    immediate: false,
+  })
+  const cache = new Map<string, AccountingDimension[]>()
+  return {
+    async load(company: string): Promise<AccountingDimension[]> {
+      if (!cache.has(company)) cache.set(company, await fetchRows(call, { company }))
+      return cache.get(company)!
+    },
+  }
+}
+
+/** The dimensions an entry has to carry: any the company makes mandatory for
+ *  either kind of account. The bank's own line is a Balance Sheet account and
+ *  the other side is usually Profit and Loss, so an entry from a statement
+ *  line touches both. */
+export function requiredDimensions(dimensions: AccountingDimension[]): AccountingDimension[] {
+  return dimensions.filter((dimension) => dimension.mandatory_for_pl || dimension.mandatory_for_bs)
+}
+
+/* Payment and journal entries ------------------------------------------------ */
+
 export interface PaymentEntryParams {
   bank_transaction_name: string
   party_type: string
@@ -893,32 +945,123 @@ export interface PaymentEntryParams {
   project?: string
 }
 
+/**
+ * Create a Payment Entry from a line, with its dimensions, and reconcile it.
+ *
+ * Two ERPNext calls. `create_payment_entry_bts` with `allow_edit` builds the
+ * entry (accounts, amounts, exchange rate, all worked out from the line and
+ * the party) and returns it unsaved. The dimensions are set on it, because a
+ * Payment Entry's GL entries take them from its header, and
+ * `create_payment_entry_and_reconcile` then inserts, submits and matches it.
+ * The single-call `create_payment_entry_bts` has no way to pass them.
+ */
 export function useCreatePaymentEntry() {
-  return useCall<ReconciledTransaction, PaymentEntryParams>({
+  const prepare = useCall<Record<string, unknown>, PaymentEntryParams & { allow_edit: number }>({
     url: `${TOOL}.create_payment_entry_bts`,
     method: 'POST',
     immediate: false,
   })
+  const create = useCall<
+    { transaction: ReconciledTransaction },
+    { bank_transaction_name: string; payment_entry_doc: Record<string, unknown> }
+  >({ url: `${TOOL}.create_payment_entry_and_reconcile`, method: 'POST', immediate: false })
+
+  return {
+    async run(params: PaymentEntryParams, dimensions: DimensionValues) {
+      const built = await write(prepare, { ...params, allow_edit: 1 })
+      if (!built.ok || !built.data) return { ok: false, error: built.error, unallocated: null }
+      const done = await write(create, {
+        bank_transaction_name: params.bank_transaction_name,
+        payment_entry_doc: { ...built.data, ...present(dimensions) },
+      })
+      return { ok: done.ok, error: done.error, unallocated: done.data?.transaction.unallocated_amount ?? null }
+    },
+  }
 }
 
 export interface JournalEntryParams {
-  bank_transaction_name: string
-  second_account: string
+  transaction: TransactionRow
+  /** The other side of the entry. */
+  account: string
   entry_type: string
   posting_date: string
   reference_number: string
   reference_date: string
-  party_type?: string
-  party?: string
-  mode_of_payment?: string
+  party_type?: string | null
+  party?: string | null
 }
 
+/**
+ * Create a Journal Entry from a line, with its dimensions, and reconcile it.
+ *
+ * ERPNext's `create_bank_entry_and_reconcile`, which takes the entry's rows
+ * as given and copies every field of each onto its journal line. So each row
+ * carries the dimensions itself: `create_journal_entry_bts` builds the rows
+ * for you and has nowhere to put them, and the function's own `dimensions`
+ * argument is accepted and never read. Both rows are sent, because it adds
+ * none of its own: the bank's GL account, and the other side.
+ *
+ * For what is left on the line rather than its whole amount, so a line that is
+ * already part matched is not over-allocated.
+ */
 export function useCreateJournalEntry() {
-  return useCall<ReconciledTransaction, JournalEntryParams>({
-    url: `${TOOL}.create_journal_entry_bts`,
-    method: 'POST',
-    immediate: false,
-  })
+  const bank = documentList<{ account: string | null }>('Bank Account')
+  const create = useCall<
+    { transaction: ReconciledTransaction },
+    {
+      bank_transaction_name: string
+      cheque_date: string
+      posting_date: string
+      cheque_no: string
+      voucher_type: string
+      entries: Record<string, unknown>[]
+    }
+  >({ url: `${TOOL}.create_bank_entry_and_reconcile`, method: 'POST', immediate: false })
+
+  return {
+    async run(params: JournalEntryParams, dimensions: DimensionValues) {
+      const [row] = await fetchRows(bank, {
+        fields: JSON.stringify(['account']),
+        filters: JSON.stringify([['name', '=', params.transaction.bank_account]]),
+        limit: 1,
+      })
+      if (!row?.account) {
+        return { ok: false, error: new Error('This bank account has no GL account.'), unallocated: null }
+      }
+      const amount = money(params.transaction.unallocated_amount)
+      const deposit = params.transaction.deposit > 0
+      const tags = present(dimensions)
+      const done = await write(create, {
+        bank_transaction_name: params.transaction.name,
+        cheque_date: params.reference_date,
+        posting_date: params.posting_date,
+        cheque_no: params.reference_number,
+        voucher_type: params.entry_type,
+        entries: [
+          {
+            account: row.account,
+            bank_account: params.transaction.bank_account,
+            debit: deposit ? amount : 0,
+            credit: deposit ? 0 : amount,
+            ...tags,
+          },
+          {
+            account: params.account,
+            debit: deposit ? 0 : amount,
+            credit: deposit ? amount : 0,
+            ...(params.party ? { party_type: params.party_type, party: params.party } : {}),
+            ...tags,
+          },
+        ],
+      })
+      return { ok: done.ok, error: done.error, unallocated: done.data?.transaction.unallocated_amount ?? null }
+    },
+  }
+}
+
+/** Dimension values that are set, as fields to spread onto a document. */
+function present(values: DimensionValues): Record<string, string> {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value)) as Record<string, string>
 }
 
 /** Reference and party on a line. Both party fields are always sent: the
@@ -984,4 +1127,139 @@ export function useAutoReconcile() {
 /** The desk address of a document, for "open in desk" links. */
 export function deskUrl(doctype: string, name: string): string {
   return `/app/${doctype.toLowerCase().replace(/ /g, '-')}/${encodeURIComponent(name)}`
+}
+
+/* -------------------------------------------------------------------------- */
+/* Importing a statement                                                       */
+/* -------------------------------------------------------------------------- */
+
+const IMPORT = 'commons.banking.statement_import'
+
+/** Whether the page offers the import: bank transactions, a Claude key, and
+ *  create on Bank Transaction. The server's answer, since only it can see
+ *  whether a key is set. */
+const importAvailableCall = useCall<boolean>({ url: `${METHOD}/${IMPORT}.import_available` })
+export const importAvailable = computed(() => Boolean(importAvailableCall.data))
+
+/** What the file picker offers. The server decides by the file's contents. */
+export const ACCEPTED_STATEMENTS =
+  '.xlsx,.xls,.csv,application/pdf,image/jpeg,image/png,image/webp,image/gif'
+
+/**
+ * Hand a statement over to be read, and get back a token to ask after it. A
+ * multipart upload through frappe-ui's helper, as Document Capture sends
+ * scans, so the file goes as it is. `/api/method` because the helper unwraps
+ * v1's `message`.
+ *
+ * The reading itself happens in a background job, because copying a long PDF
+ * can take Claude longer than a web request is allowed to last. See
+ * `commons.banking.statement_import`.
+ */
+export async function startReading(file: File): Promise<string> {
+  const answer = (await upload(file, {
+    upload_endpoint: `/api/method/${IMPORT}.start_reading`,
+    private: true,
+  })) as unknown as { token: string }
+  return answer.token
+}
+
+export interface ReadingState {
+  status: 'queued' | 'reading' | 'done' | 'failed'
+  /** What the job is doing: `copying` a PDF or photo, or for a spreadsheet
+   *  working out its `columns` and then reading its `rows`. */
+  step: 'copying' | 'columns' | 'rows' | null
+  /** Rows read so far. */
+  rows: number
+  result?: StatementReading
+  error?: string
+}
+
+export function useReadingStatus() {
+  const call = useCall<ReadingState, { token: string }>({
+    url: `${METHOD}/${IMPORT}.reading_status`,
+    immediate: false,
+  })
+  return {
+    async check(token: string): Promise<ReadingState> {
+      return fetchRows(call, { token })
+    },
+  }
+}
+
+/** The lines already on an account over a stretch of dates, drafts included,
+ *  for telling which statement rows are already imported. Cancelled lines are
+ *  left out: those were deliberately taken back. */
+export function useExistingLines() {
+  const call = documentList<ExistingLine>(BANK_TRANSACTION)
+  return {
+    async load(bankAccount: string, from: string, to: string): Promise<ExistingLine[]> {
+      return fetchRows(call, {
+        fields: JSON.stringify(['name', 'date', 'deposit', 'withdrawal', 'description', 'reference_number']),
+        filters: JSON.stringify([
+          ['bank_account', '=', bankAccount],
+          ['docstatus', 'in', [0, 1]],
+          ['date', 'between', [from, to]],
+        ]),
+        limit: PAGE.transactions,
+      })
+    },
+  }
+}
+
+/** The account's own number and currency: what a statement's account number
+ *  is checked against, and the currency new lines are given, which ERPNext
+ *  requires to be the GL account's. */
+export function useAccountIdentity() {
+  const bank = documentList<{ bank_account_no: string | null; iban: string | null }>('Bank Account')
+  const gl = documentList<{ account_currency: string | null }>('Account')
+  return {
+    async load(account: BankAccountRow): Promise<{ numbers: (string | null)[]; currency: string | null }> {
+      const [bankRows, glRows] = await Promise.all([
+        fetchRows(bank, {
+          fields: JSON.stringify(['bank_account_no', 'iban']),
+          filters: JSON.stringify([['name', '=', account.name]]),
+          limit: 1,
+        }),
+        account.account
+          ? fetchRows(gl, {
+              fields: JSON.stringify(['account_currency']),
+              filters: JSON.stringify([['name', '=', account.account]]),
+              limit: 1,
+            })
+          : [],
+      ])
+      return {
+        numbers: [bankRows[0]?.bank_account_no ?? null, bankRows[0]?.iban ?? null],
+        currency: glRows[0]?.account_currency ?? null,
+      }
+    },
+  }
+}
+
+/** `insert_many` takes at most this many documents a request. */
+const INSERT_CHUNK = 200
+
+/**
+ * Insert and submit Bank Transactions, through `frappe.client.insert_many`,
+ * which runs each one's validation and permission check. One request per 200,
+ * and each request is one transaction: a refusal stops there, and says how
+ * many went in before it.
+ */
+export function useImportTransactions() {
+  const call = useCall<string[], { docs: string }>({
+    url: `${CLIENT}.insert_many`,
+    method: 'POST',
+    immediate: false,
+  })
+  return {
+    async run(docs: object[]): Promise<{ created: string[]; error: Error | null }> {
+      const created: string[] = []
+      for (let start = 0; start < docs.length; start += INSERT_CHUNK) {
+        const done = await write(call, { docs: JSON.stringify(docs.slice(start, start + INSERT_CHUNK)) })
+        if (!done.ok) return { created, error: done.error }
+        created.push(...(done.data ?? []))
+      }
+      return { created, error: null }
+    },
+  }
 }

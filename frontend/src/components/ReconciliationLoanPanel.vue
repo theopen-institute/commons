@@ -41,7 +41,14 @@
           <div class="min-w-0 flex-1">
             <div class="truncate text-p-base text-ink-gray-8">
               {{ borrowerOf(suggestion.loan) }}
-              <span class="text-p-sm text-ink-gray-5">· {{ suggestion.loan }}</span>
+              <span class="text-p-sm text-ink-gray-5">· <a
+                :href="deskUrl('Loan', suggestion.loan)"
+                target="_blank"
+                class="inline-flex items-center gap-0.5 hover:text-ink-gray-8 hover:underline"
+                :title="`Open ${suggestion.loan} in a new tab`"
+                @click.stop
+                >{{ suggestion.loan }}<span class="lucide-external-link size-3"
+              /></a></span>
             </div>
             <div class="mt-0.5 flex flex-wrap gap-1">
               <Badge
@@ -90,7 +97,14 @@
         >
           <div class="min-w-0 flex-1 truncate text-p-sm text-ink-gray-8">
             {{ borrowerOf(loan.name) }}
-            <span class="text-ink-gray-5">· {{ loan.name }} · {{ loan.status }}</span>
+            <span class="text-ink-gray-5">· <a
+                :href="deskUrl('Loan', loan.name)"
+                target="_blank"
+                class="inline-flex items-center gap-0.5 hover:text-ink-gray-8 hover:underline"
+                :title="`Open ${loan.name} in a new tab`"
+                @click.stop
+                >{{ loan.name }}<span class="lucide-external-link size-3"
+              /></a> · {{ loan.status }}</span>
           </div>
           <span class="shrink-0 text-p-sm tabular-nums text-ink-gray-6">
             {{ formatExact(outstanding[loan.name], transaction.currency) }}
@@ -119,7 +133,14 @@
           <div class="min-w-0 flex-1">
             <div class="truncate text-p-base text-ink-gray-8">{{ borrowerOf(line.loan) }}</div>
             <div class="text-p-xs text-ink-gray-5">
-              {{ line.loan }} · {{ formatExact(outstanding[line.loan], transaction.currency) }} outstanding
+              <a
+                :href="deskUrl('Loan', line.loan)"
+                target="_blank"
+                class="inline-flex items-center gap-0.5 hover:text-ink-gray-8 hover:underline"
+                :title="`Open ${line.loan} in a new tab`"
+                @click.stop
+                >{{ line.loan }}<span class="lucide-external-link size-3"
+              /></a> · {{ formatExact(outstanding[line.loan], transaction.currency) }} outstanding
             </div>
           </div>
           <div class="w-36 shrink-0">
@@ -180,7 +201,7 @@
 
     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-outline-gray-1 pt-3">
       <p class="text-p-xs text-ink-gray-5">
-        Value date {{ formatDate(transaction.date) }}. Lending posts the entry to the ledger today.
+        Posted to the ledger on {{ formatDate(transaction.date) }}, the day the money arrived.
       </p>
       <div class="flex gap-2">
         <Button
@@ -207,7 +228,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Badge, Button, ErrorMessage, FormControl, TextInput, toast } from 'frappe-ui'
 import { formatDate, formatExact, pluralise } from '@/data/format'
-import { useCreateLoanRepayments, write, type LoanBook } from '@/data/reconciliation'
+import { deskUrl, useCreateLoanRepayments, write, type LoanBook } from '@/data/reconciliation'
 import {
   checkSplit,
   money,

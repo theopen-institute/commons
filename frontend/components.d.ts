@@ -44,6 +44,7 @@ declare module 'vue' {
     ReconciliationBoard: typeof import('./src/components/ReconciliationBoard.vue')['default']
     ReconciliationDetailsPanel: typeof import('./src/components/ReconciliationDetailsPanel.vue')['default']
     ReconciliationDialog: typeof import('./src/components/ReconciliationDialog.vue')['default']
+    ReconciliationImportDialog: typeof import('./src/components/ReconciliationImportDialog.vue')['default']
     ReconciliationList: typeof import('./src/components/ReconciliationList.vue')['default']
     ReconciliationLoanPanel: typeof import('./src/components/ReconciliationLoanPanel.vue')['default']
     ReconciliationMatchPanel: typeof import('./src/components/ReconciliationMatchPanel.vue')['default']

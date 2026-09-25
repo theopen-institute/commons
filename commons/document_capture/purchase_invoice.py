@@ -180,9 +180,16 @@ SCHEMA = _object(
 			"items": _object(
 				{
 					"description": STRING,
-					"quantity": NUMBER,
-					"rate": {"type": "number", "description": "Price per unit, before tax."},
-					"amount": {"type": "number", "description": "The line's total before tax, as printed."},
+					# Each nullable, and each read on its own. A line that prints only
+					# an amount comes back with no quantity or rate, rather than with
+					# the 1 and the amount that would make it multiply out: the page
+					# checks the three against each other, and a figure worked out
+					# from the other two would pass that check by construction.
+					"quantity": _nullable(NUMBER, "As printed; null if none is printed."),
+					"rate": _nullable(
+						NUMBER, "Price per unit before tax, as printed; null if none is printed."
+					),
+					"amount": _nullable(NUMBER, "The line's total before tax, as printed; null if none."),
 				}
 			),
 		},
@@ -194,7 +201,7 @@ SCHEMA = _object(
 				{
 					"label": STRING,
 					"rate": _nullable(NUMBER, "In percent: 13 for 13%."),
-					"amount": NUMBER,
+					"amount": _nullable(NUMBER, "As printed; null if illegible."),
 				}
 			),
 		},
@@ -223,14 +230,19 @@ often use Bikram Sambat (B.S. or वि.सं.), whose years currently run from
 and day as printed; do not convert them. Mark Gregorian dates "AD". If both are \
 printed, give the Gregorian one.
 - lines are the goods or services charged for. Leave out taxes, discounts and \
-totals. quantity is 1 when none is printed; rate is the price per unit before \
-tax; amount is the line's total before tax, as printed. Copy all three as \
-printed even when quantity times rate does not equal the amount: the bookkeeper \
-checks each line, and a corrected figure would hide what is on the paper.
+totals. quantity, rate (the price per unit before tax) and amount (the line's \
+total before tax) are each read separately from the page. Give each exactly as \
+printed, and null where the line does not print it: a line showing only an \
+amount has a null quantity and rate. Never work one out from the other two, \
+and never correct one to agree with the others. The bookkeeper checks the \
+three against each other, and a derived or corrected figure hides a misread.
 - subtotal is the total of the lines before tax, where one is printed (often \
 "Sub total", "Total" or "Taxable amount"); null where there is none.
 - taxes are VAT, GST, sales tax or similar charges added on top, each with its \
-printed rate and amount. Leave out tax withheld by the buyer (TDS).
+printed rate and amount. Leave out tax withheld by the buyer (TDS). Copy the \
+amount as printed even if it is not the rate applied to the subtotal.
+- total is the amount payable as printed. Copy it even if the lines, tax and \
+discount on the page do not add up to it; say so in notes.
 - currency: NPR for rupees on a Nepali invoice, INR on an Indian one, USD for \
 US dollars, and so on; null if it cannot be told.
 - If the document is not an invoice or bill (a quotation, a delivery note, a \

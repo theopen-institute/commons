@@ -5,6 +5,13 @@
     </div>
     <template #actions>
       <Button
+        v-if="importAvailable && bankAccount"
+        variant="subtle"
+        icon-left="lucide-file-up"
+        label="Import statement"
+        @click="importOpen = true"
+      />
+      <Button
         v-if="reconciliationCan.reconcile && bankAccount"
         variant="subtle"
         icon-left="lucide-wand-sparkles"
@@ -183,6 +190,8 @@
       </template>
     </template>
 
+    <ReconciliationImportDialog v-model:open="importOpen" :account="account" @imported="reload" />
+
     <ReconciliationPairDialog
       v-model:open="pairOpen"
       :line="pairLine"
@@ -236,10 +245,12 @@ import AppPageHeader from '@/components/AppPageHeader.vue'
 import ReconciliationDialog from '@/components/ReconciliationDialog.vue'
 import ReconciliationList, { type RowHint } from '@/components/ReconciliationList.vue'
 import ReconciliationBoard from '@/components/ReconciliationBoard.vue'
+import ReconciliationImportDialog from '@/components/ReconciliationImportDialog.vue'
 import ReconciliationPairDialog from '@/components/ReconciliationPairDialog.vue'
 import ReconciliationBalances from '@/components/ReconciliationBalances.vue'
 import { formatDate, pluralise } from '@/data/format'
 import {
+  importAvailable,
   inView,
   reconciliationCan,
   reconciliationGate,
@@ -603,6 +614,7 @@ function onDone(name: string, unallocated: number) {
   }
 }
 
+const importOpen = ref(false)
 const pairOpen = ref(false)
 const pairLine = ref<TransactionRow | null>(null)
 const pairEntry = ref<BookEntry | null>(null)

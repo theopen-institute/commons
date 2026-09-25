@@ -371,6 +371,34 @@ because they are not in the ledger. A line paired with a draft is
 matched by `commons.banking.reconciliation.submit_and_reconcile`, which
 submits the draft as it stands and matches it in one transaction.
 
+**Accounting dimensions.** The payment and journal entry tabs ask for every
+accounting dimension the company makes mandatory (on register.localhost,
+Department, for both Profit and Loss and Balance Sheet accounts), with the
+company's default filled in. The bank's own line is a Balance Sheet account,
+so on such a company every entry needs it. Which dimensions are mandatory comes
+from `commons.banking.reconciliation.accounting_dimensions`, because Accounts
+Users may not read `Accounting Dimension`. Journal entries go through ERPNext's
+`create_bank_entry_and_reconcile` with the dimension on both lines. Payment
+entries are built by `create_payment_entry_bts` (`allow_edit`), given the
+dimension, and submitted by `create_payment_entry_and_reconcile`.
+
+**Importing a statement.** "Import statement" takes the bank's export (XLSX,
+XLS, CSV), the statement as a PDF, or photos of its pages, and reads it in
+`commons.banking.statement_import`. A spreadsheet is read in code once Claude
+has named its columns from a sample, so no figure is copied by a model. A PDF
+or photo is copied row by row by Claude, the way Document Capture reads
+invoices. The reading runs in a background job (the `long` queue, up to ten
+minutes), because copying a long PDF can outlast a web request. Claude's answer
+is streamed, and the dialog polls every two seconds and shows how many rows have
+been copied so far. The dialog then proposes each row (`src/data/statementImport.ts`,
+tested): rows with the same date, direction and amount as a line already on the
+account are unticked as already imported. A line up to three days away counts
+only if the description agrees too, and lines are paired off one each. Rows
+whose running balance does not follow from the row before are flagged. "Import"
+inserts and submits the ticked rows through `frappe.client.insert_many`, 200 a
+request. It needs a Claude key in Claude Settings, as Document Capture does,
+and create on Bank Transaction.
+
 **Loan repayments.** For a deposit, the dialog suggests the borrower and says
 why: the party on the line, the borrower's name in the description, or an
 account or phone number seen on their earlier repayments. The logic is in

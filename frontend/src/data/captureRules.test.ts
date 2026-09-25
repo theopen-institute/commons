@@ -6,9 +6,10 @@ import {
   invoicePayload,
   isoDate,
   isTaxed,
-  lineFixes,
+  lineFlags,
   lineProblem,
-  rowsMatchSubtotal,
+  rateFromTotal,
+  scanProblems,
   totalMatches,
   type Reading,
   type ScannedInvoice,
@@ -124,9 +125,33 @@ describe('draftFrom', () => {
     expect(line.expense_account).toBe('')
   })
 
-  it('treats a missing quantity as one', () => {
-    const extracted = scanned({ lines: [{ description: 'Audit fee', quantity: 0, rate: 5000, amount: 5000 }] })
+  it('takes a line that prints no quantity as one of it', () => {
+    const extracted = scanned({ lines: [{ description: 'Audit fee', quantity: null, rate: 5000, amount: 5000 }] })
     expect(draftFrom(reading({ extracted }), '2026-09-23').lines[0].qty).toBe(1)
+  })
+
+  it('takes the row total as the rate where no rate is printed, and says so', () => {
+    const extracted = scanned({ lines: [{ description: 'Audit fee', quantity: null, rate: null, amount: 5000 }] })
+    const [line] = draftFrom(reading({ extracted }), '2026-09-23').lines
+    expect([line.qty, line.rate, line.amount]).toEqual([1, 5000, 5000])
+    expect(rateFromTotal(line)).toBe(true)
+    expect(lineFlags(line).message).toBeNull()
+    line.rate = 4000
+    expect(rateFromTotal(line)).toBe(false)
+  })
+
+  it('copies the total as the rate even beside a printed quantity, and then flags the line', () => {
+    const extracted = scanned({ lines: [{ description: 'Router rental', quantity: 3, rate: null, amount: 4500 }] })
+    const [line] = draftFrom(reading({ extracted }), '2026-09-23').lines
+    expect(line.rate).toBe(4500)
+    expect(lineProblem(line)).toContain('As read, 3 × 4500 is 13500')
+  })
+
+  it('leaves a rate empty where neither a rate nor a row total is printed', () => {
+    const extracted = scanned({ lines: [{ description: 'Audit fee', quantity: 2, rate: null, amount: null }] })
+    const [line] = draftFrom(reading({ extracted }), '2026-09-23').lines
+    expect(line.rate).toBeNull()
+    expect(line.amount).toBeNull()
   })
 })
 
@@ -135,79 +160,117 @@ function flexLine() {
   return draftFrom(reading({ extracted }), '2026-09-23').lines[0]
 }
 
-describe('lineProblem', () => {
+describe('lineFlags', () => {
   it('says nothing about a line that adds up', () => {
     const [line] = draftFrom(reading(), '2026-09-23').lines
-    expect(line.amount).toBe(10000)
-    expect(lineProblem(line)).toBeNull()
+    expect(lineFlags(line)).toEqual({ qty: false, rate: false, amount: false, message: null })
   })
 
-  it('points at a row whose total is not quantity times rate, and says it is as printed', () => {
-    const problem = lineProblem(flexLine())
-    expect(problem).toContain('As printed')
-    expect(problem).toContain('4800')
-    expect(problem).toContain('4500')
+  it('rings all three figures of a row that does not multiply out, since any could be the misread one', () => {
+    const flags = lineFlags(flexLine())
+    expect([flags.qty, flags.rate, flags.amount]).toEqual([true, true, true])
+    expect(flags.message).toContain('As read')
+    expect(flags.message).toContain('4500')
+    expect(flags.message).toContain('4800')
   })
 
-  it('follows the draft, so it clears once the reader fixes the row and returns if they break it', () => {
+  it('rings a missing rate, which there is no booking without, and asks for it from the paper', () => {
+    const extracted = scanned({ lines: [{ description: 'Audit fee', quantity: null, rate: null, amount: null }] })
+    const flags = lineFlags(draftFrom(reading({ extracted }), '2026-09-23').lines[0])
+    expect([flags.qty, flags.rate, flags.amount]).toEqual([false, true, false])
+    expect(flags.message).toBe('No rate was read for this line. Enter it from the paper.')
+  })
+
+  it('does not fault a line that prints no row total; it only has nothing to check', () => {
+    const extracted = scanned({ lines: [{ description: 'Audit fee', quantity: 2, rate: 2500, amount: null }] })
+    expect(lineFlags(draftFrom(reading({ extracted }), '2026-09-23').lines[0]).message).toBeNull()
+  })
+
+  it('counts an assumed quantity of one as read', () => {
+    const extracted = scanned({ lines: [{ description: 'Audit fee', quantity: null, rate: 5000, amount: 4000 }] })
+    expect(lineProblem(draftFrom(reading({ extracted }), '2026-09-23').lines[0])).toContain('As read')
+  })
+
+  it('counts a cleared field as missing, not as zero', () => {
+    const line = flexLine()
+    ;(line as { rate: unknown }).rate = ''
+    expect(lineFlags(line).rate).toBe(true)
+  })
+
+  it('follows the draft, so it clears once the reader corrects the row and returns if they break it', () => {
     const line = flexLine()
     line.rate = 1600
     expect(lineProblem(line)).toBeNull()
     line.qty = 2
-    expect(lineProblem(line)).not.toContain('As printed')
-  })
-
-  it('has nothing to say about a line with no row total', () => {
-    const line = flexLine()
-    line.amount = null
-    expect(lineProblem(line)).toBeNull()
+    expect(lineProblem(line)).not.toContain('As read')
   })
 })
 
-describe('lineFixes', () => {
-  it('offers the rate that makes the row total, or the total that the rate makes', () => {
-    const line = flexLine()
-    line.amount = 4800
-    line.qty = 3
-    line.rate = 1500
-    expect(lineFixes(line).map((fix) => fix.values)).toEqual([{ rate: 1600 }, { amount: 4500 }])
+describe('scanProblems', () => {
+  it('has nothing to say about a bill whose figures agree', () => {
+    expect(scanProblems(draftFrom(reading(), '2026-09-23'), scanned())).toEqual([])
   })
 
-  it('books one of the total where no rate to the cent would make it', () => {
-    const line = flexLine()
-    line.amount = 100
-    line.rate = 33
-    expect(lineFixes(line)[0].values).toEqual({ qty: 1, rate: 100 })
+  it('catches a tax amount that is not its printed rate of the subtotal', () => {
+    const extracted = scanned({ taxes: [{ label: 'VAT 13%', rate: 13, amount: 1500 }], total: 11500 })
+    const found = scanProblems(draftFrom(reading({ extracted }), '2026-09-23'), extracted)
+    expect(found).toEqual(['VAT 13% at 13% of 10000 is 1300, not the printed 1500.'])
   })
 
-  it('offers nothing for a line that adds up', () => {
-    expect(lineFixes(draftFrom(reading(), '2026-09-23').lines[0])).toEqual([])
+  it('catches a printed total the printed figures do not come to, and says when it is only rounding', () => {
+    const misread = scanned({ total: 11800 })
+    expect(scanProblems(draftFrom(reading({ extracted: misread }), '2026-09-23'), misread)[0]).toContain(
+      'printed total is 11800.',
+    )
+    const rounded = scanned({ total: 11300.4 })
+    expect(scanProblems(draftFrom(reading({ extracted: rounded }), '2026-09-23'), rounded)[0]).toContain(
+      'may be rounding',
+    )
   })
-})
 
-describe('rowsMatchSubtotal', () => {
   it('accepts a subtotal printed before the discount or after it', () => {
-    const draft = draftFrom(reading(), '2026-09-23')
-    expect(rowsMatchSubtotal(draft, scanned())).toBe(true)
-    draft.discount_amount = 500
-    expect(rowsMatchSubtotal(draft, scanned({ subtotal: 9500 }))).toBe(true)
+    const before = scanned({ subtotal: 10000, discount: 500, taxes: [{ label: 'VAT', rate: 13, amount: 1235 }], total: 10735 })
+    const after = scanned({ subtotal: 9500, discount: 500, taxes: [{ label: 'VAT', rate: 13, amount: 1235 }], total: 10735 })
+    for (const extracted of [before, after]) {
+      expect(scanProblems(draftFrom(reading({ extracted }), '2026-09-23'), extracted)).toEqual([])
+    }
   })
 
-  it('catches a line that is missing', () => {
-    const draft = draftFrom(reading(), '2026-09-23')
-    expect(rowsMatchSubtotal(draft, scanned({ subtotal: 12000 }))).toBe(false)
+  it('charges the tax on quantity × rate where no subtotal is printed, never on the row totals', () => {
+    // The row total is misread as 12000; quantity × rate is 10000, and VAT of
+    // 1300 is right for that.
+    const extracted = scanned({
+      subtotal: null,
+      lines: [{ description: 'Internet', quantity: 1, rate: 10000, amount: 12000 }],
+    })
+    expect(scanProblems(draftFrom(reading({ extracted }), '2026-09-23'), extracted)).toEqual([])
   })
 
-  it('has no opinion where no subtotal is printed', () => {
-    expect(rowsMatchSubtotal(draftFrom(reading(), '2026-09-23'), scanned({ subtotal: null }))).toBeNull()
+  it('does not check the printed total without a printed subtotal to check it with', () => {
+    const extracted = scanned({ subtotal: null, total: 99999 })
+    expect(scanProblems(draftFrom(reading({ extracted }), '2026-09-23'), extracted)).toEqual([])
+  })
+
+  it('stays silent where a figure it needs is not printed, rather than filling it in', () => {
+    const extracted = scanned({
+      subtotal: null,
+      lines: [{ description: 'Internet', quantity: null, rate: null, amount: null }],
+    })
+    expect(scanProblems(draftFrom(reading({ extracted }), '2026-09-23'), extracted)).toEqual([])
+  })
+
+  it('says when a tax amount could not be read', () => {
+    const extracted = scanned({ taxes: [{ label: 'VAT 13%', rate: 13, amount: null }] })
+    expect(scanProblems(draftFrom(reading({ extracted }), '2026-09-23'), extracted)).toEqual([
+      'No amount was read for VAT 13%.',
+    ])
   })
 })
 
 describe('checks', () => {
   function stages(overrides: Partial<ScannedInvoice> = {}, sums: Partial<Totals> = {}) {
     const extracted = scanned(overrides)
-    const draft = draftFrom(reading({ extracted }), '2026-09-23')
-    return checks(draft, extracted, totals(sums))
+    return checks(extracted, totals(sums))
   }
 
   it('agrees at every stage for a bill that adds up', () => {
@@ -224,10 +287,22 @@ describe('checks', () => {
     expect(found.find((check) => check.key === 'tax')?.matches).toBe(false)
   })
 
-  it('compares the lines with the row totals where no subtotal is printed', () => {
+  it('has nothing to compare the lines with where no subtotal is printed, and sums no row totals instead', () => {
     const lines = stages({ subtotal: null })[0]
-    expect(lines.source).toBe('sum of the row totals')
-    expect(lines.scan).toBe(10000)
+    expect(lines.source).toBe('none printed')
+    expect(lines.scan).toBeNull()
+    expect(lines.matches).toBeNull()
+  })
+
+  it('catches lines whose quantity × rate does not come to the printed subtotal', () => {
+    const lines = stages({ subtotal: 12000 })[0]
+    expect(lines.matches).toBe(false)
+  })
+
+  it('shows no figure for a total the scan does not print', () => {
+    const total = stages({ total: null }).find((check) => check.key === 'total')!
+    expect(total.scan).toBeNull()
+    expect(total.matches).toBeNull()
   })
 
   it('leaves the tax out where neither the scan nor the draft has any', () => {

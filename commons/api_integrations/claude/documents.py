@@ -99,8 +99,19 @@ def _prepare_image(content: bytes) -> tuple[bytes, str]:
 	return buffer.getvalue(), "image/jpeg"
 
 
-def read(content: bytes, schema: dict, instructions: str, effort: str = "medium") -> dict:
+def read(
+	content: bytes,
+	schema: dict,
+	instructions: str,
+	effort: str = "medium",
+	on_text=None,
+	timeout: float | None = None,
+	max_tokens: int = 16000,
+) -> dict:
 	"""What the document says, in the shape of `schema`.
+
+	`on_text`, `timeout` and `max_tokens` are for a background job:
+	see `client.stream_message`.
 
 	`effort` is the Messages API's. Medium rather than the default high because
 	copying figures off a page is not hard reasoning, and a lower effort is a
@@ -117,11 +128,17 @@ def read(content: bytes, schema: dict, instructions: str, effort: str = "medium"
 		{"type": "document", "source": source} if media_type == PDF else {"type": "image", "source": source}
 	)
 
-	response = client.create_message(
-		max_tokens=16000,
-		output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
-		messages=[{"role": "user", "content": [block, {"type": "text", "text": instructions}]}],
-	)
+	params = {
+		"max_tokens": max_tokens,
+		"output_config": {"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+		"messages": [{"role": "user", "content": [block, {"type": "text", "text": instructions}]}],
+	}
+	# Streamed when the caller is a background job that reports progress or
+	# needs longer than a web request allows; otherwise the plain call.
+	if on_text or timeout:
+		response = client.stream_message(on_text=on_text, timeout=timeout or client.TIMEOUT, **params)
+	else:
+		response = client.create_message(**params)
 
 	if response.stop_reason == "refusal":
 		client.fail(_("Claude declined to read this document."))

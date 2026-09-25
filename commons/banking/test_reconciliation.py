@@ -11,10 +11,13 @@ ERPNext's to get right. It was checked by hand against register.localhost's
 data (see `reconciliation.py`), and is not restated with mocks here.
 """
 
+import datetime
 import logging
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
+
+import frappe
 
 from commons.banking import reconciliation
 
@@ -186,3 +189,34 @@ class TestSubmittingADraftToMatchIt(TestCase):
 
 	def test_a_voucher_that_is_not_a_draft_is_refused(self):
 		self.refused("is not a draft", "BT-OPEN", "Payment Entry", "PE-SUBMITTED")
+
+
+class TestPostingOnTheValueDate(TestCase):
+	"""`post_on_value_date`, the `before_submit` hook on Loan Repayment."""
+
+	def repayment(self, flagged: bool):
+		doc = SimpleNamespace(
+			posting_date=datetime.datetime(2026, 9, 25, 14, 30),
+			value_date=datetime.datetime(2026, 8, 5),
+			flags=frappe._dict(post_on_value_date=True) if flagged else frappe._dict(),
+		)
+		return doc
+
+	def test_a_repayment_from_the_page_posts_on_the_day_the_money_arrived(self):
+		doc = self.repayment(flagged=True)
+		reconciliation.post_on_value_date(doc)
+		self.assertEqual(doc.posting_date, datetime.datetime(2026, 8, 5))
+
+	def test_a_repayment_made_in_the_desk_keeps_lendings_date(self):
+		doc = self.repayment(flagged=False)
+		reconciliation.post_on_value_date(doc)
+		self.assertEqual(doc.posting_date, datetime.datetime(2026, 9, 25, 14, 30))
+
+
+class TestWhoMayReadTheDimensions(TestCase):
+	def test_only_somebody_who_reconciles(self):
+		with patch.object(reconciliation, "can_reconcile", return_value=False), patch.object(
+			reconciliation.frappe, "throw", side_effect=ValueError
+		):
+			with self.assertRaises(ValueError):
+				reconciliation.accounting_dimensions("Open Institute (Nepal)")

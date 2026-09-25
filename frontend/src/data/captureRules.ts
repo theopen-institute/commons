@@ -7,6 +7,12 @@ import { to_gregorian } from '@bikram/bikram_sambat.js'
  * Pure, like `reconciliationRules.ts`, and tested the same way (`yarn test`).
  * Nothing here is fetched or written.
  *
+ * Nothing here fills in a figure. Each one on the scan is read on its own,
+ * and where they do not agree, or one is missing, the page says so and the
+ * reader settles it against the paper. The point of the checks is to catch
+ * what the model misread, and a figure worked out from the others would agree
+ * with them by construction and hide exactly that.
+ *
  * Two things are decided here and nowhere else:
  *
  * * **Dates.** The scan's dates come back as printed, with the calendar they
@@ -31,17 +37,19 @@ export interface ScannedParty {
   tax_id: string | null
 }
 
+/** Each figure as printed, or null where the line does not print it. Never
+ *  worked out from the others: see `SCHEMA` on the server. */
 export interface ScannedLine {
   description: string
-  quantity: number
-  rate: number
-  amount: number
+  quantity: number | null
+  rate: number | null
+  amount: number | null
 }
 
 export interface ScannedTax {
   label: string
   rate: number | null
-  amount: number
+  amount: number | null
 }
 
 /** What `commons.document_capture.purchase_invoice.SCHEMA` asks for. */
@@ -96,9 +104,8 @@ export interface DraftLine {
   rate: number | null
   /**
    * The row total, as printed. Not sent to the server: ERPNext books quantity
-   * × rate, and recomputes the amount from them. It is here to check those two
-   * against, because a row whose figures do not multiply out is usually a
-   * misread digit or a discount printed on the line.
+   * × rate. It is here to check those two against, because a row whose figures
+   * do not multiply out is usually a misread digit.
    */
   amount: number | null
   expense_account: string
@@ -166,6 +173,8 @@ export function printedDate(date: ScannedDate | null | undefined): string {
 
 let nextKey = 0
 
+/** A line the reader adds by hand: a quantity of 1, the invoices' own rule
+ *  for a line that prints none, and the rest empty until typed from the paper. */
 export function blankLine(): DraftLine {
   return {
     key: nextKey++,
@@ -183,10 +192,19 @@ export function blankLine(): DraftLine {
 /**
  * The draft a reading starts from.
  *
- * The supplier is filled in only for a strong candidate: a similar name is a
- * suggestion to accept, not an answer. The posting date is the invoice's own,
- * which is how this site books them; `today` stands in where the scan has no
- * date that exists.
+ * Every figure is the scan's, gaps included, with two rules for what a line
+ * that leaves one out means:
+ *
+ * * no quantity printed is a quantity of 1;
+ * * no rate printed, but a row total, is that total as the rate: the usual
+ *   service line, "Audit fee ... 50,000". Copied, not worked out, so where a
+ *   quantity above 1 is printed too, the line does not multiply out and is
+ *   flagged like any other.
+ *
+ * A row total that is not printed stays missing. The supplier is filled in only for a strong candidate: a
+ * similar name is a suggestion to accept, not an answer. The posting date is
+ * the invoice's own, which is how this site books them; `today` stands in
+ * where the scan has no date that exists.
  */
 export function draftFrom(reading: Reading, today: string): Draft {
   const scanned = reading.extracted
@@ -200,108 +218,182 @@ export function draftFrom(reading: Reading, today: string): Draft {
     bill_date: billDate ?? '',
     posting_date: billDate ?? today,
     due_date: isoDate(scanned.due_date) ?? '',
-    discount_amount: scanned.discount || null,
+    discount_amount: scanned.discount ?? null,
     taxes: 'none',
     lines: scanned.lines.map((line) => ({
       ...blankLine(),
       description: line.description,
-      qty: line.quantity || 1,
-      rate: line.rate,
+      qty: line.quantity ?? 1,
+      rate: line.rate ?? line.amount,
       amount: line.amount,
       scanned: line,
     })),
   }
 }
 
-/** What ERPNext will book for a line: quantity × rate. */
+/** What ERPNext will book for a line: quantity × rate. This, not the row
+ *  total, is what the invoice is made of and what its totals are checked with. */
 export function lineAmount(line: DraftLine): number {
   return money((line.qty ?? 0) * (line.rate ?? 0))
-}
-
-/** The line's row total where it has one, and what it books where it does
- *  not: a line the reader added and gave no total. */
-export function rowTotal(line: DraftLine): number {
-  return line.amount ?? lineAmount(line)
-}
-
-function same(a: number, b: number): boolean {
-  return Math.abs(a - b) <= TOLERANCE
 }
 
 export function money(value: number): number {
   return Math.round(value * 100) / 100
 }
 
+function same(a: number, b: number): boolean {
+  return Math.abs(a - b) <= TOLERANCE
+}
+
+function known(value: number | null | undefined): value is number {
+  return typeof value === 'number' && !Number.isNaN(value)
+}
+
+function sum(values: (number | null | undefined)[]): number | null {
+  return values.every(known) ? money(values.reduce((total, value) => total + value, 0)) : null
+}
+
+function listed(words: string[]): string {
+  return words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`
+}
+
+export interface LineFlags {
+  qty: boolean
+  rate: boolean
+  amount: boolean
+  /** What is wrong with the line, or null if its figures agree. */
+  message: string | null
+}
+
+const FIELD_NAMES = { qty: 'quantity', rate: 'rate' } as const
+
 /**
- * Where a line does not add up by itself: quantity × rate is one figure and the
- * row total another. On a scan that is usually a misread digit, sometimes a
- * discount printed on the line. It is the reader's to settle, so this says so
- * and `lineFixes` offers the ways to settle it.
+ * Which of a line's figures to highlight, and why.
  *
- * Read off the draft rather than the scan, so it clears when the reader fixes
- * the line and comes back if a later edit breaks it again.
+ * Quantity × rate is what the invoice books, so a missing quantity or rate is
+ * flagged: there is nothing to book. The row total is only there to check
+ * them against, so a line that prints none is not a fault, only a line with
+ * nothing to check. When all three are there and quantity × rate is not the
+ * row total, all three are flagged, because nothing on the page says which
+ * one was misread.
+ *
+ * Read off the draft rather than the scan, so a flag clears when the reader
+ * corrects the figure from the paper and returns if a later edit breaks it.
  */
-export function lineProblem(line: DraftLine): string | null {
-  if (line.amount === null || line.qty === null || line.rate === null) return null
+export function lineFlags(line: DraftLine): LineFlags {
+  const missing = (['qty', 'rate'] as const).filter((field) => !known(line[field]))
+  if (missing.length) {
+    const names = missing.map((field) => FIELD_NAMES[field])
+    return {
+      qty: missing.includes('qty'),
+      rate: missing.includes('rate'),
+      amount: false,
+      message: line.scanned
+        ? `No ${listed(names)} was read for this line. Enter ${missing.length > 1 ? 'them' : 'it'} from the paper.`
+        : `Enter the ${listed(names).replace(' or ', ' and ')} from the paper.`,
+    }
+  }
+  if (!known(line.amount)) return { qty: false, rate: false, amount: false, message: null }
   const booked = lineAmount(line)
-  if (same(booked, line.amount)) return null
-  const printed =
+  if (same(booked, line.amount)) return { qty: false, rate: false, amount: false, message: null }
+  const asRead =
     line.scanned !== null &&
-    line.qty === line.scanned.quantity &&
-    line.rate === line.scanned.rate &&
+    line.qty === (line.scanned.quantity ?? 1) &&
+    line.rate === (line.scanned.rate ?? line.scanned.amount) &&
     line.amount === line.scanned.amount
+  return {
+    qty: true,
+    rate: true,
+    amount: true,
+    message:
+      `${asRead ? 'As read, ' : ''}${line.qty} × ${line.rate} is ${booked}, not the row total of ${line.amount}. ` +
+      'One of the three is probably misread: check them against the paper. The invoice books quantity × rate.',
+  }
+}
+
+/** Whether the line's rate is its printed row total because the scan printed
+ *  no rate, and the reader has not changed it. Said beside the line, so that
+ *  figure is not taken for one the page printed as a rate. */
+export function rateFromTotal(line: DraftLine): boolean {
   return (
-    `${printed ? 'As printed, ' : ''}${line.qty} × ${line.rate} is ${booked}, but the row total is ` +
-    `${line.amount}. The invoice books ${booked}.`
+    line.scanned !== null &&
+    line.scanned.rate === null &&
+    known(line.scanned.amount) &&
+    line.rate === line.scanned.amount
   )
 }
 
-export interface LineFix {
-  label: string
-  values: Partial<Pick<DraftLine, 'qty' | 'rate' | 'amount'>>
+/** The line's message alone, for callers that only want to know whether it
+ *  has one. */
+export function lineProblem(line: DraftLine): string | null {
+  return lineFlags(line).message
 }
 
 /**
- * The ways to make a line that does not add up agree with itself, trusting
- * one figure or the other.
- *
- * Trusting the row total keeps the quantity when the total divides by it to
- * the cent, and otherwise books the row as one of the total: 100 for three
- * items is not a rate ERPNext can hold, and 3 × 33.33 would book 99.99.
+ * Quantity × rate over the lines, which is what the invoice is: the figure the
+ * printed tax is checked with where no subtotal is printed. Null while any line
+ * lacks a quantity or a rate, since a sum with a gap in it checks nothing. Row
+ * totals never enter it; they only check their own line.
  */
-export function lineFixes(line: DraftLine): LineFix[] {
-  if (!lineProblem(line) || line.amount === null || !line.qty || line.rate === null) return []
-  const fixes: LineFix[] = []
-  const rate = money(line.amount / line.qty)
-  if (same(money(line.qty * rate), line.amount)) {
-    fixes.push({ label: `Make the rate ${rate}`, values: { rate } })
-  } else {
-    fixes.push({ label: `Book it as 1 × ${line.amount}`, values: { qty: 1, rate: line.amount } })
-  }
-  const booked = lineAmount(line)
-  fixes.push({ label: `Make the row total ${booked}`, values: { amount: booked } })
-  return fixes
+export function linesTotal(draft: Draft): number | null {
+  if (!draft.lines.length || !draft.lines.every((line) => known(line.qty) && known(line.rate))) return null
+  return money(draft.lines.reduce((total, line) => total + lineAmount(line), 0))
 }
 
 /**
- * Whether the rows add up to the subtotal printed under them. If they do not,
- * a line is missing, extra or misread, and the reader should hear so before
- * they reach the bill's total.
+ * Where the scan's printed figures do not agree with one another, each said
+ * once, before ERPNext comes into it.
  *
- * A printed subtotal can be before the invoice's discount or after it, so
- * either counts. Null where the scan prints no subtotal.
+ * Only printed figures are checked, and a check that needs a figure the page
+ * does not print is left out rather than given a worked-out one:
+ *
+ * * each tax's printed amount against its printed rate, charged on the printed
+ *   subtotal, or on the lines' quantity × rate where there is no subtotal;
+ * * the printed total against the printed subtotal, discount and tax, only
+ *   where all of those are printed.
+ *
+ * Whether the lines come to the printed subtotal, and the draft to the printed
+ * total, is the stage table's to say (`checks`), on ERPNext's own figures.
+ * Where a subtotal could be before the discount or after it, either counts.
  */
-export function rowsMatchSubtotal(draft: Draft, scanned: ScannedInvoice): boolean | null {
-  if (scanned.subtotal === null || scanned.subtotal === undefined) return null
-  const rows = money(draft.lines.reduce((sum, line) => sum + rowTotal(line), 0))
+export function scanProblems(draft: Draft, scanned: ScannedInvoice): string[] {
+  const found: string[] = []
   const discount = draft.discount_amount ?? 0
-  return same(rows, scanned.subtotal) || same(money(rows - discount), scanned.subtotal)
+  const subtotal = known(scanned.subtotal) ? scanned.subtotal : null
+
+  const base = subtotal ?? linesTotal(draft)
+  for (const tax of scanned.taxes) {
+    if (!known(tax.amount)) {
+      found.push(`No amount was read for ${tax.label}.`)
+      continue
+    }
+    if (base === null || !known(tax.rate)) continue
+    const candidates = [base, money(base - discount)].map((on) => money((on * tax.rate!) / 100))
+    if (!candidates.some((expected) => same(expected, tax.amount!))) {
+      found.push(`${tax.label} at ${tax.rate}% of ${base} is ${candidates[0]}, not the printed ${tax.amount}.`)
+    }
+  }
+
+  const taxTotal = sum(scanned.taxes.map((tax) => tax.amount))
+  if (known(scanned.total) && subtotal !== null && taxTotal !== null) {
+    const candidates = [money(subtotal + taxTotal), money(subtotal - discount + taxTotal)]
+    if (!candidates.some((expected) => same(expected, scanned.total!))) {
+      const nearest = candidates.reduce((a, b) => (Math.abs(a - scanned.total!) <= Math.abs(b - scanned.total!) ? a : b))
+      const gap = money(Math.abs(nearest - scanned.total))
+      found.push(
+        `The printed subtotal${discount ? ', discount' : ''} and tax come to ${nearest}, but the printed total is ` +
+          `${scanned.total}` +
+          (gap < 1 ? `, a difference of ${gap} that may be rounding.` : '.'),
+      )
+    }
+  }
+  return found
 }
 
 /** Whether the scan shows any tax, which is what `suggest` starts the tax
- *  option from. */
+ *  option from. A tax line whose amount could not be read counts. */
 export function isTaxed(scanned: ScannedInvoice): boolean {
-  return scanned.taxes.some((tax) => Math.abs(tax.amount) > TOLERANCE)
+  return scanned.taxes.some((tax) => !known(tax.amount) || Math.abs(tax.amount) > TOLERANCE)
 }
 
 export interface Totals {
@@ -325,11 +417,9 @@ export interface Totals {
  * scan printed no total, which is its own warning: nothing to check against.
  */
 export function totalMatches(scannedTotal: number | null, totals: Totals): boolean | null {
-  if (scannedTotal === null || scannedTotal === undefined) return null
-  const candidates = [totals.grand_total, totals.rounded_total].filter(
-    (value): value is number => typeof value === 'number',
-  )
-  return candidates.some((value) => Math.abs(value - scannedTotal) <= TOLERANCE)
+  if (!known(scannedTotal)) return null
+  const candidates = [totals.grand_total, totals.rounded_total].filter(known)
+  return candidates.some((value) => same(value, scannedTotal))
 }
 
 export interface Check {
@@ -344,41 +434,41 @@ export interface Check {
 }
 
 /**
- * The bill against the scan, one stage at a time: the lines before tax, the
- * tax, then what is payable. A difference in the total is traced to the first
- * stage that differs, which is where to look.
+ * What the draft will book against what the scan prints, one stage at a
+ * time: the lines before tax, the tax, then what is payable. The scan side is
+ * only ever a printed figure, or a sum of printed figures; where one is
+ * missing the stage has nothing to compare and says so.
  *
- * The lines are compared with the printed subtotal where there is one, and
- * otherwise with the row totals, which start as printed and are the reader's
- * to correct. Either the draft's total before the discount or after it may
- * match, since a printed subtotal can be either.
+ * The draft side is always ERPNext's, which is quantity × rate. The lines are
+ * compared with the printed subtotal, and have nothing to compare with where
+ * none is printed: the row totals are not summed to stand in for one. Either
+ * the draft's total before the discount or after it may match, since a printed
+ * subtotal can be either.
  */
-export function checks(draft: Draft, scanned: ScannedInvoice, totals: Totals): Check[] {
-  const rows = money(draft.lines.reduce((sum, line) => sum + rowTotal(line), 0))
-  const printedSubtotal = scanned.subtotal !== null && scanned.subtotal !== undefined
-  const linesScan = printedSubtotal ? (scanned.subtotal as number) : rows
-  const linesDraft = same(totals.net_total, linesScan) ? totals.net_total : totals.total
+export function checks(scanned: ScannedInvoice, totals: Totals): Check[] {
+  const linesScan = known(scanned.subtotal) ? scanned.subtotal : null
+  const linesDraft = linesScan !== null && same(totals.net_total, linesScan) ? totals.net_total : totals.total
 
   const found: Check[] = [
     {
       key: 'lines',
       label: 'Lines, before tax',
-      source: printedSubtotal ? 'printed subtotal' : 'sum of the row totals',
+      source: linesScan !== null ? 'printed subtotal' : 'none printed',
       scan: linesScan,
       draft: linesDraft,
-      matches: same(linesDraft, linesScan),
+      matches: linesScan === null ? null : same(linesDraft, linesScan),
     },
   ]
 
-  const scannedTax = money(scanned.taxes.reduce((sum, tax) => sum + tax.amount, 0))
+  const scannedTax = sum(scanned.taxes.map((tax) => tax.amount))
   if (scanned.taxes.length || Math.abs(totals.total_taxes_and_charges) > TOLERANCE) {
     found.push({
       key: 'tax',
       label: 'Tax',
-      source: scanned.taxes.length ? '' : 'none printed',
-      scan: scannedTax,
+      source: !scanned.taxes.length ? 'none printed' : scannedTax === null ? 'an amount is missing' : '',
+      scan: scanned.taxes.length ? scannedTax : 0,
       draft: totals.total_taxes_and_charges,
-      matches: same(scannedTax, totals.total_taxes_and_charges),
+      matches: scanned.taxes.length && scannedTax === null ? null : same(scannedTax ?? 0, totals.total_taxes_and_charges),
     })
   }
 
@@ -386,10 +476,10 @@ export function checks(draft: Draft, scanned: ScannedInvoice, totals: Totals): C
   found.push({
     key: 'total',
     label: 'Total payable',
-    source: scanned.total === null ? 'none printed' : '',
-    scan: scanned.total,
+    source: known(scanned.total) ? '' : 'none printed',
+    scan: known(scanned.total) ? scanned.total : null,
     draft:
-      payable && totals.rounded_total !== null && same(totals.rounded_total, scanned.total ?? NaN)
+      payable && known(totals.rounded_total) && same(totals.rounded_total, scanned.total as number)
         ? totals.rounded_total
         : totals.grand_total,
     matches: payable,
@@ -437,8 +527,10 @@ export function draftProblems(draft: Draft): Record<string, string> {
   if (!draft.lines.length) found.lines = 'Add at least one line'
   draft.lines.forEach((line, index) => {
     if (!line.description.trim()) found[`description-${index}`] = 'Describe it'
-    if (!line.qty || line.qty <= 0) found[`qty-${index}`] = 'Above zero'
-    if (line.rate === null || Number.isNaN(line.rate)) found[`rate-${index}`] = 'Enter a rate'
+    // A cleared number field holds '' rather than null, so the test is for a
+    // number, not for null: a blank rate must not reach the server as 0.
+    if (!known(line.qty) || line.qty <= 0) found[`qty-${index}`] = 'Above zero'
+    if (!known(line.rate)) found[`rate-${index}`] = 'Enter a rate'
     if (!line.expense_account) found[`account-${index}`] = 'Choose an account'
   })
   return found

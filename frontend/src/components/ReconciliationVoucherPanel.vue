@@ -1,9 +1,16 @@
 <!--
   Create a Payment Entry or a Journal Entry from a line, and reconcile it.
 
-  ERPNext's own `create_payment_entry_bts` and `create_journal_entry_bts`, each
-  of which inserts, submits and reconciles in one call. The form here only
-  collects their arguments, with the line's own values filled in.
+  ERPNext's own functions do the work (see `useCreatePaymentEntry` and
+  `useCreateJournalEntry` in `data/reconciliation.ts`); the form collects
+  their arguments, with the line's own values filled in.
+
+  It also asks for every accounting dimension the company makes mandatory,
+  such as Department. ERPNext refuses a voucher whose GL entries leave one out,
+  and a bank line's own entry is against a Balance Sheet account, so on a
+  company that requires one for both kinds of account, every entry from a
+  statement line needs it. The company's default is filled in where there is
+  one.
 -->
 
 <template>
@@ -51,6 +58,18 @@
       <FormControl v-model="referenceDate" type="date" label="Reference date" :disabled="busy" />
       <FormControl v-model="referenceNumber" label="Reference" :disabled="busy" class="sm:col-span-2" />
       <LinkControl
+        v-for="dimension in dimensions"
+        :key="dimension.fieldname"
+        v-model="dimensionValues[dimension.fieldname]"
+        :doctype="dimension.document_type"
+        :label="dimension.label"
+        :filters="{ company: transaction.company }"
+        :disabled="busy"
+        required
+        :description="`Required on this company's ${dimension.mandatory_for_pl && dimension.mandatory_for_bs ? 'entries' : dimension.mandatory_for_pl ? 'income and expense entries' : 'balance sheet entries'}`"
+      />
+      <LinkControl
+        v-if="mode === 'payment'"
         v-model="modeOfPayment"
         doctype="Mode of Payment"
         label="Mode of payment"
@@ -66,20 +85,14 @@
       />
     </div>
 
-    <p
-      v-if="mode === 'journal' && transaction.allocated_amount > 0.005"
-      class="text-p-sm text-ink-amber-7"
-    >
-      Part of this line is already matched. ERPNext books a journal entry for the whole line
-      ({{ formatExact(Math.abs(amountOf(transaction)), transaction.currency) }}) and reconciles only what is left.
-    </p>
+    <ErrorMessage v-if="dimensionsError" :message="dimensionsError" />
 
     <ErrorMessage v-if="problem" :message="problem" />
 
     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-outline-gray-1 pt-3">
       <p class="text-p-sm tabular-nums text-ink-gray-6">
         {{ mode === 'payment' ? (transaction.deposit > 0 ? 'Receive' : 'Pay') : 'Book' }}
-        {{ formatExact(mode === 'payment' ? transaction.unallocated_amount : Math.abs(amountOf(transaction)), transaction.currency) }}
+        {{ formatExact(transaction.unallocated_amount, transaction.currency) }}
       </p>
       <Button
         variant="solid"
@@ -93,12 +106,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Button, ErrorMessage, FormControl, toast } from 'frappe-ui'
 import LinkControl from '@/components/LinkControl.vue'
 import { formatExact } from '@/data/format'
-import { useCreateJournalEntry, useCreatePaymentEntry, write } from '@/data/reconciliation'
-import { amountOf, proposedReference, type TransactionRow } from '@/data/reconciliationRules'
+import {
+  requiredDimensions,
+  useAccountingDimensions,
+  useCreateJournalEntry,
+  useCreatePaymentEntry,
+  type AccountingDimension,
+} from '@/data/reconciliation'
+import { proposedReference, type TransactionRow } from '@/data/reconciliationRules'
 
 const props = defineProps<{
   transaction: TransactionRow
@@ -124,6 +143,29 @@ const problem = ref('')
 
 const createPayment = useCreatePaymentEntry()
 const createJournal = useCreateJournalEntry()
+const dimensionSource = useAccountingDimensions()
+const dimensions = ref<AccountingDimension[]>([])
+const dimensionValues = reactive<Record<string, string | null>>({})
+const dimensionsError = ref('')
+
+/** The company's mandatory dimensions, with its defaults filled in. Asked
+ *  again only when the company changes: every line of one account has one. */
+async function loadDimensions() {
+  const company = props.transaction.company
+  dimensionsError.value = ''
+  if (!company) return
+  try {
+    dimensions.value = requiredDimensions(await dimensionSource.load(company))
+  } catch (error) {
+    dimensionsError.value = `The company's accounting dimensions could not be read: ${(error as Error).message}`
+    dimensions.value = []
+  }
+  for (const dimension of dimensions.value) {
+    if (!dimensionValues[dimension.fieldname]) dimensionValues[dimension.fieldname] = dimension.default
+  }
+}
+
+watch(() => props.transaction.company, loadDimensions, { immediate: true })
 
 // The line's own values, as ERPNext's dialog fills them: its date for both
 // dates, its reference (or description), its party, and its transaction type
@@ -157,6 +199,7 @@ watch(dirty, (value) => emit('dirty', value), { immediate: true })
 
 const ready = computed(() => {
   if (!postingDate.value || !referenceDate.value) return false
+  if (dimensions.value.some((dimension) => !dimensionValues[dimension.fieldname])) return false
   if (props.mode === 'payment') return Boolean(partyType.value && party.value)
   return Boolean(account.value && (!partyType.value || party.value))
 })
@@ -164,35 +207,42 @@ const ready = computed(() => {
 async function save() {
   busy.value = true
   problem.value = ''
+  const values = Object.fromEntries(dimensions.value.map((d) => [d.fieldname, dimensionValues[d.fieldname] ?? null]))
   try {
-    const common = {
-      bank_transaction_name: props.transaction.name,
-      posting_date: postingDate.value,
-      reference_date: referenceDate.value,
-      reference_number: referenceNumber.value,
-      mode_of_payment: modeOfPayment.value || undefined,
-    }
     const done =
       props.mode === 'payment'
-        ? await write(createPayment, {
-            ...common,
-            party_type: partyType.value!,
-            party: party.value!,
-            cost_center: costCenter.value || undefined,
-          })
-        : await write(createJournal, {
-            ...common,
-            second_account: account.value!,
-            entry_type: entryType.value,
-            party_type: partyType.value || undefined,
-            party: party.value || undefined,
-          })
-    if (!done.ok || !done.data) {
+        ? await createPayment.run(
+            {
+              bank_transaction_name: props.transaction.name,
+              posting_date: postingDate.value,
+              reference_date: referenceDate.value,
+              reference_number: referenceNumber.value,
+              mode_of_payment: modeOfPayment.value || undefined,
+              party_type: partyType.value!,
+              party: party.value!,
+              cost_center: costCenter.value || undefined,
+            },
+            values,
+          )
+        : await createJournal.run(
+            {
+              transaction: props.transaction,
+              account: account.value!,
+              entry_type: entryType.value,
+              posting_date: postingDate.value,
+              reference_date: referenceDate.value,
+              reference_number: referenceNumber.value,
+              party_type: partyType.value,
+              party: party.value,
+            },
+            values,
+          )
+    if (!done.ok || done.unallocated === null) {
       problem.value = done.error?.message || 'The entry could not be created'
       return
     }
     toast.success(props.mode === 'payment' ? 'Payment entry created and reconciled' : 'Journal entry created and reconciled')
-    emit('done', done.data.unallocated_amount)
+    emit('done', done.unallocated)
   } finally {
     busy.value = false
   }

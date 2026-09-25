@@ -324,6 +324,12 @@ doc_events = {
 		"before_update_after_submit": "commons.requests.budget.protect_submitted_material_request",
 		"on_submit": "commons.requests.budget.charge_material_request",
 	},
+	# A repayment booked from a bank statement line posts to the ledger on the
+	# day the money arrived, not the day it was booked. Only repayments the
+	# reconciliation page flags; see `commons.banking.reconciliation`.
+	"Loan Repayment": {
+		"before_submit": "commons.banking.reconciliation.post_on_value_date",
+	},
 }
 
 # Scheduled Tasks
