@@ -40,6 +40,13 @@ The rest of the module is about what gets sent, and where:
   `</body>`.
 * `notification` -- a Notification may send an Email Template's content in
   place of its own message.
+* `commons/public/js/email_designer.bundle.js` -- a drag-and-drop designer
+  for an MJML template (GrapesJS and its MJML plugin), opened from the
+  template's form and loaded only then. Its canvas is compiled by mrml's
+  WebAssembly build, the same engine as `mjml`, so the canvas, the preview and
+  the email sent are one compiler's output. It reads and writes `mjml_source`,
+  and its comments say what it adapts in the plugin to keep a design's round
+  trip exact.
 * `commons/public/js/email_composer.js` -- a Visual view of an HTML email in
   core's composer, editable in place. Behind "Enable Visual HTML Email Editor"
   in Commons Settings, as it changes core's dialog.

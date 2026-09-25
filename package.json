@@ -6,5 +6,10 @@
 		"postinstall": "cd frontend && yarn install --check-files",
 		"dev": "cd frontend && yarn dev",
 		"build": "cd frontend && yarn build"
+	},
+	"dependencies": {
+		"grapesjs": "0.23.6",
+		"grapesjs-mjml": "1.0.8",
+		"mrml": "1.6.1"
 	}
 }

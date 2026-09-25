@@ -1,0 +1,143 @@
+// The Email Template designer (`public/js/email_designer.bundle.js`). A bundle of
+// its own rather than a part of `commons.bundle.scss`: GrapesJS's stylesheet is
+// 60 KB, and it is loaded with the designer, the first time one is opened.
+//
+// Scoped under `.cm-designer`. GrapesJS's own rules are nearly all `.gjs-`
+// prefixed, but a few are not (`.clear`, `.no-select`, the colour picker's
+// `.sp-*`), and the desk has no reason to learn them. The colour picker is told
+// to open inside the designer for the same reason (see the bundle).
+.cm-designer {
+	@import "grapesjs/dist/css/grapes.min";
+
+	// GrapesJS's variables. Its stylesheet declares them on `:root`, which the
+	// scoping above turns into `.cm-designer :root` -- a selector that matches
+	// nothing, and without them the canvas has no width. So all of them are
+	// declared here instead, in the desk's colours, so the designer reads as
+	// part of the form it was opened from rather than a dark window dropped on it.
+	--gjs-main-color: var(--fg-color);
+	--gjs-primary-color: var(--fg-color);
+	--gjs-secondary-color: var(--text-color);
+	--gjs-tertiary-color: var(--primary);
+	--gjs-quaternary-color: var(--primary);
+	--gjs-font-color: var(--text-color);
+	--gjs-font-color-active: var(--heading-color, var(--text-color));
+	--gjs-main-dark-color: rgba(0, 0, 0, 0.04);
+	--gjs-secondary-dark-color: rgba(0, 0, 0, 0.03);
+	--gjs-main-light-color: rgba(0, 0, 0, 0.03);
+	--gjs-secondary-light-color: var(--text-muted);
+	--gjs-soft-light-color: rgba(0, 0, 0, 0.015);
+	--gjs-color-blue: #3b97e3;
+	--gjs-color-red: #dd3636;
+	--gjs-color-yellow: #ffca6f;
+	--gjs-color-green: #62c462;
+	--gjs-left-width: 18%;
+	--gjs-color-highlight: #71b7f1;
+	--gjs-color-warn: #ffca6f;
+	--gjs-handle-margin: -5px;
+	--gjs-light-border: var(--border-color);
+	--gjs-arrow-color: var(--text-muted);
+	--gjs-dark-text-shadow: transparent;
+	--gjs-color-input-padding: 22px;
+	--gjs-input-padding: 5px;
+	--gjs-padding-elem-classmanager: 5px 6px;
+	--gjs-upload-padding: 150px 10px;
+	--gjs-animation-duration: 0.2s;
+	--gjs-main-font: var(--font-stack);
+	--gjs-font-size: var(--text-sm);
+	--gjs-placeholder-background-color: var(--gjs-color-green);
+	--gjs-canvas-top: 40px;
+	--gjs-flex-item-gap: 5px;
+
+	position: fixed;
+	inset: 0;
+	z-index: 1050; // over the desk's navbar and sidebar, under its dialogs (1060)
+	display: flex;
+	flex-direction: column;
+	background: var(--bg-color);
+	color: var(--text-color);
+
+	.cm-designer-bar {
+		display: flex;
+		align-items: center;
+		gap: var(--padding-sm);
+		padding: var(--padding-sm) var(--padding-md);
+		border-bottom: 1px solid var(--border-color);
+		background: var(--fg-color);
+
+		.cm-designer-title {
+			font-weight: 600;
+			font-size: var(--text-lg);
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+		.cm-designer-note {
+			color: var(--text-muted);
+			font-size: var(--text-sm);
+			margin-right: auto;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+	}
+
+	.cm-designer-editor {
+		flex: 1;
+		min-height: 0;
+	}
+
+	// The panels on a light background: GrapesJS sets text and icons in its
+	// secondary colour, which is dark here.
+	.gjs-one-bg {
+		background-color: var(--fg-color);
+	}
+	.gjs-two-color {
+		color: var(--text-color);
+	}
+	.gjs-four-color,
+	.gjs-four-color-h:hover {
+		color: var(--primary);
+	}
+	.gjs-pn-panel,
+	.gjs-pn-views-container {
+		border-color: var(--border-color);
+	}
+	.gjs-pn-views-container {
+		box-shadow: none;
+		border-left: 1px solid var(--border-color);
+	}
+	.gjs-pn-views {
+		border-bottom: 1px solid var(--border-color);
+		border-left: 1px solid var(--border-color);
+	}
+	.gjs-block {
+		border-radius: var(--border-radius);
+		border: 1px solid var(--border-color);
+		box-shadow: none;
+		min-height: 72px;
+	}
+	.gjs-block:hover {
+		box-shadow: var(--shadow-sm);
+	}
+	.gjs-field,
+	.gjs-clm-tags #gjs-clm-new,
+	.gjs-input-holder input {
+		background-color: var(--control-bg);
+		color: var(--text-color);
+		border-radius: var(--border-radius-sm);
+	}
+	.gjs-sm-sector-title,
+	.gjs-layer-item,
+	.gjs-trt-header,
+	.gjs-block-category .gjs-title {
+		background-color: var(--subtle-fg);
+		border-color: var(--border-color);
+	}
+	.gjs-cv-canvas {
+		background-color: var(--subtle-accent);
+	}
+	.gjs-mdl-dialog {
+		background-color: var(--fg-color);
+		color: var(--text-color);
+	}
+}

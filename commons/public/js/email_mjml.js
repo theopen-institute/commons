@@ -80,12 +80,15 @@ ${text}
 					${width_button("phone", __("Phone"), "smartphone")}
 				</div>
 				<span class="cm-mjml-status"></span>
+				<button type="button" class="btn btn-xs btn-default" data-action="design">
+					${frappe.utils.icon("layout-template", "xs")} ${__("Open Designer")}</button>
 			</div>
 			<div class="cm-mjml-stage"><iframe sandbox="allow-same-origin" title="${__(
 				"Email preview"
 			)}"></iframe></div>
 		</div>`).appendTo(field.$wrapper.empty());
 		$box.on("click", "[data-width]", (e) => set_width($box, $(e.currentTarget).data("width")));
+		$box.on("click", "[data-action=design]", () => open_designer(frm));
 		set_width($box, "desktop");
 		return $box;
 	};
@@ -143,8 +146,36 @@ ${text}
 		later.set(frm, setTimeout(() => refresh_preview(frm), 500));
 	};
 
+	// The drag-and-drop designer (`email_designer.bundle.js`), loaded the first
+	// time it is opened. It saves through the form, so a design that doesn't
+	// compile is refused the way a hand-written one is, and stays open.
+	const open_designer = (frm) => {
+		if (!frm.doc.use_mjml) return;
+		frappe.require(["email_designer.bundle.js", "email_designer.bundle.css"], () =>
+			commons.email_designer.open({
+				title: frm.is_new() ? __("New Email Template") : frm.doc.name,
+				source: frm.doc.mjml_source || starter(frm),
+				doctype: frm.doc.email_doctype || null,
+				on_save: async (mjml) => {
+					await frm.set_value("mjml_source", mjml);
+					await frm.save();
+					if (frm.is_dirty()) throw new Error("not saved");
+				},
+			})
+		);
+	};
+
+	const add_designer_button = (frm) => {
+		if (!frm.doc.use_mjml) return;
+		frm.add_custom_button(__("Open Designer"), () => open_designer(frm));
+		frm.change_custom_button_type(__("Open Designer"), null, "primary");
+	};
+
 	frappe.ui.form.on("Email Template", {
-		refresh: refresh_preview,
+		refresh(frm) {
+			refresh_preview(frm);
+			add_designer_button(frm);
+		},
 		mjml_source: refresh_soon,
 		email_doctype: refresh_soon,
 		use_mjml(frm) {
@@ -152,6 +183,7 @@ ${text}
 			frm.set_value("use_html", 1);
 			if (!(frm.doc.mjml_source || "").trim()) frm.set_value("mjml_source", starter(frm));
 			refresh_soon(frm);
+			add_designer_button(frm);
 		},
 	});
 })();

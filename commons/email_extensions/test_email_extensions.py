@@ -131,3 +131,9 @@ class TestMJML(TestCase):
 
 		with self.assertRaises(mjml.MJMLError):
 			mjml.to_html("<mjml><mj-body><mj-section>")
+
+	def test_jinja_an_editor_escaped_is_read_as_jinja(self):
+		# GrapesJS writes `<` inside a Jinja tag back as `&lt;`.
+		html = self.compile(self.section("{% if n &lt; 3 %}few{% endif %} {{ a &gt; b }}"))
+		self.assertIn("{% if n < 3 %}few{% endif %}", html)
+		self.assertIn("{{ a > b }}", html)

@@ -29,6 +29,7 @@ under `<mj-body>` -- without a word. The preview on the template's form is
 where that shows.
 """
 
+import html
 import re
 
 import frappe
@@ -62,7 +63,10 @@ def to_html(source: str) -> tuple[str, list[str]]:
 	saved: list[str] = []
 
 	def keep(match: re.Match) -> str:
-		saved.append(match.group(0))
+		# Unescaped: an editor that treats the MJML as markup -- the designer's
+		# GrapesJS does -- writes `{% if n < 3 %}` back as `{% if n &lt; 3 %}`,
+		# which Jinja cannot read. Inside a Jinja tag an entity is never meant.
+		saved.append(html.unescape(match.group(0)))
 		return f"CMJINJA{len(saved) - 1}X"
 
 	protected = BARE_AMPERSAND.sub("&amp;", JINJA.sub(keep, source or ""))
@@ -71,8 +75,8 @@ def to_html(source: str) -> tuple[str, list[str]]:
 	except Exception as e:
 		raise MJMLError(str(e)) from e
 
-	html = PLACEHOLDER.sub(lambda m: saved[int(m.group(1))], output.content)
-	return DOCTYPE_HTML5.sub(DOCTYPE, html, count=1), [str(w) for w in output.warnings]
+	compiled = PLACEHOLDER.sub(lambda m: saved[int(m.group(1))], output.content)
+	return DOCTYPE_HTML5.sub(DOCTYPE, compiled, count=1), [str(w) for w in output.warnings]
 
 
 def compile_template(doc, method=None) -> None:
@@ -86,11 +90,11 @@ def compile_template(doc, method=None) -> None:
 	if not (doc.get(SOURCE_FIELD) or "").strip():
 		frappe.throw(_("Write the template's MJML, or untick Design with MJML."))
 	try:
-		html, warnings = to_html(doc.get(SOURCE_FIELD))
+		compiled, warnings = to_html(doc.get(SOURCE_FIELD))
 	except MJMLError as e:
 		frappe.throw(_("The MJML could not be compiled: {0}").format(e), title=_("MJML"))
 	doc.use_html = 1
-	doc.response_html = html
+	doc.response_html = compiled
 	if warnings:
 		frappe.msgprint("<br>".join(frappe.utils.escape_html(w) for w in warnings), title=_("MJML warnings"))
 
@@ -105,11 +109,11 @@ def preview(source: str, email_doctype: str | None = None, document: str | None 
 	"""
 	frappe.has_permission(TEMPLATE, "write", throw=True)
 	try:
-		html, warnings = to_html(source)
+		compiled, warnings = to_html(source)
 	except MJMLError as e:
 		return {"error": str(e)}
 
-	result = {"html": html, "warnings": warnings, "document": None}
+	result = {"html": compiled, "warnings": warnings, "document": None}
 	if not email_doctype or not frappe.db.exists("DocType", email_doctype):
 		return result
 
@@ -124,7 +128,7 @@ def preview(source: str, email_doctype: str | None = None, document: str | None 
 
 	record = frappe.get_doc(email_doctype, document)
 	context = frappe.parse_json(frappe.as_json(record.as_dict()))
-	template = frappe.get_doc({"doctype": TEMPLATE, "subject": "", "use_html": 1, "response_html": html})
+	template = frappe.get_doc({"doctype": TEMPLATE, "subject": "", "use_html": 1, "response_html": compiled})
 	try:
 		result["html"] = template.get_formatted_email(context)["message"]
 		result["document"] = document
