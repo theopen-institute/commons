@@ -33,6 +33,7 @@ class CommonsSettings(Document):
 		enable_sidebar_memory: DF.Check
 		enable_unencoded_at_in_routes: DF.Check
 		enable_user_permission_gate: DF.Check
+		enable_visual_email_editor: DF.Check
 		title: DF.Data | None
 	# end: auto-generated types
 

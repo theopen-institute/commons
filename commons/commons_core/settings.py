@@ -64,6 +64,8 @@ ENABLE_SIDEBAR_MEMORY = "enable_sidebar_memory"
 # `commons.derived_docfields`, which swaps core's query engine and document
 # classes, and `commons/public/js/derived_docfields.js`
 ENABLE_DERIVED_DOCFIELDS = "enable_derived_docfields"
+# `commons/public/js/email_composer.js`, which adds to core's email composer
+ENABLE_VISUAL_EMAIL_EDITOR = "enable_visual_email_editor"
 
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.
@@ -73,6 +75,7 @@ DESK_FEATURES = {
 	"user_permission_gate": ENABLE_PERMISSION_GATE,
 	"sidebar_memory": ENABLE_SIDEBAR_MEMORY,
 	"derived_docfields": ENABLE_DERIVED_DOCFIELDS,
+	"visual_email_editor": ENABLE_VISUAL_EMAIL_EDITOR,
 }
 
 

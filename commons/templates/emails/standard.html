@@ -1,0 +1,23 @@
+{#-
+	Shadows Frappe's own `templates/emails/standard.html`, which every email that
+	is not sent as raw HTML is wrapped in. Found first because Frappe searches the
+	installed apps' templates newest-installed first, and this app is installed
+	after Frappe.
+
+	One change: a message that is already a complete HTML document -- what an
+	MJML template compiles to (`commons.email_extensions.mjml`) -- is sent as it
+	is. Wrapped, it would be a document inside a table cell of another document,
+	which mail clients render unpredictably and which loses the responsive
+	layout. Only the composer can ask core for raw HTML; Notifications, workflow
+	emails and `frappe.sendmail` cannot, so this is where it has to be decided.
+
+	Everything else is Frappe's template, unchanged, by including it by its full
+	name. The brand header and the account footer are not added to a complete
+	document: it carries its own, and an MJML template can include the
+	account's with `{{ email_signature }}` and `{{ email_footer }}`.
+-#}
+{%- if content and content is string and content.lstrip()[:15].lower().startswith(("<!doctype", "<html")) -%}
+{{ content }}
+{%- else -%}
+{% include "frappe/templates/emails/standard.html" %}
+{%- endif -%}

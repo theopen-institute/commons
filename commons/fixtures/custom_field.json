@@ -594,5 +594,57 @@
   "insert_after": "attach_document_print",
   "depends_on": "attach_document_print",
   "description": "Leave blank to attach the doctype's default print format."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Email Template-use_mjml",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Email Template",
+  "fieldname": "use_mjml",
+  "label": "Design with MJML",
+  "fieldtype": "Check",
+  "insert_after": "use_html",
+  "description": "Write the email in <a href=\"https://documentation.mjml.io\" target=\"_blank\">MJML</a>, which lays it out to read well on a phone as well as on a desktop. Each save compiles it into the HTML that is sent, and ticks Use HTML. Jinja works anywhere in it, including a <code>{% for %}</code> around whole sections."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Email Template-mjml_source",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Email Template",
+  "fieldname": "mjml_source",
+  "label": "MJML",
+  "fieldtype": "Code",
+  "options": "HTML",
+  "insert_after": "use_mjml",
+  "depends_on": "use_mjml",
+  "mandatory_depends_on": "use_mjml"
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Email Template-mjml_preview",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Email Template",
+  "fieldname": "mjml_preview",
+  "label": "Preview",
+  "fieldtype": "HTML",
+  "insert_after": "mjml_source",
+  "depends_on": "use_mjml"
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Notification-email_template",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Notification",
+  "fieldname": "email_template",
+  "label": "Email Template",
+  "fieldtype": "Link",
+  "options": "Email Template",
+  "insert_after": "message_sb",
+  "depends_on": "eval:doc.channel == 'Email'",
+  "description": "Send this template's message in place of the one below. Its subject is used when Subject above is left blank. Write it against the document's fields (<code>{{ program }}</code>), as in any template; <code>doc</code>, <code>alert</code> and <code>comments</code> work too. Recipients, sender and attachments are still set here."
  }
 ]

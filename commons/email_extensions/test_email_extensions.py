@@ -85,3 +85,49 @@ class TestAddressesIn(TestCase):
 
 	def test_nothing_valid_is_empty(self):
 		self.assertEqual(api.addresses_in("HR-EMP-00008"), [])
+
+
+class TestMJML(TestCase):
+	"""What a template's MJML compiles to. mrml runs for real; no site is needed."""
+
+	def compile(self, body):
+		from commons.email_extensions import mjml
+
+		return mjml.to_html(f"<mjml><mj-body>{body}</mj-body></mjml>")[0]
+
+	def section(self, text):
+		return f"<mj-section><mj-column><mj-text>{text}</mj-text></mj-column></mj-section>"
+
+	def test_jinja_that_is_not_xml_survives_the_compiler(self):
+		html = self.compile(self.section('{% if total < 100 %}{{ "small" if a < b else "big" }}{% endif %}'))
+		self.assertIn('{% if total < 100 %}{{ "small" if a < b else "big" }}{% endif %}', html)
+
+	def test_a_loop_may_wrap_whole_sections(self):
+		import jinja2
+
+		html = self.compile("{% for row in rows %}" + self.section("{{ row }}") + "{% endfor %}")
+		rendered = jinja2.Environment().from_string(html).render(rows=["first-row", "second-row"])
+		self.assertIn("first-row", rendered)
+		self.assertIn("second-row", rendered)
+
+	def test_a_bare_ampersand_is_escaped_rather_than_refused(self):
+		self.assertIn("Fees &amp; Charges", self.compile(self.section("Fees & Charges")))
+
+	def test_an_entity_is_left_alone(self):
+		self.assertIn("&nbsp;", self.compile(self.section("a&nbsp;b")))
+
+	def test_the_doctype_is_one_premailer_keeps(self):
+		# Every email goes through premailer, which drops MJML's lowercase one.
+		self.assertTrue(self.compile(self.section("x")).startswith("<!DOCTYPE html>"))
+
+	def test_the_layout_stays_responsive(self):
+		self.assertIn("@media", self.compile(self.section("x")))
+
+	def test_the_workflow_actions_marker_survives(self):
+		self.assertIn("<!--workflow-actions-->", self.compile("<mj-raw><!--workflow-actions--></mj-raw>"))
+
+	def test_what_does_not_parse_is_an_error(self):
+		from commons.email_extensions import mjml
+
+		with self.assertRaises(mjml.MJMLError):
+			mjml.to_html("<mjml><mj-body><mj-section>")

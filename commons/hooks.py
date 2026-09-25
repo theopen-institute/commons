@@ -330,6 +330,11 @@ doc_events = {
 	"Loan Repayment": {
 		"before_submit": "commons.banking.reconciliation.post_on_value_date",
 	},
+	# A template designed in MJML is sent as the HTML it compiles to, compiled
+	# here on every save. See `commons.email_extensions.mjml`.
+	"Email Template": {
+		"before_validate": "commons.email_extensions.mjml.compile_template",
+	},
 }
 
 # Scheduled Tasks
@@ -486,6 +491,9 @@ require_type_annotated_api_methods = True
 # Submitted MR rates are immutable even when a price-list update is requested.
 extend_doctype_class = {
 	"Material Request": ["commons.requests.budget.BudgetMaterialRequestMixin"],
+	# A Notification may send an Email Template's content in place of its own
+	# message. See `commons.email_extensions.notification`.
+	"Notification": ["commons.email_extensions.notification.TemplateNotificationMixin"],
 }
 
 # The gate checkbox is drawn next to "Only if Creator" rather than among the

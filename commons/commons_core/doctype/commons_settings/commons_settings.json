@@ -12,7 +12,8 @@
   "enable_user_permission_gate",
   "enable_home_page_priority",
   "enable_sidebar_memory",
-  "enable_derived_docfields"
+  "enable_derived_docfields",
+  "enable_visual_email_editor"
  ],
  "fields": [
   {
@@ -70,12 +71,19 @@
    "fieldname": "enable_derived_docfields",
    "fieldtype": "Check",
    "label": "Enable Derived Docfields"
+  },
+  {
+   "default": "0",
+   "description": "Adds a <b>Visual</b> view to the email composer whenever it holds an HTML email, such as one from an MJML template: the email as it will look, with its text editable in place and its layout left alone. The HTML view is still one click away. Suspect this first if the composer misbehaves while writing an HTML email.",
+   "fieldname": "enable_visual_email_editor",
+   "fieldtype": "Check",
+   "label": "Enable Visual HTML Email Editor"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-23 12:00:00.000000",
+ "modified": "2026-09-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

@@ -94,6 +94,11 @@
 		if (draft.use_html) {
 			await dialog.set_value("use_html", 1);
 			await dialog.set_value("html_content", draft.message);
+			// A complete document -- an MJML template -- carries its own CSS,
+			// and Frappe's would be inlined over it.
+			if (/^\s*(<!doctype|<html[\s>])/i.test(draft.message || "")) {
+				await dialog.set_value("add_css", 0);
+			}
 		}
 
 		if (draft.print_format) {
@@ -182,6 +187,18 @@
 				list.sort((a, b) => a.name.localeCompare(b.name));
 			}
 			frappe.boot.commons_email_templates = list;
+		},
+	});
+
+	// A Notification's Email Template (`commons.email_extensions.notification`):
+	// the ones written for its doctype, and the ones written for none.
+	frappe.ui.form.on("Notification", {
+		setup(frm) {
+			frm.set_query("email_template", () => ({
+				filters: frm.doc.document_type
+					? { email_doctype: ["in", [frm.doc.document_type, ""]] }
+					: {},
+			}));
 		},
 	});
 })();

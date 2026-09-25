@@ -17,6 +17,11 @@ dependencies = [
     # `commons.document_capture`. 1.x is the major line the code is written
     # against (`httpx2` underneath, server-side fallbacks on the beta API).
     "anthropic>=1.8,<2",
+    # `commons.email_extensions.mjml`, which compiles an Email Template's MJML
+    # into the responsive HTML that is sent. A Rust port of MJML with Python
+    # bindings, so the server needs no Node. 0.2 is the API the code calls
+    # (`to_html` returning an `Output` with `.content` and `.warnings`).
+    "mrml>=0.2.4,<0.3",
 ]
 
 [build-system]

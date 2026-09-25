@@ -64,5 +64,65 @@
   "property": "title_field",
   "property_type": "Data",
   "value": "full_name"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Email Template-response_html-depends_on",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocField",
+  "doc_type": "Email Template",
+  "field_name": "response_html",
+  "property": "depends_on",
+  "property_type": "Data",
+  "value": "eval:doc.use_html && !doc.use_mjml"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Email Template-use_html-read_only_depends_on",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocField",
+  "doc_type": "Email Template",
+  "field_name": "use_html",
+  "property": "read_only_depends_on",
+  "property_type": "Data",
+  "value": "eval:doc.use_mjml"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Notification-message-depends_on",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocField",
+  "doc_type": "Notification",
+  "field_name": "message",
+  "property": "depends_on",
+  "property_type": "Data",
+  "value": "eval:!doc.email_template"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Notification-message_examples-depends_on",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocField",
+  "doc_type": "Notification",
+  "field_name": "message_examples",
+  "property": "depends_on",
+  "property_type": "Data",
+  "value": "eval:!doc.email_template"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Notification-subject-mandatory_depends_on",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocField",
+  "doc_type": "Notification",
+  "field_name": "subject",
+  "property": "mandatory_depends_on",
+  "property_type": "Data",
+  "value": "eval: in_list(['Email', 'Slack'], doc.channel) && !doc.email_template"
  }
 ]

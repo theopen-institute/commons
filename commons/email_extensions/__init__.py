@@ -25,5 +25,24 @@ It replaces a client script per doctype, each a copy of the same forty lines:
 the doctype was the only thing that differed between them, and it was already
 written on the templates.
 
-The desk half is `commons/public/js/email_extensions.js`.
+The rest of the module is about what gets sent, and where:
+
+* `mjml` -- templates designed in MJML, compiled on save into the responsive
+  HTML every sending path already reads. The editor and its live preview are
+  `commons/public/js/email_mjml.js`.
+* `commons/templates/emails/standard.html` -- Frappe's email frame, shadowed so
+  that a message which is already a complete document is sent as it is rather
+  than nested inside the frame. Composer, Notification, workflow and
+  `frappe.sendmail` alike; only the composer could ask core for that before.
+* `commons/templates/emails/workflow_action.html` -- a workflow state's email,
+  shadowed so that when its template is a complete document the signed action
+  buttons are placed inside it, at `<!--workflow-actions-->` or before
+  `</body>`.
+* `notification` -- a Notification may send an Email Template's content in
+  place of its own message.
+* `commons/public/js/email_composer.js` -- a Visual view of an HTML email in
+  core's composer, editable in place. Behind "Enable Visual HTML Email Editor"
+  in Commons Settings, as it changes core's dialog.
+
+The desk half of the Email menu is `commons/public/js/email_extensions.js`.
 """

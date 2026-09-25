@@ -1,0 +1,40 @@
+{#-
+	Shadows Frappe's `templates/emails/workflow_action.html`: the body of the
+	email a workflow sends the people who can act on a document next, with one
+	signed button per action they may take.
+
+	When the state's Email Template is a complete HTML document -- an MJML
+	template (`commons.email_extensions.mjml`) -- the buttons go into that
+	document rather than the document into Frappe's layout: at
+	`<!--workflow-actions-->` if the template has one (in MJML,
+	`<mj-raw><!--workflow-actions--></mj-raw>`), otherwise just before
+	`</body>`. `templates/emails/standard.html`, shadowed beside this, then
+	sends the result unwrapped.
+
+	The buttons are table-and-inline-styled, since the document they land in
+	has none of Frappe's email CSS classes. Anything else is Frappe's template,
+	included by its full name.
+-#}
+{%- if message and message is string and message.lstrip()[:15].lower().startswith(("<!doctype", "<html")) -%}
+{%- set buttons -%}
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" align="center" style="margin:24px auto;border-collapse:separate;">
+	<tr>
+		{%- for action in actions %}
+		<td style="padding:4px;">
+			<a href="{{ action.action_link }}" target="_blank" style="display:inline-block;padding:10px 20px;border-radius:6px;font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;text-decoration:none;{% if action.is_primary %}background:#171717;color:#ffffff;border:1px solid #171717;{% else %}background:#ffffff;color:#171717;border:1px solid #d4d4d8;{% endif %}">{{ _(action.action_name) }}</a>
+		</td>
+		{%- endfor %}
+	</tr>
+</table>
+<p style="text-align:center;font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#71717a;margin:0 16px 24px;">{{ _("The contents of this email are strictly confidential. Please do not forward this email to anyone.") }}</p>
+{%- endset -%}
+{%- if "<!--workflow-actions-->" in message -%}
+{{ message.replace("<!--workflow-actions-->", buttons) }}
+{%- elif "</body>" in message -%}
+{{ message.replace("</body>", buttons ~ "</body>") }}
+{%- else -%}
+{{ message ~ buttons }}
+{%- endif -%}
+{%- else -%}
+{% include "frappe/templates/emails/workflow_action.html" %}
+{%- endif -%}

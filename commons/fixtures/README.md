@@ -15,10 +15,10 @@ rewritten.
 
 | File | What it holds |
 | --- | --- |
-| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eight on Email Template, and the derived fields it adds to its own |
+| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template and one on Notification, and the derived fields it adds to its own |
 | `custom_field_education.json` | The four fields the attendance register adds to Education's doctypes |
 | `custom_field_erpnext.json` | The four fields the requests section adds to ERPNext's doctypes |
-| `property_setter.json` | The image and title fields of this app's member doctypes |
+| `property_setter.json` | The image and title fields of this app's member doctypes, and which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification |
 
 All of the Custom Fields are schema: code dereferences every one of them, and
 the part of the app that reads them does not work without them. Order within a
@@ -112,6 +112,23 @@ a fixture replaces a record by name, so a tidier name would have left the old
 field standing beside the new one rather than replacing it. The recipient
 field is an Autocomplete rather than the Data it started as, so the form can
 offer the doctype's address and link fields; both are the same column.
+
+**`use_mjml`, `mjml_source` and `mjml_preview` on `Email Template`** — a
+template designed in MJML: the switch, the source, and the place its live
+preview is drawn. `commons.email_extensions.mjml` compiles the source into the
+template's own `response_html` on every save, so what is sent is still a plain
+HTML template and nothing that reads templates needs to know. Two Property
+Setters go with them: `response_html` is hidden while the MJML is what gets
+edited (it is the compiled output, and an edit to it would be overwritten by
+the next save), and `use_html` is read-only while it has to stay ticked.
+
+**`Notification.email_template`** — the template whose content a Notification
+sends in place of its own message; read by `commons.email_extensions.notification`.
+Three Property Setters go with it: the Message field and its examples are hidden
+while a template is named, and Subject stops being mandatory, since the
+template's subject stands in for a blank one. They replace no property a site
+had set: none of the three had a Property Setter on the site this was written
+for.
 
 ### This app's own doctypes (`custom_field.json`)
 
