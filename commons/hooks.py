@@ -64,7 +64,9 @@ website_route_rules = [
 # of admins whose desks are still holding the last copy of it, and creating the
 # statement print formats -- one per party type the site has actually set up,
 # and only where none exists yet, neither of which a fixture can say. See
-# `commons.statement.install`.
+# `commons.statement.install`. The one Custom Field that is not a fixture,
+# `Notification.email_template`, is the same kind of thing: newer Frappe has the
+# field itself, and a fixture cannot say "unless it is already there".
 #
 # No approval chain and no self-service configuration. Those are a System
 # Manager's to set up on a new site, and a deploy is not where they get made.
@@ -75,6 +77,7 @@ after_install = [
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
 	"commons.statement.install.sync_statement_print_formats",
+	"commons.email_extensions.notification.sync_template_field",
 ]
 after_migrate = [
 	# The other half of `before_migrate`'s module registration: records for
@@ -84,6 +87,9 @@ after_migrate = [
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
 	"commons.statement.install.sync_statement_print_formats",
+	# Notification.email_template: a Custom Field, or nothing on a Frappe that
+	# has the field itself. See `commons.email_extensions.notification`.
+	"commons.email_extensions.notification.sync_template_field",
 	# A migrate is when a doctype along some derived field's path most often
 	# changes under it. Reports what no longer resolves; repairs nothing.
 	"commons.derived_docfields.validation.check_all",

@@ -124,7 +124,11 @@ the next save), and `use_html` is read-only while it has to stay ticked.
 
 **`Notification.email_template`** — the template whose content a Notification
 sends in place of its own message; read by `commons.email_extensions.notification`.
-Three Property Setters go with it: the Message field and its examples are hidden
+The field itself is *not* a fixture any more: Frappe's develop branch has it as a
+standard field, and a fixture for it fails the install there ("A field with the
+name email_template already exists"). `sync_template_field` (after install and
+migrate) creates the Custom Field where Frappe lacks the field and deletes it
+where Frappe has it. Three Property Setters go with it: the Message field and its examples are hidden
 while a template is named, and Subject stops being mandatory, since the
 template's subject stands in for a blank one. They replace no property a site
 had set: none of the three had a Property Setter on the site this was written
