@@ -32,6 +32,8 @@ OWNED = "Gate Test Owned"
 GATED_ROLE = "Gate Test Gated"
 OPEN_ROLE = "Gate Test Open"
 OWNER_ROLE = "Gate Test Owner"
+# Select and nothing else, the way a role is given a doctype for its link pickers.
+PICKER_ROLE = "Gate Test Picker"
 GATED_USER = "gate-test-gated@example.com"
 OPEN_USER = "gate-test-open@example.com"
 
@@ -160,6 +162,14 @@ class TestPermissionGate(unittest.TestCase):
 		self.assertTrue(self.readable(GATED_USER, OWNED))
 		self.assertFalse(self.readable(GATED_USER, THEIRS))
 
+	def test_an_ungated_select_only_role_does_not_beat_the_gate(self):
+		"""Select for a link picker, held beside a gated read, used to open every row."""
+		frappe.get_doc("User", GATED_USER).add_roles(PICKER_ROLE)
+		frappe.clear_cache(user=GATED_USER)
+
+		self.assertEqual(self.visible(GATED_USER), set())
+		self.assertFalse(self.readable(GATED_USER, THEIRS))
+
 	def test_the_gate_is_configured_entirely_from_the_permission_row(self):
 		"""No second document: the tick on the role is the whole configuration."""
 		from commons.safer_permissions.permissions import blocked_scope
@@ -265,6 +275,12 @@ def _register_gate():
 	frappe.permissions.add_permission(DOCTYPE, OWNER_ROLE, 0)
 	frappe.permissions.update_permission_property(DOCTYPE, OWNER_ROLE, 0, "if_owner", 1)
 
+	# Ungated, but select only -- which core adds to the gated role's read
+	# rather than letting it stand in for one.
+	# `add_permission` ticks read whatever `ptype` says, so it is taken off again.
+	frappe.permissions.add_permission(DOCTYPE, PICKER_ROLE, 0, ptype="select")
+	frappe.permissions.update_permission_property(DOCTYPE, PICKER_ROLE, 0, "read", 0)
+
 	# Written straight to the column: `owner` is set from the session at insert
 	# and the fixtures are created by Administrator.
 	frappe.db.set_value(DOCTYPE, OWNED, "owner", GATED_USER, update_modified=False)
@@ -274,12 +290,12 @@ def _register_gate():
 
 
 def _retire_gate(had_custom_perms: bool):
-	stale = {"parent": DOCTYPE} if not had_custom_perms else {"parent": DOCTYPE, "role": ["in", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE)]}
+	stale = {"parent": DOCTYPE} if not had_custom_perms else {"parent": DOCTYPE, "role": ["in", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE, PICKER_ROLE)]}
 	for name in frappe.get_all("Custom DocPerm", filters=stale, pluck="name"):
 		frappe.delete_doc("Custom DocPerm", name, force=True, ignore_permissions=True)
 
 	_drop_user_permissions()
-	for doctype, names in (("Report", (REPORT,)), (DOCTYPE, (MINE, THEIRS, OWNED)), ("User", (GATED_USER, OPEN_USER)), ("Role", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE))):
+	for doctype, names in (("Report", (REPORT,)), (DOCTYPE, (MINE, THEIRS, OWNED)), ("User", (GATED_USER, OPEN_USER)), ("Role", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE, PICKER_ROLE))):
 		for name in names:
 			if frappe.db.exists(doctype, name):
 				frappe.delete_doc(doctype, name, force=True, ignore_permissions=True)
@@ -306,7 +322,7 @@ def _fixtures():
 
 
 def _roles_and_users():
-	for role in (GATED_ROLE, OPEN_ROLE, OWNER_ROLE):
+	for role in (GATED_ROLE, OPEN_ROLE, OWNER_ROLE, PICKER_ROLE):
 		if not frappe.db.exists("Role", role):
 			frappe.get_doc({"doctype": "Role", "role_name": role, "desk_access": 1}).insert()
 

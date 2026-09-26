@@ -97,13 +97,13 @@ class TestFallback(TestCase):
 
 
 class TestConfigured(TestCase):
-	def test_configured_apps_come_first_and_keep_their_order(self):
-		result = rail([app("Finance", "Accounting", "Stock"), app("School", "Students", "Assessments")])
+	def test_configured_apps_come_first_with_their_modules_alphabetical(self):
+		result = rail([app("Finance", "Stock", "Accounting"), app("School", "Students", "Assessments")])
 		self.assertEqual(
 			shape(result),
 			[
 				("Finance", ["Accounting", "Stock"]),
-				("School", ["Students", "Assessments"]),
+				("School", ["Assessments", "Students"]),
 				("Frappe Framework", ["Users"]),
 				# Emptied by the claims above, so gone rather than drawn empty.
 				("Education", ["Education"]),
@@ -116,6 +116,10 @@ class TestConfigured(TestCase):
 	def test_label_overrides_the_sidebar_title(self):
 		entry = rail([app("Finance", "Accounting", labels={"Accounting": "Books"})])[0]
 		self.assertEqual(entry["sidebars"][0], {"sidebar": "Accounting", "label": "Books", "icon": None})
+
+	def test_modules_sort_by_the_label_the_menu_shows(self):
+		entry = rail([app("Finance", "Accounting", "Stock", labels={"Stock": "Inventory", "Accounting": "Books"})])[0]
+		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Books", "Inventory"])
 
 	def test_first_claim_wins(self):
 		result = rail([app("Finance", "Stock"), app("Warehouse", "Stock", "Accounting")])

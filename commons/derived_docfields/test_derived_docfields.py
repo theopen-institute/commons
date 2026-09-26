@@ -651,6 +651,28 @@ class TestDerivedDocfields(unittest.TestCase):
 		frappe.delete_doc("Custom Field", doc.name)
 		self.assertNotIn("dd_short_lived", registry.definitions()[HOST])
 
+	def test_a_controller_imported_before_the_save_commits_is_dropped_once_it_has(self):
+		"""Core drops the controller before commit; a worker importing in between kept it for good.
+
+		Without the new field's descriptor, core evaluates a derived Link's
+		`options` as Python, and every form of the doctype fails on that worker.
+		"""
+		from frappe.model.base_document import get_controller
+
+		from commons.derived_docfields.document import DerivedValue
+
+		stale = get_controller(HOST)
+		already = len(frappe.db.after_commit._functions)
+		define("dd_late_language", "Link", "allocated_to.language", options="Language")
+		queued = list(frappe.db.after_commit._functions)[already:]
+		# What another worker would hold, having read the definitions before the commit.
+		frappe.controllers.setdefault(frappe.local.site, {})[HOST] = stale
+		self.assertNotIsInstance(getattr(get_controller(HOST), "dd_late_language", None), DerivedValue)
+
+		for callback in queued:
+			callback()
+		self.assertIsInstance(getattr(get_controller(HOST), "dd_late_language", None), DerivedValue)
+
 	def test_check_all_reports_broken_fields(self):
 		broken = registry.Definition(HOST, "dd_allocated_name", "allocated_to", "no_such_field", (), False)
 		with (

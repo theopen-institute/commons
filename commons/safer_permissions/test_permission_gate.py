@@ -119,6 +119,42 @@ class GateApplies(TestCase):
 			self.check(["Employee"], [perm("Employee", gated=True, right="select")]), NOTHING
 		)
 
+	def test_an_ungated_select_does_not_beat_a_gated_read(self):
+		"""Select for a link picker must not hand over the rows a gated read reaches."""
+		self.assertEqual(
+			self.check(
+				["Employee", "Link Picker"],
+				[perm("Employee", gated=True), perm("Link Picker", right="select")],
+			),
+			NOTHING,
+		)
+
+	def test_an_ungated_select_does_beat_a_gated_select(self):
+		self.assertIsNone(
+			self.check(
+				["Employee", "Link Picker"],
+				[perm("Employee", gated=True, right="select"), perm("Link Picker", right="select")],
+			)
+		)
+
+	def test_an_ungated_read_beats_a_gated_select(self):
+		self.assertIsNone(
+			self.check(
+				["Employee", "HR Manager"],
+				[perm("Employee", gated=True, right="select"), perm("HR Manager")],
+			)
+		)
+
+	def test_an_ungated_only_if_creator_select_keeps_nothing_under_a_gated_read(self):
+		"""An own-documents grant counts only if it grants the gated right too."""
+		self.assertEqual(
+			self.check(
+				["Employee", "Expense Approver"],
+				[perm("Employee", right="select", if_owner=True), perm("Expense Approver", gated=True)],
+			),
+			NOTHING,
+		)
+
 	def test_higher_permlevel_rows_do_not_open_the_gate(self):
 		"""Permlevel > 0 governs fields, not rows, so core skips those rows too."""
 		self.assertEqual(

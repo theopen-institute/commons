@@ -25,8 +25,10 @@ decides what that means for it: the validation refuses, the engine selects NULL.
 """
 
 from dataclasses import dataclass
+from functools import partial
 
 import frappe
+from frappe.cache_manager import clear_controller_cache
 from frappe.database.query import CORE_DOCTYPES
 from frappe.model import child_table_fields, default_fields, no_value_fields, table_fields
 
@@ -159,7 +161,7 @@ def _load() -> dict[str, dict[str, Definition]]:
 	return found
 
 
-def clear(*args, **kwargs) -> None:
+def clear(doc=None, method=None) -> None:
 	"""Forget the definitions: now, and again once this transaction ends either way.
 
 	A doc event on Custom Field, so it takes the hook's arguments. Now, so the
@@ -167,15 +169,39 @@ def clear(*args, **kwargs) -> None:
 	that reads the definitions in between -- in this process, from the
 	uncommitted row, or in another, from the old committed one -- puts a copy
 	back that is right for only one of the two outcomes.
+
+	The field's doctype's controller goes at the end too, in every process. Which
+	derived fields a controller class carries is settled when it is imported
+	(`commons.derived_docfields.document`), and core drops the controller when a
+	Custom Field is saved -- but before the save commits. A worker that imports
+	it in between reads the old definitions and keeps a class without the new
+	field for good; core then evaluates a derived Link's or Select's `options` as
+	Python, and that doctype's forms fail on that worker alone.
 	"""
 	frappe.client_cache.delete_value(CACHE_KEY)
 	if db := getattr(frappe.local, "db", None):
-		db.after_commit.add(_forget)
-		db.after_rollback.add(_forget)
+		forget = partial(_forget, _doctypes(doc))
+		db.after_commit.add(forget)
+		db.after_rollback.add(forget)
 
 
-def _forget() -> None:
+def _doctypes(doc) -> tuple[str, ...]:
+	"""The doctypes whose controllers a change to Custom Field `doc` can alter."""
+	if doc is None:
+		return ()
+	before = doc.get_doc_before_save() if hasattr(doc, "get_doc_before_save") else None
+	return tuple({dt for dt in (doc.get("dt"), before and before.get("dt")) if dt})
+
+
+def _forget(doctypes: tuple[str, ...] = ()) -> None:
+	# The definitions before the controllers, and not only for this process.
+	# Other workers hear of both over one redis connection, in the order they
+	# were sent: the definitions are gone there by the time the controller is,
+	# so its next import cannot read a stale copy of them.
 	frappe.client_cache.delete_value(CACHE_KEY)
+	for doctype in doctypes:
+		clear_controller_cache(doctype)
+		frappe.client_cache.erase_persistent_caches(doctype=doctype)
 
 
 def enabled() -> bool:

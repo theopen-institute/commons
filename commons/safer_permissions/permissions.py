@@ -145,7 +145,8 @@ def gate_scope(user: str, doctype: str) -> str | None:
 	One ungated role is enough to see everything: an HR Manager who also holds
 	`Employee` is an HR Manager. This mirrors how core resolves `if_owner`
 	across roles in `get_role_permissions`, where an unrestricted grant beats a
-	restricted one rather than intersecting with it.
+	restricted one rather than intersecting with it. It has to grant what the
+	gated role does, though: an ungated select does not stand down a gated read.
 
 	A role marked "Only if Creator" is not such a grant. It reaches the user's
 	own documents and can never reach anyone else's, so treating it as one
@@ -176,7 +177,18 @@ def gate_scope(user: str, doctype: str) -> str | None:
 	if not any(perm.get(GATE) for perm in applicable):
 		return None
 
-	ungated = [perm for perm in applicable if not perm.get(GATE)]
+	# Only an ungated row granting as much as the gated ones counts against them.
+	# Core adds rights up across roles, so a gated role's read survives beside
+	# some other role's select -- the kind granted so a link picker can offer the
+	# doctype -- and letting that select stand the gate down would hand over every
+	# row the read reaches. Read implies select in core, so a read row always
+	# covers; a select row covers only gated rows that grant no more than select.
+	gated_read = any(perm.get("read") for perm in applicable if perm.get(GATE))
+	ungated = [
+		perm
+		for perm in applicable
+		if not perm.get(GATE) and (perm.get("read") or not gated_read)
+	]
 	if any(not perm.get(IF_OWNER) for perm in ungated):
 		return None
 

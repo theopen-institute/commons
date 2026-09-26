@@ -47,7 +47,9 @@ The class
 Built in `import_controller`, which `install` wraps: core caches its result per
 site and drops it in every process whenever the doctype's cache is cleared --
 which a Custom Field save does -- so a field defined now reaches every worker on
-its next read. One class per (controller, derived fieldnames), shared between
+its next read. Core's drop comes before the save commits, so `registry.clear`
+drops it again once it has, or a worker importing in between would keep a
+class built from the old definitions. One class per (controller, derived fieldnames), shared between
 sites; whether a field is derived *on this site*, and whether the switch is on,
 is asked at each read. Pickling goes through a metaclass registered with
 `copyreg`, rebuilding the class from what it was built from -- core's own

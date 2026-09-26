@@ -1,13 +1,31 @@
 /**
  * The navigation rail (`better_navigation/js/navigation_rail.js`): a column of
- * icons before the desk's sidebar, in the sidebar's own colours so the two read
- * as one piece of chrome with a seam down it.
+ * icons before the desk's sidebar, one step darker than it, so the two read as
+ * one piece of chrome in two layers.
  *
  * It is a flex item of `body`, which already lays the sidebar and the page out
  * in a row, so it takes its width from the page rather than overlapping it. The
  * sidebar's expanded panel is absolutely positioned from where its container
  * starts, which is after the rail, so it opens beside it rather than over it.
  */
+:root {
+	// Two steps down the surface scale from the sidebar (`--surface-menu-bar`,
+	// which is `--surface-gray-1`), and a hover one step further so it still
+	// shows against that. `--border-color` is gray-3 as well, so the rail's own
+	// rules are drawn a step darker to stay visible on it.
+	--commons-rail-bg: var(--surface-gray-3);
+	--commons-rail-hover: var(--surface-gray-4);
+	--commons-rail-rule: var(--surface-gray-4);
+}
+
+// Dark mode's sidebar is already the darkest surface the scale has, so the step
+// is taken off the sidebar's own colour instead.
+[data-theme="dark"] {
+	--commons-rail-bg: color-mix(in srgb, var(--surface-menu-bar), black 75%);
+	--commons-rail-hover: var(--sidebar-hover-color);
+	--commons-rail-rule: var(--border-color);
+}
+
 .commons-rail {
 	position: sticky;
 	top: 0;
@@ -19,7 +37,7 @@
 	width: 56px;
 	height: 100vh;
 	padding: 0 0 10px;
-	background: var(--surface-menu-bar);
+	background: var(--commons-rail-bg);
 	border-right: 1px solid var(--sidebar-border-color);
 }
 
@@ -49,7 +67,7 @@
 	box-sizing: content-box;
 	width: 100%;
 	height: var(--page-head-height);
-	border-bottom: 1px solid var(--border-color);
+	border-bottom: 1px solid var(--commons-rail-rule);
 }
 
 // More apps than fit scroll within their own band, so Home and the foot stay put.
@@ -73,7 +91,7 @@
 	color: var(--ink-gray-7);
 
 	&:hover {
-		background-color: var(--sidebar-hover-color);
+		background-color: var(--commons-rail-hover);
 	}
 
 	&.active {

@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-09-26 12:00:00.000000",
+ "modified": "2026-09-26 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -88,7 +88,7 @@
    "fieldtype": "Table",
    "label": "Sidebars",
    "options": "Navigation App Sidebar",
-   "description": "The modules offered in this app's top menu, in order. The first is where the app opens. A sidebar can belong to only one enabled app."
+   "description": "The modules this app offers. The rail and the sidebar's top menu always list them alphabetically, by label. A sidebar can belong to only one enabled app."
   },
   {
    "collapsible": 1,

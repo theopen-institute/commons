@@ -132,6 +132,7 @@ def resolve(
 		if roles and not roles & user_roles:
 			continue
 		if entries:
+			entries.sort(key=_by_label)
 			rail.append(
 				{
 					"key": f"navigation-app:{app['name']}",
@@ -166,7 +167,7 @@ def resolve(
 				"icon": None,
 				"logo": meta.get("logo") or None,
 				"configured": False,
-				"sidebars": sorted(entries, key=lambda entry: entry["label"].casefold()),
+				"sidebars": sorted(entries, key=_by_label),
 			}
 		)
 	return rail
@@ -180,6 +181,11 @@ def installed_app_of(sidebar: dict, module_apps: dict[str, str], icon_apps: dict
 	if module in module_apps:
 		return module_apps[module]
 	return icon_apps.get(sidebar["name"])
+
+
+def _by_label(entry: dict) -> str:
+	"""Modules are always listed alphabetically, by what the menus call them."""
+	return entry["label"].casefold()
 
 
 def _entry(sidebar: dict, label: str | None = None) -> dict:

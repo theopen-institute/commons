@@ -8,10 +8,13 @@
  *     (bottom)
  *     Search, Notifications, To Do, Website
  *
- * Picking an app opens its first module. The sidebar's top menu then lists that
- * app's modules -- each a Workspace Sidebar -- in place of Desktop, Workspaces
- * and Website, which the rail now carries: Home is Desktop, the apps replace
- * Workspaces, and Website is at the foot. Its header reads module over app.
+ * Picking an app opens its first module, a module being a Workspace Sidebar
+ * and an app's modules always listed alphabetically (the server sorts them).
+ *
+ * Once inside, the sidebar's top menu lists the app's modules, in place of
+ * Desktop, Workspaces and Website, which the rail now carries: Home is Desktop,
+ * the apps replace Workspaces, and Website is at the foot. The header reads
+ * module over app.
  *
  * Which apps, and which modules each holds, is the server's answer
  * (`commons.better_navigation.navigation_apps`), handed over on the boot. What
@@ -77,6 +80,17 @@
 		const app_name = module && frappe.boot.module_app[frappe.scrub(module)];
 		return app_name ? apps.find((app) => app.key === `app:${app_name}`) : undefined;
 	};
+
+	// An app's modules as the sidebar's top menu lists them, the current one ticked.
+	function module_items(app, current) {
+		return app.sidebars.map((entry, index) => ({
+			name: `module-${index}`,
+			label: entry.label,
+			icon: entry.sidebar === current ? "check" : entry.icon || "",
+			icon_html: entry.sidebar === current || entry.icon ? undefined : "&nbsp;",
+			onClick: () => commons.navigation_rail.open_sidebar(entry.sidebar),
+		}));
+	}
 
 	frappe.provide("commons.navigation_rail");
 
@@ -264,16 +278,7 @@
 		// A divider the removed entries used to sit above has nothing over it now.
 		while (rest.length && rest[0].is_divider) rest.shift();
 
-		const current = this.sidebar && this.sidebar.sidebar_title;
-		const modules = app
-			? app.sidebars.map((entry, index) => ({
-					name: `module-${index}`,
-					label: entry.label,
-					icon: entry.sidebar === current ? "check" : entry.icon || "",
-					icon_html: entry.sidebar === current || entry.icon ? undefined : "&nbsp;",
-					onClick: () => commons.navigation_rail.open_sidebar(entry.sidebar),
-			  }))
-			: [];
+		const modules = app ? module_items(app, this.sidebar && this.sidebar.sidebar_title) : [];
 
 		this.dropdown_items = modules.length && rest.length ? [...modules, { is_divider: true }, ...rest] : [...modules, ...rest];
 	};
