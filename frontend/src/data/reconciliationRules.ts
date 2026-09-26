@@ -77,6 +77,8 @@ export interface LoanRow {
   total_interest_payable: number
   debit_adjustment_amount: number
   credit_adjustment_amount: number
+  /** The loan's own posting date, shown to tell a borrower's loans apart. */
+  posting_date?: string | null
 }
 
 /** One earlier repayment of a loan, and the statement line it was matched to.

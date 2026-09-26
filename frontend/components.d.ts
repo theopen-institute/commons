@@ -40,6 +40,7 @@ declare module 'vue' {
     ProfileSection: typeof import('./src/components/ProfileSection.vue')['default']
     ProposeFieldDialog: typeof import('./src/components/ProposeFieldDialog.vue')['default']
     ProposeRecordDialog: typeof import('./src/components/ProposeRecordDialog.vue')['default']
+    ReconciliationAllocation: typeof import('./src/components/ReconciliationAllocation.vue')['default']
     ReconciliationBalances: typeof import('./src/components/ReconciliationBalances.vue')['default']
     ReconciliationBoard: typeof import('./src/components/ReconciliationBoard.vue')['default']
     ReconciliationDetailsPanel: typeof import('./src/components/ReconciliationDetailsPanel.vue')['default']

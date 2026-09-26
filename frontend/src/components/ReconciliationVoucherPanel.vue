@@ -5,6 +5,11 @@
   `useCreateJournalEntry` in `data/reconciliation.ts`); the form collects
   their arguments, with the line's own values filled in.
 
+  For a payment entry it shows what the payment is booked against: the
+  party's outstanding invoices, with an allocation proposed and editable (see
+  `ReconciliationAllocation`). The allocation goes on the entry's references,
+  as the desk's "Get Outstanding Invoices" would put it.
+
   It also asks for every accounting dimension the company makes mandatory,
   such as Department. ERPNext refuses a voucher whose GL entries leave one out,
   and a bank line's own entry is against a Balance Sheet account, so on a
@@ -87,6 +92,19 @@
 
     <ErrorMessage v-if="dimensionsError" :message="dimensionsError" />
 
+    <!-- What the payment is booked against. Shown once there is a party, and
+         read again when the party or the posting date changes. -->
+    <ReconciliationAllocation
+      v-if="mode === 'payment' && partyType && party"
+      v-model="allocation"
+      :documents="outstanding"
+      :amount="transaction.unallocated_amount"
+      :currency="transaction.currency"
+      :loading="outstandingLoading"
+      :error="outstandingError"
+      :disabled="busy"
+    />
+
     <ErrorMessage v-if="problem" :message="problem" />
 
     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-outline-gray-1 pt-3">
@@ -119,15 +137,24 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Button, ErrorMessage, FormControl, toast } from 'frappe-ui'
 import LinkControl from '@/components/LinkControl.vue'
+import ReconciliationAllocation from '@/components/ReconciliationAllocation.vue'
 import { formatExact } from '@/data/format'
 import {
   requiredDimensions,
   useAccountingDimensions,
   useCreateJournalEntry,
   useCreatePaymentEntry,
+  useOutstandingDocuments,
   type AccountingDimension,
 } from '@/data/reconciliation'
+import {
+  checkAllocation,
+  proposeAllocation,
+  referenceRows,
+  type OutstandingDocument,
+} from '@/data/paymentAllocation'
 import { proposedReference, type TransactionRow } from '@/data/reconciliationRules'
+import { toastWithLinks } from '@/data/toastLinks'
 
 const props = defineProps<{
   transaction: TransactionRow
@@ -214,9 +241,57 @@ const dirty = computed(() =>
 )
 watch(dirty, (value) => emit('dirty', value), { immediate: true })
 
+/* What the payment is booked against ------------------------------------- */
+
+const outstandingSource = useOutstandingDocuments()
+const outstanding = ref<OutstandingDocument[]>([])
+const allocation = ref<Record<string, number>>({})
+const outstandingLoading = ref(false)
+const outstandingError = ref('')
+let outstandingRequest = 0
+
+/** The party's outstanding documents, with a proposed allocation. A later
+ *  request supersedes an earlier one, so picking a party quickly after
+ *  another never shows the first one's invoices. */
+async function loadOutstanding() {
+  const request = ++outstandingRequest
+  outstanding.value = []
+  allocation.value = {}
+  outstandingError.value = ''
+  if (props.mode !== 'payment' || !partyType.value || !party.value || !props.transaction.company) return
+  outstandingLoading.value = true
+  try {
+    const rows = await outstandingSource.load({
+      company: props.transaction.company,
+      party_type: partyType.value,
+      party: party.value,
+      posting_date: postingDate.value,
+      payment_type: props.transaction.deposit > 0 ? 'Receive' : 'Pay',
+    })
+    if (request !== outstandingRequest) return
+    outstanding.value = rows
+    allocation.value = proposeAllocation(rows, props.transaction.unallocated_amount)
+  } catch (error) {
+    if (request === outstandingRequest) {
+      outstandingError.value = `The party's outstanding invoices could not be read: ${(error as Error).message}`
+    }
+  } finally {
+    if (request === outstandingRequest) outstandingLoading.value = false
+  }
+}
+
+watch(() => [props.mode, partyType.value, party.value, postingDate.value, props.transaction.name], loadOutstanding, {
+  immediate: true,
+})
+
+const allocationCheck = computed(() =>
+  checkAllocation(outstanding.value, allocation.value, props.transaction.unallocated_amount),
+)
+
 const ready = computed(() => {
   if (!postingDate.value || !referenceDate.value) return false
   if (dimensions.value.some((dimension) => !dimensionValues[dimension.fieldname])) return false
+  if (props.mode === 'payment' && allocationCheck.value.errors.length) return false
   if (props.mode === 'payment') return Boolean(partyType.value && party.value)
   return Boolean(account.value && (!partyType.value || party.value))
 })
@@ -246,6 +321,7 @@ async function save(draft: boolean) {
             },
             values,
             draft,
+            referenceRows(outstanding.value, allocation.value),
           )
         : await createJournal.run(
             {
@@ -266,9 +342,9 @@ async function save(draft: boolean) {
         problem.value = done.error?.message || 'The draft could not be created'
         return
       }
-      toast.success(
-        `Draft ${entryLabel()} ${done.name} created. The line stays open until it is submitted and matched.`,
-      )
+      toastWithLinks(`Draft ${entryLabel()} created, not yet posted or matched:`, [
+        { doctype: doctype(), name: done.name },
+      ])
       reset()
       emit('drafted')
       return
@@ -277,14 +353,23 @@ async function save(draft: boolean) {
       problem.value = done.error?.message || 'The entry could not be created'
       return
     }
-    toast.success(props.mode === 'payment' ? 'Payment entry created and reconciled' : 'Journal entry created and reconciled')
+    if (done.name) {
+      toastWithLinks(`${entryLabel(true)} created and reconciled:`, [{ doctype: doctype(), name: done.name }])
+    } else {
+      toast.success(`${entryLabel(true)} created and reconciled`)
+    }
     emit('done', done.unallocated)
   } finally {
     busy.value = false
   }
 }
 
-function entryLabel() {
-  return props.mode === 'payment' ? 'payment entry' : 'journal entry'
+function entryLabel(capital = false) {
+  const label = props.mode === 'payment' ? 'payment entry' : 'journal entry'
+  return capital ? label[0].toUpperCase() + label.slice(1) : label
+}
+
+function doctype() {
+  return props.mode === 'payment' ? 'Payment Entry' : 'Journal Entry'
 }
 </script>

@@ -347,8 +347,8 @@ server functions are sound and every write here but one is one of them
 (`src/data/reconciliation.ts` lists them). The page keeps the modal rule: the
 list is read-only, a line opens a dialog, and each tab there (loan repayment,
 match existing, payment entry, journal entry, details) holds a draft with its
-own button. After a line is fully reconciled, the dialog moves on to the next
-open one.
+own button. A write closes the dialog, and a toast links to the document it
+created or matched.
 
 **The period's figures.** Under the account and the dates, four figures:
 opening and closing balance as per books (ERPNext's cleared balance), the
@@ -382,6 +382,15 @@ site ("Loan Repayment - Remember Posting Date" and "... - Keep Posting Date")
 put it back. Without them, repayments post on the day they are booked. Loan repayment drafts
 go through `create_loan_repayments(draft=True)`, and payment and journal entry
 drafts through `frappe.client.insert`.
+
+**What a payment is booked against.** Once a party is chosen, the payment
+entry tab lists their outstanding invoices, fees and other documents, from
+ERPNext's own `get_outstanding_reference_documents`, the call behind the desk's
+"Get Outstanding Invoices". Each has an amount to allocate, pre-filled
+(`src/data/paymentAllocation.ts`, tested): the one document whose outstanding
+is exactly the payment, or else oldest first. What is left is booked as an
+unallocated advance. The allocation goes on the entry's references table,
+whether it is created or drafted.
 
 **Accounting dimensions.** The payment and journal entry tabs ask for every
 accounting dimension the company makes mandatory (on register.localhost,

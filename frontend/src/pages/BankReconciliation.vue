@@ -184,7 +184,7 @@
             @open="openLine"
           />
           <p class="mt-2 text-p-xs text-ink-gray-5">
-            ↑ ↓ to move, Enter to open. After each line is reconciled, the next open one comes up.
+            ↑ ↓ to move, Enter to open.
           </p>
         </template>
       </template>
@@ -589,30 +589,16 @@ function step(direction: 1 | -1) {
   if (target) currentName.value = target
 }
 
-/** The next line after this one that still has something to account for. */
-function nextOpen(): string | null {
-  const index = sequence.value.indexOf(currentName.value)
-  for (const name of sequence.value.slice(index + 1)) {
-    const row = transactions.rows.value.find((line) => line.name === name)
-    if (row && row.unallocated_amount > 0.005) return name
-  }
-  return null
-}
-
+/** A write from the line's dialog landed: the line is patched, the figures it
+ *  moved are read again, and the dialog closes. It does not move on to the
+ *  next line by itself; the toast the write showed links to what it created. */
 function onDone(name: string, unallocated: number) {
   patchLine(name, unallocated)
   // How far the account is reconciled, and the loan book (outstanding
   // amounts, uncleared repayments), have moved too. Neither is waited for.
   loadProgress()
   if (reconciliationCan.value.repayLoans) loanBook.load(account.value)
-
-  if (unallocated > 0.005) return
-  const next = nextOpen()
-  if (next) currentName.value = next
-  else {
-    toast.success('That was the last line to reconcile here')
-    dialogOpen.value = false
-  }
+  dialogOpen.value = false
 }
 
 const importOpen = ref(false)

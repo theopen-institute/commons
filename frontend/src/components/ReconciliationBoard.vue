@@ -42,8 +42,8 @@
           v-for="row in column.rows"
           :key="row.key"
           draggable="true"
-          class="flex cursor-grab items-center gap-3 px-3 py-2 active:cursor-grabbing"
-          :class="rowClass(row)"
+          class="flex items-center gap-3 px-3 py-2"
+          :class="[rowClass(row), row.side === 'statement' ? 'cursor-pointer' : 'cursor-default']"
           @dragstart="startDrag($event, row)"
           @dragend="dragging = null; over = null"
           @dragover="allowDrop($event, row)"
@@ -51,7 +51,16 @@
           @drop="drop($event, row)"
           @click="row.side === 'statement' && emit('open', row.line!)"
         >
-          <span class="lucide-grip-vertical size-4 shrink-0 text-ink-gray-4" />
+          <!-- The handle is where the grab cursor shows: a click anywhere else
+               on a statement line opens it. The whole row still drags, so a
+               drag that starts beside the handle is not lost. -->
+          <span
+            class="-my-2 -ml-1 flex shrink-0 cursor-grab items-center self-stretch px-1 text-ink-gray-4 hover:text-ink-gray-6 active:cursor-grabbing"
+            title="Drag onto its match"
+            @click.stop
+          >
+            <span class="lucide-grip-vertical size-4" />
+          </span>
           <div class="min-w-0 flex-1">
             <div class="flex items-baseline gap-2 text-p-sm">
               <span class="shrink-0 tabular-nums text-ink-gray-6">{{ formatDate(row.date) }}</span>

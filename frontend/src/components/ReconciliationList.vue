@@ -7,9 +7,9 @@
   submitted voucher.
 
   The keyboard is what makes forty lines bearable. Up and down (or j and k)
-  move through the lines and Enter opens one. The dialog then moves itself to
-  the next open line after each reconciliation (see `BankReconciliation.vue`),
-  so a statement can be worked from top to bottom without the mouse.
+  move through the lines and Enter opens one. When the dialog closes, the
+  keyboard is back on the list at the line it was on, so the next key press
+  carries on from there.
 -->
 
 <template>

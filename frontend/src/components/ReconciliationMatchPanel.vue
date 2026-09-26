@@ -106,7 +106,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { watchDebounced } from '@vueuse/core'
-import { Button, Checkbox, ErrorMessage, FormControl, Skeleton, toast } from 'frappe-ui'
+import { Button, Checkbox, ErrorMessage, FormControl, Skeleton } from 'frappe-ui'
 import { formatDate, formatExact, pluralise } from '@/data/format'
 import {
   deskUrl,
@@ -124,6 +124,7 @@ import {
   type Candidate,
   type TransactionRow,
 } from '@/data/reconciliationRules'
+import { toastWithLinks } from '@/data/toastLinks'
 
 const props = defineProps<{
   transaction: TransactionRow
@@ -259,7 +260,10 @@ async function save() {
       problem.value = done.error?.message || 'Those vouchers could not be matched'
       return
     }
-    toast.success(`${pluralise(selected.value.length, 'voucher')} matched`)
+    toastWithLinks(
+      `${pluralise(selected.value.length, 'voucher')} matched:`,
+      selected.value.map((row) => ({ doctype: row.doctype, name: row.name })),
+    )
     selected.value = []
     emit('done', done.data.unallocated_amount)
   } finally {

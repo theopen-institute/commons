@@ -6,12 +6,11 @@
   everything typed whenever the type changed. Here each way is a tab, and each
   tab keeps its own draft and has its own button.
 
-  Two things make a statement quick to work through:
+  Two things about how it behaves:
 
-  * The dialog moves on by itself. When a write leaves the line fully
-    accounted for, the page hands it the next open line (see
-    `BankReconciliation.vue`), and Previous and Next step through lines by
-    hand.
+  * A write closes it. Whatever a tab creates or matches, the dialog closes
+    and a toast links to the new document, so the reader sees what happened
+    before choosing the next line. Previous and Next step through lines by hand.
   * Nothing is lost by accident. While a tab holds a draft, an outside click
     or Escape does not close the dialog, and Previous and Next are disabled.
 -->

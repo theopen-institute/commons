@@ -48,7 +48,8 @@
                 :title="`Open ${suggestion.loan} in a new tab`"
                 @click.stop
                 >{{ suggestion.loan }}<span class="lucide-external-link size-3"
-              /></a></span>
+              /></a><template v-if="loanByName.get(suggestion.loan)?.posting_date">
+                · posted {{ formatDate(loanByName.get(suggestion.loan)!.posting_date) }}</template></span>
             </div>
             <div class="mt-0.5 flex flex-wrap gap-1">
               <Badge
@@ -104,7 +105,9 @@
                 :title="`Open ${loan.name} in a new tab`"
                 @click.stop
                 >{{ loan.name }}<span class="lucide-external-link size-3"
-              /></a> · {{ loan.status }}</span>
+              /></a>
+              <template v-if="loan.posting_date"> · posted {{ formatDate(loan.posting_date) }}</template>
+              · {{ loan.status }}</span>
           </div>
           <span class="shrink-0 text-p-sm tabular-nums text-ink-gray-6">
             {{ formatExact(outstanding[loan.name], transaction.currency) }}
@@ -247,6 +250,7 @@ import {
   type Suggestion,
   type TransactionRow,
 } from '@/data/reconciliationRules'
+import { toastWithLinks } from '@/data/toastLinks'
 
 const props = defineProps<{
   transaction: TransactionRow
@@ -364,15 +368,17 @@ async function save(draft: boolean) {
       return
     }
     if (draft) {
-      toast.success(
-        `${pluralise(done.data.repayments.length, 'draft repayment')} created: ${done.data.repayments.join(', ')}. The line stays open until ${done.data.repayments.length === 1 ? 'it is' : 'they are'} submitted and matched.`,
+      toastWithLinks(
+        `${pluralise(done.data.repayments.length, 'draft repayment')} created, not yet posted or matched:`,
+        done.data.repayments.map((name) => ({ doctype: 'Loan Repayment', name })),
       )
       lines.splice(0, lines.length)
       emit('drafted')
       return
     }
-    toast.success(
-      `${pluralise(done.data.repayments.length, 'repayment')} booked and reconciled: ${done.data.repayments.join(', ')}`,
+    toastWithLinks(
+      `${pluralise(done.data.repayments.length, 'repayment')} booked and reconciled:`,
+      done.data.repayments.map((name) => ({ doctype: 'Loan Repayment', name })),
     )
     lines.splice(0, lines.length)
     emit('done', done.data.unallocated_amount)

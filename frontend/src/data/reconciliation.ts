@@ -10,6 +10,7 @@ import {
   type RepaymentRow,
   type TransactionRow,
 } from './reconciliationRules'
+import type { OutstandingDocument } from './paymentAllocation'
 import type { ExistingLine, StatementReading } from './statementImport'
 
 /**
@@ -689,6 +690,7 @@ export function useLoanBook() {
             'total_interest_payable',
             'debit_adjustment_amount',
             'credit_adjustment_amount',
+            'posting_date',
           ]),
           filters: JSON.stringify([
             ['docstatus', '=', 1],
@@ -968,38 +970,97 @@ export function useCreatePaymentEntry() {
     immediate: false,
   })
   const create = useCall<
-    { transaction: ReconciledTransaction },
+    { transaction: ReconciledTransaction; payment_entry: { name: string } },
     { bank_transaction_name: string; payment_entry_doc: Record<string, unknown> }
   >({ url: `${TOOL}.create_payment_entry_and_reconcile`, method: 'POST', immediate: false })
 
   const insert = useInsertDraft()
 
   return {
-    /** With `draft`, the entry ERPNext built is inserted as a draft instead:
-     *  not submitted, not matched. The line keeps what it had left. */
-    async run(params: PaymentEntryParams, dimensions: DimensionValues, draft = false): Promise<EntryResult> {
+    /**
+     * `references` are the invoices the payment is booked against, as
+     * `referenceRows` in `paymentAllocation.ts` builds them. They go on the
+     * entry's references table, as the desk's "Get Outstanding Invoices" puts
+     * them; ERPNext works out the unallocated rest itself when it validates.
+     *
+     * With `draft`, the entry is inserted as a draft instead: not submitted,
+     * not matched. The line keeps what it had left.
+     */
+    async run(
+      params: PaymentEntryParams,
+      dimensions: DimensionValues,
+      draft = false,
+      references: Record<string, unknown>[] = [],
+    ): Promise<EntryResult> {
       const built = await write(prepare, { ...params, allow_edit: 1 })
       if (!built.ok || !built.data) return { ok: false, error: built.error, unallocated: null, name: null }
-      if (draft) {
-        const { name: _unsaved, ...doc } = built.data
-        return insert.run({ ...doc, ...present(dimensions), doctype: 'Payment Entry', docstatus: 0 })
-      }
+      const { name: _unsaved, ...doc } = built.data
+      const entry = { ...doc, ...present(dimensions), references }
+      if (draft) return insert.run({ ...entry, doctype: 'Payment Entry', docstatus: 0 })
       const done = await write(create, {
         bank_transaction_name: params.bank_transaction_name,
-        payment_entry_doc: { ...built.data, ...present(dimensions) },
+        payment_entry_doc: entry,
       })
       return {
         ok: done.ok,
         error: done.error,
         unallocated: done.data?.transaction.unallocated_amount ?? null,
-        name: null,
+        name: done.data?.payment_entry?.name ?? null,
       }
     },
   }
 }
 
+/**
+ * A party's outstanding invoices and other documents a payment can be booked
+ * against, through ERPNext's own calls: `get_party_account` for the party's
+ * receivable or payable account, then `get_outstanding_reference_documents`,
+ * which is what the desk's "Get Outstanding Invoices" calls. It checks read
+ * permission on the party, and it splits an invoice with payment terms into
+ * one row per term, as the desk does.
+ *
+ * Only documents with something outstanding: credit notes and returns, which
+ * come back negative, are left to the desk.
+ */
+export function useOutstandingDocuments() {
+  const account = useCall<string | null, { party_type: string; party: string; company: string }>({
+    url: `${METHOD}/erpnext.accounts.party.get_party_account`,
+    immediate: false,
+  })
+  const documents = useCall<OutstandingDocument[] | null, { args: string }>({
+    url: `${METHOD}/erpnext.accounts.doctype.payment_entry.payment_entry.get_outstanding_reference_documents`,
+    method: 'POST',
+    immediate: false,
+  })
+  return {
+    async load(query: {
+      company: string
+      party_type: string
+      party: string
+      posting_date: string
+      payment_type: 'Receive' | 'Pay'
+    }): Promise<OutstandingDocument[]> {
+      const partyAccount = await fetchRows(account, {
+        party_type: query.party_type,
+        party: query.party,
+        company: query.company,
+      })
+      if (!partyAccount) return []
+      const rows = await fetchRows(documents, {
+        args: JSON.stringify({ ...query, party_account: partyAccount, get_outstanding_invoices: true }),
+      }).catch((error) => {
+        // Answers with nothing, rather than an empty list, when there is nothing
+        // outstanding; that is not a failure.
+        if (documents.error) throw error
+        return []
+      })
+      return (rows ?? []).filter((row) => row.outstanding_amount > 0)
+    },
+  }
+}
+
 /** What creating an entry from a line comes back with: whether it worked, what
- *  is left on the line, and for a draft, the draft's name. */
+ *  is left on the line, and the new document's name. */
 export interface EntryResult {
   ok: boolean
   error: Error | null
@@ -1051,7 +1112,7 @@ export interface JournalEntryParams {
 export function useCreateJournalEntry() {
   const bank = documentList<{ account: string | null }>('Bank Account')
   const create = useCall<
-    { transaction: ReconciledTransaction },
+    { transaction: ReconciledTransaction; journal_entry: { name: string } },
     {
       bank_transaction_name: string
       cheque_date: string
@@ -1160,7 +1221,7 @@ export function useCreateJournalEntry() {
         ok: done.ok,
         error: done.error,
         unallocated: done.data?.transaction.unallocated_amount ?? null,
-        name: null,
+        name: done.data?.journal_entry?.name ?? null,
       }
     },
   }

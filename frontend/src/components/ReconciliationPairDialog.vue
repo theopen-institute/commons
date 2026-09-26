@@ -69,10 +69,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Dialog, ErrorMessage, toast, type DialogAction } from 'frappe-ui'
+import { Dialog, ErrorMessage, type DialogAction } from 'frappe-ui'
 import { formatDate, formatExact } from '@/data/format'
 import { deskUrl, useReconcileVouchers, useSubmitAndReconcile, write } from '@/data/reconciliation'
 import { daysBetween, money, type BookEntry, type TransactionRow } from '@/data/reconciliationRules'
+import { toastWithLinks } from '@/data/toastLinks'
 
 const props = defineProps<{
   line: TransactionRow | null
@@ -131,8 +132,9 @@ const actions = computed<DialogAction[]>(() => [
           problem.value = done.error?.message || 'These could not be matched'
           return
         }
-        toast.success(
-          `${props.entry.name} ${props.entry.draft ? 'submitted and ' : ''}matched to the statement line of ${formatDate(props.line.date)}`,
+        toastWithLinks(
+          `${props.entry.draft ? 'Submitted and matched' : 'Matched'} to the statement line of ${formatDate(props.line.date)}:`,
+          [{ doctype: props.entry.doctype, name: props.entry.name }],
         )
         emit('done', props.line.name, done.data.unallocated_amount)
         close()
