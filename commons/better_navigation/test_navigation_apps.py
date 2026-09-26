@@ -11,7 +11,7 @@ hide without releasing, and personal sidebars.
 from types import SimpleNamespace
 from unittest import TestCase
 
-from commons.better_navigation.navigation_apps import OTHER, installed_app_of, resolve
+from commons.better_navigation.navigation_apps import OTHER, installed_app_of, is_desk_route, resolve
 
 INSTALLED = ["frappe", "erpnext", "education", "commons"]
 META = {
@@ -41,7 +41,7 @@ MODULES = {"Education": "education", "Education Extensions": "commons"}
 ICONS = {"Helpdesk": "helpdesk"}
 
 
-def rail(configured=(), user="someone@example.com", roles=("Desk User",), sidebars=SIDEBARS):
+def rail(configured=(), user="someone@example.com", roles=("Desk User",), sidebars=SIDEBARS, frontends=None):
 	return resolve(
 		configured=list(configured),
 		sidebars=sidebars,
@@ -51,6 +51,7 @@ def rail(configured=(), user="someone@example.com", roles=("Desk User",), sideba
 		icon_apps=ICONS,
 		user=user,
 		user_roles=set(roles),
+		frontends=frontends,
 	)
 
 
@@ -214,3 +215,43 @@ class SiteInputsAreCached(TestCase):
 				patch.object(nav, "navigation_apps", side_effect=AssertionError("built the rail")),
 			):
 				self.assertEqual(nav.get_navigation_apps(), [])
+
+
+class TestFrontends(TestCase):
+	"""An app's own frontend, outside the desk, carried beside its sidebars."""
+
+	def test_an_installed_app_carries_its_frontend(self):
+		entry = next(e for e in rail(frontends={"commons": "/commons"}) if e["key"] == "app:commons")
+		self.assertEqual(entry["frontend"], {"label": "Commons app", "url": "/commons"})
+		self.assertEqual([s["sidebar"] for s in entry["sidebars"]], ["Assessments"])
+
+	def test_apps_without_one_carry_none(self):
+		self.assertTrue(all(entry["frontend"] is None for entry in rail()))
+
+	def test_a_frontend_alone_puts_an_app_on_the_rail(self):
+		# No sidebars anywhere for this app, only its frontend.
+		entry = next(
+			e
+			for e in rail(frontends={"frappe": "/builder"}, sidebars=SIDEBARS[1:])
+			if e["key"] == "app:frappe"
+		)
+		self.assertEqual(entry["sidebars"], [])
+		self.assertEqual(entry["frontend"]["url"], "/builder")
+
+	def test_a_configured_app_has_its_own_frontend_and_label(self):
+		school = {**app("School", "Students"), "frontend_url": "/commons", "frontend_label": ""}
+		self.assertEqual(rail([school])[0]["frontend"], {"label": "School app", "url": "/commons"})
+		school["frontend_label"] = "Staff portal"
+		self.assertEqual(rail([school])[0]["frontend"]["label"], "Staff portal")
+
+	def test_a_configured_app_with_only_a_frontend_is_kept(self):
+		portal = {**app("Portal"), "frontend_url": "/helpdesk"}
+		self.assertEqual(rail([portal])[0]["title"], "Portal")
+
+	def test_desk_links_are_not_frontends(self):
+		for url in ("/app", "/desk", "/app/lending", "/desk/people?x=1", "/desk/build/"):
+			with self.subTest(url=url):
+				self.assertTrue(is_desk_route(url))
+		for url in ("/helpdesk", "/commons/announcements", "/builder", "https://example.com/app/x"):
+			with self.subTest(url=url):
+				self.assertFalse(is_desk_route(url))

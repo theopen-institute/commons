@@ -26,6 +26,7 @@
 	"root": true,
 	"globals": {
 		"frappe": true,
+		"commons": true,
 		"Vue": true,
 		"SetVueGlobals": true,
 		"__": true,

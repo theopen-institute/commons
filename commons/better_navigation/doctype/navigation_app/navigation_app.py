@@ -37,6 +37,8 @@ class NavigationApp(Document):
 		)
 
 		enabled: DF.Check
+		frontend_label: DF.Data | None
+		frontend_url: DF.Data | None
 		icon: DF.Icon | None
 		logo: DF.AttachImage | None
 		rail_order: DF.Int

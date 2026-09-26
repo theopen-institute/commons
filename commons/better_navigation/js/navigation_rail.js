@@ -18,7 +18,22 @@
  *        app's name over its module count, the rows are its modules -- and
  *        nothing else moves until a module is picked. Navigating anywhere
  *        else puts back the sidebar for wherever you land. An app with only
- *        one module skips the list and opens it.
+ *        one module skips the list and opens it. The way back to the list from
+ *        inside a module is the app's own icon on the rail, whose tooltip says
+ *        so; the header and the rows have no room for a back arrow.
+ *
+ * An app with a frontend of its own, outside the desk (Helpdesk's /helpdesk,
+ * Commons' /commons), offers it as "Helpdesk app" at the top of its modules,
+ * set apart by a rule and marked with an arrow out, and opens it in the same
+ * tab, as the Desktop's tiles open it.
+ * It counts toward whether there is a choice to show, but is never where the
+ * rail sends you back to; an app with nothing but a frontend opens it.
+ *
+ * The rows move to say which way you went: a module opened from the list comes
+ * in from the right (one level down), the list comes in from the left (one
+ * level up), and switching app or module sideways fades. Only what a person
+ * clicked here animates; the rebuilds core makes on its own as you navigate
+ * just appear, or motion would stop meaning anything.
  *
  * Once inside, the sidebar's top menu lists the app's modules, in place of
  * Desktop, Workspaces and Website, which the rail now carries: Home is Desktop,
@@ -71,10 +86,41 @@
 	const openable = (title) =>
 		Boolean(frappe.boot.workspace_sidebar_item[(title || "").toLowerCase()]);
 
-	// The server's rail, less what this user cannot open.
+	// The server's rail, less what this user cannot open. An app with a frontend
+	// of its own stays even when none of its sidebars are left: the frontend is
+	// somewhere to go too.
 	const apps = frappe.boot.navigation_apps
 		.map((app) => ({ ...app, sidebars: app.sidebars.filter((s) => openable(s.sidebar)) }))
-		.filter((app) => app.sidebars.length);
+		.filter((app) => app.sidebars.length || app.frontend);
+
+	// What an app offers: its own frontend if it has one, first and apart, then
+	// its modules in the server's alphabetical order. The frontend leaves the
+	// desk, so it stands outside the modules' flow rather than sorting in among
+	// them, marked as a way out.
+	function choices(app) {
+		const modules = app.sidebars.map((entry) => ({ ...entry, kind: "sidebar" }));
+		if (!app.frontend) return modules;
+		return [
+			{
+				kind: "frontend",
+				label: app.frontend.label,
+				url: app.frontend.url,
+				icon: "external-link",
+			},
+			...modules,
+		];
+	}
+
+	// A frontend is somewhere else, not a panel of the desk: the same tab, the
+	// way the Desktop's own tiles open one.
+	function open_frontend(url) {
+		window.location.href = url;
+	}
+
+	const open_choice = (choice, motion) =>
+		choice.kind === "frontend"
+			? open_frontend(choice.url)
+			: commons.navigation_rail.open_sidebar(choice.sidebar, motion);
 
 	// The app a sidebar is in. Core also draws sidebars it makes up on the spot,
 	// one per module that has no Workspace Sidebar of its own (Commons Settings'
@@ -90,15 +136,36 @@
 		return app_name ? apps.find((app) => app.key === `app:${app_name}`) : undefined;
 	};
 
-	// An app's modules as the sidebar's top menu lists them, the current one ticked.
+	// An app's choices as the sidebar's top menu lists them, the current one ticked.
+	// A divider follows the frontend, when there are modules after it.
 	function module_items(app, current) {
-		return app.sidebars.map((entry, index) => ({
-			name: `module-${index}`,
-			label: entry.label,
-			icon: entry.sidebar === current ? "check" : entry.icon || "",
-			icon_html: entry.sidebar === current || entry.icon ? undefined : "&nbsp;",
-			onClick: () => commons.navigation_rail.open_sidebar(entry.sidebar),
-		}));
+		const items = choices(app).map((entry, index) => {
+			const ticked = entry.kind === "sidebar" && entry.sidebar === current;
+			return {
+				name: `module-${index}`,
+				label: entry.label,
+				icon: ticked ? "check" : entry.icon || "",
+				icon_html: ticked || entry.icon ? undefined : "&nbsp;",
+				onClick: () => open_choice(entry, "fade"),
+			};
+		});
+		if (app.frontend && app.sidebars.length) items.splice(1, 0, { is_divider: true });
+		return items;
+	}
+
+	// Plays one of the row transitions on the sidebar's rows (see the file
+	// docstring for which is which). Entry only: core empties and redraws the
+	// rows in one step, so there is nothing left of the old ones to move out.
+	const MOTIONS = ["forward", "back", "fade"];
+	function animate_rows(sidebar, motion) {
+		if (!MOTIONS.includes(motion)) return;
+		const $rows = sidebar.$items_container;
+		$rows.removeClass(MOTIONS.map((m) => `commons-enter-${m}`).join(" "));
+		// Read a layout property so the class removed above takes effect first,
+		// and the same transition twice in a row still plays.
+		void $rows.get(0).offsetWidth;
+		$rows.addClass(`commons-enter-${motion}`);
+		$rows.one("animationend", () => $rows.removeClass(`commons-enter-${motion}`));
 	}
 
 	// Per browser, like the theme: a convenience, so storage that throws or comes
@@ -135,7 +202,10 @@
 		storage.set(LAST_KEY, { ...storage.get(LAST_KEY, {}), [app.key]: sidebar_title });
 	}
 
+	// Only ever a desk module: a frontend leaves the desk, so it is never the
+	// place an app sends you back to.
 	function landing(app) {
+		if (!app.sidebars.length) return null;
 		const last = storage.get(LAST_KEY, {})[app.key];
 		return app.sidebars.some((s) => s.sidebar === last) ? last : app.sidebars[0].sidebar;
 	}
@@ -148,7 +218,10 @@
 	// sidebar's Home), and then the module would open without going anywhere --
 	// so the rest of its links are tried, the way its own rows would open them.
 	function route_for(title) {
-		const route = frappe.utils.get_route_for_icon({ link_type: "Workspace Sidebar", label: title });
+		const route = frappe.utils.get_route_for_icon({
+			link_type: "Workspace Sidebar",
+			label: title,
+		});
 		if (route) return route;
 
 		const config = frappe.boot.workspace_sidebar_item[(title || "").toLowerCase()];
@@ -178,13 +251,16 @@
 		}
 	}
 
-	commons.navigation_rail.open_sidebar = function (title) {
+	commons.navigation_rail.open_sidebar = function (title, motion) {
 		const route = route_for(title);
 		const sidebar = frappe.app.sidebar;
 		// Rebuilt when it is a different module, and also when the module list is
 		// up: the list never changes `sidebar_title`, so a module that matches it
 		// would otherwise leave the list on screen with nothing having happened.
-		if (sidebar.sidebar_title !== title || sidebar.commons_module_list) sidebar.setup(title);
+		if (sidebar.sidebar_title !== title || sidebar.commons_module_list) {
+			sidebar.setup(title);
+			animate_rows(sidebar, motion);
+		}
 		if (!route) return;
 		if (/^https?:\/\//.test(route)) {
 			window.open(route, "_blank");
@@ -205,7 +281,9 @@
 	}
 
 	function button({ name, label, mark, extra_class = "" }) {
-		return `<button type="button" class="commons-rail__item ${extra_class}" data-name="${frappe.utils.escape_html(name)}"
+		return `<button type="button" class="commons-rail__item ${extra_class}" data-name="${frappe.utils.escape_html(
+			name
+		)}"
 			title="${frappe.utils.escape_html(label)}" aria-label="${frappe.utils.escape_html(label)}">
 			<span class="commons-rail__mark">${mark}</span>
 			<span class="commons-rail__badge hidden" aria-hidden="true"></span>
@@ -245,14 +323,24 @@
 				<div class="commons-rail__apps">
 					${apps
 						.map((app) =>
-							button({ name: app.key, label: app.title, mark: app_mark(app), extra_class: "commons-rail__app" })
+							button({
+								name: app.key,
+								label: app.title,
+								mark: app_mark(app),
+								extra_class: "commons-rail__app",
+							})
 						)
 						.join("")}
 				</div>
 			</div>
 			<div class="commons-rail__bottom">
 				${TOOLS.map((tool) =>
-					button({ name: tool.name, label: tool.label, mark: frappe.utils.icon(tool.icon, "md"), extra_class: "hidden" })
+					button({
+						name: tool.name,
+						label: tool.label,
+						mark: frappe.utils.icon(tool.icon, "md"),
+						extra_class: "hidden",
+					})
 				).join("")}
 				${button({ name: "website", label: __("Website"), mark: frappe.utils.icon("web", "md") })}
 			</div>
@@ -269,11 +357,13 @@
 
 			if (app) {
 				// A list of one is not a choice: an app with a single module opens
-				// it either way.
-				if (show_modules() && app.sidebars.length > 1) {
-					show_module_list(sidebar, app);
+				// it either way. An app with only a frontend opens that.
+				if (show_modules() && choices(app).length > 1) {
+					show_module_list(sidebar, app, "back");
+				} else if (app.sidebars.length) {
+					commons.navigation_rail.open_sidebar(landing(app), "fade");
 				} else {
-					commons.navigation_rail.open_sidebar(landing(app));
+					open_frontend(app.frontend.url);
 				}
 			} else if (tool) {
 				// Notifications closes itself on any click outside its own row, and
@@ -293,6 +383,23 @@
 		sidebar.$commons_rail = $rail;
 		$("body").addClass("commons-rail-on");
 		mirror_tools(sidebar);
+		title_apps(sidebar);
+	}
+
+	// An app's tooltip says what clicking it does when that is not simply "go
+	// there": with "Show Modules" on it shows the app's modules, which is also
+	// the way back to them from inside one.
+	function title_apps(sidebar) {
+		if (!sidebar.$commons_rail) return;
+		for (const app of apps) {
+			const label =
+				show_modules() && choices(app).length > 1
+					? __("{0} — show modules", [app.title])
+					: app.title;
+			sidebar.$commons_rail
+				.find(`.commons-rail__app[data-name="${app.key}"]`)
+				.attr({ title: label, "aria-label": label });
+		}
 	}
 
 	// Each foot button follows its row: drawn only once the row is (core and
@@ -309,7 +416,8 @@
 				if (!tool.badge) continue;
 				const $source = $row.find(tool.badge);
 				const $badge = $item.find(".commons-rail__badge");
-				const shown = $source.length && !$source.hasClass("hidden") && $source.text().trim();
+				const shown =
+					$source.length && !$source.hasClass("hidden") && $source.text().trim();
 				$badge.text(shown ? $source.text().trim() : "").toggleClass("hidden", !shown);
 			}
 		};
@@ -331,14 +439,12 @@
 	// into its header. Core's own sidebar state is left alone -- `sidebar_title`
 	// is still the module the page belongs to -- so leaving the list is just
 	// rebuilding what core already thinks it is showing.
-	function show_module_list(sidebar, app) {
+	function show_module_list(sidebar, app, motion) {
 		sidebar.commons_module_list = { app, route: frappe.get_route_str() };
 
 		const $header = sidebar.wrapper.find(".sidebar-header");
 		$header.find(".header-title").text(app.title);
-		$header
-			.find(".header-subtitle")
-			.text(__("{0} modules", [app.sidebars.length]));
+		$header.find(".header-subtitle").text(__("{0} modules", [choices(app).length]));
 		$header.find(".header-logo").html(app_mark(app));
 
 		// The header's menu belongs to the sidebar core thinks it is showing, which
@@ -359,7 +465,14 @@
 		);
 
 		sidebar.$items_container.empty();
-		for (const entry of app.sidebars) {
+		const list = choices(app);
+		for (const [index, entry] of list.entries()) {
+			// The frontend, first and apart: a rule under it, before the modules.
+			if (index === 1 && list[0].kind === "frontend") {
+				sidebar.$items_container.append(
+					'<div class="commons-module-divider" role="separator"></div>'
+				);
+			}
 			sidebar.add_item(sidebar.$items_container, {
 				type: "Button",
 				// A row with no link is only drawn when it is `standard`, as core's
@@ -370,7 +483,7 @@
 				// `TypeButton` replaces the row's classes with these, so the class
 				// every sidebar row is styled by has to be named again.
 				class: "sidebar-item-container commons-module-row",
-				onClick: () => commons.navigation_rail.open_sidebar(entry.sidebar),
+				onClick: () => open_choice(entry, "forward"),
 			});
 		}
 		// The module the page is in, marked the way core marks the current row.
@@ -381,6 +494,7 @@
 			.addClass("active-sidebar");
 
 		mark_active_app(sidebar, app);
+		animate_rows(sidebar, motion);
 	}
 
 	const label_of = (app, sidebar_title) => {
@@ -453,7 +567,9 @@
 					const on = !show_modules();
 					storage.set(SHOW_MODULES_KEY, on);
 					tick(on);
-					if (!on) leave_module_list(frappe.app.sidebar);
+					const sidebar = frappe.app.sidebar;
+					title_apps(sidebar);
+					if (sidebar.commons_module_list) leave_module_list(sidebar);
 					frappe.show_alert({
 						message: on
 							? __("Picking an app now shows its modules")
@@ -493,6 +609,9 @@
 
 		const modules = app ? module_items(app, this.sidebar && this.sidebar.sidebar_title) : [];
 
-		this.dropdown_items = modules.length && rest.length ? [...modules, { is_divider: true }, ...rest] : [...modules, ...rest];
+		this.dropdown_items =
+			modules.length && rest.length
+				? [...modules, { is_divider: true }, ...rest]
+				: [...modules, ...rest];
 	};
 })();

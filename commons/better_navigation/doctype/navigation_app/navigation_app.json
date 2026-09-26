@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-09-26 15:00:00.000000",
+ "modified": "2026-09-26 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -29,6 +29,9 @@
   "logo",
   "sidebars_section",
   "sidebars",
+  "frontend_section",
+  "frontend_url",
+  "frontend_label",
   "access_section",
   "roles"
  ],
@@ -89,6 +92,25 @@
    "label": "Sidebars",
    "options": "Navigation App Sidebar",
    "description": "The modules this app offers. The rail and the sidebar's top menu always list them alphabetically, by label. A sidebar can belong to only one enabled app."
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "frontend_section",
+   "fieldtype": "Section Break",
+   "label": "Frontend"
+  },
+  {
+   "fieldname": "frontend_url",
+   "fieldtype": "Data",
+   "label": "Frontend URL",
+   "description": "An app with a frontend of its own, outside the desk, such as /helpdesk or /commons. Offered beside the app's modules and opened in the same tab. An app with a frontend and no sidebars opens it straight from the rail."
+  },
+  {
+   "fieldname": "frontend_label",
+   "fieldtype": "Data",
+   "label": "Frontend Label",
+   "depends_on": "frontend_url",
+   "description": "What the module list and the top menu call the frontend. Left blank, the app's title followed by \"app\"."
   },
   {
    "collapsible": 1,

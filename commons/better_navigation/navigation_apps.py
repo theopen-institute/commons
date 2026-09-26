@@ -52,6 +52,7 @@ for one person's sidebar.
 """
 
 import frappe
+from frappe import _
 
 APP = "Navigation App"
 APP_SIDEBAR = "Navigation App Sidebar"
@@ -112,6 +113,7 @@ def _site_inputs() -> dict:
 			"app_meta": _app_meta(),
 			"module_apps": dict(frappe.get_all("Module Def", fields=["name", "app_name"], as_list=True)),
 			"icon_apps": _icon_apps(),
+			"frontends": _frontends(),
 		},
 	)
 
@@ -143,6 +145,7 @@ def resolve(
 	icon_apps: dict[str, str],
 	user: str,
 	user_roles: set[str],
+	frontends: dict[str, str] | None = None,
 ) -> list[dict]:
 	"""The rail, from plain data: configured apps first, then the installed ones.
 
@@ -150,8 +153,14 @@ def resolve(
 	`sidebars` rows (`sidebar`, `label`) and `roles`. `sidebars` is every
 	Workspace Sidebar (`name`, `header_icon`, `app`, `module`, `for_user`).
 	The rest say what an installed app is called and which app a module or a
-	Desktop Icon belongs to.
+	Desktop Icon belongs to, and `frontends` where an installed app's own
+	frontend is, outside the desk.
+
+	Every entry carries `frontend` -- `{label, url}` or None -- beside its
+	`sidebars`. An app is on the rail if it has either: a frontend with no desk
+	sidebars (Frappe Builder, say) is somewhere to go too.
 	"""
+	frontends = frontends or {}
 	by_name = {sidebar["name"]: sidebar for sidebar in sidebars}
 	claimed: set[str] = set()
 	rail: list[dict] = []
@@ -169,7 +178,8 @@ def resolve(
 		roles = set(app.get("roles") or ())
 		if roles and not roles & user_roles:
 			continue
-		if entries:
+		frontend = _frontend(app["title"], app.get("frontend_url"), app.get("frontend_label"))
+		if entries or frontend:
 			entries.sort(key=_by_label)
 			rail.append(
 				{
@@ -179,6 +189,7 @@ def resolve(
 					"logo": app.get("logo") or None,
 					"configured": True,
 					"sidebars": entries,
+					"frontend": frontend,
 				}
 			)
 
@@ -194,21 +205,43 @@ def resolve(
 		grouped.setdefault(owner, []).append(_entry(sidebar))
 
 	for app_name in [*installed_apps, OTHER]:
-		entries = grouped.get(app_name)
-		if not entries:
-			continue
+		entries = grouped.get(app_name) or []
 		meta = app_meta.get(app_name) or {}
+		title = meta.get("title") or (OTHER if app_name == OTHER else app_name)
+		frontend = _frontend(title, frontends.get(app_name))
+		if not entries and not frontend:
+			continue
 		rail.append(
 			{
 				"key": f"app:{app_name}",
-				"title": meta.get("title") or (OTHER if app_name == OTHER else app_name),
+				"title": title,
 				"icon": None,
 				"logo": meta.get("logo") or None,
 				"configured": False,
 				"sidebars": sorted(entries, key=_by_label),
+				"frontend": frontend,
 			}
 		)
 	return rail
+
+
+def _frontend(app_title: str, url: str | None, label: str | None = None) -> dict | None:
+	"""An app's own frontend as the menus offer it, or None if it has none."""
+	url = (url or "").strip()
+	if not url:
+		return None
+	return {"label": (label or "").strip() or _("{0} app").format(app_title), "url": url}
+
+
+def is_desk_route(url: str) -> bool:
+	"""Whether a link leads into the desk rather than out of it.
+
+	Several apps point their Desktop tile at a desk page (Frappe HR at
+	`/desk/people`, Lending at `/app/lending`); that is the app's desk home, which
+	its sidebars already reach, not a frontend of its own.
+	"""
+	path = (url or "").strip().split("?")[0].split("#")[0].rstrip("/")
+	return path in ("/app", "/desk") or path.startswith(("/app/", "/desk/"))
 
 
 def installed_app_of(sidebar: dict, module_apps: dict[str, str], icon_apps: dict[str, str]) -> str | None:
@@ -250,7 +283,7 @@ def _configured() -> list[dict]:
 	apps = frappe.get_all(
 		APP,
 		filters={"enabled": 1},
-		fields=["name", "title", "icon", "logo"],
+		fields=["name", "title", "icon", "logo", "frontend_url", "frontend_label"],
 		order_by="rail_order asc, title asc",
 	)
 	if not apps:
@@ -291,6 +324,33 @@ def _icon_apps() -> dict[str, str]:
 			as_list=True,
 		)
 	)
+
+
+def _frontends() -> dict[str, str]:
+	"""Each installed app's own frontend, where its Desktop tile says it has one.
+
+	The same App-type icon with an external link that draws the app's tile on
+	the Desktop, so the rail and the Desktop cannot disagree about where an
+	app's frontend is. Hidden tiles, and tiles that only open a desk page, are
+	not frontends.
+	"""
+	rows = frappe.get_all(
+		"Desktop Icon",
+		filters={
+			"icon_type": "App",
+			"link_type": "External",
+			"hidden": 0,
+			"app": ["is", "set"],
+			"link": ["is", "set"],
+		},
+		fields=["app", "link"],
+		order_by="idx asc",
+	)
+	found: dict[str, str] = {}
+	for row in rows:
+		if row.app not in found and not is_desk_route(row.link):
+			found[row.app] = row.link.strip()
+	return found
 
 
 def _app_meta() -> dict[str, dict]:
