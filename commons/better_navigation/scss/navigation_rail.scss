@@ -163,6 +163,11 @@
 	}
 }
 
+// The sidebar header while it shows an app's module list: a label, not a button.
+.sidebar-header.commons-module-list-header {
+	cursor: default;
+}
+
 // The sidebar rows the rail's foot now carries. Hidden rather than removed: the
 // rail's buttons press them, and core and `desk_todos` keep updating them.
 body.commons-rail-on .standard-items-sections {

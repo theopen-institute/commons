@@ -8,8 +8,17 @@
  *     (bottom)
  *     Search, Notifications, To Do, Website
  *
- * Picking an app opens its first module, a module being a Workspace Sidebar
- * and an app's modules always listed alphabetically (the server sorts them).
+ * A module is a Workspace Sidebar, and an app's modules are always listed
+ * alphabetically (the server sorts them). What picking an app does depends on
+ * "Show Modules", a per-browser choice under Display, next to the theme:
+ *
+ *   off  the app opens the module you were last in, or its first module on a
+ *        first visit.
+ *   on   the sidebar turns into the app's module list -- the header reads the
+ *        app's name over its module count, the rows are its modules -- and
+ *        nothing else moves until a module is picked. Navigating anywhere
+ *        else puts back the sidebar for wherever you land. An app with only
+ *        one module skips the list and opens it.
  *
  * Once inside, the sidebar's top menu lists the app's modules, in place of
  * Desktop, Workspaces and Website, which the rail now carries: Home is Desktop,
@@ -92,11 +101,90 @@
 		}));
 	}
 
+	// Per browser, like the theme: a convenience, so storage that throws or comes
+	// back empty only costs the choice or the memory, never the page.
+	const LAST_KEY = "commons_rail_last_module";
+	const SHOW_MODULES_KEY = "commons_rail_show_modules";
+
+	const storage = {
+		get(key, fallback) {
+			try {
+				const value = localStorage.getItem(key);
+				return value === null ? fallback : JSON.parse(value);
+			} catch (e) {
+				return fallback;
+			}
+		},
+		set(key, value) {
+			try {
+				localStorage.setItem(key, JSON.stringify(value));
+			} catch (e) {
+				// Quota or private browsing.
+			}
+		},
+	};
+
+	const show_modules = () => storage.get(SHOW_MODULES_KEY, false) === true;
+
+	// The module you were last in, per app. Only modules an app lists: the
+	// made-up module sidebars are placed under an app for orientation, but are
+	// not somewhere to send anyone back to.
+	function remember_last(sidebar_title) {
+		const app = apps.find((a) => a.sidebars.some((s) => s.sidebar === sidebar_title));
+		if (!app) return;
+		storage.set(LAST_KEY, { ...storage.get(LAST_KEY, {}), [app.key]: sidebar_title });
+	}
+
+	function landing(app) {
+		const last = storage.get(LAST_KEY, {})[app.key];
+		return app.sidebars.some((s) => s.sidebar === last) ? last : app.sidebars[0].sidebar;
+	}
+
 	frappe.provide("commons.navigation_rail");
 
-	commons.navigation_rail.open_sidebar = function (title) {
+	// Where opening a module goes: its first link, as core's Desktop works it
+	// out. Core gives up when that first link is a Workspace this user cannot
+	// see (a private or since-deleted one: My Workspaces, or a site-made
+	// sidebar's Home), and then the module would open without going anywhere --
+	// so the rest of its links are tried, the way its own rows would open them.
+	function route_for(title) {
 		const route = frappe.utils.get_route_for_icon({ link_type: "Workspace Sidebar", label: title });
-		if (frappe.app.sidebar.sidebar_title !== title) frappe.app.sidebar.setup(title);
+		if (route) return route;
+
+		const config = frappe.boot.workspace_sidebar_item[(title || "").toLowerCase()];
+		const Row = frappe.ui.sidebar_item && frappe.ui.sidebar_item.TypeLink;
+		if (!config || !Row) return;
+		for (const item of config.items) {
+			if (item.type !== "Link") continue;
+			// Core's row always has an answer for a Workspace, falling back to a
+			// private address that leads nowhere; only a workspace this user has
+			// counts.
+			if (
+				item.link_type === "Workspace" &&
+				!item.route &&
+				!frappe.workspaces[frappe.router.slug(item.link_to)]
+			) {
+				continue;
+			}
+			try {
+				const path = Row.prototype.get_path.call({
+					item,
+					transform_filters: Row.prototype.transform_filters,
+				});
+				if (path) return path;
+			} catch (e) {
+				// One unreadable row is no reason not to try the next.
+			}
+		}
+	}
+
+	commons.navigation_rail.open_sidebar = function (title) {
+		const route = route_for(title);
+		const sidebar = frappe.app.sidebar;
+		// Rebuilt when it is a different module, and also when the module list is
+		// up: the list never changes `sidebar_title`, so a module that matches it
+		// would otherwise leave the list on screen with nothing having happened.
+		if (sidebar.sidebar_title !== title || sidebar.commons_module_list) sidebar.setup(title);
 		if (!route) return;
 		if (/^https?:\/\//.test(route)) {
 			window.open(route, "_blank");
@@ -180,7 +268,13 @@
 			const tool = TOOLS.find((t) => t.name === name);
 
 			if (app) {
-				commons.navigation_rail.open_sidebar(app.sidebars[0].sidebar);
+				// A list of one is not a choice: an app with a single module opens
+				// it either way.
+				if (show_modules() && app.sidebars.length > 1) {
+					show_module_list(sidebar, app);
+				} else {
+					commons.navigation_rail.open_sidebar(landing(app));
+				}
 			} else if (tool) {
 				// Notifications closes itself on any click outside its own row, and
 				// this button is outside it: keep the click from getting that far.
@@ -229,9 +323,80 @@
 		});
 	}
 
-	function mark_active_app(sidebar) {
+	// ---------------------------------------------------------------------------------
+	// The module list ("Show Modules" on)
+	// ---------------------------------------------------------------------------------
+
+	// Draws an app's modules into the sidebar in place of its rows, and the app
+	// into its header. Core's own sidebar state is left alone -- `sidebar_title`
+	// is still the module the page belongs to -- so leaving the list is just
+	// rebuilding what core already thinks it is showing.
+	function show_module_list(sidebar, app) {
+		sidebar.commons_module_list = { app, route: frappe.get_route_str() };
+
+		const $header = sidebar.wrapper.find(".sidebar-header");
+		$header.find(".header-title").text(app.title);
+		$header
+			.find(".header-subtitle")
+			.text(__("{0} modules", [app.sidebars.length]));
+		$header.find(".header-logo").html(app_mark(app));
+
+		// The header's menu belongs to the sidebar core thinks it is showing, which
+		// is not this list, and the list already is the choice that menu offers.
+		// So while the list is up the header is a label: no chevron, and its click
+		// stopped before core's menu sees it. Capture phase, because core's handler
+		// is on this same element. Rebuilding the real sidebar replaces the header,
+		// and with it all of this.
+		$header.addClass("commons-module-list-header").find(".drop-icon").addClass("hidden");
+		$header.get(0).addEventListener(
+			"click",
+			(event) => {
+				if (!sidebar.commons_module_list) return;
+				event.stopImmediatePropagation();
+				event.preventDefault();
+			},
+			true
+		);
+
+		sidebar.$items_container.empty();
+		for (const entry of app.sidebars) {
+			sidebar.add_item(sidebar.$items_container, {
+				type: "Button",
+				// A row with no link is only drawn when it is `standard`, as core's
+				// own Search and Notification rows are.
+				standard: true,
+				label: entry.label,
+				icon: entry.icon || "",
+				// `TypeButton` replaces the row's classes with these, so the class
+				// every sidebar row is styled by has to be named again.
+				class: "sidebar-item-container commons-module-row",
+				onClick: () => commons.navigation_rail.open_sidebar(entry.sidebar),
+			});
+		}
+		// The module the page is in, marked the way core marks the current row.
+		sidebar.$items_container
+			.find(".commons-module-row")
+			.filter((_, row) => $(row).attr("data-id") === label_of(app, sidebar.sidebar_title))
+			.find(".standard-sidebar-item")
+			.addClass("active-sidebar");
+
+		mark_active_app(sidebar, app);
+	}
+
+	const label_of = (app, sidebar_title) => {
+		const entry = app.sidebars.find((s) => s.sidebar === sidebar_title);
+		return entry && entry.label;
+	};
+
+	function leave_module_list(sidebar) {
+		if (!sidebar.commons_module_list) return;
+		sidebar.commons_module_list = null;
+		if (sidebar.sidebar_title) sidebar.setup(sidebar.sidebar_title);
+	}
+
+	function mark_active_app(sidebar, shown) {
 		if (!sidebar.$commons_rail) return;
-		const app = app_of(sidebar.sidebar_title);
+		const app = shown || app_of(sidebar.sidebar_title);
 		sidebar.$commons_rail.find(".commons-rail__app").each(function () {
 			$(this).toggleClass("active", Boolean(app) && $(this).attr("data-name") === app.key);
 		});
@@ -254,9 +419,57 @@
 
 	const setup = Sidebar.prototype.setup;
 	Sidebar.prototype.setup = function () {
+		// Any rebuild is the real sidebar again.
+		this.commons_module_list = null;
 		setup.apply(this, arguments);
 		mark_active_app(this);
+		remember_last(this.sidebar_title);
 	};
+
+	// Core re-resolves the sidebar on every route change, but rebuilds only when
+	// the answer differs from `sidebar_title` -- which the module list never
+	// touched. So once the route has moved on from where the list was opened,
+	// the list is put away here and the sidebar for the new page drawn.
+	if (typeof Sidebar.prototype.set_workspace_sidebar === "function") {
+		const set_workspace_sidebar = Sidebar.prototype.set_workspace_sidebar;
+		Sidebar.prototype.set_workspace_sidebar = function () {
+			set_workspace_sidebar.apply(this, arguments);
+			const list = this.commons_module_list;
+			if (list && frappe.get_route_str() !== list.route) leave_module_list(this);
+		};
+	}
+
+	// "Show Modules" beside the theme under Display, ticked while on. The same
+	// item object is re-rendered each time the submenu opens, so updating its
+	// icon is enough to show the new state.
+	if (typeof Header.prototype.get_display_siblings === "function") {
+		const get_display_siblings = Header.prototype.get_display_siblings;
+		Header.prototype.get_display_siblings = function () {
+			const items = get_display_siblings.apply(this, arguments);
+			const item = {
+				name: "show-modules",
+				label: __("Show Modules"),
+				onClick: () => {
+					const on = !show_modules();
+					storage.set(SHOW_MODULES_KEY, on);
+					tick(on);
+					if (!on) leave_module_list(frappe.app.sidebar);
+					frappe.show_alert({
+						message: on
+							? __("Picking an app now shows its modules")
+							: __("Picking an app now opens your last module"),
+						indicator: "blue",
+					});
+				},
+			};
+			const tick = (on) => {
+				item.icon = on ? "check" : "";
+				item.icon_html = on ? undefined : "&nbsp;";
+			};
+			tick(show_modules());
+			return [...items, item];
+		};
+	}
 
 	// Module over app: the header's subtitle is the app the module belongs to.
 	const choose_app_name = Sidebar.prototype.choose_app_name;
