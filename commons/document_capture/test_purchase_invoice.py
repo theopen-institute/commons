@@ -166,8 +166,15 @@ class TestSavingAReadDraftNeedsNoKey(TestCase):
 			self.assertEqual(capture.suggest("KC", ["Tea"])["lines"][0]["review"], True)
 
 	def test_the_permission_is_still_asked(self):
-		with patch.object(capture, "can_capture", return_value=False), patch.object(capture, "_build") as built:
-			for call in (lambda: capture.preview({}), lambda: capture.create({}), lambda: capture.suggest("KC", [])):
+		with (
+			patch.object(capture, "can_capture", return_value=False),
+			patch.object(capture, "_build") as built,
+		):
+			for call in (
+				lambda: capture.preview({}),
+				lambda: capture.create({}),
+				lambda: capture.suggest("KC", []),
+			):
 				with self.assertRaises(frappe.PermissionError):
 					call()
 		built.assert_not_called()

@@ -64,9 +64,7 @@ class TestQueuePredicate(TestCase):
 	"""One predicate behind the page and the badge, so the two cannot disagree."""
 
 	def setUp(self):
-		self.session = patch.object(
-			api.frappe, "session", SimpleNamespace(user="approver@example.com")
-		)
+		self.session = patch.object(api.frappe, "session", SimpleNamespace(user="approver@example.com"))
 		self.session.start()
 		self.addCleanup(self.session.stop)
 		# Nothing in this class is about self-approval; the case that is patches
@@ -97,9 +95,7 @@ class TestQueuePredicate(TestCase):
 
 	def test_decided_is_submitted_whatever_the_decision_was(self):
 		filters, or_filters = api.EXPENSES.queue_predicate(decided=True, admin=False)
-		self.assertEqual(
-			filters, {"docstatus": 1, "expense_approver": "approver@example.com"}
-		)
+		self.assertEqual(filters, {"docstatus": 1, "expense_approver": "approver@example.com"})
 		# History needs no second clause: a claim that named nobody has the
 		# decider written onto it as it is settled.
 		self.assertIsNone(or_filters)
@@ -147,7 +143,6 @@ class TestQueuePredicate(TestCase):
 		):
 			self.assertEqual(api.EXPENSES.pending_count(active, admin=False), 2)
 
-
 	def test_a_workflow_badge_finds_rows_below_twenty_that_are_somebody_elses(self):
 		"""It cut to a page before asking, so twenty of another approver's showed nought."""
 		names = [f"theirs-{i}" for i in range(20)] + ["mine-1", "mine-2"]
@@ -187,9 +182,7 @@ class TestDecisionVocabulary(TestCase):
 
 	def test_an_outcome_a_site_adds_by_property_setter_is_offered(self):
 		meta = SimpleNamespace(
-			get_field=lambda _name: approval_status_field(
-				"Draft\nApproved\nRejected\nQueried\nCancelled"
-			)
+			get_field=lambda _name: approval_status_field("Draft\nApproved\nRejected\nQueried\nCancelled")
 		)
 		with patch.object(api.frappe, "get_meta", return_value=meta):
 			offered = api.EXPENSES.decision_vocabulary(None)
@@ -425,7 +418,9 @@ class TestDecideGuard(TestCase):
 
 		def apply_workflow(doc, action):
 			events.append(("transition", action))
-			return SimpleNamespace(name=doc.name, docstatus=1, workflow_state="Approved", get=lambda _f: "Approved")
+			return SimpleNamespace(
+				name=doc.name, docstatus=1, workflow_state="Approved", get=lambda _f: "Approved"
+			)
 
 		active = workflow([{"action": "Approve", "next_state": "Approved"}])
 		with (
@@ -449,7 +444,9 @@ class TestDecideGuard(TestCase):
 			patch.object(api.EXPENSES, "decision_result", return_value={}),
 			patch(
 				"frappe.model.workflow.apply_workflow",
-				side_effect=lambda doc, action: SimpleNamespace(name=doc.name, docstatus=1, get=lambda _f: "Approved"),
+				side_effect=lambda doc, action: SimpleNamespace(
+					name=doc.name, docstatus=1, get=lambda _f: "Approved"
+				),
 			),
 		):
 			api.decide_expense_claim("HR-EXP-1", "Approve")

@@ -179,9 +179,7 @@ def get_procurement_request_defaults() -> dict:
 
 	return {
 		"company": company,
-		"currency": (
-			frappe.db.get_value("Company", company, "default_currency") if company else None
-		),
+		"currency": (frappe.db.get_value("Company", company, "default_currency") if company else None),
 		"department": employee.department if employee else None,
 		# The department's head, and only the department's head. A request spends
 		# the department's budget, so the requester's own expense approver -- who

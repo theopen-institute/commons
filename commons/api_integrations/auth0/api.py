@@ -34,8 +34,8 @@ Calling this from a Server Script
 `frappe.call` in the sandbox resolves dotted paths to whitelisted methods, and
 unlike a script calling a script it returns a value::
 
-	user_id = frappe.call("commons.api_integrations.auth0.api.ensure_user", email=doc["member_id"])
-	frappe.db.set_value(doc["doctype"], doc["name"], "custom_auth0_id", user_id)
+        user_id = frappe.call("commons.api_integrations.auth0.api.ensure_user", email=doc["member_id"])
+        frappe.db.set_value(doc["doctype"], doc["name"], "custom_auth0_id", user_id)
 
 That is the whole of what those scripts need to contain now: no domain, no
 client id, no secret, no token, and no `except` clause reaching for a status

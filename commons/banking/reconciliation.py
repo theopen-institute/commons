@@ -333,7 +333,9 @@ def _validated_lines(transaction, repayments) -> list[dict]:
 			frappe.throw(_("Loan {0} does not exist.").format(loan))
 		if loan_company != company:
 			frappe.throw(
-				_("Loan {0} belongs to {1}, and this bank account to {2}.").format(loan, loan_company, company)
+				_("Loan {0} belongs to {1}, and this bank account to {2}.").format(
+					loan, loan_company, company
+				)
 			)
 		frappe.get_doc(LOAN, loan).check_permission("read")
 		lines.append({"loan": loan, "amount": amount})
@@ -349,7 +351,6 @@ def _validated_lines(transaction, repayments) -> list[dict]:
 			)
 		)
 	return lines
-
 
 
 def _require_date_kept(repayment, dated) -> None:
@@ -430,7 +431,6 @@ def _require_same_direction(transaction, voucher_type: str, voucher: str) -> Non
 				_("in") if flt(transaction.deposit) > 0 else _("out"),
 			)
 		)
-
 
 
 def _net_on_account(voucher_type: str, voucher: str, account: str) -> float:

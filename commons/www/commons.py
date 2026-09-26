@@ -17,9 +17,9 @@ def get_context(context: dict) -> dict:
 	if frappe.session.user == "Guest":
 		frappe.throw(frappe._("You need to be logged in to access this page."), frappe.PermissionError)
 
+	from commons.better_navigation.api import get_shell
 	from commons.better_navigation.user_menu import get_user_menu
 	from commons.better_navigation.website_link import get_website_button_url
-	from commons.better_navigation.api import get_shell
 
 	context.no_cache = 1
 	context.boot = {

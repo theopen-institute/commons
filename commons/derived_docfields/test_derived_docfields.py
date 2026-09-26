@@ -624,7 +624,12 @@ class TestDerivedDocfields(unittest.TestCase):
 
 		with patch.object(df, "permlevel", 1):
 			found = resolve(
-				{"doctype": HOST, "name": self.theirs, "reference_type": "Role", "reference_name": self.reader}
+				{
+					"doctype": HOST,
+					"name": self.theirs,
+					"reference_type": "Role",
+					"reference_name": self.reader,
+				}
 			)
 		self.assertEqual(found["dd_reference_created"], frappe.db.get_value("User", self.reader, "creation"))
 

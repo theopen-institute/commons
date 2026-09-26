@@ -34,9 +34,9 @@ Extending this
 The Management API is large and this is the part of it this app has needed.
 Anything else is a call rather than a change here::
 
-	client.management("GET", "roles")
-	client.management("POST", f"users/{user_id}/roles", json_body={"roles": [...]})
-	client.management("GET", "users", params={"q": 'email:"a@b.c"', "search_engine": "v3"})
+        client.management("GET", "roles")
+        client.management("POST", f"users/{user_id}/roles", json_body={"roles": [...]})
+        client.management("GET", "users", params={"q": 'email:"a@b.c"', "search_engine": "v3"})
 
 `client.management` is public and carries the token, the retry and the error
 handling, so a wrapper is worth adding here only when there is something to say

@@ -92,7 +92,11 @@ class TestTheSplitIsCheckedFirst(TestCase):
 	"""`_validated_lines`, which runs before any repayment is inserted."""
 
 	def setUp(self):
-		companies = {"LOAN-A": "Open Institute (Nepal)", "LOAN-B": "Open Institute (Nepal)", "LOAN-KC": "Kula"}
+		companies = {
+			"LOAN-A": "Open Institute (Nepal)",
+			"LOAN-B": "Open Institute (Nepal)",
+			"LOAN-KC": "Kula",
+		}
 		db = SimpleNamespace(get_value=lambda doctype, name, field: companies.get(name))
 		self.enterContext(patch.object(reconciliation.frappe, "db", db))
 		self.enterContext(
@@ -250,7 +254,9 @@ class TestWhatAMatchMustLeaveBehind(TestCase):
 			name="BT-1",
 			precision=lambda field: 2,
 			payment_entries=[
-				SimpleNamespace(payment_document="Loan Repayment", payment_entry=name, allocated_amount=amount)
+				SimpleNamespace(
+					payment_document="Loan Repayment", payment_entry=name, allocated_amount=amount
+				)
 				for name, amount in rows
 			],
 		)
@@ -298,8 +304,9 @@ class TestWhatAMatchMustLeaveBehind(TestCase):
 
 class TestWhoMayReadTheDimensions(TestCase):
 	def test_only_somebody_who_reconciles(self):
-		with patch.object(reconciliation, "can_reconcile", return_value=False), patch.object(
-			reconciliation.frappe, "throw", side_effect=ValueError
+		with (
+			patch.object(reconciliation, "can_reconcile", return_value=False),
+			patch.object(reconciliation.frappe, "throw", side_effect=ValueError),
 		):
 			with self.assertRaises(ValueError):
 				reconciliation.accounting_dimensions("Open Institute (Nepal)")

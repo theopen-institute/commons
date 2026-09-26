@@ -56,10 +56,7 @@ def conventional_workflow():
 def workflow(states, transitions):
 	return SimpleNamespace(
 		workflow_state_field="status",
-		states=[
-			SimpleNamespace(state=state, doc_status=doc_status)
-			for state, doc_status in states
-		],
+		states=[SimpleNamespace(state=state, doc_status=doc_status) for state, doc_status in states],
 		transitions=[
 			SimpleNamespace(
 				state=state,
@@ -111,9 +108,7 @@ class TestApproverRoles(TestCase):
 
 class TestOpenRequestStates(TestCase):
 	def test_a_conventional_chain_answers_the_states_the_constant_used_to_name(self):
-		self.assertEqual(
-			wf.open_request_states(conventional_workflow()), ("Pending", "Under Review")
-		)
+		self.assertEqual(wf.open_request_states(conventional_workflow()), ("Pending", "Under Review"))
 
 	def test_the_initial_state_is_the_authors_own_copy_not_an_open_ask(self):
 		states = wf.open_request_states(

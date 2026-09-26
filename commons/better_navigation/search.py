@@ -58,11 +58,11 @@ import unicodedata
 import frappe
 from frappe.boot import get_tree_view_doctypes
 
-from commons.commons_core import settings
-from commons.self_service import registry
 from commons.better_navigation import pages as page_list
 from commons.better_navigation import workspaces
 from commons.better_navigation.pages import PAGE_ACCESS, PAGE_DOCTYPES, PAGES
+from commons.commons_core import settings
+from commons.self_service import registry
 
 # Where each shipped page lives, under `hooks.app_home`. The frontend's router
 # is the authority on these (`frontend/src/router.ts`) and this is a second copy
@@ -336,7 +336,5 @@ def _fold(char: str) -> str:
 	The same normalisation `fuzzy_match` does per character, so "Genève" is
 	found by typing "geneve" here exactly as it is in the desk.
 	"""
-	stripped = "".join(
-		part for part in unicodedata.normalize("NFD", char) if not unicodedata.combining(part)
-	)
+	stripped = "".join(part for part in unicodedata.normalize("NFD", char) if not unicodedata.combining(part))
 	return stripped.lower()

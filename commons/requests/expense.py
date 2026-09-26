@@ -385,9 +385,7 @@ def get_expense_claim_defaults() -> dict:
 	EXPENSES.require_available()
 	frappe.has_permission(EXPENSE_CLAIM, "create", throw=True)
 
-	employee = session_employee(
-		["name", "company", "department", "expense_approver", "salary_currency"]
-	)
+	employee = session_employee(["name", "company", "department", "expense_approver", "salary_currency"])
 	if not employee:
 		return {
 			"employee": None,
@@ -526,9 +524,7 @@ def get_expense_claim_lines(claims: str) -> list[dict]:
 
 
 @frappe.whitelist(methods=["POST"])
-def decide_expense_claim(
-	name: str, decision: str, sanctioned: str | dict | None = None
-) -> dict:
+def decide_expense_claim(name: str, decision: str, sanctioned: str | dict | None = None) -> dict:
 	"""Settle an expense claim, by the route the site has configured.
 
 	See `approvals.RequestType.decide`: a Workflow transition where one is
@@ -542,9 +538,7 @@ def decide_expense_claim(
 	was claimed, and a rejection zeroes them all whatever was passed.
 	"""
 	amounts = _sanctioned_amounts(sanctioned)
-	return EXPENSES.decide(
-		name, decision, prepare=lambda doc: _apply_sanctioned_amounts(doc, amounts)
-	)
+	return EXPENSES.decide(name, decision, prepare=lambda doc: _apply_sanctioned_amounts(doc, amounts))
 
 
 def _sanctioned_amounts(sanctioned: str | dict | None) -> dict[str, float]:

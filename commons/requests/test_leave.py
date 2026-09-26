@@ -64,9 +64,7 @@ def workflow(transitions, state_field="workflow_state"):
 
 class TestQueueFilters(TestCase):
 	def setUp(self):
-		self.session = patch.object(
-			api.frappe, "session", SimpleNamespace(user="approver@example.com")
-		)
+		self.session = patch.object(api.frappe, "session", SimpleNamespace(user="approver@example.com"))
 		self.session.start()
 		self.addCleanup(self.session.stop)
 
@@ -100,9 +98,7 @@ class TestQueueFilters(TestCase):
 		filters, or_filters = self.predicate(decided=False, admin=False)
 		self.assertEqual(get_list.call_args.kwargs["filters"], filters)
 		self.assertEqual(get_list.call_args.kwargs["or_filters"], or_filters)
-		self.assertEqual(
-			get_list.call_args.kwargs["limit_page_length"], api.LEAVE.page_length
-		)
+		self.assertEqual(get_list.call_args.kwargs["limit_page_length"], api.LEAVE.page_length)
 
 	def test_a_workflow_badge_counts_rows_the_workflow_would_let_this_user_move(self):
 		"""Not the rows in a movable state -- the ones with an action on them."""
@@ -133,9 +129,7 @@ class TestDecisionVocabulary(TestCase):
 		)
 		with patch.object(api.frappe, "get_meta", return_value=meta):
 			offered = api.LEAVE.decision_vocabulary(None)
-		self.assertEqual(
-			[row["value"] for row in offered], ["Approved", "Rejected", "Deferred"]
-		)
+		self.assertEqual([row["value"] for row in offered], ["Approved", "Rejected", "Deferred"])
 		# Unknown to this app, so unstyled -- and confirmed, because only the
 		# affirmative outcome is applied without asking twice.
 		deferred = offered[-1]
@@ -179,15 +173,11 @@ class TestStatusDisplay(TestCase):
 		self.assertEqual(label, "Pending")
 
 	def test_a_cancelled_application_reads_as_cancelled_not_as_its_decision(self):
-		label, _style = api.LEAVE.status_display(
-			self.row(status="Approved", docstatus=2), None, {}
-		)
+		label, _style = api.LEAVE.status_display(self.row(status="Approved", docstatus=2), None, {})
 		self.assertEqual(label, "Cancelled")
 
 	def test_a_decided_application_reads_as_its_outcome(self):
-		label, style = api.LEAVE.status_display(
-			self.row(status="Rejected", docstatus=1), None, {}
-		)
+		label, style = api.LEAVE.status_display(self.row(status="Rejected", docstatus=1), None, {})
 		self.assertEqual((label, style), ("Rejected", "Danger"))
 
 	def test_with_a_workflow_the_state_is_the_answer_and_the_site_styles_it(self):
@@ -220,9 +210,7 @@ class TestPermittedDecisions(TestCase):
 		)
 
 	def test_the_named_approver_gets_the_whole_vocabulary(self):
-		self.assertEqual(
-			self.decisions(self.row("me@example.com")), ["Approved", "Rejected"]
-		)
+		self.assertEqual(self.decisions(self.row("me@example.com")), ["Approved", "Rejected"])
 
 	def test_somebody_elses_application_is_not_this_users_to_decide(self):
 		self.assertEqual(self.decisions(self.row("someone@example.com")), [])
@@ -238,9 +226,7 @@ class TestPermittedDecisions(TestCase):
 
 	def test_self_approval_withholds_the_approval_and_nothing_else(self):
 		"""HRMS refuses the approval, not the refusal -- so the page offers one."""
-		self.assertEqual(
-			self.decisions(self.row("me@example.com"), blocked=True), ["Rejected"]
-		)
+		self.assertEqual(self.decisions(self.row("me@example.com"), blocked=True), ["Rejected"])
 
 	def test_with_a_workflow_the_transitions_are_the_answer(self):
 		row = api.frappe._dict(
@@ -277,9 +263,7 @@ class TestSelfApprovalBlocked(TestCase):
 
 	def test_a_workflow_decides_it_instead(self):
 		"""HRMS steps aside for one, so this must not second-guess the workflow."""
-		self.assertFalse(
-			self.blocked(setting=1, user_id="me@example.com", active=workflow([]))
-		)
+		self.assertFalse(self.blocked(setting=1, user_id="me@example.com", active=workflow([])))
 
 
 class TestLeaveAdminRoles(TestCase):
@@ -330,12 +314,10 @@ class TestDecideGuard(TestCase):
 				patch.object(api.LEAVE, "workflow", return_value=None),
 				patch.object(api.frappe, "get_meta", return_value=meta),
 				patch.object(api.frappe, "has_permission", return_value=False),
-				patch.object(
-					api.frappe, "db", SimpleNamespace(get_single_value=lambda *a: setting)
-				),
+				patch.object(api.frappe, "db", SimpleNamespace(get_single_value=lambda *a: setting)),
 				patch.object(api.approvals, "session_employee_access", return_value="visible"),
 				patch.object(api.approvals, "session_employee_filters", return_value={}),
-			patch.object(api.approvals, "session_employee_filters", return_value={}),
+				patch.object(api.approvals, "session_employee_filters", return_value={}),
 				patch.object(api.LEAVE, "admin_roles", return_value=set()),
 				patch.object(api.frappe, "get_roles", return_value=[]),
 			):

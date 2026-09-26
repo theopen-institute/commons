@@ -42,9 +42,7 @@ class Call(TestCase):
 		queue = list(answers)
 
 		def call(method, path, json_body=None, params=None):
-			self.sent.append(
-				{"method": method, "path": path, "body": json_body, "params": params}
-			)
+			self.sent.append({"method": method, "path": path, "body": json_body, "params": params})
 			answer = queue.pop(0)
 			if isinstance(answer, Exception):
 				raise answer

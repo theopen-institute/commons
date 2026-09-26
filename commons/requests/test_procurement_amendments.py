@@ -52,9 +52,7 @@ class TestProcurementAmendments(TestCase):
 	def test_workflow_allow_edit_role_controls_draft_editing(self):
 		workflow = SimpleNamespace(
 			workflow_state_field="workflow_state",
-			states=[
-				SimpleNamespace(state="Current", doc_status="0", allow_edit="Current Role")
-			],
+			states=[SimpleNamespace(state="Current", doc_status="0", allow_edit="Current Role")],
 		)
 		doc = SimpleNamespace(
 			docstatus=0,
@@ -72,9 +70,7 @@ class TestProcurementAmendments(TestCase):
 		self.assertFalse(api._can_edit_procurement_request(doc, workflow=None))
 
 	def test_frontend_save_preserves_catalogue_fields(self):
-		stored = SimpleNamespace(
-			items=[api.frappe._dict(name="ROW-1", item_code="ITEM-1", verified_rate=25)]
-		)
+		stored = SimpleNamespace(items=[api.frappe._dict(name="ROW-1", item_code="ITEM-1", verified_rate=25)])
 		items = [{"name": "ROW-1", "item_code": "ITEM-2", "verified_rate": 100}]
 		api._preserve_non_frontend_line_fields(items, stored)
 		self.assertEqual(items[0]["item_code"], "ITEM-1")

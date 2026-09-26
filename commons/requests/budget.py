@@ -146,14 +146,18 @@ def material_request_department(doc):
 		if row.get("procurement_request") and not row.get("procurement_request_item"):
 			frappe.throw(_("Row {0}: select the linked Procurement Request item as well.").format(row.idx))
 	linked = [row for row in doc.items if row.get("procurement_request_item")]
-	sources = {
-		source.name: source
-		for source in frappe.get_all(
-			"Procurement Request Item",
-			filters={"name": ["in", sorted({row.procurement_request_item for row in linked})]},
-			fields=["name", "parent", "item_code"],
-		)
-	} if linked else {}
+	sources = (
+		{
+			source.name: source
+			for source in frappe.get_all(
+				"Procurement Request Item",
+				filters={"name": ["in", sorted({row.procurement_request_item for row in linked})]},
+				fields=["name", "parent", "item_code"],
+			)
+		}
+		if linked
+		else {}
+	)
 	for row in linked:
 		source = sources.get(row.procurement_request_item)
 		if not source or source.parent != row.get("procurement_request") or source.item_code != row.item_code:
@@ -162,14 +166,18 @@ def material_request_department(doc):
 	requests = {source.parent for source in sources.values()}
 	if doc.get("procurement_request"):
 		requests.add(doc.procurement_request)
-	parents = {
-		parent.name: parent
-		for parent in frappe.get_all(
-			"Procurement Request",
-			filters={"name": ["in", sorted(requests)]},
-			fields=["name", "company", "department", "docstatus"],
-		)
-	} if requests else {}
+	parents = (
+		{
+			parent.name: parent
+			for parent in frappe.get_all(
+				"Procurement Request",
+				filters={"name": ["in", sorted(requests)]},
+				fields=["name", "company", "department", "docstatus"],
+			)
+		}
+		if requests
+		else {}
+	)
 	for name in sorted({source.parent for source in sources.values()}):
 		parent = parents.get(name)
 		# `docstatus` 1 *is* the approval -- approving is what submits a request --
@@ -306,7 +314,9 @@ def persist_amounts(name):
 	)
 	for row in doc.items:
 		if flt(stored.get(row.name)) != flt(row.amount):
-			frappe.db.set_value("Material Request Item", row.name, "amount", row.amount, update_modified=False)
+			frappe.db.set_value(
+				"Material Request Item", row.name, "amount", row.amount, update_modified=False
+			)
 	return doc, budget
 
 
@@ -340,9 +350,7 @@ def enforce_allocation(current, doc):
 	own = total(row for row in rows if row.parent == doc.name)
 	available = allocation - (charged - own)
 	frappe.throw(
-		_(
-			"Department {0}: this Material Request needs {1} {2}; only {3} remains. Shortfall: {4}."
-		).format(
+		_("Department {0}: this Material Request needs {1} {2}; only {3} remains. Shortfall: {4}.").format(
 			current.department,
 			current.currency,
 			f"{own:,.2f}",
@@ -377,9 +385,7 @@ def request_rows(budget, approved_only=False, lock=False):
 	# and an empty `isin` is not a query the database will accept.
 	open_states = () if approved_only else open_request_states()
 	decided_or_open = (
-		approved | ((request.docstatus == 0) & request.status.isin(open_states))
-		if open_states
-		else approved
+		approved | ((request.docstatus == 0) & request.status.isin(open_states)) if open_states else approved
 	)
 	query = (
 		frappe.qb.from_(item)
@@ -536,9 +542,7 @@ def enforce_request_allocation(doc, method=None):
 	if own <= available:
 		return
 	frappe.throw(
-		_(
-			"Department {0}: approving this request commits {1} {2}; only {3} remains. Shortfall: {4}."
-		).format(
+		_("Department {0}: approving this request commits {1} {2}; only {3} remains. Shortfall: {4}.").format(
 			current.department,
 			current.currency,
 			f"{own:,.2f}",
@@ -574,9 +578,7 @@ def can_view_summary(doc):
 	frappe.has_permission(doc.doctype, "read", doc=doc, throw=True)
 	if frappe.has_permission(BUDGET, "read"):
 		return True
-	return bool(
-		doc.approver == frappe.session.user and frappe.has_permission(doc.doctype, "submit", doc=doc)
-	)
+	return bool(doc.approver == frappe.session.user and frappe.has_permission(doc.doctype, "submit", doc=doc))
 
 
 def department_position(name, cache=None):

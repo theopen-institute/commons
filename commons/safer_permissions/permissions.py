@@ -128,9 +128,7 @@ def applicable_perms(user: str, doctype: str) -> list:
 	return [
 		perm
 		for perm in frappe.get_meta(doctype).permissions
-		if perm.role in roles
-		and cint(perm.permlevel) == 0
-		and any(perm.get(right) for right in READ_RIGHTS)
+		if perm.role in roles and cint(perm.permlevel) == 0 and any(perm.get(right) for right in READ_RIGHTS)
 	]
 
 
@@ -184,11 +182,7 @@ def gate_scope(user: str, doctype: str) -> str | None:
 	# row the read reaches. Read implies select in core, so a read row always
 	# covers; a select row covers only gated rows that grant no more than select.
 	gated_read = any(perm.get("read") for perm in applicable if perm.get(GATE))
-	ungated = [
-		perm
-		for perm in applicable
-		if not perm.get(GATE) and (perm.get("read") or not gated_read)
-	]
+	ungated = [perm for perm in applicable if not perm.get(GATE) and (perm.get("read") or not gated_read)]
 	if any(not perm.get(IF_OWNER) for perm in ungated):
 		return None
 

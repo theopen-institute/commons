@@ -515,9 +515,7 @@ class TestAccess(TestCase):
 	def test_each_gated_page_is_asked_by_its_own_test(self):
 		with_documents(self, [], [], claude_key=True)
 		self.with_permissions()
-		self.assertEqual(
-			pages.access(), {"attendance": True, "reconciliation": True, "capture": True}
-		)
+		self.assertEqual(pages.access(), {"attendance": True, "reconciliation": True, "capture": True})
 		self.assertCountEqual(
 			self.asked,
 			[
@@ -530,9 +528,7 @@ class TestAccess(TestCase):
 	def test_a_refusal_is_that_page_s_alone(self):
 		with_documents(self, [], [], claude_key=True)
 		self.with_permissions(refused=("Bank Transaction",))
-		self.assertEqual(
-			pages.access(), {"attendance": True, "reconciliation": False, "capture": True}
-		)
+		self.assertEqual(pages.access(), {"attendance": True, "reconciliation": False, "capture": True})
 
 	def test_a_page_the_site_does_not_have_is_no_without_asking(self):
 		with_documents(self, [], [], absent=("Bank Transaction",))
@@ -621,7 +617,9 @@ class TestConfiguredWorkspaces(TestCase):
 			[item("Staff", page="Announcements"), item("Money", page="Leave Request")],
 		)
 		found = {row["title"]: row for row in workspaces.workspaces()}
-		self.assertEqual((found["Staff"]["icon"], found["Staff"]["logo"]), ("lucide-users", "/files/mark.svg"))
+		self.assertEqual(
+			(found["Staff"]["icon"], found["Staff"]["logo"]), ("lucide-users", "/files/mark.svg")
+		)
 		# Null, not a guess: the frontend holds what this app's own mark is.
 		self.assertEqual((found["Money"]["icon"], found["Money"]["logo"]), (None, None))
 
@@ -716,7 +714,9 @@ class TestWorkspaceRows(TestCase):
 			workspace(rows=[row(1, page="Announcements", icon="lucide-rocket")]).validate_rows()
 
 	def test_an_icon_from_the_palette_is_kept(self):
-		workspace(icon="lucide-inbox", rows=[row(1, page="Announcements", icon="lucide-plane")]).validate_rows()
+		workspace(
+			icon="lucide-inbox", rows=[row(1, page="Announcements", icon="lucide-plane")]
+		).validate_rows()
 		self.assertFalse(self.throw.called)
 
 

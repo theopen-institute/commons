@@ -38,7 +38,11 @@ class Member(Document):
 	# end: auto-generated types
 
 	def validate(self):
-		self.full_name = (self.full_name_manual or "").strip() or " ".join(part.strip() for part in [self.first_name, self.middle_name, self.last_name] if part and part.strip())
+		self.full_name = (self.full_name_manual or "").strip() or " ".join(
+			part.strip()
+			for part in [self.first_name, self.middle_name, self.last_name]
+			if part and part.strip()
+		)
 
 		# A Member being inserted has no row for the detail record's `member_id`
 		# to point at yet, so its link would not validate. `after_insert` takes
@@ -74,7 +78,11 @@ class Member(Document):
 		# would collide with it; it is this member's record, so claim it instead.
 		if not name and frappe.db.exists(self.member_type, self.name):
 			details = frappe.get_doc(self.member_type, self.name)
-			if details.member_id and details.member_id != self.name and frappe.db.exists("Member", details.member_id):
+			if (
+				details.member_id
+				and details.member_id != self.name
+				and frappe.db.exists("Member", details.member_id)
+			):
 				frappe.throw(
 					_("{0} {1} already exists and belongs to Member {2}").format(
 						_(self.member_type), frappe.bold(self.name), frappe.bold(details.member_id)

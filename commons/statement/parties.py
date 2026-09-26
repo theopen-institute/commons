@@ -344,7 +344,9 @@ def _linked_rows(party_type: str, meta, links: tuple[str, ...], filters: dict, f
 	return []
 
 
-def party_condition(table, type_field: str, name_field: str, parties: list[Party], company_field: str = "company"):
+def party_condition(
+	table, type_field: str, name_field: str, parties: list[Party], company_field: str = "company"
+):
 	"""A `where` matching any of these parties, as pairs rather than as two lists.
 
 	Written once because getting it wrong is silent. `party` is a Dynamic Link,

@@ -128,7 +128,9 @@ class TemplateNotificationMixin:
 		if not self.get(FIELD):
 			return None
 		template = frappe.get_cached_doc(TEMPLATE, self.get(FIELD))
-		merged = template_context(doc, self._notification_context(doc), template, sender=self.get("sender_email"))
+		merged = template_context(
+			doc, self._notification_context(doc), template, sender=self.get("sender_email")
+		)
 		subject = template.subject or ""
 		if "{" in subject:
 			subject = frappe.render_template(subject, merged, restrict_globals=True)

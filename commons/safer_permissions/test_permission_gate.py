@@ -5,6 +5,7 @@ this user's set of roles put them behind the gate, and have they got past it.
 Everything underneath is core's, and is stubbed here.
 """
 
+from typing import ClassVar
 from unittest import TestCase, addModuleCleanup
 from unittest.mock import patch
 
@@ -115,9 +116,7 @@ class GateApplies(TestCase):
 		self.assertIsNone(self.check(["Sales User"], [perm("Employee", gated=True)]))
 
 	def test_select_only_access_is_still_gated(self):
-		self.assertEqual(
-			self.check(["Employee"], [perm("Employee", gated=True, right="select")]), NOTHING
-		)
+		self.assertEqual(self.check(["Employee"], [perm("Employee", gated=True, right="select")]), NOTHING)
 
 	def test_an_ungated_select_does_not_beat_a_gated_read(self):
 		"""Select for a link picker must not hand over the rows a gated read reaches."""
@@ -209,9 +208,7 @@ class GateApplies(TestCase):
 		self.assertIsNone(self.check(["Employee"], [perm("Employee", if_owner=True)]))
 
 	def test_administrator_is_never_gated(self):
-		with patch.object(
-			permissions.frappe, "get_meta", return_value=meta(perm("Employee", gated=True))
-		):
+		with patch.object(permissions.frappe, "get_meta", return_value=meta(perm("Employee", gated=True))):
 			self.assertFalse(permissions.gate_applies("Administrator", DOCTYPE))
 
 
@@ -220,7 +217,9 @@ class GateSatisfied(TestCase):
 
 	def check(self, user_permissions, constraining=("Employee", "Company")):
 		with (
-			patch.object(permissions.frappe.permissions, "get_user_permissions", return_value=user_permissions),
+			patch.object(
+				permissions.frappe.permissions, "get_user_permissions", return_value=user_permissions
+			),
 			patch.object(permissions, "constraining_doctypes", return_value=set(constraining)),
 		):
 			return permissions.gate_satisfied("employee@example.com", DOCTYPE)
@@ -403,7 +402,9 @@ class Forwarding(TestCase):
 			return report_name
 
 		self.assertEqual(
-			self.call(permissions.make_prepared_report, make, report_name="Salary Register", filters="{}", cmd="x"),
+			self.call(
+				permissions.make_prepared_report, make, report_name="Salary Register", filters="{}", cmd="x"
+			),
 			"Salary Register",
 		)
 
@@ -465,7 +466,7 @@ class CoreStillLooksTheSame(TestCase):
 	gets the report. So this checks the installed Frappe itself.
 	"""
 
-	OVERRIDES = {
+	OVERRIDES: ClassVar[dict[str, str]] = {
 		permissions.CORE_RUN: "commons.safer_permissions.permissions.run_query_report",
 		permissions.CORE_EXPORT: "commons.safer_permissions.permissions.export_query_report",
 		permissions.CORE_MAKE_PREPARED: "commons.safer_permissions.permissions.make_prepared_report",

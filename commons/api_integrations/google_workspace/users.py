@@ -55,8 +55,8 @@ Extending this
 The Directory API is large and this is the part of it this app has needed.
 Anything else is a call rather than a change here::
 
-	client.directory("GET", "orgunits", params={"customerId": "my_customer"})
-	client.directory("POST", f"users/{key}/signOut")
+        client.directory("GET", "orgunits", params={"customerId": "my_customer"})
+        client.directory("POST", f"users/{key}/signOut")
 
 with the caveat that anything needing a scope beyond `client.SCOPES` needs it
 added in two places -- see that constant.
@@ -249,14 +249,13 @@ def create(
 	`orgUnitPath` and `changePasswordAtNextLogin`, so a caller with its own
 	arrangement is not fighting this one. The ones worth knowing::
 
-		recoveryEmail="ann@example.net"          # personal address, for recovery
-		recoveryPhone="+254712345678"            # E.164, the leading + required
-		phones=[{"value": "+254712345678", "type": "mobile", "primary": True}]
-		organizations=[{"title": "Registrar", "department": "Admissions",
-		                "primary": True}]
-		externalIds=[{"value": "EMP-0041", "type": "organization"}]
-		orgUnitPath="/Staff"
-		suspended=True                           # created dormant
+	        recoveryEmail = "ann@example.net"  # personal address, for recovery
+	        recoveryPhone = "+254712345678"  # E.164, the leading + required
+	        phones = [{"value": "+254712345678", "type": "mobile", "primary": True}]
+	        organizations = [{"title": "Registrar", "department": "Admissions", "primary": True}]
+	        externalIds = [{"value": "EMP-0041", "type": "organization"}]
+	        orgUnitPath = "/Staff"
+	        suspended = True  # created dormant
 
 	Two of those are list-valued, and a list-valued field is *replaced* whole on
 	a later `update` rather than added to. That is harmless here, where there is
@@ -274,9 +273,9 @@ def create(
 	either, because this function returns an id. A caller that wants a usable
 	account makes the password itself, keeps it, and passes it::
 
-		password = users.generate_password()
-		user_id = users.create(email, "Ann", "Wanjiru", password=password)
-		# hand `password` to whoever is enrolling them, once, and keep no copy
+	        password = users.generate_password()
+	        user_id = users.create(email, "Ann", "Wanjiru", password=password)
+	        # hand `password` to whoever is enrolling them, once, and keep no copy
 
 	Calling this without a password creates a real, billed account that nobody
 	can sign in to until `set_password` is called -- which is a legitimate thing
@@ -396,10 +395,10 @@ def update(user_key: str, **fields) -> dict:
 	removes every entry that was there. To add a phone number to somebody who
 	has one, read the account, append, and send the whole list::
 
-		account = users.get(user_id)
-		phones = account.get("phones") or []
-		phones.append({"value": "+254712345678", "type": "mobile"})
-		users.update(user_id, phones=phones)
+	        account = users.get(user_id)
+	        phones = account.get("phones") or []
+	        phones.append({"value": "+254712345678", "type": "mobile"})
+	        users.update(user_id, phones=phones)
 
 	This is why `emails` is a poor place to put a second address and `aliases`
 	or `recoveryEmail` are the good ones. `emails` also carries the primary

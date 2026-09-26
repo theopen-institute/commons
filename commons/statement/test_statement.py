@@ -210,9 +210,7 @@ class TestTheHeadlineFigures(TestCase):
 		owed 500 are +500 and +500 in their own conventions, and the two
 		conventions run opposite ways -- so added as they stand they come to
 		1,000 when the reader's net position is nought."""
-		totals = api._totals(
-			[self.account(500), self.account(500, account_type="Payable")], []
-		)
+		totals = api._totals([self.account(500), self.account(500, account_type="Payable")], [])
 		self.assertEqual(totals[0]["account"], 0.0)
 
 	def loan(self, outstanding, currency="NPR"):
@@ -384,9 +382,13 @@ class TestWhoMayReadSomebodyElsesStatement(TestCase):
 		self.mine = party(party_type="Student", name="me@example.com")
 		self.theirs = party(party_type="Student", name="them@example.com")
 		self.enterContext(
-			patch.object(parties, "_party", side_effect=lambda doctype, name: Party(
-				party_type=doctype, name=name, title="Someone", account_type="Receivable"
-			))
+			patch.object(
+				parties,
+				"_party",
+				side_effect=lambda doctype, name: Party(
+					party_type=doctype, name=name, title="Someone", account_type="Receivable"
+				),
+			)
 		)
 		self.enterContext(patch.object(parties, "session_parties", return_value=[self.mine]))
 
@@ -460,7 +462,9 @@ class TestDownloadingWithoutThePrintFormat(TestCase):
 			patch.object(
 				api.parties,
 				"named",
-				return_value=Party(party_type="Student", name="me@example.com", title="Me", account_type="Receivable"),
+				return_value=Party(
+					party_type="Student", name="me@example.com", title="Me", account_type="Receivable"
+				),
 			)
 		)
 		self.printed = self.enterContext(patch.object(api.frappe, "get_print", return_value=b"%PDF"))
@@ -503,7 +507,9 @@ class TestDownloadingWithoutThePrintFormat(TestCase):
 			patch.object(api, "_filename", return_value="Me statement"),
 		):
 			api.download_statement("Student", "me@example.com")
-		self.assertEqual(self.printed.call_args.args[:3], ("Student", "me@example.com", "Student Account Statement"))
+		self.assertEqual(
+			self.printed.call_args.args[:3], ("Student", "me@example.com", "Student Account Statement")
+		)
 		self.assertEqual(response.type, "pdf")
 
 	def test_print_permissions_are_put_back_as_they_were_found(self):
@@ -512,7 +518,9 @@ class TestDownloadingWithoutThePrintFormat(TestCase):
 		self.site_with(("Student Account Statement", "Student", 0))
 		flags = frappe._dict(ignore_print_permissions="set by the caller")
 		seen = []
-		self.printed.side_effect = lambda *args, **kwargs: seen.append(flags.ignore_print_permissions) or b"%PDF"
+		self.printed.side_effect = (
+			lambda *args, **kwargs: seen.append(flags.ignore_print_permissions) or b"%PDF"
+		)
 		with (
 			patch.object(api.frappe, "local", SimpleNamespace(response=SimpleNamespace())),
 			patch.object(api.frappe, "flags", flags),
@@ -531,11 +539,26 @@ def _matching(sql_condition, rows):
 	condition *evaluates*, `NULL` included, and a string that looks right can
 	still drop every row whose `against_voucher_type` is empty.
 	"""
-	columns = ("name", "party_type", "party", "company", "account", "voucher_type", "against_voucher_type", "is_cancelled")
+	columns = (
+		"name",
+		"party_type",
+		"party",
+		"company",
+		"account",
+		"voucher_type",
+		"against_voucher_type",
+		"is_cancelled",
+	)
 	db = sqlite3.connect(":memory:")
 	db.execute(f'CREATE TABLE "tabGL Entry" ({", ".join(columns)})')
 	for row in rows:
-		values = {"party_type": "Customer", "party": "CUST-0001", "company": "A", "is_cancelled": 0, "against_voucher_type": None}
+		values = {
+			"party_type": "Customer",
+			"party": "CUST-0001",
+			"company": "A",
+			"is_cancelled": 0,
+			"against_voucher_type": None,
+		}
 		values.update(row)
 		db.execute(
 			f'INSERT INTO "tabGL Entry" VALUES ({", ".join("?" for _ in columns)})',
@@ -560,11 +583,31 @@ class TestWhatTheLoanExclusionLeavesOut(TestCase):
 
 	ROWS = (
 		{"name": "invoice", "account": "Debtors - X", "voucher_type": "Sales Invoice"},
-		{"name": "payment", "account": "Debtors - X", "voucher_type": "Payment Entry", "against_voucher_type": "Sales Invoice"},
-		{"name": "loan-demand", "account": "Debtors - X", "voucher_type": "Loan Demand", "against_voucher_type": "Loan"},
+		{
+			"name": "payment",
+			"account": "Debtors - X",
+			"voucher_type": "Payment Entry",
+			"against_voucher_type": "Sales Invoice",
+		},
+		{
+			"name": "loan-demand",
+			"account": "Debtors - X",
+			"voucher_type": "Loan Demand",
+			"against_voucher_type": "Loan",
+		},
 		{"name": "loan-opening", "account": "Debtors - X", "voucher_type": "Loan"},
-		{"name": "je-against-loan", "account": "Debtors - X", "voucher_type": "Journal Entry", "against_voucher_type": "Loan"},
-		{"name": "principal", "account": "Loan Account - X", "voucher_type": "Loan Disbursement", "against_voucher_type": "Loan"},
+		{
+			"name": "je-against-loan",
+			"account": "Debtors - X",
+			"voucher_type": "Journal Entry",
+			"against_voucher_type": "Loan",
+		},
+		{
+			"name": "principal",
+			"account": "Loan Account - X",
+			"voucher_type": "Loan Disbursement",
+			"against_voucher_type": "Loan",
+		},
 		{"name": "principal-by-je", "account": "Loan Account - X", "voucher_type": "Journal Entry"},
 	)
 
@@ -609,7 +652,9 @@ class TestWhichLoanAccountsAreTradeAccounts(TestCase):
 			loans.PARTY_ACCOUNT: {"Special Debtors - X"},
 		}
 		self.enterContext(
-			patch.object(loans, "_accounts_named_by", side_effect=lambda doctype, filters: set(named[doctype]))
+			patch.object(
+				loans, "_accounts_named_by", side_effect=lambda doctype, filters: set(named[doctype])
+			)
 		)
 		receivable_or_payable = {"Debtors - X", "Creditors - X", "Special Debtors - X", "Loan Account - X"}
 		self.enterContext(
@@ -647,9 +692,13 @@ class TestAStatementReadThroughTheDesk(TestCase):
 	def setUp(self):
 		self.enterContext(patch.object(parties.frappe, "throw", side_effect=_raise))
 		self.enterContext(
-			patch.object(parties, "_party", side_effect=lambda doctype, name: Party(
-				party_type=doctype, name=name, title="Someone", account_type="Receivable"
-			))
+			patch.object(
+				parties,
+				"_party",
+				side_effect=lambda doctype, name: Party(
+					party_type=doctype, name=name, title="Someone", account_type="Receivable"
+				),
+			)
 		)
 		self.enterContext(
 			patch.object(parties.frappe, "has_permission", side_effect=lambda *args, **kwargs: True)

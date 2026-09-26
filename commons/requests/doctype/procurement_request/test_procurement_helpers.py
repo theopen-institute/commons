@@ -25,24 +25,34 @@ class TestProcurementHelpers(TestCase):
 		# converting it back into the request's unit is this helper's.
 		self.enterContext(patch.object(procurement, "ordered_stock_qty", return_value={"ROW": 24}))
 		row = SimpleNamespace(name="ROW", item_code="ITEM", uom="Box")
-		with patch("erpnext.stock.get_item_details.get_conversion_factor", return_value={"conversion_factor": 12}):
+		with patch(
+			"erpnext.stock.get_item_details.get_conversion_factor", return_value={"conversion_factor": 12}
+		):
 			self.assertEqual(procurement.get_committed_qty_map("PR", [row]), {"ROW": 2})
 		row.uom = "Nos"
-		with patch("erpnext.stock.get_item_details.get_conversion_factor", return_value={"conversion_factor": 1}):
+		with patch(
+			"erpnext.stock.get_item_details.get_conversion_factor", return_value={"conversion_factor": 1}
+		):
 			self.assertEqual(procurement.get_committed_qty_map("PR", [row]), {"ROW": 24})
 
 	def test_material_request_uses_effective_rate_and_parent_date(self):
 		row = SimpleNamespace(name="ROW", item_code="ITEM", uom="Box", estimated_rate=10, verified_rate=24)
-		source = SimpleNamespace(docstatus=1, status="Approved", items=[row], schedule_date="2026-09-20", company="Company")
+		source = SimpleNamespace(
+			docstatus=1, status="Approved", items=[row], schedule_date="2026-09-20", company="Company"
+		)
 		self.frappe.get_doc.return_value = source
 		target = SimpleNamespace()
+
 		def map_document(doctype, name, mapping, target_doc):
 			mapping["Procurement Request Item"]["postprocess"](row, target, source)
 			return target
+
 		with (
 			patch.object(procurement, "_selection", return_value={"ROW": 2}),
 			patch.object(procurement, "get_mapped_doc", side_effect=map_document),
-			patch("erpnext.stock.get_item_details.get_conversion_factor", return_value={"conversion_factor": 12}),
+			patch(
+				"erpnext.stock.get_item_details.get_conversion_factor", return_value={"conversion_factor": 12}
+			),
 		):
 			procurement.make_material_request("PR")
 			self.assertEqual((target.rate, target.stock_qty, target.schedule_date), (24, 24, "2026-09-20"))

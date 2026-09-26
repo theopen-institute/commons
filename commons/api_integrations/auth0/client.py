@@ -5,8 +5,8 @@ Everything this integration does to Auth0 goes through `management` below, and
 hundred endpoints; `users` wraps the handful this app has needed so far, and
 anything else is one line at the call site rather than a change to this file::
 
-	client.management("GET", "roles")
-	client.management("POST", f"users/{user_id}/roles", json_body={"roles": [...]})
+        client.management("GET", "roles")
+        client.management("POST", f"users/{user_id}/roles", json_body={"roles": [...]})
 
 What the single way in settles, once:
 

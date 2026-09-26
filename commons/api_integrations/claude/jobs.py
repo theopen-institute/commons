@@ -87,7 +87,13 @@ class Job:
 		frappe.cache.set_value(self.file_key(token), content, expires_in_sec=self.ttl)
 		self.save(
 			token,
-			{**state, "status": "queued", "user": frappe.session.user, "queued_at": time.time(), "started_at": None},
+			{
+				**state,
+				"status": "queued",
+				"user": frappe.session.user,
+				"queued_at": time.time(),
+				"started_at": None,
+			},
 		)
 		frappe.enqueue(self.method, queue="long", timeout=self.timeout, token=token)
 		return token

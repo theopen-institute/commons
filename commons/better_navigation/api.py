@@ -26,8 +26,8 @@ of them.
 
 import frappe
 
-from commons.commons_core.settings import title
 from commons.better_navigation import pages, workspaces
+from commons.commons_core.settings import title
 
 
 @frappe.whitelist()

@@ -48,7 +48,6 @@ opened, no attachment is served, no other party is named, and the line's
 description is the ledger's own remark rather than the document behind it.
 """
 
-
 import frappe
 
 

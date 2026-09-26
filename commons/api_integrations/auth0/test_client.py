@@ -259,14 +259,22 @@ class Errors(TestCase):
 
 	def test_an_unreachable_tenant_never_logs_the_frames(self):
 		"""Their locals hold the management token and, for the token exchange, the client secret."""
-		session = SimpleNamespace(request=lambda *args, **kwargs: (_ for _ in ()).throw(ConnectionError("down")))
+		session = SimpleNamespace(
+			request=lambda *args, **kwargs: (_ for _ in ()).throw(ConnectionError("down"))
+		)
 		with (
 			patch.object(client.http, "session", return_value=session),
 			patch.object(client.frappe, "log_error") as log_error,
 			patch.object(client.frappe, "throw", side_effect=throw),
 			self.assertRaises(client.Auth0Error),
 		):
-			client._send("POST", "https://example.eu.auth0.com/oauth/token", "secret-token", {"client_secret": "shhh"}, None)
+			client._send(
+				"POST",
+				"https://example.eu.auth0.com/oauth/token",
+				"secret-token",
+				{"client_secret": "shhh"},
+				None,
+			)
 		log_error.assert_called_once()
 		logged = log_error.call_args.kwargs.get("message")
 		self.assertIsNotNone(logged, "log_error without a message writes every frame's locals")

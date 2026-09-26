@@ -84,7 +84,9 @@ class TestAskingAfterIt(JobTestCase):
 
 	def test_a_job_running_past_its_timeout_is_reported_failed(self):
 		self.put(status="reading", queued_at=time.time() - 1000, started_at=time.time() - self.job.limit - 1)
-		self.assertEqual(self.job.status("T", lost="It stopped."), {"status": "failed", "error": "It stopped."})
+		self.assertEqual(
+			self.job.status("T", lost="It stopped."), {"status": "failed", "error": "It stopped."}
+		)
 
 	def test_a_long_wait_in_the_queue_before_a_long_run_is_not_counted_against_it(self):
 		self.put(status="reading", queued_at=time.time() - 10_000, started_at=time.time() - 10)

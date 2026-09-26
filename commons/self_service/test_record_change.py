@@ -828,9 +828,7 @@ class TestBankAccountPolicy(unittest.TestCase):
 		# field to propose at all. Only the last varies between sites, so it is
 		# read rather than assumed -- the invariant is that the payload agrees
 		# with the configuration, not that this site's is read-only.
-		self.assertEqual(
-			permissions["request"], bool(registry.proposable_fields(RECORD_BANK))
-		)
+		self.assertEqual(permissions["request"], bool(registry.proposable_fields(RECORD_BANK)))
 
 	def test_an_account_you_may_not_read_is_forbidden_not_empty(self):
 		"""Existence is the discriminator: a row is there and the site is

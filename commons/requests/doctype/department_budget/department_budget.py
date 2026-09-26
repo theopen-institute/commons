@@ -32,9 +32,7 @@ class DepartmentBudget(Document):
 		"""An amendment restates the amount, never the budget's identity."""
 		if not self.amended_from:
 			return
-		previous = frappe.db.get_value(
-			"Department Budget", self.amended_from, IDENTITY, as_dict=True
-		)
+		previous = frappe.db.get_value("Department Budget", self.amended_from, IDENTITY, as_dict=True)
 		if previous and any(self.get(field) != previous.get(field) for field in IDENTITY):
 			frappe.throw(
 				_(

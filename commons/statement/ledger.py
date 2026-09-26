@@ -302,4 +302,3 @@ def _scope(table, parties: list[Party], excluded: loans.LedgerExclusion):
 			lending_owned = lending_owned | table.voucher_type.isin(list(excluded.voucher_types))
 		condition = condition & ~(table.account.isin(sorted(excluded.shared)) & lending_owned)
 	return condition
-

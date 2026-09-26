@@ -173,7 +173,9 @@ ROWS = _object(
 				{
 					"date": DATE,
 					"description": STRING,
-					"reference": _nullable(STRING, "Cheque number or transaction reference, if in its own column."),
+					"reference": _nullable(
+						STRING, "Cheque number or transaction reference, if in its own column."
+					),
 					"withdrawal": {"type": "number", "description": "Money out of the account, or 0."},
 					"deposit": {"type": "number", "description": "Money into the account, or 0."},
 					"balance": _nullable(NUMBER, "The running balance printed on this row, if any."),
@@ -205,7 +207,9 @@ MAPPING = _object(
 			{"type": "string", "enum": ["negative_is_withdrawal", "positive_is_withdrawal"]},
 			"How the single amount column says which way the money went, when there is no Dr/Cr column.",
 		),
-		"direction_column": _nullable(INTEGER, "A column saying Dr/Cr or Debit/Credit beside a single amount."),
+		"direction_column": _nullable(
+			INTEGER, "A column saying Dr/Cr or Debit/Credit beside a single amount."
+		),
 		"balance_column": COLUMN,
 	}
 )
@@ -500,9 +504,7 @@ def _read_mapping(grid: list[list]) -> dict:
 	response = claude.create_message(
 		max_tokens=4000,
 		output_config={"effort": "medium", "format": {"type": "json_schema", "schema": MAPPING}},
-		messages=[
-			{"role": "user", "content": f"{MAPPING_INSTRUCTIONS}\n\n<rows>\n{sample(grid)}\n</rows>"}
-		],
+		messages=[{"role": "user", "content": f"{MAPPING_INSTRUCTIONS}\n\n<rows>\n{sample(grid)}\n</rows>"}],
 	)
 	if response.stop_reason == "refusal":
 		claude.fail(_("Claude declined to read this statement."))
@@ -734,9 +736,14 @@ def _unseparated(figure: str) -> float | None:
 	grouping = {",", "."} - {decimal}
 	groups = re.split(r"[,.]", whole)
 	if len(groups) > 1:
-		if any(sep not in grouping for sep in re.findall(r"[,.]", whole)) or len(set(re.findall(r"[,.]", whole))) > 1:
+		if (
+			any(sep not in grouping for sep in re.findall(r"[,.]", whole))
+			or len(set(re.findall(r"[,.]", whole))) > 1
+		):
 			return None
-		if not (1 <= len(groups[0]) <= 3 and all(len(g) in (2, 3) for g in groups[1:-1]) and len(groups[-1]) == 3):
+		if not (
+			1 <= len(groups[0]) <= 3 and all(len(g) in (2, 3) for g in groups[1:-1]) and len(groups[-1]) == 3
+		):
 			return None
 	return float("".join(groups) + ("." + fraction if fraction else ""))
 

@@ -271,7 +271,9 @@ class AdministratorsAreLeftToTheAdminConsole(TestCase):
 	def refuse(self, record, impersonated="super@example.org"):
 		with (
 			patch.object(api.users, "get", return_value=record),
-			patch.object(api.client, "credentials", return_value=type("C", (), {"admin_email": impersonated})()),
+			patch.object(
+				api.client, "credentials", return_value=type("C", (), {"admin_email": impersonated})()
+			),
 			patch.object(api.frappe, "throw", throw),
 			patch.object(api, "_", _format),
 		):
@@ -301,7 +303,15 @@ class AdministratorsAreLeftToTheAdminConsole(TestCase):
 	def test_every_endpoint_that_changes_an_account_asks(self):
 		import inspect
 
-		changing = ["update_user", "set_user_password", "suspend_user", "add_user_alias", "remove_user_alias", "set_user_photo", "remove_user_photo"]
+		changing = [
+			"update_user",
+			"set_user_password",
+			"suspend_user",
+			"add_user_alias",
+			"remove_user_alias",
+			"set_user_photo",
+			"remove_user_photo",
+		]
 		for name in changing:
 			with self.subTest(endpoint=name):
 				self.assertIn("_refuse_administrators(user_key)", inspect.getsource(getattr(api, name)))

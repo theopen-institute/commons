@@ -5,8 +5,8 @@ Everything this integration does to Google goes through `directory` below, and
 endpoints; `users` wraps the handful this app has needed so far, and anything
 else is one line at the call site rather than a change to this file::
 
-	client.directory("GET", "orgunits", params={"customerId": "my_customer"})
-	client.directory("POST", f"users/{key}/makeAdmin", json_body={"status": True})
+        client.directory("GET", "orgunits", params={"customerId": "my_customer"})
+        client.directory("POST", f"users/{key}/makeAdmin", json_body={"status": True})
 
 Why a service account acting as somebody
 -----------------------------------------
@@ -71,7 +71,7 @@ a doctype any System Manager can read.
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any
 
 import frappe
@@ -448,8 +448,8 @@ def _lifetime(expiry) -> int:
 	if not expiry:
 		return FALLBACK_TTL
 	if expiry.tzinfo is None:
-		expiry = expiry.replace(tzinfo=timezone.utc)
-	return max(int((expiry - datetime.now(timezone.utc)).total_seconds()), 0)
+		expiry = expiry.replace(tzinfo=UTC)
+	return max(int((expiry - datetime.now(UTC)).total_seconds()), 0)
 
 
 def directory(

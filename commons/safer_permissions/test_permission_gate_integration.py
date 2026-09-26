@@ -15,8 +15,8 @@ System User holds an ungated role and the gate correctly stands down.
 import unittest
 
 import frappe
-
 from frappe.utils.fixtures import sync_fixtures
+
 from commons import testing
 from commons.safer_permissions.permissions import GATE
 
@@ -155,9 +155,7 @@ class TestPermissionGate(unittest.TestCase):
 		frappe.clear_cache(user=GATED_USER)
 
 		frappe.set_user(GATED_USER)
-		visible = set(
-			frappe.get_list(DOCTYPE, filters={"name": ["in", (MINE, THEIRS, OWNED)]}, pluck="name")
-		)
+		visible = set(frappe.get_list(DOCTYPE, filters={"name": ["in", (MINE, THEIRS, OWNED)]}, pluck="name"))
 		self.assertEqual(visible, {OWNED})
 		self.assertTrue(self.readable(GATED_USER, OWNED))
 		self.assertFalse(self.readable(GATED_USER, THEIRS))
@@ -290,12 +288,21 @@ def _register_gate():
 
 
 def _retire_gate(had_custom_perms: bool):
-	stale = {"parent": DOCTYPE} if not had_custom_perms else {"parent": DOCTYPE, "role": ["in", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE, PICKER_ROLE)]}
+	stale = (
+		{"parent": DOCTYPE}
+		if not had_custom_perms
+		else {"parent": DOCTYPE, "role": ["in", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE, PICKER_ROLE)]}
+	)
 	for name in frappe.get_all("Custom DocPerm", filters=stale, pluck="name"):
 		frappe.delete_doc("Custom DocPerm", name, force=True, ignore_permissions=True)
 
 	_drop_user_permissions()
-	for doctype, names in (("Report", (REPORT,)), (DOCTYPE, (MINE, THEIRS, OWNED)), ("User", (GATED_USER, OPEN_USER)), ("Role", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE, PICKER_ROLE))):
+	for doctype, names in (
+		("Report", (REPORT,)),
+		(DOCTYPE, (MINE, THEIRS, OWNED)),
+		("User", (GATED_USER, OPEN_USER)),
+		("Role", (GATED_ROLE, OPEN_ROLE, OWNER_ROLE, PICKER_ROLE)),
+	):
 		for name in names:
 			if frappe.db.exists(doctype, name):
 				frappe.delete_doc(doctype, name, force=True, ignore_permissions=True)

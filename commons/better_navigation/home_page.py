@@ -6,10 +6,10 @@
 `frappe.website.utils.get_home_page` takes the *first* of the user's roles that
 names a home page and stops::
 
-	for role in frappe.get_roles():
-		home_page = frappe.db.get_value("Role", role, "home_page")
-		if home_page:
-			break
+        for role in frappe.get_roles():
+            home_page = frappe.db.get_value("Role", role, "home_page")
+            if home_page:
+                break
 
 and `frappe.permissions.get_roles` has no `ORDER BY` in either branch -- a normal
 user's roles come back in whatever order the `Has Role` child rows are stored in

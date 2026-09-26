@@ -30,8 +30,8 @@ The Directory API is large and `users` covers what has been needed. Everything
 else is a call rather than a change to this integration, because `client.directory`
 is public and carries the token, the retry and the error handling::
 
-	client.directory("GET", "orgunits", params={"customerId": "my_customer"})
-	client.directory("GET", f"users/{key}/tokens")
+        client.directory("GET", "orgunits", params={"customerId": "my_customer"})
+        client.directory("GET", f"users/{key}/tokens")
 
 with one caveat that has no equivalent in the Auth0 integration: a call needing a
 scope this app does not already ask for will fail until that scope is added

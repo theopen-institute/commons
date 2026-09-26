@@ -196,16 +196,16 @@ def _lending_doctypes() -> tuple[str, ...]:
 	"""
 	modules = frappe.get_module_list(LENDING)
 	return tuple(
-		frappe.get_all("DocType", filters={"module": ["in", list(modules)]}, pluck="name", order_by="name asc")
+		frappe.get_all(
+			"DocType", filters={"module": ["in", list(modules)]}, pluck="name", order_by="name asc"
+		)
 	)
 
 
 def _accounts_named_by(doctype: str, filters) -> set[str]:
 	"""The distinct accounts named by every row of `doctype` this filter selects."""
 	fields = [
-		field.fieldname
-		for field in frappe.get_meta(doctype).get_link_fields()
-		if field.options == "Account"
+		field.fieldname for field in frappe.get_meta(doctype).get_link_fields() if field.options == "Account"
 	]
 	if not fields:
 		return set()

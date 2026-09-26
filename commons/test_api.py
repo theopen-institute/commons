@@ -20,9 +20,7 @@ from commons import api
 
 class TestSessionEmployeeAccess(TestCase):
 	def setUp(self):
-		self.session = patch.object(
-			api.frappe, "session", SimpleNamespace(user="employee@example.com")
-		)
+		self.session = patch.object(api.frappe, "session", SimpleNamespace(user="employee@example.com"))
 		self.session.start()
 		self.addCleanup(self.session.stop)
 
@@ -112,8 +110,6 @@ class TestSessionEmployeeAccess(TestCase):
 		with (
 			patch.object(api.frappe, "has_permission", side_effect=AssertionError),
 			patch.object(api.frappe, "get_list", side_effect=AssertionError),
-			patch.object(
-				api.frappe, "db", SimpleNamespace(exists=self.stub(True, employee_doctype=False))
-			),
+			patch.object(api.frappe, "db", SimpleNamespace(exists=self.stub(True, employee_doctype=False))),
 		):
 			self.assertIsNone(api.session_employee(["name"]))

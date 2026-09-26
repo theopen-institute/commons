@@ -22,8 +22,8 @@ The Management API is large and `users` covers what has been needed. Everything
 else is a call rather than a change to this integration, because `client.management`
 is public and carries the token, the retry and the error handling::
 
-	client.management("GET", "roles")
-	client.management("POST", f"users/{user_id}/roles", json_body={"roles": [...]})
+        client.management("GET", "roles")
+        client.management("POST", f"users/{user_id}/roles", json_body={"roles": [...]})
 
 Why app code and not a Server Script
 -------------------------------------

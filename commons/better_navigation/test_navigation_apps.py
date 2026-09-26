@@ -91,7 +91,9 @@ class TestFallback(TestCase):
 		self.assertEqual(entry["logo"], "/erpnext.svg")
 
 	def test_which_app_a_sidebar_belongs_to(self):
-		self.assertEqual(installed_app_of(sidebar("A", app="erpnext", module="Education"), MODULES, ICONS), "erpnext")
+		self.assertEqual(
+			installed_app_of(sidebar("A", app="erpnext", module="Education"), MODULES, ICONS), "erpnext"
+		)
 		self.assertEqual(installed_app_of(sidebar("A", module=" Education "), MODULES, ICONS), "education")
 		self.assertEqual(installed_app_of(sidebar("Helpdesk"), MODULES, ICONS), "helpdesk")
 		self.assertIsNone(installed_app_of(sidebar("Nowhere"), MODULES, ICONS))
@@ -119,7 +121,9 @@ class TestConfigured(TestCase):
 		self.assertEqual(entry["sidebars"][0], {"sidebar": "Accounting", "label": "Books", "icon": None})
 
 	def test_modules_sort_by_the_label_the_menu_shows(self):
-		entry = rail([app("Finance", "Accounting", "Stock", labels={"Stock": "Inventory", "Accounting": "Books"})])[0]
+		entry = rail(
+			[app("Finance", "Accounting", "Stock", labels={"Stock": "Inventory", "Accounting": "Books"})]
+		)[0]
 		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Books", "Inventory"])
 
 	def test_first_claim_wins(self):

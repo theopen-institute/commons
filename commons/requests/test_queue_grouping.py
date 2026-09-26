@@ -65,9 +65,7 @@ class TestGroupByDepartment(TestCase):
 		self.assertEqual([group["department"] for group in groups], ["Estates", "Works"])
 
 	def test_a_request_without_a_department_sorts_last(self):
-		groups = group_by_department(
-			[request("A", None), request("B", "Estates", budget="B-1")]
-		)
+		groups = group_by_department([request("A", None), request("B", "Estates", budget="B-1")])
 		self.assertEqual([group["department"] for group in groups], ["Estates", None])
 
 	def test_the_department_falls_back_to_the_one_the_budget_names(self):

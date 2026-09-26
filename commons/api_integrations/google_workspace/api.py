@@ -71,18 +71,18 @@ Calling this from a Server Script
 `frappe.call` in the sandbox resolves dotted paths to whitelisted methods, and
 unlike a script calling a script it returns a value::
 
-	answer = frappe.call(
-		"commons.api_integrations.google_workspace.api.ensure_user",
-		email=doc["company_email"],
-		given_name=doc["first_name"],
-		family_name=doc["last_name"],
-		phone=doc["cell_number"],
-		recovery_email=doc["personal_email"],
-	)
-	frappe.db.set_value(doc["doctype"], doc["name"], "custom_google_id", answer["id"])
-	if answer["created"]:
-		# hand answer["password"] to whoever is enrolling them, and keep no copy
-		...
+        answer = frappe.call(
+            "commons.api_integrations.google_workspace.api.ensure_user",
+            email=doc["company_email"],
+            given_name=doc["first_name"],
+            family_name=doc["last_name"],
+            phone=doc["cell_number"],
+            recovery_email=doc["personal_email"],
+        )
+        frappe.db.set_value(doc["doctype"], doc["name"], "custom_google_id", answer["id"])
+        if answer["created"]:
+            # hand answer["password"] to whoever is enrolling them, and keep no copy
+            ...
 
 That is the whole of what such a script needs to contain: no domain, no service
 account, no private key, no assertion, and no `except` clause reaching for a
@@ -129,11 +129,15 @@ def _refuse_administrators(user_key: str) -> None:
 	addresses = {(record.get("primaryEmail") or "").lower()} | {
 		(entry.get("address") or "").lower() for entry in record.get("emails") or []
 	}
-	if record.get("isAdmin") or record.get("isDelegatedAdmin") or (impersonated and impersonated in addresses):
+	if (
+		record.get("isAdmin")
+		or record.get("isDelegatedAdmin")
+		or (impersonated and impersonated in addresses)
+	):
 		frappe.throw(
-			_("{0} is a Google Workspace administrator. Change administrator accounts in the Admin console.").format(
-				record.get("primaryEmail") or user_key
-			),
+			_(
+				"{0} is a Google Workspace administrator. Change administrator accounts in the Admin console."
+			).format(record.get("primaryEmail") or user_key),
 			frappe.PermissionError,
 		)
 
@@ -283,8 +287,8 @@ def ensure_user(
 	retry, or somebody pressing the button twice -- and the answer says which
 	of those happened::
 
-		{"id": "114...", "created": True, "password": "xK4$..."}
-		{"id": "114...", "created": False, "password": None}
+	        {"id": "114...", "created": True, "password": "xK4$..."}
+	        {"id": "114...", "created": False, "password": None}
 
 	`created` is not a guess and not the result of a lookup done beforehand,
 	which a second request arriving in between would make wrong. It is which

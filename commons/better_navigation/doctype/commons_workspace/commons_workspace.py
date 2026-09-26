@@ -92,9 +92,7 @@ class CommonsWorkspace(Document):
 			if not target:
 				# `mandatory_depends_on` catches this on the form; a row built by
 				# an import or a script gets the same answer here.
-				frappe.throw(
-					_("Row {0}: choose the {1} this row opens.").format(row.idx, _(row.item_type))
-				)
+				frappe.throw(_("Row {0}: choose the {1} this row opens.").format(row.idx, _(row.item_type)))
 			if row.item_type == "Page" and target not in PAGES:
 				frappe.throw(
 					_("Row {0}: {1} is not a page this app has. Choose one of: {2}.").format(

@@ -13,7 +13,7 @@ translation.
 """
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
@@ -203,12 +203,12 @@ class CacheKey(TestCase):
 
 class Lifetime(TestCase):
 	def test_an_aware_expiry_is_measured(self):
-		ahead = datetime.now(timezone.utc) + timedelta(seconds=3600)
+		ahead = datetime.now(UTC) + timedelta(seconds=3600)
 		self.assertAlmostEqual(client._lifetime(ahead), 3600, delta=5)
 
 	def test_a_naive_expiry_is_read_as_utc_rather_than_raising(self):
 		"""Which version of google-auth is installed decides which of these arrives."""
-		ahead = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=3600)
+		ahead = datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=3600)
 		self.assertAlmostEqual(client._lifetime(ahead), 3600, delta=5)
 
 	def test_no_expiry_falls_back_rather_than_caching_forever(self):
@@ -216,7 +216,7 @@ class Lifetime(TestCase):
 
 	def test_an_expiry_already_past_has_no_life_left(self):
 		"""A skewed clock should re-mint, not serve a dead token for an hour."""
-		behind = datetime.now(timezone.utc) - timedelta(seconds=120)
+		behind = datetime.now(UTC) - timedelta(seconds=120)
 		self.assertEqual(client._lifetime(behind), 0)
 
 

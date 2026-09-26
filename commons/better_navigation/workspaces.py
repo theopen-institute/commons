@@ -39,9 +39,9 @@ invalidate for no measurable gain.
 
 import frappe
 
-from commons.self_service import registry
 from commons.better_navigation import pages as page_list
 from commons.better_navigation.pages import DEFAULT_REQUEST_PAGES, PAGES
+from commons.self_service import registry
 
 WORKSPACE = "Commons Workspace"
 ITEM = "Commons Workspace Item"
@@ -134,9 +134,7 @@ def _configured() -> list[dict]:
 
 	found: list[dict] = []
 	for row in rows:
-		entries = [
-			entry for entry in (_entry(item) for item in by_parent.get(row.name) or []) if entry
-		]
+		entries = [entry for entry in (_entry(item) for item in by_parent.get(row.name) or []) if entry]
 		if not entries:
 			continue
 		found.append(

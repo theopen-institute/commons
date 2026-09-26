@@ -108,9 +108,7 @@ class TestApproversAreScopedToTheSession(unittest.TestCase):
 		"""`Shift Request` is HRMS's to answer for and not this app's."""
 		with patch.object(approvers, "session_employee_name", return_value="HR-EMP-MINE"):
 			self.assertIsNone(
-				self._filters_handed_to_hrms(
-					{"employee": "HR-EMP-MINE", "doctype": "Shift Request"}
-				)
+				self._filters_handed_to_hrms({"employee": "HR-EMP-MINE", "doctype": "Shift Request"})
 			)
 
 	def test_filters_that_name_no_request_are_refused(self):
@@ -180,9 +178,7 @@ class TestChildRowsAreReadThroughGetList(unittest.TestCase):
 		used = self._read_through(
 			lambda: procurement_api.get_procurement_request_lines(json.dumps(["PRQ-DOES-NOT-EXIST"]))
 		)
-		self._assert_permission_checked(
-			used, "Procurement Request Item", "Procurement Request"
-		)
+		self._assert_permission_checked(used, "Procurement Request Item", "Procurement Request")
 
 	@unittest.skipUnless(
 		testing.has_doctype("Expense Claim Detail"),

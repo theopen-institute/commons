@@ -83,7 +83,9 @@ class TestOverrideEnabled(TestCase):
 
 	def test_an_installed_site_asks_no_existence_question(self):
 		"""The per-request query this used to make."""
-		database = SimpleNamespace(exists=lambda *args, **kwargs: self.fail("asked whether the doctype exists"))
+		database = SimpleNamespace(
+			exists=lambda *args, **kwargs: self.fail("asked whether the doctype exists")
+		)
 		doc = settings.frappe._dict({settings.ENABLE_PERMISSION_GATE: 1})
 		with (
 			patch.object(settings.frappe, "db", database),
@@ -93,7 +95,9 @@ class TestOverrideEnabled(TestCase):
 
 	def test_the_desk_is_told_each_browser_feature(self):
 		bootinfo = settings.frappe._dict()
-		with patch.object(settings, "feature_enabled", side_effect=lambda field: field == settings.ENABLE_SIDEBAR_MEMORY):
+		with patch.object(
+			settings, "feature_enabled", side_effect=lambda field: field == settings.ENABLE_SIDEBAR_MEMORY
+		):
 			settings.extend_bootinfo(bootinfo)
 		self.assertEqual(
 			bootinfo.commons_features,

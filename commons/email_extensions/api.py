@@ -77,7 +77,9 @@ def compose(template: str, doctype: str, name: str) -> dict:
 	shown a draft they cannot send either.
 	"""
 	if not frappe.has_permission(doctype, "email", doc=name):
-		frappe.throw(_("Not permitted to send email about this {0}.").format(_(doctype)), frappe.PermissionError)
+		frappe.throw(
+			_("Not permitted to send email about this {0}.").format(_(doctype)), frappe.PermissionError
+		)
 
 	settings = frappe.get_doc(TEMPLATE, template)
 	settings.check_permission("read")

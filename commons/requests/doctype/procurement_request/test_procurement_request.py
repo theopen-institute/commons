@@ -6,11 +6,11 @@ from frappe.model.workflow import apply_workflow
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, today
 
+from commons import testing
 from commons.requests.doctype.procurement_request.procurement_request import (
 	DOCTYPE,
 	make_material_request,
 )
-from commons import testing
 from commons.requests.procurement_workflow import PROCUREMENT_REQUEST
 
 # This suite's own approval chain. Nothing installs one -- a site builds whatever
@@ -61,7 +61,13 @@ WORKFLOW_STATES = (
 WORKFLOW_ACTIONS = ("Send to Procurement", "Send for Review", "Approve", "Reject", "Cancel", "Reopen")
 
 WORKFLOW_TRANSITIONS = (
-	{"state": "Draft", "action": "Send to Procurement", "next_state": "Pending", "allowed": "Employee", "allow_self_approval": 1},
+	{
+		"state": "Draft",
+		"action": "Send to Procurement",
+		"next_state": "Pending",
+		"allowed": "Employee",
+		"allow_self_approval": 1,
+	},
 	{
 		"state": "Pending",
 		"action": "Send for Review",
@@ -135,9 +141,7 @@ class ProcurementTestCase(IntegrationTestCase):
 			{"parent": workflow, "parenttype": "Workflow", "state": state, "action": action},
 		):
 			return
-		self.skipTest(
-			f"This site's {PROCUREMENT_REQUEST} workflow has no {action!r} from {state!r}."
-		)
+		self.skipTest(f"This site's {PROCUREMENT_REQUEST} workflow has no {action!r} from {state!r}.")
 
 	@classmethod
 	def setUpClass(cls) -> None:
@@ -322,9 +326,7 @@ class TestProcurementRequest(ProcurementTestCase):
 		self.assertEqual(request.as_dict().total_estimated_cost, 70)
 
 	def test_submitting_approves_when_no_workflow_is_attached(self):
-		request = self.make_request(
-			[{"item_name": "Desk lamp", "qty": 1, "uom": "Nos"}], submit=True
-		)
+		request = self.make_request([{"item_name": "Desk lamp", "qty": 1, "uom": "Nos"}], submit=True)
 
 		self.assertEqual(request.status, "Approved")
 
@@ -430,7 +432,11 @@ class TestProcurementRequest(ProcurementTestCase):
 
 	def test_a_link_that_is_not_a_web_address_is_refused(self):
 		"""Core's URL check accepts any scheme; a `javascript:` link is one click from running."""
-		for link in ("javascript:alert(document.cookie)", "data:text/html,<script>1</script>", "file:///etc/passwd"):
+		for link in (
+			"javascript:alert(document.cookie)",
+			"data:text/html,<script>1</script>",
+			"file:///etc/passwd",
+		):
 			with self.subTest(link=link), self.assertRaises(frappe.ValidationError):
 				self.make_request([{"item_name": "Pen", "qty": 1, "uom": "Nos", "reference_url": link}])
 
@@ -459,11 +465,15 @@ class TestProcurementRequest(ProcurementTestCase):
 		request = self.make_request(
 			[{"item_name": "Laptop", "qty": 1, "uom": "Nos", "estimated_rate": 900, "verified_rate": 0.01}]
 		)
-		self.assertFalse(frappe.db.get_value("Procurement Request Item", request.items[0].name, "verified_rate"))
+		self.assertFalse(
+			frappe.db.get_value("Procurement Request Item", request.items[0].name, "verified_rate")
+		)
 
 		request.items[0].verified_rate = 0.01
 		request.save()
-		self.assertFalse(frappe.db.get_value("Procurement Request Item", request.items[0].name, "verified_rate"))
+		self.assertFalse(
+			frappe.db.get_value("Procurement Request Item", request.items[0].name, "verified_rate")
+		)
 
 	def test_a_buyer_still_sets_it(self):
 		request = self.make_request([{"item_name": "Laptop", "qty": 1, "uom": "Nos", "estimated_rate": 900}])
@@ -471,7 +481,9 @@ class TestProcurementRequest(ProcurementTestCase):
 		request = frappe.get_doc("Procurement Request", request.name)
 		request.items[0].verified_rate = 850
 		request.save()
-		self.assertEqual(frappe.db.get_value("Procurement Request Item", request.items[0].name, "verified_rate"), 850)
+		self.assertEqual(
+			frappe.db.get_value("Procurement Request Item", request.items[0].name, "verified_rate"), 850
+		)
 
 	def test_the_owner_cannot_be_changed(self):
 		"""Core's self-approval rule reads `owner`, so handing it over would let an author
@@ -693,9 +705,9 @@ def make_test_workflow() -> None:
 
 	for action in WORKFLOW_ACTIONS:
 		if not frappe.db.exists("Workflow Action Master", action):
-			frappe.get_doc(
-				{"doctype": "Workflow Action Master", "workflow_action_name": action}
-			).insert(ignore_permissions=True)
+			frappe.get_doc({"doctype": "Workflow Action Master", "workflow_action_name": action}).insert(
+				ignore_permissions=True
+			)
 
 	workflow = frappe.new_doc("Workflow")
 	workflow.update(

@@ -59,9 +59,7 @@ def approver_roles(workflow=None) -> set[str]:
 	if not workflow:
 		return set()
 	roles = {
-		row.allowed
-		for row in workflow.transitions
-		if row.allowed and APPROVER_FIELD in (row.condition or "")
+		row.allowed for row in workflow.transitions if row.allowed and APPROVER_FIELD in (row.condition or "")
 	}
 	return roles or {FALLBACK_APPROVER_ROLE}
 
@@ -92,9 +90,7 @@ def open_request_states(workflow=None) -> tuple[str, ...]:
 	submitted = _states_by_doc_status(workflow, 1)
 	deciding = {row.state for row in workflow.transitions if row.next_state in submitted}
 	decided = {
-		row.next_state
-		for row in workflow.transitions
-		if row.state in deciding and row.next_state in drafts
+		row.next_state for row in workflow.transitions if row.state in deciding and row.next_state in drafts
 	}
 	# Empty is a real answer -- a workflow whose every draft state is either the
 	# author's own or the outcome of a decision has no open asks -- so it is

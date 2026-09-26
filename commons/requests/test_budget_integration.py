@@ -187,9 +187,7 @@ class TestDepartmentBudget(unittest.TestCase):
 		doc.cancel()
 		self.assertEqual(self.used(), 0)
 		# The request keeps its department, so the release stays attributable.
-		self.assertEqual(
-			frappe.db.get_value("Material Request", doc.name, "department"), self.department
-		)
+		self.assertEqual(frappe.db.get_value("Material Request", doc.name, "department"), self.department)
 
 	def test_replaying_the_submit_hook_cannot_double_charge(self):
 		doc = self.mr(rate=250)

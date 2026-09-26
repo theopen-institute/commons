@@ -140,9 +140,9 @@ class ProcurementRequest(Document):
 		for row in self.items:
 			if row.reference_url and not validate_url(row.reference_url, valid_schemes=("http", "https")):
 				frappe.throw(
-					_("Row {0}: the reference link must be a web address starting with http:// or https://.").format(
-						row.idx
-					),
+					_(
+						"Row {0}: the reference link must be a web address starting with http:// or https://."
+					).format(row.idx),
 					frappe.ValidationError,
 				)
 
@@ -363,9 +363,9 @@ def make_material_request(
 	def update_item(source_row, target_row, source_parent) -> None:
 		if not source_row.item_code:
 			frappe.throw(
-				_("Row {0} has no Item Code, which a Material Request needs on every row. Amend this request to set one, or tick just the coded rows you want to order.").format(
-					source_row.idx
-				),
+				_(
+					"Row {0} has no Item Code, which a Material Request needs on every row. Amend this request to set one, or tick just the coded rows you want to order."
+				).format(source_row.idx),
 				title=_("Item Code Missing"),
 			)
 

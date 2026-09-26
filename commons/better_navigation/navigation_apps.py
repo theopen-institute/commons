@@ -71,9 +71,7 @@ def get_navigation_apps() -> list[dict]:
 	from commons.commons_core import settings
 
 	user_type = frappe.get_cached_value("User", frappe.session.user, "user_type")
-	if user_type != "System User" or not settings.feature_enabled(
-		settings.ENABLE_NAVIGATION_RAIL
-	):
+	if user_type != "System User" or not settings.feature_enabled(settings.ENABLE_NAVIGATION_RAIL):
 		return []
 	return navigation_apps()
 

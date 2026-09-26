@@ -120,9 +120,7 @@ def _totals(accounts: list[dict], borrowings: list[dict]) -> list[dict]:
 		# case to model, but it must not collapse two real currencies into one
 		# bucket on the way to being noticed.
 		key = currency or ""
-		return rows.setdefault(
-			key, {"currency": currency, "account": 0.0, "loans": 0.0, "directions": set()}
-		)
+		return rows.setdefault(key, {"currency": currency, "account": 0.0, "loans": 0.0, "directions": set()})
 
 	for account in accounts:
 		current = row(account["currency"])

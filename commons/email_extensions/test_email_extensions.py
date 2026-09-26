@@ -64,7 +64,12 @@ class TestRecipients(TestCase):
 		address_of.assert_not_called()
 
 	def test_several_fields_in_order_without_repeats_and_empties_skipped(self):
-		record = Record("Student Applicant", student_email_id="a@example.org", guardian_email="", alt="a@example.org, b@example.org")
+		record = Record(
+			"Student Applicant",
+			student_email_id="a@example.org",
+			guardian_email="",
+			alt="a@example.org, b@example.org",
+		)
 		fields = {f: ("Data", "Email") for f in ("student_email_id", "guardian_email", "alt")}
 		self.assertEqual(
 			self.recipients(record, "student_email_id, guardian_email, missing, alt", fields),
@@ -153,7 +158,9 @@ class TestOnceAcrossAmendments(TestCase):
 			get_value=lambda doctype, name, field: chain.get(name),
 		)
 		notification = SimpleNamespace(name="Payment Receipt")
-		doc = SimpleNamespace(doctype="Payment Entry", get=lambda field: amended_from if field == "amended_from" else None)
+		doc = SimpleNamespace(
+			doctype="Payment Entry", get=lambda field: amended_from if field == "amended_from" else None
+		)
 		with patch("commons.email_extensions.notification.frappe.db", database):
 			return TemplateNotificationMixin._sent_for_earlier_version(notification, doc)
 
@@ -165,7 +172,9 @@ class TestOnceAcrossAmendments(TestCase):
 		self.assertFalse(self.sent_before({"PE-1-1": "PE-1"}, emailed=set()))
 
 	def test_the_whole_chain_of_corrections_is_followed(self):
-		self.assertTrue(self.sent_before({"PE-1-2": "PE-1-1", "PE-1-1": "PE-1"}, emailed={"PE-1"}, amended_from="PE-1-1"))
+		self.assertTrue(
+			self.sent_before({"PE-1-2": "PE-1-1", "PE-1-1": "PE-1"}, emailed={"PE-1"}, amended_from="PE-1-1")
+		)
 
 	def test_a_document_amended_from_nothing_has_no_earlier_version(self):
 		self.assertFalse(self.sent_before({}, emailed={"PE-1"}, amended_from=None))

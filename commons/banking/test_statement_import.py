@@ -82,7 +82,15 @@ class TestAmounts(TestCase):
 				self.assertEqual(si.parse_amount(printed), expected)
 
 	def test_what_cannot_be_read_without_guessing_is_nothing(self):
-		for printed in ("1,2,3", "1.234.56", "1,23.456,7", "Page 2 of 3", "Balance 5", "05/07/2026", "12ab34"):
+		for printed in (
+			"1,2,3",
+			"1.234.56",
+			"1,23.456,7",
+			"Page 2 of 3",
+			"Balance 5",
+			"05/07/2026",
+			"12ab34",
+		):
 			with self.subTest(printed=printed):
 				self.assertIsNone(si.parse_amount(printed))
 
@@ -148,7 +156,9 @@ class TestApplyingALayout(TestCase):
 		rows = si.apply_mapping(GRID, PAIRED)
 		# The brought-forward row has no amount, and the total no date.
 		self.assertEqual([row["description"] for row in rows], ["FPQR-446377887", "Cheque paid"])
-		self.assertEqual((rows[0]["deposit"], rows[0]["withdrawal"], rows[0]["balance"]), (5000.0, 0, 105000.0))
+		self.assertEqual(
+			(rows[0]["deposit"], rows[0]["withdrawal"], rows[0]["balance"]), (5000.0, 0, 105000.0)
+		)
 		self.assertEqual((rows[1]["withdrawal"], rows[1]["reference"]), (2000.0, "004512"))
 		self.assertEqual(rows[0]["date"]["calendar"], "AD")
 
@@ -158,17 +168,32 @@ class TestApplyingALayout(TestCase):
 			["2026-07-05", "Receipt", "5000", "CR"],
 			["2026-07-06", "Fee", "25", "DR"],
 		]
-		mapping = {**PAIRED, "first_data_row": 1, "description_columns": [1], "reference_column": None,
-			"withdrawal_column": None, "deposit_column": None, "amount_column": 2, "direction_column": 3,
-			"balance_column": None}
+		mapping = {
+			**PAIRED,
+			"first_data_row": 1,
+			"description_columns": [1],
+			"reference_column": None,
+			"withdrawal_column": None,
+			"deposit_column": None,
+			"amount_column": 2,
+			"direction_column": 3,
+			"balance_column": None,
+		}
 		rows = si.apply_mapping(grid, mapping)
 		self.assertEqual([(r["deposit"], r["withdrawal"]) for r in rows], [(5000.0, 0), (0, 25.0)])
 
 	def test_one_signed_amount_column(self):
 		grid = [["05/07/2026", "Receipt", 5000], ["06/07/2026", "Fee", -25]]
-		mapping = {**PAIRED, "first_data_row": 0, "reference_column": None, "withdrawal_column": None,
-			"deposit_column": None, "amount_column": 2, "amount_sign": "negative_is_withdrawal",
-			"balance_column": None}
+		mapping = {
+			**PAIRED,
+			"first_data_row": 0,
+			"reference_column": None,
+			"withdrawal_column": None,
+			"deposit_column": None,
+			"amount_column": 2,
+			"amount_sign": "negative_is_withdrawal",
+			"balance_column": None,
+		}
 		rows = si.apply_mapping(grid, mapping)
 		self.assertEqual([(r["deposit"], r["withdrawal"]) for r in rows], [(5000.0, 0), (0, 25.0)])
 
@@ -182,8 +207,16 @@ class TestApplyingALayout(TestCase):
 			["06/07/2026", "Card", "10", "Dr."],
 			["06/07/2026", "Refund", "7", "C/R"],
 		]
-		mapping = {**PAIRED, "first_data_row": 0, "reference_column": None, "withdrawal_column": None,
-			"deposit_column": None, "amount_column": 2, "direction_column": 3, "balance_column": None}
+		mapping = {
+			**PAIRED,
+			"first_data_row": 0,
+			"reference_column": None,
+			"withdrawal_column": None,
+			"deposit_column": None,
+			"amount_column": 2,
+			"direction_column": 3,
+			"balance_column": None,
+		}
 		rows = si.apply_mapping(grid, mapping)
 		self.assertEqual(
 			[(r["deposit"], r["withdrawal"]) for r in rows],
@@ -191,12 +224,26 @@ class TestApplyingALayout(TestCase):
 		)
 
 	def test_a_bare_d_is_a_deposit_beside_w_and_a_debit_beside_c(self):
-		mapping = {**PAIRED, "first_data_row": 0, "reference_column": None, "withdrawal_column": None,
-			"deposit_column": None, "amount_column": 2, "direction_column": 3, "balance_column": None}
+		mapping = {
+			**PAIRED,
+			"first_data_row": 0,
+			"reference_column": None,
+			"withdrawal_column": None,
+			"deposit_column": None,
+			"amount_column": 2,
+			"direction_column": 3,
+			"balance_column": None,
+		}
 		with_w = [["05/07/2026", "In", "100", "D"], ["06/07/2026", "Out", "20", "W"]]
 		with_c = [["05/07/2026", "Out", "100", "D"], ["06/07/2026", "In", "20", "C"]]
-		self.assertEqual([(r["deposit"], r["withdrawal"]) for r in si.apply_mapping(with_w, mapping)], [(100.0, 0), (0, 20.0)])
-		self.assertEqual([(r["deposit"], r["withdrawal"]) for r in si.apply_mapping(with_c, mapping)], [(0, 100.0), (20.0, 0)])
+		self.assertEqual(
+			[(r["deposit"], r["withdrawal"]) for r in si.apply_mapping(with_w, mapping)],
+			[(100.0, 0), (0, 20.0)],
+		)
+		self.assertEqual(
+			[(r["deposit"], r["withdrawal"]) for r in si.apply_mapping(with_c, mapping)],
+			[(0, 100.0), (20.0, 0)],
+		)
 
 	def test_rows_that_cannot_be_read_are_left_out_and_said_so(self):
 		grid = [
@@ -206,8 +253,16 @@ class TestApplyingALayout(TestCase):
 			["07/07/2026", "Odd", "25", "Reversal"],
 			["08/07/2026", "Nil row", "-", "DR"],
 		]
-		mapping = {**PAIRED, "first_data_row": 1, "reference_column": None, "withdrawal_column": None,
-			"deposit_column": None, "amount_column": 2, "direction_column": 3, "balance_column": None}
+		mapping = {
+			**PAIRED,
+			"first_data_row": 1,
+			"reference_column": None,
+			"withdrawal_column": None,
+			"deposit_column": None,
+			"amount_column": 2,
+			"direction_column": 3,
+			"balance_column": None,
+		}
 		notes = []
 		rows = si.apply_mapping(grid, mapping, notes=notes)
 		self.assertEqual([r["description"] for r in rows], ["Receipt"])
@@ -217,8 +272,14 @@ class TestApplyingALayout(TestCase):
 
 	def test_a_dash_in_a_paired_column_is_a_blank(self):
 		grid = [["05/07/2026", "Receipt", "-", "5,000.00"], ["06/07/2026", "Fee", "Rs. 25", "—"]]
-		mapping = {**PAIRED, "first_data_row": 0, "reference_column": None, "withdrawal_column": 2,
-			"deposit_column": 3, "balance_column": None}
+		mapping = {
+			**PAIRED,
+			"first_data_row": 0,
+			"reference_column": None,
+			"withdrawal_column": 2,
+			"deposit_column": 3,
+			"balance_column": None,
+		}
 		notes = []
 		rows = si.apply_mapping(grid, mapping, notes=notes)
 		self.assertEqual([(r["deposit"], r["withdrawal"]) for r in rows], [(5000.0, 0), (0, 25.0)])
@@ -226,8 +287,16 @@ class TestApplyingALayout(TestCase):
 
 	def test_a_dr_suffix_on_the_amount_itself(self):
 		grid = [["05/07/2026", "Fee", "25.00 Dr"]]
-		mapping = {**PAIRED, "first_data_row": 0, "reference_column": None, "withdrawal_column": None,
-			"deposit_column": None, "amount_column": 2, "amount_sign": None, "balance_column": None}
+		mapping = {
+			**PAIRED,
+			"first_data_row": 0,
+			"reference_column": None,
+			"withdrawal_column": None,
+			"deposit_column": None,
+			"amount_column": 2,
+			"amount_sign": None,
+			"balance_column": None,
+		}
 		self.assertEqual(si.apply_mapping(grid, mapping)[0]["withdrawal"], 25.0)
 
 
@@ -299,7 +368,9 @@ class TestTheBackgroundJob(TestCase):
 	def test_a_refusal_is_reported_in_its_own_words(self):
 		import frappe
 
-		with patch.object(si, "read_statement", side_effect=frappe.ValidationError("Claude declined to read this document.")):
+		with patch.object(
+			si, "read_statement", side_effect=frappe.ValidationError("Claude declined to read this document.")
+		):
 			si.run_reading("T")
 		self.assertEqual(self.state()["status"], "failed")
 		self.assertEqual(self.state()["error"], "Claude declined to read this document.")
@@ -323,8 +394,9 @@ class TestTheBackgroundJob(TestCase):
 	def test_only_the_person_who_started_it_may_ask(self):
 		self.assertEqual(si.reading_status("T")["status"], "queued")
 		self.assertNotIn("user", si.reading_status("T"))
-		with patch.object(si.frappe, "session", SimpleNamespace(user="someone@example.org")), patch.object(
-			si.frappe, "throw", side_effect=ValueError
+		with (
+			patch.object(si.frappe, "session", SimpleNamespace(user="someone@example.org")),
+			patch.object(si.frappe, "throw", side_effect=ValueError),
 		):
 			with self.assertRaises(ValueError):
 				si.reading_status("T")
