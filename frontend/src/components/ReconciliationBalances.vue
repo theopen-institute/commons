@@ -2,8 +2,10 @@
   The period's four figures: what the books say the bank held at its start and
   at its end, what the bank's statement says it held at the end, and the
   difference, which is zero when the period is done. The books' figures are
-  ERPNext's cleared balance ("balance as per ERP"): only what has been matched
-  to a statement line.
+  the ledger balance of the bank's GL account, the same as the General Ledger
+  report (see `usePeriodBalances`). So the difference is money the bank has
+  moved that the books have not recorded, or the other way round: the open
+  items on the board.
 
   The desk tool asked for the statement's closing balance in a field it never
   saved, so it was typed again every time the tool was opened. Here it is
@@ -22,7 +24,7 @@
     <div class="rounded-4 border border-outline-gray-2 px-3 py-2">
       <div class="text-p-xs text-ink-gray-5">Closing, as per books</div>
       <div class="mt-0.5 text-base-medium tabular-nums text-ink-gray-8">
-        {{ figure(balances.cleared) }}
+        {{ figure(balances.closing) }}
       </div>
     </div>
     <button
@@ -71,7 +73,12 @@
   >
     <div class="space-y-3">
       <FormControl v-model="draftDate" type="date" label="Date" />
-      <FormControl v-model="draftBalance" type="number" label="Closing balance" />
+      <!-- `autofocus` on a wrapper: frappe-ui's Dialog focuses the first
+           focusable element inside it on open, instead of the date above.
+           The date is already filled in; the balance is what gets typed. -->
+      <div autofocus>
+        <FormControl v-model="draftBalance" type="number" label="Closing balance" />
+      </div>
       <ErrorMessage v-if="problem" :message="problem" />
     </div>
   </Dialog>
@@ -95,9 +102,9 @@ const props = defineProps<{
 const emit = defineEmits<{ saved: [] }>()
 
 const difference = computed(() =>
-  props.balances.statement === null || props.balances.cleared === null
+  props.balances.statement === null || props.balances.closing === null
     ? null
-    : money(props.balances.statement - props.balances.cleared),
+    : money(props.balances.statement - props.balances.closing),
 )
 
 function figure(value: number | null) {

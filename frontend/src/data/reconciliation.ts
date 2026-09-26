@@ -197,49 +197,75 @@ export function useSetStatementBalance() {
 }
 
 export interface Balances {
-  /** What the books say the bank held the day before the period opens. */
+  /** The ledger balance of the bank's GL account at the end of the day
+   *  before the period opens. */
   opening: number | null
-  /** What the books say it held at the period's end, counting only what has
-   *  cleared. The figure a statement's closing balance should equal. */
-  cleared: number | null
+  /** The ledger balance at the end of the period's last day. */
+  closing: number | null
   /** The bank's own closing figure, as last recorded for this account on or
    *  before the period's end. Null where none has been recorded. */
   statement: number | null
   statementDate: string | null
 }
 
-/** The period's four figures. The books' two are ERPNext's cleared balance,
- *  the "balance as per ERP" its own tool heads the page with; the statement's
- *  is the latest `Bank Account Balance` recorded on or before the period's end. */
+/**
+ * The period's four figures.
+ *
+ * The books' two are the ledger balance of the bank's GL account, every entry
+ * posted to it up to the day: the figure the General Ledger report shows, read
+ * as a sum over `GL Entry` through the document API. Deliberately not
+ * ERPNext's "balance as per ERP" (`get_account_balance`), which is the
+ * *cleared* balance: the ledger less every entry with no clearance date. That
+ * figure differs from the report by any old payment nobody marked cleared, and
+ * on register.localhost two unmatched purchase invoices from 2020 made it read
+ * 97,470 higher than the ledger for every period since. Such entries are in the
+ * board's right-hand column, where they can be matched.
+ *
+ * The statement's figure is the latest `Bank Account Balance` recorded on or
+ * before the period's end.
+ */
 export function usePeriodBalances() {
-  const opening = useCall<number, { bank_account: string; till_date: string; company: string }>({
-    url: `${TOOL}.get_account_balance`,
-    immediate: false,
-  })
-  const closing = useCall<number, { bank_account: string; till_date: string; company: string }>({
-    url: `${TOOL}.get_account_balance`,
-    immediate: false,
-  })
+  const opening = documentList<{ debit: number | null; credit: number | null }>('GL Entry')
+  const closing = documentList<{ debit: number | null; credit: number | null }>('GL Entry')
   const statement = useCall<{ balance: number; date: string | null }, { bank_account: string; date: string }>({
     url: `${BANK_ACCOUNT_API}.get_closing_balance_as_per_statement`,
     immediate: false,
   })
-  const empty: Balances = { opening: null, cleared: null, statement: null, statementDate: null }
+  const empty: Balances = { opening: null, closing: null, statement: null, statementDate: null }
   const balances = ref<Balances>(empty)
 
+  /** Every entry on the GL account up to and including `date`, in the
+   *  account's own currency, which is the statement's. */
+  async function ledgerBalance(call: typeof opening, account: string, date: string): Promise<number | null> {
+    const rows = await call.submit({
+      fields: JSON.stringify([
+        { SUM: 'debit_in_account_currency', as: 'debit' },
+        { SUM: 'credit_in_account_currency', as: 'credit' },
+      ]),
+      filters: JSON.stringify([
+        ['account', '=', account],
+        ['is_cancelled', '=', 0],
+        ['posting_date', '<=', date],
+      ]),
+      limit: 1,
+    })
+    if (!rows) return null
+    return money((rows[0]?.debit ?? 0) - (rows[0]?.credit ?? 0))
+  }
+
   async function load(account: BankAccountRow | null, from: string, to: string) {
-    if (!account?.company || !from || !to) return
+    if (!account?.account || !from || !to) return
     balances.value = empty
     const [openingValue, closingValue, recorded] = await Promise.all([
-      opening.submit({ bank_account: account.name, till_date: dayBefore(from), company: account.company }),
-      closing.submit({ bank_account: account.name, till_date: to, company: account.company }),
+      ledgerBalance(opening, account.account, dayBefore(from)),
+      ledgerBalance(closing, account.account, to),
       statement.submit({ bank_account: account.name, date: to }),
     ])
     // A zero with no date is ERPNext's way of saying none was recorded.
     const date = recorded?.date ? String(recorded.date).slice(0, 10) : null
     balances.value = {
       opening: openingValue,
-      cleared: closingValue,
+      closing: closingValue,
       statement: date ? recorded!.balance : null,
       statementDate: date,
     }

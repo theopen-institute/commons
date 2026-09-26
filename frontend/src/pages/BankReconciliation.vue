@@ -4,27 +4,22 @@
       <span class="text-lg font-semibold text-ink-gray-8">Bank Reconciliation</span>
     </div>
     <template #actions>
-      <Button
-        v-if="importAvailable && bankAccount"
-        variant="subtle"
-        icon-left="lucide-file-up"
-        label="Import statement"
-        @click="importOpen = true"
-      />
-      <Button
-        v-if="reconciliationCan.reconcile && bankAccount"
-        variant="subtle"
-        icon-left="lucide-wand-sparkles"
-        label="Auto-match"
-        @click="autoOpen = true"
-      />
-      <Button
-        variant="ghost"
-        icon-left="lucide-refresh-cw"
-        label="Refresh"
-        :loading="transactions.loading.value"
-        @click="reload()"
-      />
+      <!-- One group, so the header keeps them together on the right rather
+           than spreading them across its width. -->
+      <div class="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          icon-left="lucide-refresh-cw"
+          label="Refresh"
+          :loading="transactions.loading.value"
+          @click="reload()"
+        />
+        <!-- The occasional actions, out of the way of the everyday one. Each
+             opens its own dialog; nothing here writes on a click. -->
+        <Dropdown v-if="moreActions.length" :options="moreActions" placement="right">
+          <Button variant="ghost" icon="lucide-ellipsis" aria-label="More actions" />
+        </Dropdown>
+      </div>
     </template>
   </AppPageHeader>
 
@@ -234,6 +229,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Button,
   Dialog,
+  Dropdown,
   ErrorMessage,
   FormControl,
   Skeleton,
@@ -602,6 +598,17 @@ function onDone(name: string, unallocated: number) {
 }
 
 const importOpen = ref(false)
+
+/** The header's "…" menu: importing a statement and ERPNext's auto-match,
+ *  each offered only where it can run. */
+const moreActions = computed(() => [
+  ...(importAvailable.value && bankAccount.value
+    ? [{ label: 'Import statement', icon: 'lucide-file-up', onClick: () => (importOpen.value = true) }]
+    : []),
+  ...(reconciliationCan.value.reconcile && bankAccount.value
+    ? [{ label: 'Auto-match', icon: 'lucide-wand-sparkles', onClick: () => (autoOpen.value = true) }]
+    : []),
+])
 const pairOpen = ref(false)
 const pairLine = ref<TransactionRow | null>(null)
 const pairEntry = ref<BookEntry | null>(null)

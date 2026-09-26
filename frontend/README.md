@@ -351,7 +351,8 @@ own button. A write closes the dialog, and a toast links to the document it
 created or matched.
 
 **The period's figures.** Under the account and the dates, four figures:
-opening and closing balance as per books (ERPNext's cleared balance), the
+opening and closing balance as per books (the ledger balance, as in the
+General Ledger report), the
 bank's closing balance recorded on or before the period's end, and the
 difference. The account picker says how far the statement has been imported.
 
