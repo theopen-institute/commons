@@ -143,3 +143,24 @@ def available(key: str) -> bool:
 		return section.available()
 	check = PAGE_AVAILABILITY.get(key)
 	return check is None or check()
+
+
+def access() -> dict[str, bool]:
+	"""Whether this reader may have each gated page's row, keyed by page.
+
+	`PAGE_ACCESS` asked once per page and sent with the shell, rather than left
+	to the browser to ask. The browser did ask, through
+	`frappe.client.has_permission`, and the questions rode in on the modules
+	that hold each page's reads -- so every user's first paint loaded the bank
+	reconciliation, document capture and attendance code whether or not they
+	would ever open one, and fired a permission call apiece, one of them against
+	`Loan Repayment` on sites that have no lending and answer it with an error.
+	Here it is three `has_permission` calls inside a request that is already
+	being made.
+
+	A page this site does not have is `False` without asking: its permission
+	check would be about a doctype that is not there. The rows themselves still
+	come from `workspaces()`, which stays about the site; this is about the
+	person, and the frontend puts the two together.
+	"""
+	return {key: bool(available(key) and check()) for key, check in PAGE_ACCESS.items()}

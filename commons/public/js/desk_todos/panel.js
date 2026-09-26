@@ -27,6 +27,10 @@ function format_due(value) {
 // ToDo.color is user-entered; only a literal hex goes near a style declaration.
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
+// Each panel's document listeners get a namespace of their own, so taking one
+// panel's off never takes another's with it.
+let next_panel_id = 0;
+
 export class ToDoPanel {
 	/**
 	 * @param {object} opts
@@ -39,6 +43,7 @@ export class ToDoPanel {
 	 */
 	constructor(opts) {
 		this.opts = opts;
+		this.ns = `.commons-todo-${++next_panel_id}`;
 		this.count = 0;
 		this.todos = [];
 		this.truncated = false;
@@ -108,7 +113,8 @@ export class ToDoPanel {
 
 		// Ours to open, so ours to close when the click lands elsewhere. The
 		// trigger is excluded or its own press would shut what it just opened.
-		$(document).on("click.commons-todo", (e) => {
+		$(document).on(`click${this.ns}`, (e) => {
+			if (this.detached()) return this.destroy();
 			if (this.is_hidden()) return;
 			const $t = $(e.target);
 			if ($t.closest(this.$panel).length) return;
@@ -116,12 +122,30 @@ export class ToDoPanel {
 			if ($trigger && $trigger.length && $t.closest($trigger).length) return;
 			this.hide();
 		});
-		$(document).on("page-change.commons-todo", () => this.hide());
+		$(document).on(`page-change${this.ns}`, () => this.hide());
 
 		// An assignment reaches the user as a notification. Reusing that signal
 		// avoids a global `list_update` listener, which list views call `.off()`
 		// on, taking every other listener with it.
-		frappe.realtime && frappe.realtime.on("notification", () => this.refresh());
+		this.on_notification = () => (this.detached() ? this.destroy() : this.refresh());
+		frappe.realtime && frappe.realtime.on("notification", this.on_notification);
+	}
+
+	// Core rebuilds the desktop's markup from scratch (`DesktopPage.make`), which
+	// takes a navbar panel out of the page without telling it. Such a panel would
+	// otherwise go on answering every notification with a fetch nobody sees --
+	// one more each time the desktop is drawn.
+	detached() {
+		return !document.body.contains(this.$panel[0]);
+	}
+
+	destroy() {
+		$(document).off(this.ns);
+		if (frappe.realtime && this.on_notification) {
+			frappe.realtime.off("notification", this.on_notification);
+		}
+		this.on_notification = null;
+		this.$panel.remove();
 	}
 
 	is_hidden() {
@@ -244,7 +268,16 @@ export class ToDoPanel {
 		$row.find(".commons-todo-tick").on("click", (e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			this.close_one(todo, $row);
+			// Asked, not done: closing is a write, and a list is where a stray
+			// click lands. The dialog names the to-do being closed.
+			frappe.confirm(
+				__("Close {0}?", [
+					`<strong>${frappe.utils.escape_html(
+						frappe.ellipsis(todo.title || todo.name, 80)
+					)}</strong>`,
+				]),
+				() => this.close_one(todo, $row)
+			);
 		});
 		$row.find(".commons-todo-link").on("click", () => this.hide());
 

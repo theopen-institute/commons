@@ -42,11 +42,6 @@
 
 				<ErrorMessage v-if="requests.error" :message="requests.error.message" class="mt-3" />
 				<ErrorMessage
-					v-if="workflowAction.error"
-					:message="workflowAction.error.message"
-					class="mt-3"
-				/>
-				<ErrorMessage
 					v-if="requestLines.error"
 					:message="requestLines.error.message"
 					class="mt-3"
@@ -72,14 +67,19 @@
 						:key="request.name"
 						class="rounded-4 border border-outline-gray-1"
 					>
-						<!-- Two lines on a phone, one from `sm` up. The status and the
+						<!-- Opens the request in its review dialog, which is where its
+						     lines are read and where it is edited or moved along the
+						     workflow. The row used to unfold in place with those
+						     buttons in it, and a transition was applied on one click.
+
+						     Two lines on a phone, one from `sm` up. The status and the
 						     chevron are a fixed ~140px between them; beside a title and a
 						     summary line in 390px of viewport they leave the text about
 						     half the row, which is where the reading actually happens. -->
 						<button
 							type="button"
 							class="flex w-full flex-col items-start gap-2 p-4 text-left sm:flex-row sm:justify-between sm:gap-3"
-							@click="toggle(request.name)"
+							@click="review.show(request)"
 						>
 							<div class="w-full min-w-0 sm:w-auto">
 								<div class="truncate text-base-medium text-ink-gray-8">
@@ -104,8 +104,9 @@
 								</div>
 							</div>
 							<!-- Still hard against the right edge on its own line: the
-							     chevron is the reveal affordance, and it should not move
-							     to the middle of the card when the row wraps. -->
+							     chevron is the affordance that opens the request, and it
+							     should not move to the middle of the card when the row
+							     wraps. -->
 							<div
 								class="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:justify-end"
 							>
@@ -115,82 +116,24 @@
 								>
 									{{ procurementStatus(request, procurementWorkflow).label }}
 								</Badge>
-								<span
-									class="size-4 text-ink-gray-5"
-									:class="
-										expanded === request.name
-											? 'lucide-chevron-up'
-											: 'lucide-chevron-down'
-									"
-								/>
+								<span class="lucide-chevron-right size-4 text-ink-gray-5" />
 							</div>
 						</button>
-
-						<div
-							v-if="expanded === request.name"
-							class="border-t border-outline-gray-1 p-4"
-						>
-							<ProcurementLines
-								:lines="byRequest.get(request.name) ?? []"
-								:currency="request.currency"
-							/>
-
-							<dl class="mt-4 grid gap-3 text-p-sm sm:grid-cols-2">
-								<div>
-									<dt class="text-ink-gray-5">Approver</dt>
-									<dd class="text-ink-gray-8">
-										{{ request.approver_name || request.approver || 'Not named' }}
-									</dd>
-								</div>
-								<div v-if="request.justification" class="sm:col-span-2">
-									<dt class="text-ink-gray-5">Details</dt>
-									<dd class="whitespace-pre-line text-ink-gray-8">
-										{{ request.justification }}
-									</dd>
-								</div>
-							</dl>
-
-							<Alert
-								v-if="request.rejection_reason"
-								class="mt-4"
-								theme="red"
-								title="Turned down"
-								:description="request.rejection_reason || 'No reason was recorded.'"
-							/>
-
-							<div
-								v-if="request.can_edit || availableActions(request).length"
-								class="mt-4 flex items-center gap-2"
-							>
-								<Button
-									v-if="request.can_edit"
-									variant="subtle"
-									icon-left="lucide-pencil"
-									label="Edit"
-									:disabled="requestLines.loading || !byRequest.has(request.name)"
-									@click="editRequest(request)"
-								/>
-								<div class="ml-auto flex items-center gap-2">
-									<Button
-										v-for="button in workflowActionButtons(
-											availableActions(request),
-											procurementWorkflow,
-										)"
-										:key="button.label"
-										:variant="button.variant"
-										:theme="button.theme"
-										:label="button.label"
-										:loading="runningAction === `${request.name}:${button.label}`"
-										:disabled="Boolean(runningAction)"
-										@click="applyAction(request, button.action)"
-									/>
-								</div>
-							</div>
-						</div>
 					</li>
 				</ul>
 			</div>
 		</RequestGate>
+
+		<ProcurementReviewDialog
+			v-model:open="review.open"
+			:request="review.row"
+			:lines="review.row ? (byRequest.get(review.row.name) ?? []) : []"
+			:lines-loaded="review.row ? linesLoaded(review.row) : false"
+			:actions="review.row ? availableActions(review.row) : []"
+			:gone="review.gone"
+			@settled="refresh"
+			@edit="editRequest"
+		/>
 
 		<ProcurementRequestDialog
 			v-model:open="showRequest"
@@ -204,7 +147,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Alert, Badge, Button, ErrorMessage, Skeleton, toast } from 'frappe-ui'
+import { Badge, Button, ErrorMessage, Skeleton } from 'frappe-ui'
 import {
 	procurementCan,
 	procurementPermissionsError,
@@ -213,18 +156,16 @@ import {
 	procurementWorkflow,
 	reloadProcurementPermissions,
 	requestLabel,
-	useApplyProcurementWorkflow,
 	useMyProcurementRequests,
 	useProcurementRequestTransitions,
 	useProcurementRequestLines,
-	workflowActionButtons,
-	type AvailableWorkflowAction,
 	type ProcurementRequestRow,
 } from '@/data/requests/procurement'
+import { useReviewTarget } from '@/data/requests/review'
 import { formatCurrency, formatDate, pluralise } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
-import ProcurementLines from '@/components/ProcurementLines.vue'
 import ProcurementRequestDialog from '@/components/ProcurementRequestDialog.vue'
+import ProcurementReviewDialog from '@/components/ProcurementReviewDialog.vue'
 import { useNewRequestQuery } from '@/data/requests/newRequest'
 import RequestGate from '@/components/RequestGate.vue'
 import RequestTabs from '@/components/RequestTabs.vue'
@@ -235,13 +176,11 @@ const showRequest = ref(false)
 // dialog could be opened. See `useNewRequestQuery`.
 useNewRequestQuery(showRequest)
 const editingRequest = ref<ProcurementRequestRow | null>(null)
-const expanded = ref('')
-const runningAction = ref('')
 
 const requests = useMyProcurementRequests()
 
-// Every request's lines in one call, so the count in a collapsed row is right
-// before it is opened — and opening one costs nothing. It refetches itself
+// Every request's lines in one call, so the count in a row is right before it
+// is opened — and opening one costs nothing. It refetches itself
 // whenever the request list refreshes, which is why `refresh` below does not ask
 // it to: two overlapping fetches abort each other.
 const { lines: requestLines, byRequest } = useProcurementRequestLines(() =>
@@ -255,39 +194,29 @@ function lineCount(name: string) {
 	return byRequest.value.get(name)?.length ?? 0
 }
 
-function toggle(name: string) {
-	expanded.value = expanded.value === name ? '' : name
-}
-
 function openNewRequest() {
 	editingRequest.value = null
 	showRequest.value = true
 }
 
+// The request open in its review dialog, if any. Applying a transition to it
+// is the dialog's; the page only refreshes once one has reached the server.
+const review = useReviewTarget(() => requests.data)
+
+// From the review dialog, which gives way to the form: one dialog at a time.
 function editRequest(request: ProcurementRequestRow) {
+	review.open = false
 	editingRequest.value = request
 	showRequest.value = true
 }
 
-const workflowAction = useApplyProcurementWorkflow()
+// The edit form is seeded from the lines, so it waits for them.
+function linesLoaded(request: ProcurementRequestRow) {
+	return !requestLines.loading && byRequest.value.has(request.name)
+}
 
 function availableActions(request: ProcurementRequestRow) {
 	return transitions.data?.[request.name] ?? []
-}
-
-async function applyAction(request: ProcurementRequestRow, action: AvailableWorkflowAction) {
-	runningAction.value = `${request.name}:${action.action}`
-	try {
-		const result = await workflowAction.submit({
-			doc: JSON.stringify({ doctype: 'Procurement Request', name: request.name }),
-			action: action.action,
-		})
-		if (!result) return
-		toast.success(`${action.action} applied`)
-		refresh()
-	} finally {
-		runningAction.value = ''
-	}
 }
 
 function refresh() {

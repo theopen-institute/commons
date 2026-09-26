@@ -10,8 +10,8 @@ though the borrower had been invoiced for the money they were lent.
 
 So this module does two jobs, and the first is the one that is easy to miss:
 
-* `ledger_accounts` names the accounts the statement must leave out, so the
-  balance on the other page is trade only.
+* `ledger_exclusion` says which ledger entries the statement must leave out,
+  so the balance on the other page is trade only.
 * `balances` answers for those accounts itself, from the Loan documents, where
   a loan's own arithmetic lives.
 
@@ -33,6 +33,8 @@ above works exactly as well without this one; it simply has no second balance
 to draw.
 """
 
+from dataclasses import dataclass
+
 import frappe
 from frappe.utils import flt
 
@@ -42,6 +44,12 @@ from commons.statement.parties import Party, party_condition
 
 LOAN = "Loan"
 LOAN_PRODUCT = "Loan Product"
+LENDING = "lending"
+PARTY_ACCOUNT = "Party Account"
+
+# The account types a trade balance lives on. Only these carry a party, so only
+# these can be both a loan account and somebody's trade account at once.
+TRADE_ACCOUNT_TYPES = ("Receivable", "Payable")
 
 # A loan that is closed is not a balance. `get_total_loan_amount` draws the
 # same line for the same reason -- there is nothing left to owe -- and a
@@ -80,30 +88,116 @@ def available() -> bool:
 	return apps.has_doctype(LOAN)
 
 
-def ledger_accounts(parties: list[Party]) -> set[str]:
-	"""Every account the lending module posts through, for the ledger to skip.
+@dataclass(frozen=True)
+class LedgerExclusion:
+	"""What the trade ledger leaves out, in the two shapes it comes in.
 
-	Read off the meta rather than listed. `Loan Product` names twenty-five
-	accounts and has gained several over the versions this app has run against;
-	a list here would be a list to keep in step, and the one that fell behind
-	would not fail -- it would quietly put a loan account back into somebody's
-	trade balance, which is the exact bug this function exists to prevent. So
-	the fields are whatever the doctype says are links to an `Account`, and a
-	version that adds a twenty-sixth is covered the day it lands.
+	`dedicated` accounts are the lending module's alone, and every entry on them
+	is a loan's: they are left out whole, which is the rule this module started
+	with and still the right one for them.
+
+	`shared` accounts are loan accounts that are *also* trade accounts -- a
+	site that pointed a Loan Product's refund or interest-receivable account at
+	its ordinary Debtors, say. Leaving those out whole is what this class exists
+	to stop: it dropped every invoice and every fee on Debtors from every
+	statement on the site, and each of them read "settled". So on these only the
+	entries lending posted for a loan are left out -- `against_voucher_type` is
+	`Loan`, which is how lending tags nearly all it posts and how `Loan.on_cancel`
+	finds them to delete, or the voucher is one of lending's own doctypes
+	(`voucher_types`), which covers the opening entry a Loan posts as itself.
+	Every other entry on a shared account stays, so a trade entry cannot be
+	hidden by this, whatever a Loan Product names.
+	"""
+
+	dedicated: frozenset[str] = frozenset()
+	shared: frozenset[str] = frozenset()
+	voucher_types: tuple[str, ...] = ()
+
+	def __bool__(self) -> bool:
+		return bool(self.dedicated or self.shared)
+
+
+def ledger_exclusion(parties: list[Party]) -> LedgerExclusion:
+	"""Which ledger entries are loans', for the trade ledger to skip.
+
+	The accounts are read off the meta rather than listed. `Loan Product` names
+	twenty-five accounts and has gained several over the versions this app has
+	run against; a list here would be a list to keep in step, and the one that
+	fell behind would not fail -- it would quietly put a loan account back into
+	somebody's trade balance, which is the exact bug this function exists to
+	prevent. So the fields are whatever the doctype says are links to an
+	`Account`, and a version that adds a twenty-sixth is covered the day it
+	lands.
 
 	Products are read whole because there are a handful of them and their
 	accounts are the site's, whoever borrowed. Loans are read for these parties
 	only: a loan names its own accounts, and the only ones that can turn up in
 	*this* reader's ledger are the ones on *their* loans.
+
+	Then split, by `_trade_accounts`, into the accounts that are lending's alone
+	and the ones trade shares -- see `LedgerExclusion` for why the two are
+	treated differently.
 	"""
 	if not available():
-		return set()
+		return LedgerExclusion()
 
 	accounts = _accounts_named_by(LOAN_PRODUCT, filters=None)
 	condition = party_condition(frappe.qb.DocType(LOAN), "applicant_type", "applicant", parties)
 	if condition is not None:
 		accounts |= _accounts_named_by(LOAN, filters=condition)
-	return accounts
+	if not accounts:
+		return LedgerExclusion()
+
+	shared = _trade_accounts(accounts)
+	return LedgerExclusion(
+		dedicated=frozenset(accounts - shared),
+		shared=frozenset(shared),
+		voucher_types=_lending_doctypes() if shared else (),
+	)
+
+
+def _trade_accounts(accounts: set[str]) -> set[str]:
+	"""Which of these accounts trade also posts through.
+
+	Two places name the receivable and payable accounts a site trades on, and
+	both are read, off the meta: the company's defaults (`default_receivable_account`,
+	`default_payable_account`, and whatever else a version of ERPNext or HRMS
+	adds to `Company`, for the reason `ledger_exclusion` gives), and every
+	`Party Account` row -- its account and its advance account -- which is how a
+	customer, a supplier, a group or an employee is given accounts other than
+	the default. Only
+	`Receivable` and `Payable` accounts count, because only they carry a party:
+	the company's bank or round-off account is not a trade balance whoever else
+	names it.
+
+	Raw reads. These are account names the site configured, not anybody's
+	balance, and the question is about the books rather than about the reader.
+	"""
+	named = _accounts_named_by("Company", filters=None) | _accounts_named_by(PARTY_ACCOUNT, filters=None)
+	candidates = sorted(accounts & named)
+	if not candidates:
+		return set()
+	return set(
+		frappe.get_all(
+			"Account",
+			filters={"name": ["in", candidates], "account_type": ["in", list(TRADE_ACCOUNT_TYPES)]},
+			pluck="name",
+		)
+	)
+
+
+def _lending_doctypes() -> tuple[str, ...]:
+	"""Every doctype the lending app ships, as the voucher types it posts as.
+
+	Off the app's own module list rather than written down, for the reason
+	`ledger_exclusion` reads its accounts off the meta. Wider than the handful
+	that actually post -- a Loan Application posts nothing -- which costs
+	nothing: a voucher type no entry has matches no entry.
+	"""
+	modules = frappe.get_module_list(LENDING)
+	return tuple(
+		frappe.get_all("DocType", filters={"module": ["in", list(modules)]}, pluck="name", order_by="name asc")
+	)
 
 
 def _accounts_named_by(doctype: str, filters) -> set[str]:
@@ -117,7 +211,7 @@ def _accounts_named_by(doctype: str, filters) -> set[str]:
 		return set()
 
 	table = frappe.qb.DocType(doctype)
-	query = frappe.qb.from_(table).select(*[table[field] for field in fields])
+	query = frappe.qb.from_(table).select(*[table[field] for field in fields]).distinct()
 	if filters is not None:
 		query = query.where(filters)
 	return {value for row in query.run() for value in row if value}

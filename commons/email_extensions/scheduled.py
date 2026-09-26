@@ -179,16 +179,38 @@ def send_now(doctype: str, name: str, queue: str) -> None:
 	frappe.db.set_value("Communication", row["communication"], "send_after", now, update_modified=False)
 
 
+DELAYED_CACHE_KEY = "commons_delayed_notification_doctypes"
+
+
 def delayed_doctypes() -> list[str]:
-	"""The doctypes some enabled Notification delays emails for -- where the form looks for waiting ones."""
+	"""The doctypes some enabled Notification delays emails for -- where the form looks for waiting ones.
+
+	On every desk boot, and the same for everyone, so cached until a
+	Notification changes (`forget_delayed_doctypes`).
+	"""
 	if not frappe.get_meta(NOTIFICATION).has_field(DELAY_FIELD):
 		return []
-	return sorted(
-		set(
-			frappe.get_all(
-				NOTIFICATION,
-				filters={"enabled": 1, "channel": "Email", DELAY_FIELD: [">", 0]},
-				pluck="document_type",
+	return frappe.client_cache.get_value(
+		DELAYED_CACHE_KEY,
+		generator=lambda: sorted(
+			set(
+				frappe.get_all(
+					NOTIFICATION,
+					filters={"enabled": 1, "channel": "Email", DELAY_FIELD: [">", 0]},
+					pluck="document_type",
+				)
 			)
-		)
+		),
 	)
+
+
+def forget_delayed_doctypes(*args, **kwargs) -> None:
+	"""Doc event on Notification: drop `delayed_doctypes`' answer, now and once the save settles."""
+	frappe.client_cache.delete_value(DELAYED_CACHE_KEY)
+	if db := getattr(frappe.local, "db", None):
+		db.after_commit.add(_forget_delayed)
+		db.after_rollback.add(_forget_delayed)
+
+
+def _forget_delayed() -> None:
+	frappe.client_cache.delete_value(DELAYED_CACHE_KEY)

@@ -62,17 +62,21 @@ class TestWhetherTheSiteHasIt(TestCase):
 
 @patch.object(capture.frappe, "throw", _raise)
 class TestNothingIsReadForSomebodyWhoCannotSave(TestCase):
-	"""Every read is billed, so the refusal has to come before the call."""
+	"""Every read is billed, so the refusal has to come before the job is
+	queued."""
+
+	def request(self, content=b"%PDF-1.7"):
+		return SimpleNamespace(files={"file": SimpleNamespace(stream=SimpleNamespace(read=lambda: content))})
 
 	def test_no_permission_no_read(self):
 		with (
 			patch.object(capture, "available", return_value=True),
 			patch.object(capture, "can_capture", return_value=False),
-			patch.object(capture.documents, "read") as read,
+			patch.object(capture.READING, "start") as start,
 		):
 			with self.assertRaises(frappe.PermissionError):
-				capture.read_invoice()
-		read.assert_not_called()
+				capture.start_reading()
+		start.assert_not_called()
 
 	def test_past_the_hourly_limit_no_read(self):
 		cache = SimpleNamespace(
@@ -80,17 +84,119 @@ class TestNothingIsReadForSomebodyWhoCannotSave(TestCase):
 			incrby=lambda key, by: capture.HOURLY_LIMIT + 1,
 			expire=lambda key, seconds: None,
 		)
-		request = SimpleNamespace(files={"file": SimpleNamespace(stream=SimpleNamespace(read=lambda: b""))})
 		with (
 			patch.object(capture, "_require"),
 			patch.object(capture.frappe, "cache", cache, create=True),
-			patch.object(capture.frappe, "request", request, create=True),
+			patch.object(capture.frappe, "request", self.request(), create=True),
 			patch.object(capture.frappe, "session", SimpleNamespace(user="a@example.com"), create=True),
-			patch.object(capture.documents, "read") as read,
+			patch.object(capture.READING, "start") as start,
 		):
 			with self.assertRaises(frappe.RateLimitExceededError):
-				capture.read_invoice()
-		read.assert_not_called()
+				capture.start_reading()
+		start.assert_not_called()
+
+	def test_an_empty_file_is_refused_at_once_and_not_counted(self):
+		with (
+			patch.object(capture, "_require"),
+			patch.object(capture.frappe, "request", self.request(b""), create=True),
+			patch.object(capture, "_count_read") as counted,
+			patch.object(capture.READING, "start") as start,
+		):
+			with self.assertRaisesRegex(ValueError, "empty"):
+				capture.start_reading()
+		counted.assert_not_called()
+		start.assert_not_called()
+
+	def test_a_readable_scan_is_handed_to_the_job(self):
+		with (
+			patch.object(capture, "_require"),
+			patch.object(capture.frappe, "request", self.request(), create=True),
+			patch.object(capture, "_count_read"),
+			patch.object(capture.READING, "start", return_value="T") as start,
+		):
+			self.assertEqual(capture.start_reading(), {"token": "T"})
+		start.assert_called_once_with(b"%PDF-1.7", step=None, lines=0)
+
+
+@patch.object(capture.frappe, "throw", _raise)
+class TestSavingAReadDraftNeedsNoKey(TestCase):
+	"""A key removed or rotated after the scan was read must not strand the
+	draft: `suggest`, `preview` and `create` never call Claude."""
+
+	def setUp(self):
+		self.enterContext(patch.object(capture.apps, "has_doctype", return_value=True))
+		self.enterContext(patch.object(capture.claude, "available", return_value=False))
+
+	def test_reading_still_needs_the_key(self):
+		with patch.object(capture, "can_capture", return_value=True):
+			with self.assertRaisesRegex(ValueError, "not set up"):
+				capture._require()
+
+	def test_preview_and_create_go_ahead_without_it(self):
+		built = SimpleNamespace(
+			name="PI-1",
+			supplier="Vianet",
+			currency="NPR",
+			total=100,
+			net_total=100,
+			discount_amount=0,
+			taxes=[],
+			total_taxes_and_charges=0,
+			grand_total=100,
+			disable_rounded_total=1,
+			rounded_total=100,
+			insert=lambda: None,
+		)
+		with (
+			patch.object(capture, "can_capture", return_value=True),
+			patch.object(capture, "_build", return_value=built),
+		):
+			self.assertEqual(capture.preview({"company": "KC"})["grand_total"], 100)
+			self.assertEqual(capture.create({"company": "KC"})["name"], "PI-1")
+
+	def test_suggest_goes_ahead_without_it(self):
+		with (
+			patch.object(capture, "can_capture", return_value=True),
+			patch.object(capture.frappe, "has_permission", return_value=True),
+			patch.object(capture.frappe, "db", SimpleNamespace(get_value=lambda *args: None), create=True),
+			patch.object(capture, "_history", return_value=[]),
+			patch.object(capture, "_tax_options", return_value={}),
+			patch.object(capture, "_duplicates", return_value=[]),
+		):
+			self.assertEqual(capture.suggest("KC", ["Tea"])["lines"][0]["review"], True)
+
+	def test_the_permission_is_still_asked(self):
+		with patch.object(capture, "can_capture", return_value=False), patch.object(capture, "_build") as built:
+			for call in (lambda: capture.preview({}), lambda: capture.create({}), lambda: capture.suggest("KC", [])):
+				with self.assertRaises(frappe.PermissionError):
+					call()
+		built.assert_not_called()
+
+
+class TestReadingInTheBackground(TestCase):
+	def test_reads_with_the_jobs_allowance_and_matches_what_it_read(self):
+		extracted = {"buyer": {"name": "KC"}, "supplier": {"name": "Vianet"}}
+		steps = []
+		with (
+			patch.object(capture.documents, "read", return_value=extracted) as read,
+			patch.object(capture, "_companies", return_value=[]),
+			patch.object(capture, "_match_company", return_value={"name": "KC", "reason": None}),
+			patch.object(capture, "_match_suppliers", return_value=[]),
+			patch.object(capture.claude, "model", return_value="claude-opus-5"),
+		):
+			result = capture.read_scan(b"%PDF-1.7", progress=lambda **changes: steps.append(changes))
+		sent = read.call_args.kwargs
+		self.assertEqual((sent["timeout"], sent["max_tokens"]), (capture.READ_TIMEOUT, capture.MAX_TOKENS))
+		self.assertGreater(capture.MAX_TOKENS, 16000)
+		self.assertIn("one invoice at a time", sent["too_long"])
+		self.assertEqual(result["extracted"], extracted)
+		self.assertEqual(result["company"]["name"], "KC")
+		self.assertEqual(steps, [{"step": "reading"}, {"step": "matching"}])
+
+	def test_the_job_may_run_as_long_as_the_read_and_more(self):
+		self.assertGreater(capture.JOB_TIMEOUT, capture.READ_TIMEOUT)
+		self.assertEqual(capture.READING.timeout, capture.JOB_TIMEOUT)
+		self.assertEqual(capture.READING.method, f"{capture.__name__}.run_reading")
 
 
 class TestSimilarity(TestCase):

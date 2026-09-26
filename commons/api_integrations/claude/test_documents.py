@@ -101,6 +101,39 @@ class TestPreparing(TestCase):
 			documents.prepare(b"%PDF" + b"0" * documents.MAX_BYTES)
 
 
+class TestImagesLargerOpenedThanSent(TestCase):
+	"""A file under 20 MB can unpack into more pixels than a worker should
+	hold. Pillow refuses the worst with `DecompressionBombError`, which is not
+	an `OSError`, and that used to escape as a 500."""
+
+	def test_what_pillow_calls_a_bomb_is_refused_in_a_sentence(self):
+		with patch.object(Image, "MAX_IMAGE_PIXELS", 1000):
+			with self.assertRaisesRegex(ValueError, "too large to read"):
+				documents.prepare(image(format="PNG"))
+
+	def test_a_huge_image_that_cannot_be_decoded_small_is_refused(self):
+		with patch.object(documents, "MAX_PIXELS", 1000):
+			with self.assertRaisesRegex(ValueError, "too large to read"):
+				documents.prepare(image(format="PNG"))
+
+	def test_a_huge_jpeg_is_decoded_small_and_sent_scaled(self):
+		original = image(size=(4000, 3000))
+		with patch.object(documents, "MAX_PIXELS", 1000), patch.object(documents, "MAX_EDGE", 500):
+			content, media_type = documents.prepare(original)
+		self.assertEqual(media_type, "image/jpeg")
+		self.assertEqual(size_of(content), (500, 375))
+		self.assertNotEqual(content, original)
+
+	def test_a_huge_jpeg_is_never_sent_at_its_full_size(self):
+		"""Decoded at an eighth, it already fits the edge; the original bytes
+		must still not be what goes."""
+		original = image(size=(4000, 3000))
+		with patch.object(documents, "MAX_PIXELS", 1000), patch.object(documents, "MAX_EDGE", 600):
+			content, _media_type = documents.prepare(original)
+		self.assertLessEqual(max(size_of(content)), 1000)
+		self.assertNotEqual(content, original)
+
+
 def response(stop_reason="end_turn", text='{"total": 11300}'):
 	content = [SimpleNamespace(type="thinking", thinking=""), SimpleNamespace(type="text", text=text)]
 	return SimpleNamespace(stop_reason=stop_reason, content=content)
@@ -134,6 +167,15 @@ class TestReading(TestCase):
 	def test_a_cut_off_answer_is_an_error_not_half_an_invoice(self):
 		with self.assertRaisesRegex(client.ClaudeError, "too long"):
 			self.read(image(), response(stop_reason="max_tokens", text='{"tot'))
+
+	def test_a_cut_off_answer_says_what_the_caller_says_to_send(self):
+		cut_off = response(stop_reason="max_tokens", text='{"tot')
+		with patch.object(documents.client, "create_message", return_value=cut_off):
+			with self.assertRaisesRegex(client.ClaudeError, "fewer pages"):
+				documents.read(image(), self.SCHEMA, "Copy.", too_long="Send fewer pages.")
+			with self.assertRaises(client.ClaudeError) as caught:
+				documents.read(image(), self.SCHEMA, "Copy.")
+		self.assertNotIn("invoice", str(caught.exception))
 
 
 def status_error(cls, status):

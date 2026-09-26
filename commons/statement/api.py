@@ -217,11 +217,15 @@ def download_statement(party_type: str, party: str) -> None:
 			frappe.DoesNotExistError,
 		)
 
+	# Put back as it was found rather than to False: a caller that had set it
+	# for its own reasons -- a batch print, a test -- would otherwise have it
+	# cleared from under it by a statement it happened to render on the way.
+	previous = frappe.flags.ignore_print_permissions
 	frappe.flags.ignore_print_permissions = True
 	try:
 		pdf = frappe.get_print(resolved.party_type, resolved.name, name, as_pdf=True)
 	finally:
-		frappe.flags.ignore_print_permissions = False
+		frappe.flags.ignore_print_permissions = previous
 
 	frappe.local.response.filename = f"{_filename(resolved)}.pdf"
 	frappe.local.response.filecontent = pdf

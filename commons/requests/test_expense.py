@@ -148,6 +148,22 @@ class TestQueuePredicate(TestCase):
 			self.assertEqual(api.EXPENSES.pending_count(active, admin=False), 2)
 
 
+	def test_a_workflow_badge_finds_rows_below_twenty_that_are_somebody_elses(self):
+		"""It cut to a page before asking, so twenty of another approver's showed nought."""
+		names = [f"theirs-{i}" for i in range(20)] + ["mine-1", "mine-2"]
+		with (
+			patch.object(api.approvals.wf, "names_in_movable_states", return_value=names),
+			patch.object(
+				api.approvals.wf,
+				"permitted_transitions",
+				side_effect=lambda doctype, batch, workflow=None: {
+					name: ([{"action": "Approve"}] if name.startswith("mine") else []) for name in batch
+				},
+			),
+		):
+			self.assertEqual(api.EXPENSES.pending_count(workflow([]), admin=False), 2)
+
+
 class TestDecisionVocabulary(TestCase):
 	"""What an approver may be offered is derived, never spelled out here."""
 
@@ -396,6 +412,48 @@ class TestDecideGuard(TestCase):
 
 	def test_nothing_sent_is_nothing_changed(self):
 		self.assertEqual(api._sanctioned_amounts(None), {})
+
+	def test_under_a_workflow_sanctioned_amounts_are_saved_before_the_transition(self):
+		"""`apply_workflow` reloads the claim, so figures only in memory were silently lost."""
+		events = []
+		row = SimpleNamespace(name="row-1", sanctioned_amount=1000.0)
+		claim = SimpleNamespace(
+			name="HR-EXP-1",
+			expenses=[row],
+			save=lambda: events.append(("save", row.sanctioned_amount)),
+		)
+
+		def apply_workflow(doc, action):
+			events.append(("transition", action))
+			return SimpleNamespace(name=doc.name, docstatus=1, workflow_state="Approved", get=lambda _f: "Approved")
+
+		active = workflow([{"action": "Approve", "next_state": "Approved"}])
+		with (
+			patch.object(api.EXPENSES, "workflow", return_value=active),
+			patch.object(api.EXPENSES, "decision_vocabulary", return_value=[{"value": "Approve"}]),
+			patch.object(api.frappe, "get_doc", return_value=claim),
+			patch.object(api.EXPENSES, "decision_result", return_value={}),
+			patch("frappe.model.workflow.apply_workflow", side_effect=apply_workflow),
+		):
+			api.decide_expense_claim("HR-EXP-1", "Approve", {"row-1": 400})
+		self.assertEqual(events, [("save", 400.0), ("transition", "Approve")])
+
+	def test_under_a_workflow_nothing_sent_is_nothing_saved(self):
+		events = []
+		claim = SimpleNamespace(name="HR-EXP-1", expenses=[], save=lambda: events.append("save"))
+		active = workflow([{"action": "Approve", "next_state": "Approved"}])
+		with (
+			patch.object(api.EXPENSES, "workflow", return_value=active),
+			patch.object(api.EXPENSES, "decision_vocabulary", return_value=[{"value": "Approve"}]),
+			patch.object(api.frappe, "get_doc", return_value=claim),
+			patch.object(api.EXPENSES, "decision_result", return_value={}),
+			patch(
+				"frappe.model.workflow.apply_workflow",
+				side_effect=lambda doc, action: SimpleNamespace(name=doc.name, docstatus=1, get=lambda _f: "Approved"),
+			),
+		):
+			api.decide_expense_claim("HR-EXP-1", "Approve")
+		self.assertEqual(events, [])
 
 
 class TestPermissionsPayload(TestCase):

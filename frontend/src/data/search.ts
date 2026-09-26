@@ -1,10 +1,10 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { call } from 'frappe-ui'
 import { fuzzy_match } from '@fuzzy-match'
 import router from '@/router'
 import { availableWorkspaces, visibleEntries, type NavEntry } from '@/data/shell'
 import { requestSections, type RequestSection } from '@/data/requests/sections'
-import { hasDeskAccess } from '@/data/session'
+import { hasDeskAccess, user } from '@/data/session'
 
 /**
  * The Awesome Bar, ported.
@@ -181,7 +181,25 @@ export function fuzzySearch(keywords = '', item = ''): FuzzyResult {
  * being offered at all, without anything having to clean up after it.
  */
 
+/**
+ * Per user, not per browser. `localStorage` belongs to the machine, and on a
+ * shared one the next person to sign in was offered the last one's recent and
+ * frequent pages — which, for somebody in HR or accounts, is a list of whose
+ * records they had open.
+ */
 const VISITS_KEY = 'commons-search-visits'
+
+function visitsKey(): string {
+  return `${VISITS_KEY}:${user.value.name}`
+}
+
+// The unkeyed table from before, which could be anybody's. Dropped rather than
+// migrated: there is no telling whose history it is.
+try {
+  localStorage.removeItem(VISITS_KEY)
+} catch {
+  // Private mode or blocked storage: there is nothing stored to leak either.
+}
 
 /** How many paths are remembered. The desk's own recents cap is 20; this holds
  *  more because it is also the frequency table, and a count is only useful
@@ -198,7 +216,7 @@ type Visits = Record<string, Visit>
 
 function readVisits(): Visits {
   try {
-    const raw = localStorage.getItem(VISITS_KEY)
+    const raw = localStorage.getItem(visitsKey())
     if (!raw) return {}
     const parsed = JSON.parse(raw)
     return parsed && typeof parsed === 'object' ? (parsed as Visits) : {}
@@ -210,7 +228,7 @@ function readVisits(): Visits {
 
 function writeVisits(visits: Visits) {
   try {
-    localStorage.setItem(VISITS_KEY, JSON.stringify(visits))
+    localStorage.setItem(visitsKey(), JSON.stringify(visits))
   } catch {
     // Quota or private mode. Losing the history is not worth an error.
   }
@@ -219,6 +237,15 @@ function writeVisits(visits: Visits) {
 /** The visit table, as the dialog reads it. A ref so the list under an open
  *  dialog is not stale the moment you navigate from it. */
 const visits = ref<Visits>(readVisits())
+
+// Read again once the user is known: in development the session arrives by a
+// call rather than with the page, and until it has this would be Guest's table.
+watch(
+  () => user.value.name,
+  () => {
+    visits.value = readVisits()
+  },
+)
 
 /**
  * Remember that this path was opened.
@@ -749,7 +776,10 @@ function makeDescription(content: string, docName: string, keywords: string): st
       // Keep the half-field either side of the match rather than the first
       // 120 characters, which is often nowhere near what was found.
       const half = DESCRIPTION_FIELD_LENGTH / 2
-      const at = fieldValue.indexOf(keywords)
+      // Case-insensitively, as the filter above matched: a case-sensitive
+      // search missed "Kathmandu" for "kathmandu" and cut around position -1.
+      // Nought when the match was in the field's name rather than its value.
+      const at = Math.max(fieldValue.toLowerCase().indexOf(keywords.toLowerCase()), 0)
       const head = at < half ? fieldValue.slice(0, at) : `...${fieldValue.slice(at - half, at)}`
       const tail = at + half < fieldValue.length ? '...' : ''
       fieldValue = `${head}${fieldValue.slice(at, at + half)}${tail}`

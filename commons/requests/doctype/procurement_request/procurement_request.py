@@ -61,10 +61,9 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
-from frappe.query_builder.functions import Sum
 from frappe.utils import flt, getdate
 
-from commons.requests.budget import enforce_request_allocation
+from commons.requests.budget import enforce_request_allocation, ordered_stock_qty
 
 DOCTYPE = "Procurement Request"
 
@@ -103,8 +102,70 @@ class ProcurementRequest(Document):
 	# end: auto-generated types
 
 	def validate(self) -> None:
+		self.reset_row_fields_beyond_reach()
+		self.validate_rows_are_its_own()
+		self.validate_reference_links()
 		self.validate_quantities()
 		self.validate_schedule_date()
+
+	def reset_row_fields_beyond_reach(self) -> None:
+		"""On a new request, clear row fields its author may not write.
+
+		`item_code` and `verified_rate` are permlevel 1, the buyers' to set. Core
+		resets such a field when someone without that permlevel writes it -- on
+		the parent always, but on child rows only once the parent exists
+		(`Document.validate_higher_perm_levels`). A requester's own verified rate
+		on a new request's rows would otherwise stand, understating the estimate
+		the approval is checked against.
+		"""
+		if not self.is_new() or self.flags.ignore_permissions or frappe.session.user == "Administrator":
+			return
+		fields = frappe.get_meta("Procurement Request Item").get_high_permlevel_fields()
+		if not fields:
+			return
+		access = self.get_permlevel_access()
+		for row in self.items:
+			row.reset_values_if_no_permlevel_access(access, fields)
+
+	def validate_reference_links(self) -> None:
+		"""Refuse a reference link that is not a web address.
+
+		The field's `URL` option has core check it, but core accepts any scheme --
+		`javascript:` included -- and the link is drawn as a clickable one on the
+		approvers' pages and the form. Whatever a requester pasted is one click
+		from running in an approver's session.
+		"""
+		from frappe.utils import validate_url
+
+		for row in self.items:
+			if row.reference_url and not validate_url(row.reference_url, valid_schemes=("http", "https")):
+				frappe.throw(
+					_("Row {0}: the reference link must be a web address starting with http:// or https://.").format(
+						row.idx
+					),
+					frappe.ValidationError,
+				)
+
+	def validate_rows_are_its_own(self) -> None:
+		"""Refuse an item row that belongs to another request.
+
+		A row sent with an existing `name` is saved by core as an UPDATE of that
+		row -- `parent` included -- so without this an edit could take a row from
+		another request, approved or not, and with it the budget the row carried.
+		"""
+		names = [row.name for row in self.items if row.name and not row.is_new()]
+		if not names:
+			return
+		foreign = frappe.get_all(
+			"Procurement Request Item",
+			filters={"name": ["in", names], "parent": ["!=", self.name]},
+			pluck="name",
+		)
+		if foreign:
+			idx = next(row.idx for row in self.items if row.name in foreign)
+			frappe.throw(
+				_("Row {0} belongs to another Procurement Request.").format(idx), frappe.PermissionError
+			)
 
 	def on_submit(self) -> None:
 		"""Refuse an approval the department's allocation cannot hold.
@@ -175,6 +236,19 @@ class ProcurementRequest(Document):
 		return [row for row in self.items if row.uncommitted_qty > 0]
 
 
+def on_doctype_update() -> None:
+	"""Index what the department budget reads, and locks, requests by.
+
+	`budget.request_rows` selects a department's requests for a period with
+	`FOR UPDATE` while an approval is being decided. Without an index on those
+	columns InnoDB scans the table and locks every row it looks at, so one open
+	approval holds up saves of every Procurement Request on the site. `status`
+	is what the queues and the open-request readout filter on.
+	"""
+	frappe.db.add_index("Procurement Request", ["company", "department", "transaction_date"])
+	frappe.db.add_index("Procurement Request", ["status"])
+
+
 def get_conversion_factor(item_code: str, uom: str) -> float:
 	"""Stock units per `uom`, refusing the zero a missing conversion returns."""
 	from erpnext.stock.get_item_details import get_conversion_factor as erpnext_conversion_factor
@@ -196,17 +270,8 @@ def get_committed_qty_map(procurement_requests: str | list[str], items=None) -> 
 	if not names:
 		return {}
 
-	mr_item = frappe.qb.DocType("Material Request Item")
-	mr = frappe.qb.DocType("Material Request")
-	rows = (
-		frappe.qb.from_(mr_item)
-		.join(mr)
-		.on(mr_item.parent == mr.name)
-		.select(mr_item.procurement_request_item, Sum(mr_item.stock_qty).as_("stock_qty"))
-		.where((mr.docstatus == 1) & (mr_item.procurement_request.isin(names)))
-		.groupby(mr_item.procurement_request_item)
-	).run(as_dict=True)
-	stock_quantities = {row.procurement_request_item: flt(row.stock_qty) for row in rows}
+	# The budget's count, so the two cannot disagree about what has been ordered.
+	stock_quantities = {row: flt(qty) for row, qty in ordered_stock_qty(names).items()}
 	if not stock_quantities:
 		return {}
 

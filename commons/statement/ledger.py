@@ -32,7 +32,7 @@ than from a second, shorter sum.
 """
 
 import frappe
-from frappe.query_builder.functions import Count, Sum
+from frappe.query_builder.functions import Coalesce, Count, Sum
 from frappe.utils import flt
 
 from commons.commons_core import apps
@@ -95,7 +95,7 @@ def statements(parties: list[Party]) -> list[dict]:
 		return []
 
 	by_party = {(party.party_type, party.name): party for party in parties}
-	excluded = loans.ledger_accounts(parties)
+	excluded = loans.ledger_exclusion(parties)
 
 	found = []
 	for (party_type, name, company), totals in _totals(parties, excluded).items():
@@ -158,7 +158,7 @@ def _run_balance(lines: list[dict], opening: float) -> None:
 		line["balance"] = balance
 
 
-def _totals(parties: list[Party], excluded: set[str]) -> dict[tuple[str, str, str], dict]:
+def _totals(parties: list[Party], excluded: loans.LedgerExclusion) -> dict[tuple[str, str, str], dict]:
 	"""Every party-and-company pair these parties have a ledger in, and its sums.
 
 	Grouped by the database rather than by counting rows in Python: the sum has
@@ -189,7 +189,7 @@ def _totals(parties: list[Party], excluded: set[str]) -> dict[tuple[str, str, st
 	}
 
 
-def _lines(party: Party, company: str, excluded: set[str]) -> tuple[list[dict], int]:
+def _lines(party: Party, company: str, excluded: loans.LedgerExclusion) -> tuple[list[dict], int]:
 	"""The most recent movements on one party's ledger, oldest first.
 
 	Fetched newest-first and turned round, which is the only way to take the
@@ -273,19 +273,33 @@ def _movement(party: Party, debit: float, credit: float) -> float:
 	return flt(debit - credit if party.account_type == "Receivable" else credit - debit)
 
 
-def _scope(table, parties: list[Party], excluded: set[str]):
+def _scope(table, parties: list[Party], excluded: loans.LedgerExclusion):
 	"""The where every read in this module starts from.
 
 	Three things, and each of them is load-bearing:
 
-	* the parties, matched as pairs (`party_condition`);
+	* the parties, matched as pairs (`party_condition`) -- and, for a party
+	  reached through the desk, within the companies the reader may see;
 	* cancelled entries left out, or a reversed invoice would be counted twice;
-	* the lending module's accounts left out, which is `loans.ledger_accounts`
+	* the lending module's entries left out, which is `loans.ledger_exclusion`
 	  and the reason that module exists -- a loan's principal is posted against
 	  the borrower and would otherwise be added to what they owe on invoices.
+
+	The last comes in two parts, and `loans.LedgerExclusion` is the argument
+	for them: an account only lending posts through is left out whole, and one
+	trade shares loses only the entries lending posted against a loan. The
+	`Coalesce` is not decoration. Most entries have no `against_voucher_type`,
+	`NULL = 'Loan'` is `NULL` rather than false, and `NOT (... AND NULL)` would
+	then drop every trade entry on a shared account -- the very rows the split
+	exists to keep.
 	"""
 	condition = party_condition(table, "party_type", "party", parties) & (table.is_cancelled == 0)
-	if excluded:
-		condition = condition & table.account.notin(sorted(excluded))
+	if excluded.dedicated:
+		condition = condition & table.account.notin(sorted(excluded.dedicated))
+	if excluded.shared:
+		lending_owned = Coalesce(table.against_voucher_type, "") == loans.LOAN
+		if excluded.voucher_types:
+			lending_owned = lending_owned | table.voucher_type.isin(list(excluded.voucher_types))
+		condition = condition & ~(table.account.isin(sorted(excluded.shared)) & lending_owned)
 	return condition
 

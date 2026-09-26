@@ -39,7 +39,9 @@ answer is streamed so the job can count the rows as they arrive. The job's
 state lives in the cache under a token only the person who started it may
 read: queued, reading (with rows so far), done (with the result) or failed
 (with a sentence). The file waits in the cache too, and is dropped as soon as
-the job has read it.
+the job has read it. That plumbing, and how a job RQ killed is told from one
+still running, is `commons.api_integrations.claude.jobs`, which Document
+Capture's invoice reading shares.
 
 Who may use it
 --------------
@@ -57,7 +59,7 @@ import frappe
 from frappe import _
 
 from commons.api_integrations.claude import client as claude
-from commons.api_integrations.claude import documents
+from commons.api_integrations.claude import documents, jobs
 from commons.commons_core import apps
 
 BANK_TRANSACTION = "Bank Transaction"
@@ -75,7 +77,7 @@ READ_TIMEOUT = 600
 JOB_TIMEOUT = READ_TIMEOUT + 120
 
 # How long a finished or abandoned reading is kept for the dialog to collect.
-STATE_TTL = 3600
+STATE_TTL = jobs.STATE_TTL
 
 # A copied statement's answer can be long: a hundred rows is ten thousand
 # tokens or so. Streaming allows far more than the 16,000 of a web request.
@@ -85,6 +87,8 @@ XLSX = "xlsx"
 XLS = "xls"
 CSV = "csv"
 DOCUMENT = "document"
+
+READING = jobs.Job("statement_import", "commons.banking.statement_import.run_reading", JOB_TIMEOUT, STATE_TTL)
 
 
 def available() -> bool:
@@ -271,7 +275,7 @@ these rows."""
 def start_reading() -> dict:
 	"""Take the statement in the request's `file` field and start reading it.
 
-	A multipart upload, as Document Capture's `read_invoice` takes. Answers at
+	A multipart upload, as Document Capture's `start_reading` takes. Answers at
 	once with a token for `reading_status`.
 	"""
 	_require()
@@ -285,51 +289,32 @@ def start_reading() -> dict:
 		)
 	file_kind(content)
 	_count_read()
-
-	token = frappe.generate_hash(length=20)
-	frappe.cache.set_value(_file_key(token), content, expires_in_sec=STATE_TTL)
-	_set_state(token, {"status": "queued", "user": frappe.session.user, "rows": 0, "step": None})
-	frappe.enqueue(
-		"commons.banking.statement_import.run_reading",
-		queue="long",
-		timeout=JOB_TIMEOUT,
-		token=token,
-	)
-	return {"token": token}
+	return {"token": READING.start(content, rows=0, step=None)}
 
 
 @frappe.whitelist()
 def reading_status(token: str) -> dict:
 	"""Where a reading has got to. Only its starter may ask."""
-	state = frappe.cache.get_value(_state_key(token), expires=True)
-	if not state or state.get("user") != frappe.session.user:
-		frappe.throw(_("That reading is not available. Start it again."), frappe.DoesNotExistError)
-	return {key: value for key, value in state.items() if key != "user"}
+	return READING.status(token, lost=_lost())
 
 
 def run_reading(token: str) -> None:
 	"""The background job. Runs as the user who started it, since
 	`frappe.enqueue` carries the session user into the job."""
-	# `expires=True` keeps a copy of up to 20 MB out of the process's local cache.
-	content = frappe.cache.get_value(_file_key(token), expires=True)
-	frappe.cache.delete_value(_file_key(token))
-	state = frappe.cache.get_value(_state_key(token), expires=True) or {}
-	if content is None:
-		_update(token, state, status="failed", error=_("The statement was not found. Start again."))
-		return
-	try:
-		result = read_statement(content, progress=lambda **changes: _update(token, state, **changes))
-	except frappe.ValidationError as error:
-		# Refusals meant for the reader: a ClaudeError, a file that cannot be
-		# read. Their message is the sentence to show.
-		_update(token, state, status="failed", error=str(error) or _("The statement could not be read."))
-		return
-	except Exception:
-		# Logged without the statement: the traceback, not the request.
-		frappe.log_error(title="Bank statement import failed")
-		_update(token, state, status="failed", error=_("Something went wrong reading the statement."))
-		return
-	_update(token, state, status="done", result=result)
+	READING.run(
+		token,
+		lambda content, progress: read_statement(content, progress=progress),
+		missing=_("The statement was not found. Start again."),
+		failed=_("Something went wrong reading the statement."),
+		lost=_lost(),
+		log_title="Bank statement import failed",
+	)
+
+
+def _lost() -> str:
+	return _(
+		"The reading stopped without an answer. It may have run out of time, or the worker stopped. Try again."
+	)
 
 
 def read_statement(content: bytes, progress=lambda **changes: None) -> dict:
@@ -349,6 +334,9 @@ def read_statement(content: bytes, progress=lambda **changes: None) -> dict:
 			on_text=counter.feed,
 			timeout=READ_TIMEOUT,
 			max_tokens=MAX_TOKENS,
+			too_long=_(
+				"That statement is too long to read in one go. Send fewer pages at a time, or the bank's spreadsheet export."
+			),
 		)
 		rows = [_document_row(row) for row in read.get("rows") or []]
 	else:
@@ -358,7 +346,8 @@ def read_statement(content: bytes, progress=lambda **changes: None) -> dict:
 			frappe.throw(_("That spreadsheet has no rows in it."))
 		read = _read_mapping(grid)
 		progress(step="rows")
-		rows = apply_mapping(grid, read)
+		read["notes"] = list(read.get("notes") or [])
+		rows = apply_mapping(grid, read, notes=read["notes"])
 		progress(rows=len(rows))
 
 	return {
@@ -374,54 +363,16 @@ def read_statement(content: bytes, progress=lambda **changes: None) -> dict:
 	}
 
 
-class RowCounter:
-	"""Counts the rows in Claude's answer as it streams in.
-
-	Each row is one object with a `"description"` key, and nothing else in the
-	schema has one, so counting that key counts the rows. A key split across
-	two pieces of text is caught by keeping the tail of the last piece. The
-	count is reported only when it changes, and at most once a second, so a
-	fast stream does not write to the cache hundreds of times.
-	"""
-
-	KEY = '"description"'
-
-	def __init__(self, report, interval: float = 1.0):
-		self.report = report
-		self.interval = interval
-		self.count = 0
-		self.reported = 0
-		self.tail = ""
-		self.last = 0.0
-
-	def feed(self, text: str) -> None:
-		import time
-
-		window = self.tail + text
-		self.count += window.count(self.KEY) - self.tail.count(self.KEY)
-		self.tail = window[-(len(self.KEY) - 1) :]
-		now = time.monotonic()
-		if self.count != self.reported and now - self.last >= self.interval:
-			self.report(self.count)
-			self.reported = self.count
-			self.last = now
+# Counts a copied statement's rows as they stream in: each has a description.
+RowCounter = jobs.RowCounter
 
 
 def _state_key(token: str) -> str:
-	return f"commons:statement_import:state:{token}"
+	return READING.state_key(token)
 
 
 def _file_key(token: str) -> str:
-	return f"commons:statement_import:file:{token}"
-
-
-def _set_state(token: str, state: dict) -> None:
-	frappe.cache.set_value(_state_key(token), state, expires_in_sec=STATE_TTL)
-
-
-def _update(token: str, state: dict, **changes) -> None:
-	state.update(changes)
-	_set_state(token, state)
+	return READING.file_key(token)
 
 
 def _count_read() -> None:
@@ -561,22 +512,37 @@ def _read_mapping(grid: list[list]) -> dict:
 	return frappe.parse_json(text)
 
 
-def apply_mapping(grid: list[list], mapping: dict) -> list[dict]:
+def apply_mapping(grid: list[list], mapping: dict, notes: list | None = None) -> list[dict]:
 	"""Every transaction row of the sheet, read with the layout Claude gave.
 
 	A row whose date cell is not a date is not a transaction (a page total, a
 	closing balance, a footer) and is skipped, as is a row with no amount.
+
+	A dated row whose amount is there but can't be read, or whose direction
+	column says neither way, is left out too -- but said so in `notes`, by row.
+	A missing row is something a bookkeeper can look for; a row read at a
+	hundredth of its value, or booked the wrong way round, is not.
 	"""
 	rows = []
+	unreadable, undirected = [], []
 
 	def cell(row, column):
 		return row[column] if column is not None and 0 <= column < len(row) else None
 
-	for row in grid[max(0, int(mapping.get("first_data_row") or 0)) :]:
+	first = max(0, int(mapping.get("first_data_row") or 0))
+	d_is_deposit = _d_means_deposit(grid[first:], mapping.get("direction_column"), cell)
+	for index, row in enumerate(grid[first:], start=first):
 		date = parse_date(cell(row, mapping.get("date_column")), mapping.get("date_order") or "DMY")
 		if not date:
 			continue
-		withdrawal, deposit = _amounts(row, mapping, cell)
+		try:
+			withdrawal, deposit = _amounts(row, mapping, cell, d_is_deposit)
+		except UnreadableAmount:
+			unreadable.append(index + 1)
+			continue
+		except UnknownDirection:
+			undirected.append(index + 1)
+			continue
 		if not withdrawal and not deposit:
 			continue
 		description = " ".join(
@@ -595,28 +561,98 @@ def apply_mapping(grid: list[list], mapping: dict) -> list[dict]:
 				"balance": parse_amount(cell(row, mapping.get("balance_column"))),
 			}
 		)
+
+	if notes is not None:
+		if unreadable:
+			notes.append(
+				_("Left out {0} dated rows whose amount could not be read (sheet rows {1}).").format(
+					len(unreadable), _row_list(unreadable)
+				)
+			)
+		if undirected:
+			notes.append(
+				_(
+					"Left out {0} rows whose direction column says neither money in nor money out (sheet rows {1})."
+				).format(len(undirected), _row_list(undirected))
+			)
 	return rows
 
 
-def _amounts(row, mapping, cell) -> tuple[float, float]:
+class UnreadableAmount(Exception):
+	"""A cell holds figures, but not in any shape an amount is printed in."""
+
+
+class UnknownDirection(Exception):
+	"""A direction cell says something other than money in or money out."""
+
+
+def _row_list(numbers: list[int], shown: int = 10) -> str:
+	listed = ", ".join(str(number) for number in numbers[:shown])
+	return listed + (", …" if len(numbers) > shown else "")
+
+
+def _figure(value) -> float | None:
+	"""An amount cell's figure: None when it holds no digits at all -- blank, a
+	dash, "nil" -- and `UnreadableAmount` when it holds some that aren't one."""
+	if value is None or isinstance(value, bool):
+		return None
+	if isinstance(value, int | float):
+		return float(value)
+	if not re.search(r"\d", str(value).translate(DEVANAGARI)):
+		return None
+	amount = parse_amount(value)
+	if amount is None:
+		raise UnreadableAmount(value)
+	return amount
+
+
+# What a direction column says, reduced to its letters. A bare "D" and "C" are
+# settled separately: see `_d_means_deposit`.
+MONEY_OUT = {"dr", "db", "debit", "debited", "withdrawal", "withdrawals", "withdraw", "wdl", "wd", "w", "out"}
+MONEY_IN = {"cr", "credit", "credited", "deposit", "deposits", "dep", "in"}
+W_WORDS = {"w", "wd", "wdl", "withdrawal", "withdrawals", "withdraw"}
+
+
+def _direction_word(value) -> str:
+	return re.sub(r"[^a-z]", "", str(value).lower())
+
+
+def _d_means_deposit(rows, column, cell) -> bool:
+	"""Whether a bare "D" is a deposit rather than a debit.
+
+	It is when the same column marks withdrawals with a W -- D/W is deposit and
+	withdrawal -- and a debit otherwise, beside a C for credit.
+	"""
+	if column is None:
+		return False
+	return any(_direction_word(cell(row, column)) in W_WORDS for row in rows if cell(row, column) is not None)
+
+
+def _amounts(row, mapping, cell, d_is_deposit: bool = False) -> tuple[float, float]:
 	if mapping.get("withdrawal_column") is not None or mapping.get("deposit_column") is not None:
-		out = parse_amount(cell(row, mapping.get("withdrawal_column"))) or 0
-		into = parse_amount(cell(row, mapping.get("deposit_column"))) or 0
+		out = _figure(cell(row, mapping.get("withdrawal_column"))) or 0
+		into = _figure(cell(row, mapping.get("deposit_column"))) or 0
 		# A bank that prints withdrawals as negatives in their own column.
 		return abs(out), abs(into)
 
-	amount = parse_amount(cell(row, mapping.get("amount_column")))
+	amount = _figure(cell(row, mapping.get("amount_column")))
 	if not amount:
 		return 0, 0
 	direction = cell(row, mapping.get("direction_column"))
-	if direction is not None:
-		word = str(direction).strip().lower()
-		if word.startswith("d"):
+	if direction is not None and str(direction).strip():
+		word = _direction_word(direction)
+		if word == "d":
+			word = "deposit" if d_is_deposit else "dr"
+		elif word == "c":
+			word = "cr"
+		if word in MONEY_OUT:
 			return abs(amount), 0
-		if word.startswith("c"):
+		if word in MONEY_IN:
 			return 0, abs(amount)
+		# Guessing here books every such row one way or the other, silently.
+		raise UnknownDirection(direction)
 	raw = cell(row, mapping.get("amount_column"))
-	marker = str(raw).strip().lower() if isinstance(raw, str) else ""
+	marker = _direction_word(raw) if isinstance(raw, str) else ""
 	if marker.endswith("dr"):
 		return abs(amount), 0
 	if marker.endswith("cr"):
@@ -628,25 +664,81 @@ def _amounts(row, mapping, cell) -> tuple[float, float]:
 
 DEVANAGARI = str.maketrans("०१२३४५६७८९", "0123456789")
 
+# Minus signs that are not the ASCII hyphen: the Unicode minus, dashes, and the
+# small and full-width hyphens.
+MINUS = str.maketrans(dict.fromkeys("−‒–﹣－", "-"))
+
+# What may stand beside a figure: a currency ("Rs.", "NPR", "₹", "रु.") or a Dr/Cr,
+# at most this many characters once spaces, dots and a minus are taken out. Any
+# longer and it is text with a number in it -- "Balance 5", "Page 2 of 3".
+AFFIX = 4
+
 
 def parse_amount(value) -> float | None:
 	"""A figure as a statement prints it: `1,13,000.00`, `(500.00)`,
-	`2,500.00 Dr`, `-75`, `१२००`. None for a blank or for text."""
+	`2,500.00 Dr`, `-75`, `१२००`, `Rs. 1,000.00`, `−500`, `1.234,56`. None for a
+	blank, for text, and for anything that can't be read without guessing."""
 	if value is None:
 		return None
 	if isinstance(value, bool):
 		return None
 	if isinstance(value, int | float):
 		return float(value)
-	text = str(value).translate(DEVANAGARI).strip()
-	if not text:
+	text = str(value).translate(DEVANAGARI).translate(MINUS).strip()
+	negative = False
+	if text.startswith("(") and text.endswith(")"):
+		negative, text = True, text[1:-1].strip()
+
+	digits = [index for index, char in enumerate(text) if char.isdigit()]
+	if not digits:
 		return None
-	negative = text.startswith("(") and text.endswith(")") or text.startswith("-") or text.endswith("-")
-	digits = re.sub(r"[^0-9.]", "", text)
-	if not digits or digits.count(".") > 1 or not re.search(r"\d", digits):
+	prefix, figure, suffix = text[: digits[0]], text[digits[0] : digits[-1] + 1], text[digits[-1] + 1 :]
+	for affix in (prefix, suffix):
+		if "-" in affix:
+			negative = True
+		if len(re.sub(r"[\s.\-]", "", affix)) > AFFIX:
+			return None
+
+	number = _unseparated(figure)
+	if number is None:
 		return None
-	number = float(digits)
 	return -number if negative else number
+
+
+def _unseparated(figure: str) -> float | None:
+	"""`figure` -- digits, and whatever separates them -- as a number.
+
+	The decimal separator is the last of a comma and a dot when both appear
+	(1,234.56 and 1.234,56). A lone comma is one only before one or two digits
+	at the end (12,50): a comma before three is grouping, and South Asian
+	grouping (1,13,000) never ends in two. Grouping must look like grouping --
+	one to three digits, then groups of two or three, ending in three -- so a
+	figure with two decimal points is refused rather than read as something.
+	"""
+	figure = re.sub(r"[\s' ]", "", figure)
+	if not re.fullmatch(r"\d[\d,.]*", figure):
+		return None
+	commas, dots = figure.count(","), figure.count(".")
+	if commas and dots:
+		decimal = "," if figure.rfind(",") > figure.rfind(".") else "."
+	elif commas:
+		decimal = "," if commas == 1 and re.search(r",\d{1,2}$", figure) else None
+	elif dots:
+		decimal = "." if dots == 1 else None
+	else:
+		decimal = None
+
+	whole, _sep, fraction = figure.rpartition(decimal) if decimal else (figure, "", "")
+	if decimal and (not whole or decimal in whole):
+		return None
+	grouping = {",", "."} - {decimal}
+	groups = re.split(r"[,.]", whole)
+	if len(groups) > 1:
+		if any(sep not in grouping for sep in re.findall(r"[,.]", whole)) or len(set(re.findall(r"[,.]", whole))) > 1:
+			return None
+		if not (1 <= len(groups[0]) <= 3 and all(len(g) in (2, 3) for g in groups[1:-1]) and len(groups[-1]) == 3):
+			return None
+	return float("".join(groups) + ("." + fraction if fraction else ""))
 
 
 MONTHS = {

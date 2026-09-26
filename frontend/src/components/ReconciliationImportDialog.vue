@@ -197,7 +197,9 @@ import {
   type ReadingState,
 } from '@/data/reconciliation'
 import { money } from '@/data/reconciliationRules'
+import { pollReading } from '@/data/backgroundReading'
 import {
+  STATEMENT_READING_DEADLINE_MS,
   accountMatches,
   balanceSummary,
   proposeRows,
@@ -242,8 +244,6 @@ watch(open, (isOpen) => {
 
 const dragging = ref(false)
 
-/** How often the dialog asks after a reading. */
-const POLL_MS = 2000
 /** How long a reading may sit in the queue before the dialog says the
  *  background worker may not be running. */
 const QUEUE_PATIENCE_MS = 30_000
@@ -319,19 +319,20 @@ async function read() {
   }
 }
 
-/** Ask after the reading until it is done or has failed. Returns null if the
+/** Ask after the reading until it is done, has failed, or has taken longer
+ *  than any reading can (`STATEMENT_READING_DEADLINE_MS`). Returns null if the
  *  dialog was closed or restarted meanwhile: the job carries on regardless,
  *  and its answer is simply not collected. */
-async function waitForReading(token: string, run: number): Promise<StatementReading | null> {
-  for (;;) {
-    await new Promise((resolve) => window.setTimeout(resolve, POLL_MS))
-    if (run !== generation) return null
-    const state = await status.check(token)
-    if (run !== generation) return null
-    progress.value = state
-    if (state.status === 'done' && state.result) return state.result
-    if (state.status === 'failed') throw new Error(state.error || 'The statement could not be read')
-  }
+function waitForReading(token: string, run: number): Promise<StatementReading | null> {
+  return pollReading<StatementReading, ReadingState>({
+    check: () => status.check(token),
+    deadlineMs: STATEMENT_READING_DEADLINE_MS,
+    deadlineMessage:
+      'The statement is taking far longer than any reading should. The background worker may have stopped; try again.',
+    failedMessage: 'The statement could not be read',
+    onProgress: (state) => (progress.value = state),
+    cancelled: () => run !== generation,
+  })
 }
 
 /** Compare the statement with the account's lines over its dates, give or

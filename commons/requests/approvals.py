@@ -70,12 +70,21 @@ def decision(value: str, style: str | None) -> dict:
 	return {"value": value, "style": style, "confirm": style != AFFIRMATIVE_STYLE}
 
 
+# How many of an approver's completed Workflow Actions the History tab reads. A
+# page is `PAGE_LENGTH` documents; several actions can name the same one.
+HISTORY_SCAN = 200
+
+
 def completed_by_session(doctype: str) -> list[str]:
 	"""Documents of `doctype` this user has already acted on through a Workflow.
 
 	What somebody did is recorded nowhere else, and `completed_by` names them,
 	so a Workflow Action answers a History tab exactly. Deduplicated in order:
 	one document collects an action per transition, and a queue wants it once.
+
+	The most recent `HISTORY_SCAN` actions only. The table only grows, the
+	History tab shows a page, and every name read here goes on into an `in`
+	filter -- a long-serving approver's whole record was read on every visit.
 	"""
 	actions = frappe.get_all(
 		"Workflow Action",
@@ -85,6 +94,8 @@ def completed_by_session(doctype: str) -> list[str]:
 			"completed_by": frappe.session.user,
 		},
 		fields=["reference_name"],
+		order_by="modified desc",
+		limit_page_length=HISTORY_SCAN,
 	)
 	return list(dict.fromkeys(row.reference_name for row in actions if row.reference_name))
 
@@ -371,11 +382,7 @@ class RequestType:
 	def pending_count(self, workflow, admin: bool) -> int:
 		"""The badge. Capped the way the queue is, so the two agree."""
 		if workflow:
-			names = wf.names_in_movable_states(
-				self.doctype, workflow, self.state_field(workflow)
-			)[: self.page_length]
-			moves = wf.permitted_transitions(self.doctype, names, workflow)
-			return sum(1 for actions in moves.values() if actions)
+			return len(self.actionable(workflow))
 
 		filters, or_filters = self.queue_predicate(decided=False, admin=admin)
 		return len(
@@ -451,11 +458,11 @@ class RequestType:
 		records.
 		"""
 		state_field = self.state_field(workflow)
-		names = (
-			completed_by_session(self.doctype)
-			if decided
-			else wf.names_in_movable_states(self.doctype, workflow, state_field)
-		)
+		# Pending: the first page of what this user may actually move, found
+		# before the page is cut (see `wf.first_actionable`). Decided: what they
+		# have completed, whose transitions are shown but do not decide the page.
+		available = self.actionable(workflow) if not decided else None
+		names = list(available) if not decided else completed_by_session(self.doctype)
 		if not names:
 			return []
 
@@ -469,14 +476,23 @@ class RequestType:
 			order_by=self.decided_order_by if decided else self.pending_order_by,
 			limit_page_length=self.page_length,
 		)
-		# `get_list` has already settled what this user may read, so these names
-		# need no second permission pass.
-		available = wf.permitted_transitions(self.doctype, [row.name for row in rows], workflow)
+		if decided:
+			# `get_list` has already settled what this user may read, so these
+			# names need no second permission pass.
+			available = wf.permitted_transitions(self.doctype, [row.name for row in rows], workflow)
 		for row in rows:
 			row._transitions = available.get(row.name) or []
-		if not decided:
-			rows = [row for row in rows if row._transitions]
 		return rows
+
+	def actionable(self, workflow) -> dict[str, list[dict]]:
+		"""The first page of requests this user may move, in the queue's order, with the moves.
+
+		The page and the badge both ask this, so they cannot disagree.
+		"""
+		names = wf.names_in_movable_states(
+			self.doctype, workflow, self.state_field(workflow), order_by=self.pending_order_by
+		)
+		return wf.first_actionable(self.doctype, names, workflow, self.page_length)
 
 	def decorate(self, rows: list[dict]) -> None:
 		"""Anything a queue row needs that the list query could not select.
@@ -621,8 +637,10 @@ class RequestType:
 		still pending to everyone else.
 
 		`prepare` is whatever else the approver is settling in the same breath,
-		applied to the document in memory before either route writes it, so it
-		rides along on that write rather than arriving in one of its own -- see
+		applied to the document in memory before either route writes it, and
+		returning whether it changed anything. Without a workflow it rides along
+		on the decision's own write; with one it is saved just before the
+		transition, which reads the document afresh -- see
 		`expense.decide_expense_claim`, whose sanctioned amounts HRMS then
 		revalidates against the decision they arrived with.
 		"""
@@ -647,8 +665,13 @@ class RequestType:
 			# added a workflow in order to have.
 			from frappe.model.workflow import apply_workflow
 
-			if prepare:
-				prepare(doc)
+			if prepare and prepare(doc):
+				# `apply_workflow` reloads the document from the database before
+				# it moves it, so what `prepare` wrote in memory would be lost --
+				# a claim approved at the amount claimed, with success on screen.
+				# Saved first, in the same transaction: a transition that is then
+				# refused takes this write back with it.
+				doc.save()
 			doc = apply_workflow(doc, verdict)
 			return self.decision_result(doc, self.state_field(workflow))
 

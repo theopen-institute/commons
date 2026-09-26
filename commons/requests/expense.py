@@ -571,7 +571,7 @@ def _sanctioned_amounts(sanctioned: str | dict | None) -> dict[str, float]:
 	return amounts
 
 
-def _apply_sanctioned_amounts(doc, amounts: dict[str, float]) -> None:
+def _apply_sanctioned_amounts(doc, amounts: dict[str, float]) -> bool:
 	"""Write the approver's figures onto the claim's own rows.
 
 	By row name, not by position: a queue loaded before the claimant added a line
@@ -581,10 +581,12 @@ def _apply_sanctioned_amounts(doc, amounts: dict[str, float]) -> None:
 
 	Whether a figure is allowed at all is HRMS's answer and not this one --
 	`validate_sanctioned_amount` refuses anything above what was claimed, on the
-	save that follows.
+	save that follows. Returns whether there was anything to write, which is
+	what `approvals.RequestType.decide` asks before saving it ahead of a
+	workflow transition.
 	"""
 	if not amounts:
-		return
+		return False
 
 	rows = {row.name: row for row in doc.expenses}
 	unknown = sorted(set(amounts) - set(rows))
@@ -597,3 +599,4 @@ def _apply_sanctioned_amounts(doc, amounts: dict[str, float]) -> None:
 		)
 	for row, amount in amounts.items():
 		rows[row].sanctioned_amount = amount
+	return True

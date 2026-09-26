@@ -1,5 +1,5 @@
 import { toValue, watch, type MaybeRefOrGetter } from 'vue'
-import { useCall } from 'frappe-ui'
+import { call, useCall } from 'frappe-ui'
 
 /**
  * The desk's notification widget, on this app's sidebar.
@@ -49,11 +49,18 @@ export function useNotificationFeed(limit: MaybeRefOrGetter<number> = 20) {
   return feed
 }
 
-export function useMarkNotificationRead() {
-  return useCall<null, { docname: string }>({
-    url: '/api/v2/method/frappe.desk.doctype.notification_log.notification_log.mark_as_read',
-    method: 'POST',
-    immediate: false,
+/**
+ * Mark one notification read. Rejects when the server refuses.
+ *
+ * A request of its own per call, not a shared `useCall`: one call instance
+ * aborts its request in flight as soon as it is submitted again, so pressing a
+ * second dot before the first round trip was back cancelled the first — and,
+ * the call's `error` then belonging to the second press, the first failure
+ * went unreported while its row sat there looking read.
+ */
+export function markNotificationRead(docname: string): Promise<unknown> {
+  return call('frappe.desk.doctype.notification_log.notification_log.mark_as_read', {
+    docname,
   })
 }
 

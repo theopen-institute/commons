@@ -76,7 +76,8 @@ from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import get_request_session
+
+from commons.api_integrations import http
 
 SETTINGS = "Google Workspace Settings"
 
@@ -123,9 +124,9 @@ EXPIRY_MARGIN = 300
 # caching something until the next deploy.
 FALLBACK_TTL = 3600
 
-# Long enough for Google under load, short enough that a wedged call does not
-# hold a worker, or somebody's save, for minutes.
-TIMEOUT = 30
+# Connect and read timeouts, and the retry policy, are the integrations' shared
+# ones -- see `commons.api_integrations.http`.
+TIMEOUT = http.TIMEOUT
 
 
 class GoogleWorkspaceError(frappe.ValidationError):
@@ -383,6 +384,12 @@ def _issue(creds: Credentials) -> tuple[str, int]:
 	from google.auth.transport.requests import Request
 	from google.oauth2 import service_account
 
+	class _TimedRequest(Request):
+		"""google-auth's transport, with `commons.api_integrations.http`'s timeout by default."""
+
+		def __call__(self, *args, timeout=None, **kwargs):
+			return super().__call__(*args, timeout=timeout or http.TIMEOUT, **kwargs)
+
 	try:
 		delegated = service_account.Credentials.from_service_account_info(
 			creds.key, scopes=list(creds.scopes)
@@ -394,9 +401,9 @@ def _issue(creds: Credentials) -> tuple[str, int]:
 		)
 
 	try:
-		# Frappe's session, so the bench's retry behaviour on 5xx and any
-		# site-level request configuration apply to this exchange too.
-		delegated.refresh(Request(session=get_request_session()))
+		# The integrations' session, and their timeout: google-auth's own default
+		# is two minutes, and the refresh passes none of its own.
+		delegated.refresh(_TimedRequest(session=http.session()))
 	except GoogleAuthError as refused:
 		frappe.throw(
 			_(
@@ -462,7 +469,7 @@ def directory(
 	anything else: a 429, or a 403 whose reason is `quotaExceeded`, is Google's
 	rate limiter -- the Directory API allows a couple of thousand requests a
 	minute and bulk work should be spread out rather than hammered -- and a 5xx
-	is already retried by the session `get_request_session` builds.
+	is retried with backoff by `commons.api_integrations.http` where that is safe.
 	"""
 	url = f"{BASE}{path.lstrip('/')}"
 
@@ -476,7 +483,7 @@ def directory(
 def _send(method: str, url: str, bearer: str | None, json_body: dict | None, params: dict | None):
 	"""The HTTP call itself, returning the response whatever its status.
 
-	`requests` through `get_request_session`, rather than the `googleapiclient`
+	`requests` through `commons.api_integrations.http`, rather than the `googleapiclient`
 	discovery machinery, for three reasons. `users.ensure` is built entirely
 	around telling one status from another, and `HttpError` buries it in
 	`.resp.status` while a transport failure raises something with no status at
@@ -494,7 +501,7 @@ def _send(method: str, url: str, bearer: str | None, json_body: dict | None, par
 	only inside a local named `_secret`, so neither of those is covered. Passing
 	the plain traceback keeps the frames out of it entirely.
 	"""
-	session = get_request_session()
+	session = http.session()
 	headers = {"Content-Type": "application/json"}
 	if bearer:
 		headers["Authorization"] = f"Bearer {bearer}"

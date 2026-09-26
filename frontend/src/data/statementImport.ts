@@ -1,3 +1,4 @@
+import { readingDeadlineMs } from './backgroundReading'
 import { isoDate, type ScannedDate } from './captureRules'
 import { identifiers, money } from './reconciliationRules'
 
@@ -28,6 +29,15 @@ import { identifiers, money } from './reconciliationRules'
  * a row skipped, or a debit taken for a credit. Statements printed newest
  * first are recognised and walked the other way.
  */
+
+/** The server's `JOB_TIMEOUT` for reading a statement, in seconds
+ *  (`statement_import.JOB_TIMEOUT`). */
+const JOB_TIMEOUT_S = 720
+
+/** How long the import dialog waits on a reading before giving up, so a job
+ *  that died without the server noticing does not leave it asking for an
+ *  hour. See `readingDeadlineMs`. */
+export const STATEMENT_READING_DEADLINE_MS = readingDeadlineMs(JOB_TIMEOUT_S)
 
 /** A row as `read_statement` answers it. */
 export interface StatementRow {

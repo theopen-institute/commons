@@ -256,3 +256,19 @@ class Errors(TestCase):
 	def test_a_status_is_optional(self):
 		"""A failure with no response at all -- a timeout, a DNS failure."""
 		self.assertIsNone(client.Auth0Error("could not reach Auth0").status)
+
+	def test_an_unreachable_tenant_never_logs_the_frames(self):
+		"""Their locals hold the management token and, for the token exchange, the client secret."""
+		session = SimpleNamespace(request=lambda *args, **kwargs: (_ for _ in ()).throw(ConnectionError("down")))
+		with (
+			patch.object(client.http, "session", return_value=session),
+			patch.object(client.frappe, "log_error") as log_error,
+			patch.object(client.frappe, "throw", side_effect=throw),
+			self.assertRaises(client.Auth0Error),
+		):
+			client._send("POST", "https://example.eu.auth0.com/oauth/token", "secret-token", {"client_secret": "shhh"}, None)
+		log_error.assert_called_once()
+		logged = log_error.call_args.kwargs.get("message")
+		self.assertIsNotNone(logged, "log_error without a message writes every frame's locals")
+		self.assertNotIn("shhh", logged)
+		self.assertNotIn("secret-token", logged)

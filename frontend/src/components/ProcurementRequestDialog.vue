@@ -165,18 +165,33 @@ const defaults = useProcurementRequestDefaults()
 
 let nextKey = 0
 
-function blankLine(): LineForm {
+function blankLine(fill = defaults.data): LineForm {
 	return {
 		key: nextKey++,
 		item_name: '',
 		reference_url: '',
 		qty: 1,
-		uom: defaults.data?.uom ?? '',
+		uom: fill?.uom ?? '',
 		estimated_rate: 0,
 	}
 }
 
-function blankForm(): RequestForm {
+function lineForms(lines: ProcurementRequestItemRow[]): LineForm[] {
+	return lines.map((line) => ({
+		key: nextKey++,
+		name: line.name,
+		item_code: line.item_code,
+		item_name: line.item_name ?? '',
+		reference_url: line.reference_url ?? '',
+		description: line.description,
+		qty: line.qty,
+		uom: line.uom,
+		estimated_rate: line.estimated_rate,
+		verified_rate: line.verified_rate,
+	}))
+}
+
+function blankForm(fill = defaults.data): RequestForm {
 	if (props.request) {
 		return {
 			name: props.request.name,
@@ -185,30 +200,24 @@ function blankForm(): RequestForm {
 			department: props.request.department ?? '',
 			approver: props.request.approver ?? '',
 			justification: props.request.justification,
-			items: (props.lines ?? []).map((line) => ({
-				key: nextKey++,
-				name: line.name,
-				item_code: line.item_code,
-				item_name: line.item_name ?? '',
-				reference_url: line.reference_url ?? '',
-				description: line.description,
-				qty: line.qty,
-				uom: line.uom,
-				estimated_rate: line.estimated_rate,
-				verified_rate: line.verified_rate,
-			})),
+			items: lineForms(props.lines ?? []),
 		}
 	}
 	return {
+		// Cleared explicitly: the form is refilled with `Object.assign`, which
+		// would otherwise carry the last edited request's name and reason into a
+		// new one, and the save would then update that request instead.
+		name: undefined,
+		justification: null,
 		// Omitted rather than guessed when the server had no answer: Frappe then
 		// applies the user's own default, and says so if there isn't one.
-		company: defaults.data?.company ?? undefined,
+		company: fill?.company ?? undefined,
 		schedule_date: '',
-		department: defaults.data?.department ?? '',
+		department: fill?.department ?? '',
 		// Workflow state is deliberately absent. Frappe applies the doctype or
 		// active Workflow's initial value.
-		approver: defaults.data?.approver ?? '',
-		items: [blankLine()],
+		approver: fill?.approver ?? '',
+		items: [blankLine(fill)],
 	}
 }
 
@@ -227,22 +236,53 @@ function addLine() {
 	form.items.push(blankLine())
 }
 
+// Built once per open, and never rebuilt while it stays open. Rebuilding on
+// every change to the props wiped what the user had typed: the parent hands
+// over a fresh `lines` array on each render, and `request` is a row in a list
+// that reloads under the open dialog.
+//
+// The defaults are the one thing worth taking late, and they only ever fill a
+// field that is still blank — someone who has already picked a department
+// while they loaded keeps it.
+let awaitingDefaults = false
+/** An edit opened before its lines were in — see the watch on `lines`. */
+let awaitingLines = false
+
 // Fresh on every open: a user's default company or department approver can have
 // changed since the section was loaded, and this is the moment it matters.
 watch(open, (isOpen) => {
-	if (isOpen) defaults.reload()
+	awaitingDefaults = isOpen && !props.request
+	awaitingLines = isOpen && !!props.request && !props.lines?.length
+	if (!isOpen) return
+	// Without the last open's defaults: they are about to be replaced, and a
+	// field filled from them would then look typed and keep the stale value.
+	Object.assign(form, blankForm(null))
+	defaults.reload()
 })
 
-// Rebuild when opening, when an edited request's lines finish loading, and when
-// the defaults land — all three are the same event as far as the form is
-// concerned: what it should be showing has arrived.
 watch(
-	[open, () => props.request, () => props.lines, () => defaults.data],
-	([isOpen]) => {
-		if (!isOpen) return
-		Object.assign(form, blankForm())
+	() => defaults.data,
+	(fill) => {
+		if (!open.value || !awaitingDefaults || !fill) return
+		awaitingDefaults = false
+		form.company ??= fill.company ?? undefined
+		form.department ||= fill.department ?? ''
+		form.approver ||= fill.approver ?? ''
+		for (const line of form.items) line.uom ||= fill.uom ?? ''
 	},
-	{ deep: true },
+)
+
+// The other late arrival: an edited request's lines, when the list's line
+// query was still out as it opened. Taken once, and only into an empty table,
+// so it can never replace a line someone has typed — or bring back one they
+// removed.
+watch(
+	() => props.lines,
+	(lines) => {
+		if (!open.value || !awaitingLines || !lines?.length) return
+		awaitingLines = false
+		if (!form.items.length) form.items = lineForms(lines)
+	},
 )
 
 function requestDocument() {

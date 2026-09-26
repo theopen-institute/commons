@@ -209,20 +209,28 @@ export function useSelfServiceRecords<T>(
 
   // The policy answers first; the records are fetched once it has. One extra
   // round trip, in exchange for the field list staying the server's.
+  //
+  // Keyed on the whole answer, which is a new object every time one arrives —
+  // not on a few of its values. Moving from one record type to another whose
+  // policy happened to match on those (same field count, same owner) left the
+  // first type's rows on the second's page. Not on `target` either: that
+  // changes before its policy has arrived, and the records would be asked for
+  // with the last type's fields and filters.
   watch(
-    () =>
-      [
-        can.value.can_read_records,
-        can.value.display.length,
-        can.value.owner_value,
-      ] as const,
-    ([mayRead, fields, owner]) => {
-      if (mayRead && fields && owner) recordsCall.reload()
+    () => permissionsCall.data,
+    () => {
+      const { can_read_records, display, owner_value } = can.value
+      if (can_read_records && display.length && owner_value) recordsCall.reload()
     },
     { immediate: true }
   )
 
-  const records = computed(() => recordsCall.data ?? [])
+  // Empty rather than the last answer when the records may not be read: the
+  // call is not made then, and what it still holds belongs to whichever record
+  // type was on screen before this one.
+  const records = computed(() =>
+    can.value.can_read_records ? (recordsCall.data ?? []) : []
+  )
 
   /** Both answers in: the page should not flash "nothing here" while the field
    *  list is still on its way. */
@@ -237,9 +245,10 @@ export function useSelfServiceRecords<T>(
   )
   const recordsError = computed(() => recordsCall.error ?? null)
 
+  // The records follow the policy by the watch above; asking for both here
+  // would send the records twice.
   function reload() {
     permissionsCall.reload()
-    recordsCall.reload()
   }
 
   return {
@@ -276,6 +285,9 @@ const navCall = useCall<NavRecord[]>({
  *  than naming pages, so a new record type is a desk entry and nothing else. */
 export const navRecords = computed(() => navCall.data ?? [])
 export const navLoaded = computed(() => navCall.isFinished)
+/** Why the navigation did not arrive. Without it a page addressed by slug
+ *  cannot tell "no such page" from "could not ask". */
+export const navError = computed(() => navCall.error ?? null)
 
 export function reloadNav() {
   return navCall.reload()

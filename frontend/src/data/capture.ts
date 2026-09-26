@@ -1,7 +1,9 @@
 import { computed } from 'vue'
 import { upload, useCall } from 'frappe-ui'
 import { user } from './session'
+import { pollReading, readingDeadlineMs, type JobState } from './backgroundReading'
 import type { InvoicePayload, Reading, Totals } from './captureRules'
+import { permissionCall } from './permissions'
 
 /**
  * The document capture page's reads and writes.
@@ -15,15 +17,15 @@ import type { InvoicePayload, Reading, Totals } from './captureRules'
  *   receipts do (see `attachToExpenseClaim`);
  * * listing the reader's drafts, which is the document API.
  *
- * The scan goes to `read_invoice` through the same upload helper, pointed at
+ * The scan goes to `start_reading` through the same upload helper, pointed at
  * that endpoint instead of Frappe's. It is a multipart request, so the file is
  * sent as it is rather than base64-encoded in JSON. The helper also refuses a
  * file over the site's upload limit before sending it, and turns a server
- * refusal into a message.
+ * refusal into a message. The reading itself happens in a background job,
+ * which `readInvoice` asks after until it answers.
  */
 
 const METHOD = '/api/v2/method'
-const CLIENT = `${METHOD}/frappe.client`
 const CAPTURE = 'commons.document_capture.purchase_invoice'
 
 export const PURCHASE_INVOICE = 'Purchase Invoice'
@@ -31,13 +33,6 @@ export const PURCHASE_INVOICE = 'Purchase Invoice'
 /* -------------------------------------------------------------------------- */
 /* Who the page is for                                                         */
 /* -------------------------------------------------------------------------- */
-
-function permissionCall(doctype: string, perm: string) {
-  return useCall<{ has_permission: boolean }, { doctype: string; docname: string; perm_type: string }>({
-    url: `${CLIENT}.has_permission`,
-    params: { doctype, docname: '', perm_type: perm },
-  })
-}
 
 /** Create on `Purchase Invoice`, the server's own test. See `can_capture`. */
 const canCaptureCall = permissionCall(PURCHASE_INVOICE, 'create')
@@ -50,8 +45,9 @@ export const captureCan = computed(() => ({
   createSupplier: Boolean(canCreateSupplierCall.data?.has_permission),
 }))
 
-/** What the sidebar row waits on. Whether the site has ERPNext and a Claude
- *  key is the shell's answer already (`commons.better_navigation.pages.available`). */
+/** What the capture page waits on before it offers the upload. The sidebar
+ *  row does not: it takes the same answer from the shell (`serverGate` in
+ *  `data/shell.ts`), along with whether the site has ERPNext and a Claude key. */
 export const captureGate = {
   visible: computed(() => captureCan.value.capture),
   resolved: computed(() => canCaptureCall.isFinished),
@@ -65,18 +61,75 @@ export const captureGate = {
  *  not by this. */
 export const ACCEPTED_SCANS = 'image/jpeg,image/png,image/webp,image/gif,application/pdf'
 
+/** Where a reading has got to, as `reading_status` answers: what the job is
+ *  doing (`reading` the scan, then `matching` it to this site's companies and
+ *  suppliers) and how many lines Claude has copied so far. */
+export interface InvoiceReadingState extends JobState<Reading> {
+  step: 'reading' | 'matching' | null
+  lines: number
+}
+
+/** The server's `JOB_TIMEOUT` for reading a scan, in seconds. */
+const JOB_TIMEOUT_S = 420
+
+/** How long `readInvoice` waits before giving up. See `readingDeadlineMs`. */
+export const INVOICE_READING_DEADLINE_MS = readingDeadlineMs(JOB_TIMEOUT_S)
+
+const readingStatusCall = useCall<InvoiceReadingState, { token: string }>({
+  url: `${METHOD}/${CAPTURE}.reading_status`,
+  immediate: false,
+})
+
+async function readingStatus(token: string): Promise<InvoiceReadingState> {
+  const state = await readingStatusCall.submit({ token })
+  if (state === null) throw readingStatusCall.error ?? new Error('Could not ask after the reading.')
+  return state
+}
+
 /**
- * Send a scan to be read.
+ * Send a scan to be read, and wait for the reading.
  *
- * `/api/method` rather than `/api/v2/method`: the upload helper unwraps a
- * `message`, which is where v1 puts the answer.
+ * `/api/method` rather than `/api/v2/method` for the upload: the helper
+ * unwraps a `message`, which is where v1 puts the answer, here a token.
+ * `onProgress` is told each answer while the job runs; `cancelled` ends the
+ * wait early, and the promise then rejects with `ReadingCancelled`.
  */
-export async function readInvoice(file: File): Promise<Reading> {
-  const answer = await upload(file, {
-    upload_endpoint: `/api/method/${CAPTURE}.read_invoice`,
+export async function readInvoice(
+  file: File,
+  options: { onProgress?: (state: InvoiceReadingState) => void; cancelled?: () => boolean } = {},
+): Promise<Reading> {
+  const started = (await upload(file, {
+    upload_endpoint: `/api/method/${CAPTURE}.start_reading`,
     private: true,
+  })) as unknown as { token: string }
+  const result = await pollReading<Reading, InvoiceReadingState>({
+    check: () => readingStatus(started.token),
+    deadlineMs: INVOICE_READING_DEADLINE_MS,
+    deadlineMessage: 'The scan is taking far longer than it should to read. Try again in a few minutes.',
+    failedMessage: 'That scan could not be read.',
+    onProgress: options.onProgress,
+    cancelled: options.cancelled,
   })
-  return answer as unknown as Reading
+  if (result === null) throw new ReadingCancelled()
+  return result
+}
+
+/** Thrown by `readInvoice` when its caller stopped waiting. Nothing to show. */
+export class ReadingCancelled extends Error {
+  constructor() {
+    super('The reading was cancelled.')
+    this.name = 'ReadingCancelled'
+  }
+}
+
+/** The progress line for a reading, from the latest answer. Null before the
+ *  first answer. */
+export function readingProgressText(state: InvoiceReadingState | null): string | null {
+  if (!state) return null
+  if (state.status === 'queued') return 'Waiting for the background worker to start the reading'
+  if (state.step === 'matching') return "Matching the supplier and company to this site's records"
+  if (state.lines) return `Claude has copied ${state.lines} ${state.lines === 1 ? 'line' : 'lines'} so far`
+  return 'Claude is reading the scan'
 }
 
 /**

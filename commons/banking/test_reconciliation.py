@@ -160,6 +160,7 @@ class TestSubmittingADraftToMatchIt(TestCase):
 		self.enterContext(patch.object(reconciliation.frappe, "throw", side_effect=_raise))
 		self.enterContext(patch.object(reconciliation, "flt", side_effect=_flt))
 		self.submitted = []
+		self.fetched = []
 		self.docs = {
 			("Bank Transaction", "BT-OPEN"): SimpleNamespace(
 				name="BT-OPEN", docstatus=1, unallocated_amount=5000, check_permission=lambda perm: None
@@ -172,7 +173,12 @@ class TestSubmittingADraftToMatchIt(TestCase):
 			),
 		}
 		self.enterContext(
-			patch.object(reconciliation.frappe, "get_doc", side_effect=lambda doctype, name: self.docs[(doctype, name)])
+			patch.object(
+				reconciliation.frappe,
+				"get_doc",
+				side_effect=lambda doctype, name, **kwargs: self.fetched.append((doctype, kwargs))
+				or self.docs[(doctype, name)],
+			)
 		)
 
 	def refused(self, says, *args):
@@ -189,6 +195,105 @@ class TestSubmittingADraftToMatchIt(TestCase):
 
 	def test_a_voucher_that_is_not_a_draft_is_refused(self):
 		self.refused("is not a draft", "BT-OPEN", "Payment Entry", "PE-SUBMITTED")
+
+	def test_the_line_is_locked_before_it_is_read(self):
+		"""Two bookkeepers on one line would otherwise both pass the unallocated check."""
+		self.refused("is not a draft", "BT-OPEN", "Payment Entry", "PE-SUBMITTED")
+		self.assertEqual(self.fetched[0], ("Bank Transaction", {"for_update": True}))
+
+
+class TestBookingRepaymentsLocksTheLine(TestCase):
+	def test_the_line_is_locked_before_the_split_is_checked(self):
+		fetched = []
+		transaction = SimpleNamespace(check_permission=lambda perm: None)
+
+		def get_doc(doctype, name, **kwargs):
+			fetched.append((doctype, kwargs))
+			return transaction
+
+		with (
+			patch.object(reconciliation.frappe, "get_doc", side_effect=get_doc),
+			patch.object(reconciliation, "_validated_lines", side_effect=ValueError("checked")),
+			self.assertRaises(ValueError),
+		):
+			reconciliation.create_loan_repayments("BT-1", [{"loan": "LOAN-A", "amount": 100}])
+		self.assertEqual(fetched[0], ("Bank Transaction", {"for_update": True}))
+
+
+class TestWhatAMatchMustLeaveBehind(TestCase):
+	"""The checks made after writing, whose refusal rolls the request back."""
+
+	def setUp(self):
+		self.enterContext(patch.object(reconciliation.frappe, "throw", side_effect=_raise))
+		self.enterContext(patch.object(reconciliation, "flt", side_effect=_flt))
+
+	def test_a_repayment_lending_redated_is_refused(self):
+		"""Server scripts off: lending dates it the day it was booked, silently."""
+		transaction = SimpleNamespace(date=datetime.date(2026, 9, 1))
+		booked_today = SimpleNamespace(name="LR-1", posting_date=datetime.datetime(2026, 9, 26, 10, 0))
+		with self.assertRaises(ValueError) as refusal:
+			reconciliation._require_statement_date(booked_today, transaction)
+		self.assertIn("server scripts", str(refusal.exception))
+
+	def test_a_repayment_on_the_statement_date_passes(self):
+		transaction = SimpleNamespace(date=datetime.date(2026, 9, 1))
+		kept = SimpleNamespace(name="LR-1", posting_date=datetime.datetime(2026, 9, 1, 0, 0))
+		reconciliation._require_statement_date(kept, transaction)
+
+	def test_a_submit_that_moves_a_drafts_date_is_refused(self):
+		moved = SimpleNamespace(name="LR-1", posting_date=datetime.datetime(2026, 9, 26, 10, 0))
+		with self.assertRaises(ValueError):
+			reconciliation._require_date_kept(moved, datetime.datetime(2026, 9, 1))
+
+	def allocations(self, *rows):
+		return SimpleNamespace(
+			name="BT-1",
+			precision=lambda field: 2,
+			payment_entries=[
+				SimpleNamespace(payment_document="Loan Repayment", payment_entry=name, allocated_amount=amount)
+				for name, amount in rows
+			],
+		)
+
+	def test_a_repayment_matched_in_part_is_refused(self):
+		"""ERPNext allocates what is left of the line without a word."""
+		with self.assertRaises(ValueError) as refusal:
+			reconciliation._require_fully_matched(
+				self.allocations(("LR-1", 3000), ("LR-2", 400)), "Loan Repayment", {"LR-1": 3000, "LR-2": 600}
+			)
+		self.assertIn("LR-2", str(refusal.exception))
+
+	def test_repayments_matched_in_full_pass(self):
+		reconciliation._require_fully_matched(
+			self.allocations(("LR-1", 3000), ("LR-2", 600)), "Loan Repayment", {"LR-1": 3000, "LR-2": 600}
+		)
+
+	def direction(self, net, deposit):
+		transaction = SimpleNamespace(bank_account="Bank A/c", deposit=deposit)
+		db = SimpleNamespace(get_value=lambda *args, **kwargs: "1100 - Bank - OI")
+		with (
+			patch.object(reconciliation.frappe, "db", db),
+			patch.object(reconciliation, "_net_on_account", return_value=net),
+		):
+			reconciliation._require_same_direction(transaction, "Payment Entry", "PE-1")
+
+	def test_money_out_matched_to_a_deposit_is_refused(self):
+		with self.assertRaises(ValueError) as refusal:
+			self.direction(net=-500, deposit=500)
+		self.assertIn("out of", str(refusal.exception))
+
+	def test_money_in_matched_to_a_withdrawal_is_refused(self):
+		with self.assertRaises(ValueError):
+			self.direction(net=500, deposit=0)
+
+	def test_a_voucher_that_never_touches_the_account_is_refused(self):
+		with self.assertRaises(ValueError) as refusal:
+			self.direction(net=0, deposit=500)
+		self.assertIn("does not post", str(refusal.exception))
+
+	def test_the_same_direction_passes(self):
+		self.direction(net=500, deposit=500)
+		self.direction(net=-500, deposit=0)
 
 
 class TestWhoMayReadTheDimensions(TestCase):

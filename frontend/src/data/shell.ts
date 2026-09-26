@@ -1,8 +1,5 @@
 import { computed, type ComputedRef } from 'vue'
 import { useCall } from 'frappe-ui'
-import { attendanceGate } from './attendance'
-import { captureGate } from './capture'
-import { reconciliationGate } from './reconciliation'
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from 'vue-router'
 import { requestSection, type RequestSection, type RequestSectionKey } from './requests/sections'
 
@@ -24,11 +21,13 @@ import { requestSection, type RequestSection, type RequestSectionKey } from './r
  *
  * This module says *what a row opens, whether this user may open it, and what
  * the badge on it reads*. That is either code -- a route only the bundle knows
- * -- or a permission answer that is about the person rather than the site. A
- * server that filtered rows by permission would also have to answer four
- * permission questions before the page could paint, and the sidebar has never
- * needed it: a row this user cannot use is either hidden here or opens a page
- * that explains itself.
+ * -- or a permission answer that is about the person rather than the site. The
+ * server does not filter rows by permission: a row this user cannot use is
+ * either hidden here or opens a page that explains itself. For the three pages
+ * gated on something no request section answers, the server does send this
+ * user's answer alongside the rows (`access`), so that asking it does not mean
+ * loading those pages' code at boot -- but hiding the row is still this
+ * module's decision.
  *
  * The keys in `PAGES` are the contract. `commons/better_navigation/pages.py` holds the same
  * set, and the two halves have to agree on them.
@@ -57,6 +56,27 @@ export type PageKey =
 interface PageGate {
   visible: ComputedRef<boolean>
   resolved: ComputedRef<boolean>
+}
+
+/**
+ * A gate the server has already answered, in the shell's `access`.
+ *
+ * Not asked from here. It used to be: each gate was imported from the module
+ * that holds its page's reads, so every boot loaded the register's, the bank
+ * reconciliation's and document capture's code for the sake of one boolean
+ * apiece, and their permission calls fired for every user — `Loan Repayment`
+ * among them, which errors on a site without lending. The server answers the
+ * same `PAGE_ACCESS` tests with the shell (`commons.better_navigation.pages.access`),
+ * and the pages ask again for themselves once they are opened.
+ *
+ * Lazy on purpose: `shell` is declared further down, and a computed reads it
+ * only when first asked, long after this module has finished loading.
+ */
+function serverGate(key: PageKey): PageGate {
+  return {
+    visible: computed(() => Boolean(shell.value.access?.[key])),
+    resolved: computed(() => shellLoaded.value),
+  }
 }
 
 interface PageChrome {
@@ -126,7 +146,7 @@ const PAGES: Record<PageKey, PageChrome> = {
     to: { name: 'AttendanceRegister' },
     routeName: 'AttendanceRegister',
     section: null,
-    gate: attendanceGate,
+    gate: serverGate('attendance'),
   },
   // Gated for the register's reason and a sharper one: ERPNext's candidate
   // search reads vouchers without asking permission, so the page is offered
@@ -138,7 +158,7 @@ const PAGES: Record<PageKey, PageChrome> = {
     to: { name: 'BankReconciliation' },
     routeName: 'BankReconciliation',
     section: null,
-    gate: reconciliationGate,
+    gate: serverGate('reconciliation'),
   },
   // Offered to whoever may create a Purchase Invoice, the server's own test,
   // because that is all the page makes and every read of a scan is billed. See
@@ -149,7 +169,7 @@ const PAGES: Record<PageKey, PageChrome> = {
     to: { name: 'DocumentCapture' },
     routeName: 'DocumentCapture',
     section: null,
-    gate: captureGate,
+    gate: serverGate('capture'),
   },
   leave: fromSection('leave'),
   expense: fromSection('expense'),
@@ -198,6 +218,10 @@ interface ShellWorkspace {
 interface ShellData {
   title: string
   workspaces: ShellWorkspace[]
+  /** This reader's answer for each page whose row waits on a permission no
+   *  request section answers. See `serverGate`. Optional so an older server's
+   *  payload reads as "no" rather than as an error. */
+  access?: Partial<Record<PageKey, boolean>>
 }
 
 declare global {

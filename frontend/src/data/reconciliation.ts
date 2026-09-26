@@ -12,6 +12,7 @@ import {
 } from './reconciliationRules'
 import type { OutstandingDocument } from './paymentAllocation'
 import type { ExistingLine, StatementReading } from './statementImport'
+import { permissionCall } from './permissions'
 
 /**
  * The bank reconciliation page's reads and writes.
@@ -118,13 +119,6 @@ export async function write<Result, Params extends object>(
 /* Who the page is for                                                         */
 /* -------------------------------------------------------------------------- */
 
-function permissionCall(doctype: string, perm: string) {
-  return useCall<{ has_permission: boolean }, { doctype: string; docname: string; perm_type: string }>({
-    url: `${CLIENT}.has_permission`,
-    params: { doctype, docname: '', perm_type: perm },
-  })
-}
-
 /** Write on `Bank Transaction`, the server's own test. See `can_reconcile`. */
 const canReconcileCall = permissionCall(BANK_TRANSACTION, 'write')
 
@@ -141,8 +135,11 @@ export const reconciliationPermissionsLoaded = computed(
   () => canReconcileCall.isFinished && canRepayCall.isFinished,
 )
 
-/** What the sidebar row waits on. Whether the site has bank statements at all
- *  is the shell's answer already (`commons.better_navigation.pages.available`). */
+/** Whether this reader reconciles, and whether that answer is in: what the
+ *  page waits on before it draws. The sidebar row has the server's answer to
+ *  the same question with the shell (`commons.better_navigation.pages.access`),
+ *  and whether the site has bank statements at all is the shell's answer too
+ *  (`pages.available`). */
 export const reconciliationGate = {
   visible: computed(() => reconciliationCan.value.reconcile),
   resolved: computed(() => canReconcileCall.isFinished),

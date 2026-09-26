@@ -212,6 +212,34 @@ class TestDepartmentBudget(unittest.TestCase):
 		for kwargs in ({"department": False}, {"rate": 0}):
 			self.refuses(self.mr(submit=False, **kwargs))
 
+	def test_request_references_are_checked_row_by_row(self):
+		"""Read in two queries for the whole request, but each row still answers for itself."""
+		approved = self.request()
+		draft = self.request(approve=False)
+
+		forged = self.mr(request=approved, submit=False)
+		forged.items[0].procurement_request = draft.name
+		self.refuses(forged, "save")
+
+		orphan = self.mr(request=approved, submit=False)
+		orphan.items[0].procurement_request_item = None
+		self.refuses(orphan, "save")
+
+		unapproved = self.mr(request=approved, submit=False)
+		unapproved.items[0].procurement_request = draft.name
+		unapproved.items[0].procurement_request_item = draft.items[0].name
+		self.refuses(unapproved, "save")
+
+	def test_a_reorder_request_erpnext_raises_itself_is_not_budgeted(self):
+		"""No department and no rate, submitted unattended: refusing it only stopped reordering."""
+		before = self.used()
+		for kind in ("Purchase", "Material Issue"):
+			doc = self.mr(kind=kind, rate=0, department=False, submit=False)
+			doc.auto_created_via_reorder = 1
+			doc.submit()
+			self.assertEqual(doc.docstatus, 1)
+		self.assertEqual(self.used(), before)
+
 	# --- the allocation -----------------------------------------------------
 
 	def test_draft_and_cancelled_allocations_do_not_authorize_requests(self):

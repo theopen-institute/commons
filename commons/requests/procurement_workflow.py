@@ -51,7 +51,7 @@ def approver_roles(workflow=None) -> set[str]:
 	What singles the approver out is that their transitions are conditioned on
 	the request's own `approver` field. That condition is the whole reason the
 	page exists: Frappe's own "waiting on me" list cannot see past it, which is
-	what `_requests_awaiting_user` is written around. So the people this page is
+	what `commons_core.workflow.names_in_movable_states` is written around. So the people this page is
 	for are exactly the people the workflow decides by name, and asking the
 	condition says so without a role name in this file.
 	"""

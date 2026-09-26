@@ -242,25 +242,30 @@ const expenseTypes = computed(() => defaults.data?.expense_types ?? [])
 
 let nextKey = 0
 
-function blankLine(): ExpenseLineForm {
+/** The type to start a line with: offered only when there is one choice.
+ *  Picking for the claimant where there are several would be guessing what
+ *  they spent it on. */
+function onlyType(types = expenseTypes.value): string {
+  return types.length === 1 ? types[0].name : ''
+}
+
+function blankLine(types = expenseTypes.value): ExpenseLineForm {
   return {
     key: nextKey++,
-    // Offered only when there is one choice: picking for the claimant where
-    // there are several would be guessing what they spent it on.
-    expense_type: expenseTypes.value.length === 1 ? expenseTypes.value[0].name : '',
+    expense_type: onlyType(types),
     expense_date: today,
     description: '',
     amount: null,
   }
 }
 
-function blankForm(): ClaimForm {
+function blankForm(fill = defaults.data): ClaimForm {
   return {
     // Omitted rather than guessed when the server had no answer: the field then
     // opens blank and the claimant picks.
-    expense_approver: defaults.data?.approver ?? '',
+    expense_approver: fill?.approver ?? '',
     remark: '',
-    expenses: [blankLine()],
+    expenses: [blankLine(fill?.expense_types ?? [])],
   }
 }
 
@@ -337,25 +342,38 @@ function addLine() {
   form.expenses.push(blankLine())
 }
 
-// Fresh on every open: a user's default approver, or the set of expense types
-// Accounts has configured, can have changed since the section was loaded.
+// Only blank fields take the defaults, once per open — see the watch below.
+let awaitingDefaults = false
+
+// Rebuilt blank on every open: a dialog that kept the last claim's values would
+// be a trap, starting the next one half-filled with somebody's last taxi fare.
+// And fetched fresh on every open: a user's default approver, or the set of
+// expense types Accounts has configured, can have changed since the section
+// was loaded.
 watch(open, (isOpen) => {
-  if (isOpen) defaults.reload()
+  submitAttempted.value = false
+  awaitingDefaults = isOpen
+  if (!isOpen) return
+  // Without the last open's defaults: they are about to be replaced, and a
+  // field filled from them would then look chosen and keep the stale value.
+  Object.assign(form, blankForm(null))
+  attachments.value = []
+  defaults.reload()
 })
 
-// Rebuild when opening and when the defaults land — both are the same event as
-// far as the form is concerned: what it should be showing has arrived. A dialog
-// that kept the last claim's values would be a trap, starting the next one
-// half-filled with somebody's last taxi fare.
-watch([open, () => defaults.data], ([isOpen]) => {
-  if (!isOpen) {
-    submitAttempted.value = false
-    return
-  }
-  Object.assign(form, blankForm())
-  attachments.value = []
-  submitAttempted.value = false
-})
+// The defaults land after the form is on screen, and the claimant may have
+// started on it by then. Rebuilding here wiped whatever they had typed while
+// the call was out, so this only fills what is still blank.
+watch(
+  () => defaults.data,
+  (fill) => {
+    if (!open.value || !awaitingDefaults || !fill) return
+    awaitingDefaults = false
+    form.expense_approver ||= fill.approver ?? ''
+    const type = onlyType(fill.expense_types ?? [])
+    for (const line of form.expenses) line.expense_type ||= type
+  },
+)
 
 function claimDocument() {
   return {

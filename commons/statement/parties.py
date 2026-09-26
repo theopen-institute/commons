@@ -36,7 +36,7 @@ this", and not something to hard-code for `Employee` when a site is free to
 have said otherwise.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import frappe
 
@@ -61,13 +61,22 @@ PORTAL_USER = "Portal User"
 # makes an Employee row this session's own. Stated there rather than repeated
 # here, so a statement and a leave request agree on which record is yours.
 #
-# `Student` names two fields and needs both. Education ships a `user` link and
+# A tuple is an order of preference, not a list of equals. The first field is
+# the link: every row naming this login in it is theirs. Any after it are
+# fallbacks, consulted only when nothing is linked by the first, and trusted
+# only when they are unambiguous -- see `_linked_rows`.
+#
+# `Student` is the one with a fallback. Education ships a `user` link and
 # barely fills it in; what it actually reads to answer "whose portal is this" is
 # the email -- `education.utils.get_current_student` matches
 # `student_email_id` against the session and nothing else, and a site whose
 # students have fees but no `user` link is the ordinary case rather than a
-# broken one. Matching either is what makes this agree with the app that raised
-# the fees.
+# broken one. So the email has to count. It cannot count as much as `user`,
+# though, because it is not unique and is not a login: siblings registered under
+# a parent's address share one, and matching it as an equal of `user` showed
+# each of them the other's fees. Worse, it is an ordinary field on the Student
+# form, so anybody who could edit it could type their own login into it and
+# collect that student's statement. Hence the order.
 USER_LINKS: dict[str, tuple[str, ...] | None] = {
 	"Customer": None,
 	"Supplier": None,
@@ -86,6 +95,13 @@ class Party:
 	#: `Receivable` or `Payable`, from this site's own `Party Type` document.
 	#: Which way round a balance reads depends on it -- see `ledger.balance_of`.
 	account_type: str
+	#: The companies this party's statement may be drawn from, or `None` for all
+	#: of them. `None` is the reader's own parties: their balance is theirs in
+	#: every company, whoever else may read those books. A tuple is somebody
+	#: else's party reached through the desk, and is exactly the companies that
+	#: reader may see -- see `named`. `party_condition` applies it, so every
+	#: query that matches a party honours it without having to remember to.
+	companies: tuple[str, ...] | None = None
 
 
 def session_parties() -> list[Party]:
@@ -141,6 +157,16 @@ def named(party_type: str, name: str) -> Party:
 	employee's ledger, and a rule that asked only about the party doctype would
 	hand every one of them everybody's salary history.
 
+	And the second way is bounded by company, because `GL Entry` read is. The
+	question `has_permission` answers without a document is "may this role read
+	ledger entries anywhere", and an Accounts User held to Company A by a User
+	Permission answers yes -- after which the raw read in `ledger` would have
+	shown them the party's ledger in Company B as well, the one set of books
+	they were deliberately kept out of. So the party comes back carrying the
+	companies this reader may read (`_readable_companies`), and every query
+	downstream is confined to them. The first way carries no such bound: a
+	reader's own balance is theirs in every company.
+
 	Throws rather than returning `None`. Every caller needs the party, and a
 	print format that got a `None` would render an empty statement under a real
 	person's name -- which reads as "you owe nothing" rather than as a refusal.
@@ -156,12 +182,30 @@ def named(party_type: str, name: str) -> Party:
 		return party
 
 	if frappe.has_permission(party_type, "read", doc=name) and frappe.has_permission("GL Entry", "read"):
-		return party
+		companies = _readable_companies()
+		# None at all is a refusal rather than an empty statement, for the
+		# reason the docstring gives for throwing: nothing under a real name
+		# reads as "owes nothing".
+		if companies:
+			return replace(party, companies=companies)
 
 	frappe.throw(
 		frappe._("You are not permitted to see the account of {0}.").format(party.title),
 		frappe.PermissionError,
 	)
+
+
+def _readable_companies() -> tuple[str, ...]:
+	"""The companies the session user may read, under their own permissions.
+
+	`get_list` rather than a raw read, because here the permission is the whole
+	point: User Permissions on `Company` are exactly how a site confines an
+	accountant to one company's books, and `get_list` applies them to the
+	`Company` rows themselves. It also admits a role with only `select` on
+	`Company` -- the Auditor, whose `GL Entry` read is real -- so the answer is
+	"which companies" rather than "may you list companies at all".
+	"""
+	return tuple(frappe.get_list("Company", pluck="name", order_by="name asc"))
 
 
 def _party(party_type: str, name: str) -> Party | None:
@@ -210,7 +254,6 @@ def _records(party_type: str) -> list[tuple[str, str]]:
 
 	links = USER_LINKS[party_type]
 	filters: dict = {}
-	or_filters: dict = {}
 
 	if links is None:
 		names = frappe.get_all(
@@ -223,32 +266,85 @@ def _records(party_type: str) -> list[tuple[str, str]]:
 			return []
 		filters = {"name": ["in", sorted(set(names))]}
 	else:
-		# A field this site's doctype does not have is dropped rather than asked
-		# for: a missing column fails the whole read, where the honest answer is
-		# that this is not one of the ways a login is named here. The same
-		# filtering `registry.display_fields` does, for the same reason.
-		present = [link for link in links if meta.has_field(link)]
-		if not present:
-			return []
-		or_filters = dict.fromkeys(present, frappe.session.user)
 		if party_type == "Employee":
 			filters = session_employee_filters()
-			# The login is already the `or_filters`; leaving it in `filters` too
-			# would AND a condition that is also being ORed, which is how an
-			# employee with a `user_id` and no `status` would slip through.
+			# The login is matched by `_linked_rows`, field by field; leaving it
+			# in `filters` as well would be a second copy of a condition that
+			# function decides on its own.
 			filters.pop("user_id", None)
+		rows = _linked_rows(party_type, meta, links, filters, fields)
+		return [(row.name, row.get(title_field) or row.name) for row in rows]
 
 	rows = frappe.get_all(
 		party_type,
 		filters=filters,
-		or_filters=or_filters,
 		fields=fields,
 		order_by="name asc",
 	)
 	return [(row.name, row.get(title_field) or row.name) for row in rows]
 
 
-def party_condition(table, type_field: str, name_field: str, parties: list[Party]):
+def _linked_rows(party_type: str, meta, links: tuple[str, ...], filters: dict, fields: list[str]) -> list:
+	"""The rows of `party_type` that name this login, by the first link that does.
+
+	The first field in `links` is the link proper, and every row naming the
+	login in it is theirs -- a person can be two Students or two Employees, and
+	both are their own. Only when *no* row is linked that way are the fallbacks
+	asked, and a fallback is believed only when it is unambiguous:
+
+	* exactly one row names the login in it. Two Students under one email are
+	  siblings under a parent's address far more often than one person twice,
+	  and there is no way to tell from here which of them is logged in -- so
+	  neither is, rather than both;
+	* and that row is not already linked to somebody else by the first field.
+	  A Student whose `user` is another login is that login's, whatever its
+	  email says; the email is a fallback for rows nobody has linked.
+
+	So once a site links a Student to its login properly, the email stops being
+	a way in at all -- which is the fix for the other half of the problem: a
+	field anybody with write access can retype is no longer enough to claim a
+	statement that has an owner.
+
+	A field this site's doctype does not have is skipped rather than asked for:
+	a missing column fails the whole read, where the honest answer is that this
+	is not one of the ways a login is named here. The same filtering
+	`registry.display_fields` does, for the same reason. A missing first field
+	does not promote a fallback, though: the fallback keeps its conditions.
+	"""
+	user = frappe.session.user
+	primary, *fallbacks = links
+	has_primary = meta.has_field(primary)
+
+	if has_primary:
+		rows = frappe.get_all(
+			party_type,
+			filters={**filters, primary: user},
+			fields=fields,
+			order_by="name asc",
+		)
+		if rows:
+			return rows
+
+	for field in fallbacks:
+		if not meta.has_field(field):
+			continue
+		# Two are enough to know it is ambiguous; the rest are not read.
+		candidates = frappe.get_all(
+			party_type,
+			filters={**filters, field: user},
+			fields=fields + ([primary] if has_primary and primary not in fields else []),
+			order_by="name asc",
+			limit_page_length=2,
+		)
+		if len(candidates) == 1 and not (has_primary and candidates[0].get(primary)):
+			return candidates
+		if candidates:
+			# Ambiguous, or somebody else's. Not a reason to try a weaker field.
+			return []
+	return []
+
+
+def party_condition(table, type_field: str, name_field: str, parties: list[Party], company_field: str = "company"):
 	"""A `where` matching any of these parties, as pairs rather than as two lists.
 
 	Written once because getting it wrong is silent. `party` is a Dynamic Link,
@@ -258,11 +354,23 @@ def party_condition(table, type_field: str, name_field: str, parties: list[Party
 	person's ledger. The pair has to be matched as a pair, and every caller in
 	this section goes through here so that only one of them has to remember.
 
+	A party that carries `companies` is confined to them here, for the same
+	reason: this is the one function every query goes through, so it is the one
+	place the bound can be applied without any caller having to remember it.
+	`company_field` is what that column is called on `table` -- `company` on
+	both `GL Entry` and `Loan`. A party confined to no company at all matches
+	nothing and is left out of the condition, rather than rendered as an
+	`IN ()` the database would refuse.
+
 	Returns `None` for no parties at all, which every caller reads as "there is
 	nothing to look for" rather than issuing an unfiltered query.
 	"""
 	condition = None
 	for party in parties:
 		pair = (table[type_field] == party.party_type) & (table[name_field] == party.name)
+		if party.companies is not None:
+			if not party.companies:
+				continue
+			pair = pair & table[company_field].isin(list(party.companies))
 		condition = pair if condition is None else (condition | pair)
 	return condition

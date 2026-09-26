@@ -140,13 +140,14 @@
    "in_list_view": 1,
    "label": "Verified Rate",
    "non_negative": 1,
-   "options": "currency"
+   "options": "currency",
+   "permlevel": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-15 06:32:12.665325",
+ "modified": "2026-09-26 21:00:00.000000",
  "modified_by": "pgraif@gmail.com",
  "module": "Requests",
  "name": "Procurement Request Item",

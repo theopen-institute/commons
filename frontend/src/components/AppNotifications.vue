@@ -44,7 +44,7 @@
 				:key="item.name"
 				:href="hasDeskAccess ? notificationDeskUrl(item) : undefined"
 				class="flex items-start gap-2 rounded-4 px-2 py-2 hover:bg-surface-gray-2"
-				@click="openItem(item)"
+				@click="openItem(item, $event)"
 			>
 				<!-- The desk's unread dot, in the desk's place: leading the row,
                  aligned with the first line. A button, because dismissing one
@@ -94,8 +94,8 @@ import { usePollWhileVisible } from '@/data/sidebarFeeds'
 import {
 	allNotificationsDeskUrl,
 	notificationDeskUrl,
+	markNotificationRead,
 	useMarkAllNotificationsRead,
-	useMarkNotificationRead,
 	useNotificationFeed,
 	type AppNotification,
 } from '@/data/notifications'
@@ -103,7 +103,6 @@ import {
 const open = ref(false)
 
 const feed = useNotificationFeed()
-const markRequest = useMarkNotificationRead()
 const markAllRequest = useMarkAllNotificationsRead()
 
 const items = computed<AppNotification[]>(() => feed.data?.notifications ?? [])
@@ -136,11 +135,9 @@ watch(open, (isOpen) => {
  */
 async function dismiss(item: AppNotification) {
 	readHere.value = new Set(readHere.value).add(item.name)
-	await markRequest.submit({ docname: item.name })
-	// `submit` resolves whether or not the server accepted it, and this endpoint
-	// answers with nothing on success -- so the error, not the result, is what
-	// says what happened.
-	if (markRequest.error) {
+	try {
+		await markNotificationRead(item.name)
+	} catch {
 		const undone = new Set(readHere.value)
 		undone.delete(item.name)
 		readHere.value = undone
@@ -152,13 +149,28 @@ async function dismiss(item: AppNotification) {
 
 /**
  * Opening the document is reading the notification, which is what the desk
- * does too. Not awaited, and nothing reloaded: this click is a full page load
- * into the desk, so there is no list left to correct.
+ * does too. Nothing reloaded: this click is a full page load into the desk, so
+ * there is no list left to correct.
+ *
+ * But the write is waited for before leaving. Unloading the page cancels a
+ * request still in flight, and a notification opened that way came back
+ * unread next time. A click that opens a new tab leaves this page where it is,
+ * so that one goes straight through.
  */
-function openItem(item: AppNotification) {
+async function openItem(item: AppNotification, event: MouseEvent) {
 	if (!hasDeskAccess.value || isRead(item)) return
 	readHere.value = new Set(readHere.value).add(item.name)
-	markRequest.submit({ docname: item.name })
+	const staysHere =
+		event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
+	if (staysHere) {
+		markNotificationRead(item.name).catch(() => {})
+		return
+	}
+	event.preventDefault()
+	// Either way it goes on: the document is what was asked for, and one left
+	// unread is only a dot the desk shows again.
+	await markNotificationRead(item.name).catch(() => {})
+	window.location.href = notificationDeskUrl(item)
 }
 
 async function markAllRead() {

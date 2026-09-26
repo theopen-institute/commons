@@ -13,6 +13,7 @@ import {
   type StudentRow,
   type TermRow,
 } from './attendanceRegister'
+import { permissionCall } from './permissions'
 
 /**
  * The attendance register's reads and writes — all of them through APIs Frappe
@@ -129,17 +130,6 @@ export {
 /* Who the register is for                                                     */
 /* -------------------------------------------------------------------------- */
 
-interface PermissionAnswer {
-  has_permission: boolean
-}
-
-function permissionCall(doctype: string, perm: string) {
-  return useCall<PermissionAnswer, { doctype: string; docname: string; perm_type: string }>({
-    url: `${CLIENT}.has_permission`,
-    params: { doctype, docname: '', perm_type: perm },
-  })
-}
-
 /**
  * Whether marking attendance is this reader's to do.
  *
@@ -148,9 +138,6 @@ function permissionCall(doctype: string, perm: string) {
  * record in the desk, where the list is filtered to it. The register is the
  * opposite shape: one term of one course with every student in the group across
  * the top. The people who mark it are the people it was written for.
- *
- * An empty `docname` asks about the doctype rather than about a document, which
- * is what `frappe.has_permission` does with no doc.
  */
 const canMarkCall = permissionCall('Student Attendance', 'write')
 
@@ -165,24 +152,11 @@ export const attendanceCan = computed(() => ({
 }))
 
 /** Whether both answers are in — settled or refused, not merely arrived. A call
- *  that fails never sets `data`, and a sidebar waiting on that holds a gap for
- *  ever. */
+ *  that fails never sets `data`, and a page waiting on that shows its skeleton
+ *  for ever. */
 export const attendancePermissionsLoaded = computed(
   () => canMarkCall.isFinished && canScheduleCall.isFinished,
 )
-
-/**
- * What the sidebar row waits on.
- *
- * Only the permission half. Whether the site has a register at all is the
- * server's answer and is already in the shell: `commons.better_navigation.pages.available`
- * drops the row from every workspace on a site with no education module, so a
- * row that is there is a register that exists. See `PAGES` in `data/shell.ts`.
- */
-export const attendanceGate = {
-  visible: computed(() => attendanceCan.value.mark),
-  resolved: attendancePermissionsLoaded,
-}
 
 /* -------------------------------------------------------------------------- */
 /* The pickers                                                                 */
@@ -298,62 +272,60 @@ export function useAttendanceRegister() {
   const loaded = ref(false)
   const error = ref<Error | null>(null)
 
+  /**
+   * Which `load` is the current one.
+   *
+   * The five calls above are shared by every load, so changing course while a
+   * register is still coming in starts a second read on the same calls — which
+   * aborts the first one's request in flight. Left alone, that aborted read
+   * resolved afterwards and reported a failure (or an empty register) over the
+   * second read that had just succeeded. Each load takes a number, and only
+   * the newest may write `rows`, `error` or `loading`.
+   */
+  let sequence = 0
+
   async function load(term: string, course: string) {
+    const ticket = ++sequence
     if (!term || !course) {
       rows.value = NO_ROWS
       loaded.value = false
+      loading.value = false
       return
     }
     loading.value = true
     error.value = null
+    const current = () => ticket === sequence
     try {
-      rows.value = await read(term, course)
+      const next = await read(term, course, current)
+      if (!current()) return
+      rows.value = next
       loaded.value = true
     } catch (problem) {
+      // Superseded or cancelled: not this read's failure to report, and the
+      // read that replaced it will say what it found.
+      if (!current() || problem instanceof Cancelled) return
       error.value = problem as Error
       rows.value = NO_ROWS
       loaded.value = true
     } finally {
-      loading.value = false
+      if (current()) loading.value = false
     }
   }
 
   /**
-   * Record a mark locally, as the server has just been told it.
-   *
-   * Called twice per click in the ordinary case — once to show the new mark
-   * before the round trip, once with the id the server gave a new row — and a
-   * third time, back to the old value, when the write is refused.
+   * `current` is asked after every round. A read that has been superseded
+   * stops there rather than sending its next round, which would go out on the
+   * same shared call as the newer read's and abort that one in turn.
    */
-  function setMark(session: string, student: string, mark: Mark, name = '') {
-    const rest = rows.value.marks.filter(
-      (row) => !(row.course_schedule === session && row.student === student),
-    )
-    if (mark) {
-      const previous = rows.value.marks.find(
-        (row) => row.course_schedule === session && row.student === student,
-      )
-      rest.push({
-        name: name || previous?.name || '',
-        course_schedule: session,
-        student,
-        ...markFields(mark),
-      })
+  async function read(
+    term: string,
+    course: string,
+    current: () => boolean,
+  ): Promise<RegisterRows> {
+    const stillCurrent = () => {
+      if (!current()) throw new Cancelled()
     }
-    rows.value = { ...rows.value, marks: rest }
-  }
 
-  /** The `Student Attendance` id behind one cell, or empty where there is no
-   *  row yet. What a change or a deletion is addressed to. */
-  function markDocument(session: string, student: string): string {
-    return (
-      rows.value.marks.find(
-        (row) => row.course_schedule === session && row.student === student,
-      )?.name ?? ''
-    )
-  }
-
-  async function read(term: string, course: string): Promise<RegisterRows> {
     // Which programmes teach this course. The join Education actually models: a
     // `Student Group` names a programme and a term, and a `Program Course` row
     // is what says the course is taught on that programme. A group's own
@@ -366,6 +338,7 @@ export function useAttendanceRegister() {
       filters: JSON.stringify([['course', '=', course]]),
       limit_page_length: PAGE.programs,
     })
+    stillCurrent()
     const programNames = [...new Set(programRows.map((row) => row.parent))]
     if (!programNames.length) return NO_ROWS
 
@@ -381,6 +354,7 @@ export function useAttendanceRegister() {
       order_by: 'name asc',
       limit: PAGE.groups,
     })
+    stillCurrent()
     const groupNames = groupRows.map((row) => row.name)
     if (!groupNames.length) return NO_ROWS
 
@@ -419,6 +393,7 @@ export function useAttendanceRegister() {
         limit: PAGE.sessions,
       }),
     ])
+    stillCurrent()
 
     const sessionNames = scheduleRows.map((row) => row.name)
     // Cancelled marks are dropped: an amended `Student Attendance` leaves the
@@ -439,6 +414,7 @@ export function useAttendanceRegister() {
           limit: PAGE.marks,
         })
       : []
+    stillCurrent()
 
     return {
       groups: groupRows,
@@ -448,7 +424,7 @@ export function useAttendanceRegister() {
     }
   }
 
-  return { load, register, setMark, markDocument, loading, loaded, error }
+  return { load, register, loading, loaded, error }
 }
 
 /**
@@ -459,13 +435,23 @@ export function useAttendanceRegister() {
  * an empty list and draw a register that is missing half a term.
  */
 async function fetchRows<Row, Params extends object>(
-  call: { submit: (params: Params) => Promise<Row[] | null>; error: Error | null },
+  call: {
+    submit: (params: Params) => Promise<Row[] | null>
+    error: Error | null
+    aborted: boolean
+  },
   params: Params,
 ): Promise<Row[]> {
   const rows = await call.submit(params)
+  // An aborted request is one somebody called off — a newer read, or the page
+  // going away — and not a refusal to put in front of the reader.
+  if (call.aborted || call.error?.name === 'AbortError') throw new Cancelled()
   if (rows === null) throw call.error ?? new Error('That could not be loaded.')
   return rows
 }
+
+/** A read that was called off rather than refused. Never shown. */
+class Cancelled extends Error {}
 
 /* -------------------------------------------------------------------------- */
 /* Writing                                                                     */

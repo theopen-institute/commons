@@ -106,7 +106,7 @@ def awesomebar_results(txt: str) -> list[dict]:
 
 	suffix = settings.title()
 	found = []
-	for row in _rows():
+	for row in _cached_rows():
 		matched = score(keywords, row["label"])
 		if matched:
 			found.append(
@@ -118,6 +118,24 @@ def awesomebar_results(txt: str) -> list[dict]:
 				}
 			)
 	return found
+
+
+# How long one user's page list is kept for the bar. Core asks on every
+# keystroke after a short debounce, and each answer walks the workspaces and
+# asks every page's permission question; a minute covers a burst of typing, and
+# a change to a workspace or a permission reaches the bar within one.
+ROWS_TTL = 60
+ROWS_CACHE_KEY = "commons_awesomebar_rows"
+
+
+def _cached_rows() -> list[dict]:
+	"""`_rows` for the session user, kept for `ROWS_TTL` seconds."""
+	user = frappe.session.user
+	rows = frappe.cache.get_value(ROWS_CACHE_KEY, user=user)
+	if rows is None:
+		rows = _rows()
+		frappe.cache.set_value(ROWS_CACHE_KEY, rows, user=user, expires_in_sec=ROWS_TTL)
+	return rows
 
 
 def _rows() -> list[dict]:

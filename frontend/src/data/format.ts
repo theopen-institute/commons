@@ -162,5 +162,34 @@ export function withScheme(url?: string | null): string {
   // alone it fails the server's check, which is the answer wanted here —
   // adding a scheme would only turn a plain sentence into a passing "URL".
   if (!link || link.startsWith('/') || link.includes(' ')) return link
+  // `localhost:8080/quote` and `shop.example.com:8443` read as a scheme to the
+  // pattern below, but are a host and a port — the address bar hid the
+  // `https` in front of them just the same.
+  if (/^[^/:]+:\d+(\/|$)/.test(link)) {
+    return `https://${link}`
+  }
+  // Any other scheme — `javascript:`, `data:`, `mailto:` — is left exactly as
+  // typed, for the same reason as the whitespace case: the server refuses it,
+  // and it must never come back out of here looking like a link we vouched for.
   return /^[a-z][a-z0-9+.-]*:/i.test(link) ? link : `https://${link}`
+}
+
+/**
+ * The link to put in an `href`, or `null` when it should not be one.
+ *
+ * Only `http:` and `https:` survive. A stored URL is whatever someone once
+ * pasted, and `javascript:` in an `href` runs in the approver's session when
+ * they click it — the server now refuses those, but rows saved before it did
+ * still exist. Relative or unparseable strings are refused too: a line's link
+ * points off the site, and anything that does not parse as absolute is text.
+ */
+export function safeHref(url?: string | null): string | null {
+  const link = (url ?? '').trim()
+  if (!link) return null
+  try {
+    const { protocol } = new URL(link)
+    return protocol === 'http:' || protocol === 'https:' ? link : null
+  } catch {
+    return null
+  }
 }

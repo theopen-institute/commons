@@ -9,7 +9,7 @@ rather than against a site.
 import logging
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from commons.requests.doctype.procurement_request import procurement_request as procurement
 
@@ -21,11 +21,9 @@ class TestProcurementHelpers(TestCase):
 		self.frappe.get_cached_value.return_value = "Nos"
 
 	def test_committed_quantity_is_converted_to_current_request_uom(self):
-		query = MagicMock()
-		for method in ("join", "on", "select", "where", "groupby"):
-			getattr(query, method).return_value = query
-		self.frappe.qb.from_.return_value = query
-		query.run.return_value = [SimpleNamespace(procurement_request_item="ROW", stock_qty=24)]
+		# What has been ordered is the budget's answer (`budget.ordered_stock_qty`);
+		# converting it back into the request's unit is this helper's.
+		self.enterContext(patch.object(procurement, "ordered_stock_qty", return_value={"ROW": 24}))
 		row = SimpleNamespace(name="ROW", item_code="ITEM", uom="Box")
 		with patch("erpnext.stock.get_item_details.get_conversion_factor", return_value={"conversion_factor": 12}):
 			self.assertEqual(procurement.get_committed_qty_map("PR", [row]), {"ROW": 2})

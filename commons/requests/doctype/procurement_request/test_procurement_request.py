@@ -428,6 +428,60 @@ class TestProcurementRequest(ProcurementTestCase):
 		request.reload()
 		self.assertEqual(request.status, "Approved")
 
+	def test_a_link_that_is_not_a_web_address_is_refused(self):
+		"""Core's URL check accepts any scheme; a `javascript:` link is one click from running."""
+		for link in ("javascript:alert(document.cookie)", "data:text/html,<script>1</script>", "file:///etc/passwd"):
+			with self.subTest(link=link), self.assertRaises(frappe.ValidationError):
+				self.make_request([{"item_name": "Pen", "qty": 1, "uom": "Nos", "reference_url": link}])
+
+	def test_a_row_cannot_be_taken_from_another_request(self):
+		"""Core saves a row sent with an existing name as an UPDATE of it, parent included."""
+		theirs = self.make_request([{"item_name": "Their laptop", "qty": 1, "uom": "Nos"}], submit=True)
+		mine = self.make_request([{"item_name": "My pen", "qty": 1, "uom": "Nos"}])
+		stolen = theirs.items[0].name
+
+		mine.append("items", {"name": stolen, "item_name": "Their laptop", "qty": 1, "uom": "Nos"})
+		with self.assertRaises(frappe.PermissionError):
+			mine.save()
+		self.assertEqual(frappe.db.get_value("Procurement Request Item", stolen, "parent"), theirs.name)
+
+	def test_a_request_keeps_its_own_rows_through_an_edit(self):
+		request = self.make_request([{"item_name": "Pen", "qty": 1, "uom": "Nos"}])
+		request.items[0].qty = 3
+		request.append("items", {"item_name": "Paper", "qty": 2, "uom": "Nos"})
+		request.save()
+		self.assertEqual([row.qty for row in request.items], [3, 2])
+
+	def test_a_requester_cannot_set_the_verified_rate(self):
+		"""Permlevel 1: a cheap verified rate understated the estimate at approval,
+		and carried over onto the Material Request."""
+		frappe.set_user(self.requester)
+		request = self.make_request(
+			[{"item_name": "Laptop", "qty": 1, "uom": "Nos", "estimated_rate": 900, "verified_rate": 0.01}]
+		)
+		self.assertFalse(frappe.db.get_value("Procurement Request Item", request.items[0].name, "verified_rate"))
+
+		request.items[0].verified_rate = 0.01
+		request.save()
+		self.assertFalse(frappe.db.get_value("Procurement Request Item", request.items[0].name, "verified_rate"))
+
+	def test_a_buyer_still_sets_it(self):
+		request = self.make_request([{"item_name": "Laptop", "qty": 1, "uom": "Nos", "estimated_rate": 900}])
+		frappe.set_user(self.procurement_user)
+		request = frappe.get_doc("Procurement Request", request.name)
+		request.items[0].verified_rate = 850
+		request.save()
+		self.assertEqual(frappe.db.get_value("Procurement Request Item", request.items[0].name, "verified_rate"), 850)
+
+	def test_the_owner_cannot_be_changed(self):
+		"""Core's self-approval rule reads `owner`, so handing it over would let an author
+		approve their own. Core refuses it (`CannotChangeConstantError`); pinned here so
+		an upgrade that stops doing so is noticed."""
+		request = self.make_request([{"item_name": "Pen", "qty": 1, "uom": "Nos"}])
+		request.owner = self.approver
+		with self.assertRaises(frappe.ValidationError):
+			request.save()
+
 	def test_item_fields_cannot_be_changed_after_submission(self):
 		"""Frappe's own rule, because no field on the table is `allow_on_submit`.
 

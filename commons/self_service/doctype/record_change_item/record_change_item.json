@@ -37,7 +37,7 @@
   },
   {
    "columns": 3,
-   "description": "What the record said when this request was last saved. Captured by the controller, not typed.",
+   "description": "What the record said when this row was proposed. Captured by the controller, not typed, and kept: an approval is refused if the record no longer says this.",
    "fieldname": "current_value",
    "fieldtype": "Small Text",
    "in_list_view": 1,
@@ -55,7 +55,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-16 00:00:00.000000",
+ "modified": "2026-09-26 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Self Service",
  "name": "Record Change Item",

@@ -330,17 +330,162 @@ class TestRecordChangeRequest(unittest.TestCase):
 		# Captured so a queue can read without loading every referenced document.
 		self.assertEqual(doc.reference_title, "Self Service")
 
-	def test_the_before_value_is_the_one_replaced_not_the_one_proposed_against(self):
-		"""Re-captured on every validate, including the one inside `submit()`, so
-		an approved request preserves the change that was actually made."""
+	def test_the_before_value_is_kept_from_when_the_request_was_raised(self):
+		"""Captured once, not on every save. It used to be re-read on each one, so
+		a reviewer saving a note after HR had edited the record turned HR's value
+		into the "before" the requester had never proposed against. Nor does a
+		`current_value` sent with a later save take -- it comes from the stored
+		request, whoever is saving."""
+		name = self.propose(cell_number="0799 999 999")
+		frappe.set_user("Administrator")
+		frappe.db.set_value(RECORD, self.employee, "cell_number", "0733 111 111")
+		doc = frappe.get_doc(api.DOCTYPE, name)
+		doc.review_note = "Looking into it."
+		doc.changes[0].current_value = "a number this employee never had"
+		doc.save()
+		self.assertEqual(frappe.get_doc(api.DOCTYPE, name).changes[0].current_value, "0712 000 000")
+
+	def test_an_edit_made_while_the_request_waited_is_not_overwritten(self):
+		"""The employee proposes C over A, HR corrects the record to B, the
+		reviewer approves later. Applying C would overwrite B unseen, so the
+		approval is refused and says which field and what to do."""
 		name = self.propose(cell_number="0799 999 999")
 		frappe.set_user("Administrator")
 		# HR edits the record by hand while the request sits in the queue.
 		frappe.db.set_value(RECORD, self.employee, "cell_number", "0733 111 111")
+		frappe.db.savepoint("attempt")
+		with self.assertRaises(frappe.ValidationError) as refused:
+			api.decide_change(name, "Approve")
+		# A web request rolls back when a whitelisted method throws; the test
+		# runner has no such boundary, so the refused attempt is undone here.
+		frappe.db.rollback(save_point="attempt")
+		self.assertIn("Mobile", str(refused.exception))
+		self.assertIn("raised again", str(refused.exception))
+		self.assertEqual(self.field("cell_number"), "0733 111 111")
+		# Still decidable, so the reviewer can reject it as the message asks.
+		row = frappe.db.get_value(api.DOCTYPE, name, ["status", "docstatus"], as_dict=True)
+		self.assertEqual((row.status, row.docstatus), ("Pending", 0))
+		api.decide_change(name, "Reject", note="Changed since; please raise it again.")
+		self.assertEqual(self.field("cell_number"), "0733 111 111")
+
+	def test_one_conflicting_row_holds_back_the_whole_approval(self):
+		"""Half a request applied is a change nobody asked for either."""
+		name = self.propose(cell_number="0799 999 999", passport_number="AA1234567")
+		frappe.set_user("Administrator")
+		frappe.db.set_value(RECORD, self.employee, "cell_number", "0733 111 111")
+		frappe.db.savepoint("attempt")
+		with self.assertRaises(frappe.ValidationError):
+			api.decide_change(name, "Approve")
+		frappe.db.rollback(save_point="attempt")
+		self.assertIsNone(self.field("passport_number"))
+
+	def test_a_correction_already_made_by_hand_is_not_a_conflict(self):
+		"""The record changed, but to exactly what was asked -- nothing is being
+		overwritten, so the approval goes through and writes nothing. It used to
+		be refused inside `submit()` as a request that asked for nothing, because
+		re-capturing made the "before" equal the proposal."""
+		name = self.propose(cell_number="0799 999 999")
+		frappe.set_user("Administrator")
+		frappe.db.set_value(RECORD, self.employee, "cell_number", "0799 999 999")
 		api.decide_change(name, "Approve")
-		row = frappe.get_doc(api.DOCTYPE, name).changes[0]
-		self.assertEqual(row.current_value, "0733 111 111")
+		self.assertEqual(frappe.db.get_value(api.DOCTYPE, name, "docstatus"), 1)
 		self.assertEqual(self.field("cell_number"), "0799 999 999")
+		self.assertEqual(frappe.get_doc(api.DOCTYPE, name).changes[0].current_value, "0712 000 000")
+
+	def test_values_are_compared_as_the_field_stores_them(self):
+		from commons.self_service.doctype.record_change_request.record_change_request import (
+			same_value,
+		)
+
+		self.assertTrue(same_value("100", 100.0, "Currency"))
+		self.assertTrue(same_value("100", "100.0", "Float"))
+		self.assertTrue(same_value("", 0, "Int"))
+		self.assertTrue(same_value(None, "0", "Check"))
+		self.assertTrue(same_value("2026-9-1", "2026-09-01", "Date"))
+		self.assertTrue(same_value("", None, "Date"))
+		self.assertFalse(same_value("100.5", "100", "Float"))
+		self.assertFalse(same_value("", "2026-09-01", "Date"))
+		# Text stays text: a leading zero in a phone number is not a number's.
+		self.assertFalse(same_value("0712", "712", "Data"))
+
+	def test_a_number_written_differently_is_not_a_change(self):
+		"""`100` proposed against a stored `100.0` asks for nothing, and is refused
+		as asking for nothing rather than queued for a decision that changes
+		nothing. `ctc` only because it is the number `Employee` has to hand."""
+		self.addCleanup(self.rollback_and_forget_configuration)
+		config = frappe.get_doc("Self Service Record", RECORD)
+		config.append("fields", {"section": "Pay", "fieldname": "ctc", "viewable": 1, "proposable": 1})
+		config.save()
+		registry.clear_cache()
+		frappe.db.set_value(RECORD, self.employee, "ctc", 100)
+
+		frappe.set_user(self.user)
+		with self.assertRaises(frappe.ValidationError):
+			api.request_change(
+				RECORD, json.dumps({"changes": [{"fieldname": "ctc", "proposed_value": "100"}]})
+			)
+
+	def rollback_and_forget_configuration(self):
+		"""Configuration and meta changed inside the savepoint are cached outside
+		it, and a savepoint rollback runs no cache callbacks -- see
+		`SelfServiceRecord.clear_registry_cache`. So roll back here, ahead of
+		`setUp`'s own rollback, and drop both caches after it."""
+		frappe.db.rollback(save_point="self_service_test")
+		registry.clear_cache()
+		frappe.clear_cache(doctype=RECORD)
+
+	# -- what an approver may write ----------------------------------------
+
+	def raise_field_to_permlevel_1(self, fieldname: str) -> None:
+		from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+		self.addCleanup(self.rollback_and_forget_configuration)
+		frappe.set_user("Administrator")
+		make_property_setter(RECORD, fieldname, "permlevel", 1, "Int", validate_fields_for_doctype=False)
+		frappe.clear_cache(doctype=RECORD)
+
+	def test_an_approver_who_cannot_write_the_field_is_refused_not_reverted(self):
+		"""Frappe's save silently puts back a field above the approver's permlevel
+		access. Unchecked, the request was approved and said "Updated Passport
+		Number" over a record that still held the old value."""
+		name = self.propose(passport_number="AA1234567")
+		self.raise_field_to_permlevel_1("passport_number")
+		approver = frappe.get_doc(
+			dict(
+				doctype="User",
+				email=f"approver-{frappe.generate_hash(length=8)}@example.com",
+				first_name="Approver",
+				send_welcome_email=0,
+			)
+		).insert(ignore_permissions=True)
+		approver.add_roles("HR Manager")
+		frappe.clear_cache(user=approver.name)
+
+		frappe.set_user(approver.name)
+		frappe.db.savepoint("attempt")
+		with self.assertRaises(frappe.PermissionError) as refused:
+			api.decide_change(name, "Approve")
+		frappe.db.rollback(save_point="attempt")
+		self.assertIn("Passport", str(refused.exception))
+		frappe.set_user("Administrator")
+		self.assertIsNone(self.field("passport_number"))
+		self.assertEqual(frappe.db.get_value(api.DOCTYPE, name, "docstatus"), 0)
+
+	def test_a_field_no_role_may_write_cannot_be_made_proposable(self):
+		"""The configuration-time half: with nobody able to write it, every
+		approval of a change to it would be refused."""
+		self.raise_field_to_permlevel_1("passport_number")
+		config = frappe.get_doc("Self Service Record", RECORD)
+		# Not refused while it is not proposable.
+		for row in config.fields:
+			if row.fieldname == "passport_number":
+				row.proposable = 0
+		config.save()
+		for row in config.fields:
+			if row.fieldname == "passport_number":
+				row.proposable = 1
+		with self.assertRaises(frappe.ValidationError):
+			config.save()
 
 	# -- the queues ---------------------------------------------------------
 
@@ -854,6 +999,79 @@ class TestRequestModes(unittest.TestCase):
 		self.assertEqual(row.account_name, "Fresh")
 		# The request stops being about a hypothetical record.
 		self.assertEqual(frappe.db.get_value(api.DOCTYPE, name, "reference_name"), created[0])
+
+	def test_a_reviewer_with_an_employee_of_their_own_still_creates_it_for_the_requester(self):
+		"""A reviewer's save used to resolve the owner again, in the reviewer's session.
+
+		A note forces a save before the decision on either route -- with a workflow
+		and without -- which is where it happened.
+		"""
+		name = self.raise_request(
+			request_type="New",
+			changes=[
+				{"fieldname": "account_name", "proposed_value": "Fresh"},
+				{"fieldname": "bank", "proposed_value": self.bank},
+			],
+		)
+		frappe.set_user("Administrator")
+		reviewer = self.reviewer_with_employee()
+		frappe.set_user(reviewer)
+		api.decide_change(name, "Approve", note="Checked against the bank letter.")
+		frappe.set_user("Administrator")
+
+		self.assertEqual(frappe.db.get_value(api.DOCTYPE, name, "record_owner"), self.employee)
+		created = self.accounts()
+		self.assertEqual(len(created), 1)
+		self.assertEqual(frappe.db.get_value("Bank Account", created[0], "party"), self.employee)
+
+	def test_who_a_new_record_belongs_to_cannot_be_changed_after_it_is_raised(self):
+		name = self.raise_request(
+			request_type="New",
+			changes=[
+				{"fieldname": "account_name", "proposed_value": "Fresh"},
+				{"fieldname": "bank", "proposed_value": self.bank},
+			],
+		)
+		frappe.set_user("Administrator")
+		doc = frappe.get_doc(api.DOCTYPE, name)
+		doc.record_owner = self.reviewer_employee_name()
+		with self.assertRaises(frappe.PermissionError):
+			doc.save()
+
+	def reviewer_with_employee(self) -> str:
+		"""An HR User who is an employee too -- the reviewer the owner used to resolve to."""
+		user = frappe.get_doc(
+			dict(
+				doctype="User",
+				email=f"modes-reviewer-{frappe.generate_hash(length=8)}@example.com",
+				first_name="Reviewer",
+				send_welcome_email=0,
+			)
+		).insert(ignore_permissions=True)
+		self._reviewer_employee = (
+			frappe.get_doc(
+				dict(
+					doctype="Employee",
+					first_name="Reviewer",
+					gender=frappe.db.get_value("Gender", {}, "name"),
+					date_of_birth="1990-01-01",
+					date_of_joining="2020-01-01",
+					status="Active",
+					company=frappe.db.get_value("Employee", self.employee, "company"),
+					user_id=user.name,
+				)
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+		user.reload()
+		user.add_roles("HR User", "HR Manager", "Accounts Manager")
+		satisfy_permission_gate(user.name, self._reviewer_employee)
+		return user.name
+
+	def reviewer_employee_name(self) -> str:
+		self.reviewer_with_employee()
+		return self._reviewer_employee
 
 	def test_a_new_request_may_not_set_a_field_that_is_not_proposable(self):
 		"""The creation form is not a way around the allowlist."""

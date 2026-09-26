@@ -98,6 +98,10 @@ class TestDerivedDocfields(unittest.TestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
 		frappe.db.savepoint("derived_docfields_test")
+		# A cleanup rather than tearDown, which is skipped when setUp fails --
+		# a lock wait while other suites run on the site, say. The records made
+		# so far would stay in the transaction, and the runner commits at the end.
+		self.addCleanup(self.undo)
 		frappe.flags.mute_emails = True
 		switch(on=True)
 
@@ -133,7 +137,7 @@ class TestDerivedDocfields(unittest.TestCase):
 			reference_name=self.reader,
 		)
 
-	def tearDown(self):
+	def undo(self):
 		frappe.set_user("Administrator")
 		frappe.db.rollback(save_point="derived_docfields_test")
 		frappe.flags.mute_emails = False
@@ -566,6 +570,64 @@ class TestDerivedDocfields(unittest.TestCase):
 		with self.assertRaises(frappe.PermissionError):
 			resolve({"doctype": HOST, "name": self.mine, "allocated_to": "Administrator"})
 
+	def link_as(self, **properties):
+		"""ToDo.allocated_to with `properties`, for as long as the `with` lasts, in this process's meta."""
+		from contextlib import ExitStack
+
+		df = frappe.get_meta(HOST).get_field("allocated_to")
+		stack = ExitStack()
+		for prop, value in properties.items():
+			stack.enter_context(patch.object(df, prop, value))
+		return stack
+
+	def ask(self, **values):
+		from commons.derived_docfields.api import resolve
+
+		return resolve({"doctype": HOST, **values}).get("dd_allocated_name")
+
+	def test_asking_keeps_a_link_above_the_askers_permlevel(self):
+		"""Allowed to save the ToDo is not allowed to repoint a link at a permlevel they can't write."""
+		frappe.set_user(self.reader)
+		with self.link_as(permlevel=1):
+			self.assertEqual(self.ask(name=self.mine, allocated_to="Administrator"), READER_NAME)
+			# A new record starts from the default, as saving it would.
+			self.assertIsNone(self.ask(__islocal=1, allocated_to="Administrator"))
+		frappe.set_user("Administrator")
+		with self.link_as(permlevel=1):
+			self.assertEqual(self.ask(name=self.mine, allocated_to="Administrator"), "Administrator")
+
+	def test_asking_keeps_a_read_only_link(self):
+		frappe.set_user(self.reader)
+		with self.link_as(read_only=1):
+			self.assertEqual(self.ask(name=self.mine, allocated_to="Administrator"), READER_NAME)
+
+	def test_asking_keeps_a_link_set_only_once_but_not_before_it_is_set(self):
+		frappe.set_user(self.reader)
+		with self.link_as(set_only_once=1):
+			self.assertEqual(self.ask(name=self.mine, allocated_to="Administrator"), READER_NAME)
+			self.assertEqual(self.ask(__islocal=1, allocated_to="Administrator"), "Administrator")
+
+	def test_asking_keeps_the_links_of_a_submitted_record(self):
+		"""Judged by the stored docstatus: the form could claim 0."""
+		frappe.db.set_value(HOST, self.mine, "docstatus", 1, update_modified=False)
+		frappe.set_user(self.reader)
+		values = dict(name=self.mine, allocated_to="Administrator", docstatus=0)
+		self.assertEqual(self.ask(**values), READER_NAME)
+		with self.link_as(allow_on_submit=1):
+			self.assertEqual(self.ask(**values), "Administrator")
+
+	def test_asking_keeps_the_type_of_a_dynamic_link_too(self):
+		"""Repointing `reference_type` alone would read another doctype's record of the same name."""
+		frappe.set_user(self.reader)
+		df = frappe.get_meta(HOST).get_field("reference_type")
+		from commons.derived_docfields.api import resolve
+
+		with patch.object(df, "permlevel", 1):
+			found = resolve(
+				{"doctype": HOST, "name": self.theirs, "reference_type": "Role", "reference_name": self.reader}
+			)
+		self.assertEqual(found["dd_reference_created"], frappe.db.get_value("User", self.reader, "creation"))
+
 	# Defining
 	# --------
 
@@ -643,6 +705,42 @@ class TestDerivedDocfields(unittest.TestCase):
 			doc.save()
 		finally:
 			frappe.flags.in_create_custom_fields = False
+
+	def test_refuses_clearing_derived_from(self):
+		"""What's left would be virtual but not derived, and core would eval its `options` on every load."""
+		doc = frappe.get_doc("Custom Field", {"dt": HOST, "fieldname": "dd_allocated_language"})
+		doc.derived_from = ""
+		# The flag keeps a save that wrongly got through from altering the table,
+		# which would commit this test's records.
+		frappe.flags.in_create_custom_fields = True
+		try:
+			with self.assertRaises(frappe.ValidationError):
+				doc.save()
+		finally:
+			frappe.flags.in_create_custom_fields = False
+		self.assertIn("dd_allocated_language", registry.definitions()[HOST])
+
+	def test_an_ordinary_custom_field_is_left_alone(self):
+		doc = frappe.get_doc(
+			{
+				"doctype": "Custom Field",
+				"dt": HOST,
+				"fieldname": "dd_plain",
+				"label": "Dd Plain",
+				"fieldtype": "Data",
+				"derived_from": " ",
+				"insert_after": "description",
+			}
+		)
+		frappe.flags.in_create_custom_fields = True
+		try:
+			doc.insert()
+			doc.label = "Plain, relabelled"
+			doc.save()
+		finally:
+			frappe.flags.in_create_custom_fields = False
+			frappe.clear_cache(doctype=HOST)
+		self.assertEqual((doc.derived_from, doc.is_virtual, doc.read_only), (None, 0, 0))
 
 	def test_deleting_a_field_forgets_it(self):
 		"""Core runs `on_trash` before the row goes; anything reading in between must not keep it."""

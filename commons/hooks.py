@@ -85,6 +85,8 @@ after_migrate = [
 	# A migrate is when a doctype along some derived field's path most often
 	# changes under it. Reports what no longer resolves; repairs nothing.
 	"commons.derived_docfields.validation.check_all",
+	# An app installed or removed changes the rail's inputs without a doc event.
+	"commons.better_navigation.navigation_apps.clear_cache",
 ]
 
 # Modules are added to `modules.txt` after this app has already been installed
@@ -303,7 +305,8 @@ doc_events = {
 	# a Role's home page or priority, and a User's own list of roles.
 	"Role": {
 		"on_update": "commons.better_navigation.home_page.clear_cache",
-		"on_trash": "commons.better_navigation.home_page.clear_cache",
+		# Not `on_trash`, which runs while the row is still there to be re-read.
+		"after_delete": "commons.better_navigation.home_page.clear_cache",
 	},
 	"User": {
 		"on_update": "commons.better_navigation.home_page.clear_user_cache",
@@ -325,10 +328,25 @@ doc_events = {
 		"before_update_after_submit": "commons.requests.budget.protect_submitted_material_request",
 		"on_submit": "commons.requests.budget.charge_material_request",
 	},
+	# The navigation rail's site-level inputs are cached; these are what it reads.
+	# See `commons.better_navigation.navigation_apps._site_inputs`.
+	**{
+		doctype: {
+			"on_update": "commons.better_navigation.navigation_apps.clear_cache",
+			"after_delete": "commons.better_navigation.navigation_apps.clear_cache",
+		}
+		for doctype in ("Navigation App", "Workspace Sidebar", "Desktop Icon", "Module Def")
+	},
 	# A cancelled document's Notification emails that are still waiting in the
 	# queue are not sent. See `commons.email_extensions.scheduled`.
 	"*": {
 		"on_cancel": "commons.email_extensions.scheduled.cancel_pending",
+	},
+	# Which doctypes delay a Notification's email is cached for the desk boot.
+	# See `commons.email_extensions.scheduled.delayed_doctypes`.
+	"Notification": {
+		"on_update": "commons.email_extensions.scheduled.forget_delayed_doctypes",
+		"after_delete": "commons.email_extensions.scheduled.forget_delayed_doctypes",
 	},
 	# A template designed in MJML is sent as the HTML it compiles to, compiled
 	# here on every save. See `commons.email_extensions.mjml`.
@@ -433,6 +451,10 @@ before_request = [
 ]
 # after_request = ["commons.utils.after_request"]
 
+# At `POST /login` the session is still Guest's when `before_request` runs, so the
+# login redirect is settled here instead. See `commons.better_navigation.home_page`.
+on_login = ["commons.better_navigation.home_page.set_home_page_on_login"]
+
 # Job Events
 # ----------
 # The workers run queries too, so they get the same engine the web does.
@@ -494,6 +516,9 @@ extend_doctype_class = {
 	# A Notification may send an Email Template's content in place of its own
 	# message. See `commons.email_extensions.notification`.
 	"Notification": ["commons.email_extensions.notification.TemplateNotificationMixin"],
+	# An Auto Email Report runs its report without the endpoints the permission
+	# gate stands in front of. See `commons.safer_permissions.auto_email_report`.
+	"Auto Email Report": ["commons.safer_permissions.auto_email_report.GatedAutoEmailReport"],
 }
 
 # The gate checkbox is drawn next to "Only if Creator" rather than among the

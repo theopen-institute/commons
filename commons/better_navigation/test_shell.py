@@ -26,7 +26,7 @@ from unittest.mock import patch
 import frappe
 
 from commons.api_integrations.claude import client as claude
-from commons.better_navigation import workspaces
+from commons.better_navigation import api, pages, workspaces
 from commons.better_navigation.doctype.commons_workspace import commons_workspace as controller
 from commons.better_navigation.doctype.commons_workspace.commons_workspace import CommonsWorkspace
 
@@ -369,7 +369,8 @@ class TestTheAttendanceRegisterRow(TestCase):
 	It is deliberately *not* tested here that a student does not get the row.
 	That is `pages.PAGE_ACCESS`, which is a permission question about a person
 	rather than a fact about the site, and the default workspace does not ask it
-	-- the frontend and the Awesome Bar each do. See `commons.better_navigation.search`.
+	-- `pages.access`, sent beside it in the shell, and the Awesome Bar each do.
+	See `TestAccess` below and `commons.better_navigation.search`.
 	"""
 
 	ABSENT = ("Course Schedule", "Student Attendance")
@@ -489,6 +490,71 @@ class TestTheCaptureRow(TestCase):
 		)
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["capture"])
+
+
+class TestAccess(TestCase):
+	"""This reader's answer for each gated page, sent with the shell.
+
+	What would fail quietly: a page the site does not have being asked about
+	anyway (its permission check is about a doctype that is not there), and a
+	refusal for one page leaking into another's answer. Either leaves a row
+	offered to somebody it is not for, or taken from somebody it is.
+	"""
+
+	def setUp(self):
+		with_policies(self, policy("Employee", "Profile", "employee"))
+		self.asked = []
+
+	def with_permissions(self, refused=()):
+		def has_permission(doctype, ptype="read", *args, **kwargs):
+			self.asked.append((doctype, ptype))
+			return doctype not in refused
+
+		self.enterContext(patch.object(frappe, "has_permission", side_effect=has_permission))
+
+	def test_each_gated_page_is_asked_by_its_own_test(self):
+		with_documents(self, [], [], claude_key=True)
+		self.with_permissions()
+		self.assertEqual(
+			pages.access(), {"attendance": True, "reconciliation": True, "capture": True}
+		)
+		self.assertCountEqual(
+			self.asked,
+			[
+				("Student Attendance", "write"),
+				("Bank Transaction", "write"),
+				("Purchase Invoice", "create"),
+			],
+		)
+
+	def test_a_refusal_is_that_page_s_alone(self):
+		with_documents(self, [], [], claude_key=True)
+		self.with_permissions(refused=("Bank Transaction",))
+		self.assertEqual(
+			pages.access(), {"attendance": True, "reconciliation": False, "capture": True}
+		)
+
+	def test_a_page_the_site_does_not_have_is_no_without_asking(self):
+		with_documents(self, [], [], absent=("Bank Transaction",))
+		self.with_permissions()
+		answer = pages.access()
+		self.assertFalse(answer["reconciliation"])
+		# No key, so capture is not here either.
+		self.assertFalse(answer["capture"])
+		self.assertNotIn(("Bank Transaction", "write"), self.asked)
+		self.assertNotIn(("Purchase Invoice", "create"), self.asked)
+
+	def test_rides_along_with_the_shell(self):
+		with_documents(self, [], [], claude_key=True)
+		self.with_permissions(refused=("Student Attendance",))
+		self.enterContext(patch.object(api, "title", return_value="Commons"))
+		shell = api.get_shell()
+		self.assertEqual(shell["access"], pages.access())
+		self.assertFalse(shell["access"]["attendance"])
+		# The rows are still the site's: the refused page keeps its row, and the
+		# frontend is what leaves it out for this reader.
+		keys = [row["key"] for row in shell["workspaces"][0]["items"]]
+		self.assertIn("attendance", keys)
 
 
 class TestConfiguredWorkspaces(TestCase):

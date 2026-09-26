@@ -5,10 +5,11 @@ first document it takes, and `purchase_invoice` is everything behind them.
 
 The shape, which the next document type should follow as well:
 
-1. The browser sends the scan to a `read_*` endpoint here. Nothing is stored.
-   The endpoint asks Claude to read it (`commons.api_integrations.claude`)
-   and puts the answer next to this site's own records: which supplier, which
-   company.
+1. The browser sends the scan to a `start_reading` endpoint here, which hands
+   it to a background job and answers with a token the browser asks after
+   (`commons.api_integrations.claude.jobs`). Nothing is stored. The job asks
+   Claude to read it (`commons.api_integrations.claude`) and puts the answer
+   next to this site's own records: which supplier, which company.
 2. The reader checks and corrects a draft in a dialog. Suggestions that depend
    on their choices, such as accounts and taxes, come from a `suggest`
    endpoint, and a `preview` endpoint has ERPNext compute the totals, so the

@@ -220,6 +220,7 @@ class UpdateUser(TestCase):
 			patch.object(api.frappe, "throw", throw),
 			patch.object(api, "_", _format),
 			patch.object(api.users, "update", update_user),
+			patch.object(api, "_refuse_administrators", lambda key: None),
 		):
 			return api.update_user("114", **kwargs)
 
@@ -253,6 +254,7 @@ class SetUserPassword(TestCase):
 		with (
 			patch.object(api.frappe, "get_roles", lambda *a, **kw: ALLOWED),
 			patch.object(api.users, "set_password", lambda key, change_at_next_login=True: "xK4"),
+			patch.object(api, "_refuse_administrators", lambda key: None),
 		):
 			self.assertEqual(api.set_user_password("114"), "xK4")
 
@@ -261,6 +263,48 @@ class SetUserPassword(TestCase):
 		import inspect
 
 		self.assertNotIn("password", inspect.signature(api.set_user_password).parameters)
+
+
+class AdministratorsAreLeftToTheAdminConsole(TestCase):
+	"""Every call runs as the delegated super admin; a site role must not become domain root."""
+
+	def refuse(self, record, impersonated="super@example.org"):
+		with (
+			patch.object(api.users, "get", return_value=record),
+			patch.object(api.client, "credentials", return_value=type("C", (), {"admin_email": impersonated})()),
+			patch.object(api.frappe, "throw", throw),
+			patch.object(api, "_", _format),
+		):
+			api._refuse_administrators("someone@example.org")
+
+	def test_an_administrator_is_refused(self):
+		with self.assertRaises(frappe.PermissionError):
+			self.refuse({"primaryEmail": "boss@example.org", "isAdmin": True})
+
+	def test_a_delegated_administrator_is_refused(self):
+		with self.assertRaises(frappe.PermissionError):
+			self.refuse({"primaryEmail": "helpdesk@example.org", "isDelegatedAdmin": True})
+
+	def test_the_account_the_integration_acts_as_is_refused_by_any_of_its_addresses(self):
+		with self.assertRaises(frappe.PermissionError):
+			self.refuse(
+				{"primaryEmail": "it@example.org", "emails": [{"address": "Super@example.org"}]},
+				impersonated="super@example.org",
+			)
+
+	def test_an_ordinary_account_passes(self):
+		self.refuse({"primaryEmail": "ann@example.org", "isAdmin": False, "isDelegatedAdmin": False})
+
+	def test_an_unknown_account_is_left_to_the_call(self):
+		self.refuse(None)
+
+	def test_every_endpoint_that_changes_an_account_asks(self):
+		import inspect
+
+		changing = ["update_user", "set_user_password", "suspend_user", "add_user_alias", "remove_user_alias", "set_user_photo", "remove_user_photo"]
+		for name in changing:
+			with self.subTest(endpoint=name):
+				self.assertIn("_refuse_administrators(user_key)", inspect.getsource(getattr(api, name)))
 
 
 class NothingDeletes(TestCase):

@@ -40,11 +40,6 @@
           :message="requests.error.message"
           class="mb-3"
         />
-        <ErrorMessage
-          v-if="decision.error"
-          :message="decision.error.message"
-          class="mb-3"
-        />
 
         <div v-if="requests.loading && !requests.data" class="space-y-2">
           <Skeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-4" />
@@ -114,32 +109,34 @@
               {{ request.leave_approver_name || request.leave_approver }}
             </p>
 
-            <!-- Drawn from the server's answer for this row, not from its
-                 docstatus: whether this user decides this application is a
-                 question only the server can settle. -->
-            <div v-if="request.can_decide" class="mt-4 flex items-center gap-2">
-              <Button
-                v-for="button in buttonsFor(request)"
-                :key="button.decision"
-                :variant="button.variant"
-                :theme="button.theme"
-                :label="button.label"
-                :icon-left="button.icon"
-                :loading="deciding === `${request.name}:${button.decision}`"
-                :disabled="Boolean(deciding)"
-                @click="decide(request, button)"
-              />
-              <span class="ml-auto text-p-sm text-ink-gray-5">
+            <!-- Only opens the application: the decision is made in the dialog,
+                 with the whole request in front of the approver, and never on
+                 one click from a row read in passing. Offered where the server
+                 says this user decides this row. -->
+            <div class="mt-4 flex items-center gap-2">
+              <span class="text-p-sm text-ink-gray-5">
                 Requested {{ formatDate(request.posting_date) }}
               </span>
+              <Button
+                v-if="request.can_decide"
+                class="ml-auto"
+                variant="subtle"
+                icon-left="lucide-eye"
+                label="Review"
+                @click="review.show(request)"
+              />
             </div>
-            <p v-else class="mt-4 text-p-sm text-ink-gray-5">
-              Requested {{ formatDate(request.posting_date) }}
-            </p>
           </li>
         </ul>
       </div>
     </RequestGate>
+
+    <LeaveReviewDialog
+      v-model:open="review.open"
+      :request="review.row"
+      :gone="review.gone"
+      @settled="refresh"
+    />
   </div>
 </template>
 
@@ -152,24 +149,20 @@ import {
   ErrorMessage,
   Skeleton,
   TabButtons,
-  dialog,
-  toast,
 } from 'frappe-ui'
 import { user } from '@/data/session'
 import {
-  decisionButtons,
   leaveCan,
   leavePermissionsError,
   leavePermissionsLoaded,
   leaveStatus,
   reloadLeavePermissions,
   useLeaveApprovalQueue,
-  useLeaveDecision,
-  type DecisionButton,
-  type LeaveApplicationRow,
 } from '@/data/requests/leave'
+import { useReviewTarget } from '@/data/requests/review'
 import { formatDate, formatDateRange } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
+import LeaveReviewDialog from '@/components/LeaveReviewDialog.vue'
 import RequestGate from '@/components/RequestGate.vue'
 import RequestTabs from '@/components/RequestTabs.vue'
 
@@ -183,50 +176,10 @@ const canApprove = computed(
 
 const requests = useLeaveApprovalQueue(() => tab.value === 'decided')
 
-const decision = useLeaveDecision()
-
-// Keyed by request and decision so only the button that was pressed spins.
-const deciding = ref('')
-
-// The outcomes *this row* accepts, which the server settles per row: a
-// workflow's permitted transitions where one is running, and otherwise the
-// vocabulary less anything HRMS would refuse — self-approval, say.
-function buttonsFor(request: LeaveApplicationRow) {
-  return decisionButtons(request.actions, leaveCan.value.decisions)
-}
-
-async function decide(request: LeaveApplicationRow, button: DecisionButton) {
-  // Whether an outcome needs confirming arrives with it. The application is
-  // written with that decision on it, and that is not something the page can
-  // walk back on the approver's behalf.
-  if (button.confirm) {
-    dialog.danger({
-      title: `${button.label} leave`,
-      message: `${button.label} ${request.employee_name}'s ${request.leave_type} for ${formatDateRange(request.from_date, request.to_date)}? They are notified, and the application is settled with that decision.`,
-      confirmLabel: `${button.label} leave`,
-      onConfirm: () => submitDecision(request, button.decision),
-    })
-    return
-  }
-  await submitDecision(request, button.decision)
-}
-
-async function submitDecision(request: LeaveApplicationRow, verdict: string) {
-  deciding.value = `${request.name}:${verdict}`
-  try {
-    const result = await decision.submit({ name: request.name, decision: verdict })
-    // `submit` resolves null on failure; the reason renders above the list.
-    if (!result) throw decision.error ?? new Error('Could not save the decision')
-    // The outcome in the server's own words, so a site whose workflow calls it
-    // something else is quoted rather than paraphrased.
-    toast.success(
-      `${request.employee_name}'s leave is now ${result.status}`,
-    )
-    refresh()
-  } finally {
-    deciding.value = ''
-  }
-}
+// The application open for review, if any. Deciding it — and everything that
+// needs, from the buttons to the reason a decision was refused — is the
+// dialog's; the page only refreshes once a decision has reached the server.
+const review = useReviewTarget(() => requests.data)
 
 function refresh() {
   requests.reload()

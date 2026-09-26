@@ -7,10 +7,12 @@ adds), and fixture sync all go through them.
 `normalize` runs first (`before_validate`) and makes the field what a derived
 field is: virtual -- so core creates no column and writes nothing -- read-only,
 and without the stored-field properties that mean nothing without a column.
-`check` then refuses anything that can't resolve, and is the only place the
-permissions of the doctypes along a path are consulted: whoever defines the
-field must be able to read everything it reads. After that the field belongs to
-the host doctype (see `commons.derived_docfields`).
+It also refuses to undo that: a derived field whose Derived From is cleared
+would be left virtual and unread (`refuse_underiving`). `check` then refuses
+anything that can't resolve, and is the only place the permissions of the
+doctypes along a path are consulted: whoever defines the field must be able to
+read everything it reads. After that the field belongs to the host doctype
+(see `commons.derived_docfields`).
 
 The checks run when the definition changes, not on every save, so relabelling
 a derived field while the feature is switched off still works.
@@ -90,6 +92,7 @@ MANY_CANDIDATES = 5
 def normalize(doc, method=None) -> None:
 	"""Make a Custom Field with a Derived From into a derived field, before core validates it."""
 	if not (doc.get(DERIVED_FROM) or "").strip():
+		refuse_underiving(doc)
 		doc.set(DERIVED_FROM, None)
 		doc.set(CANDIDATES, None)
 		doc.set(IN_WILDCARD, 0)
@@ -107,6 +110,31 @@ def normalize(doc, method=None) -> None:
 		# for a user with User Permissions on its target would fail. The rows
 		# are narrowed by the host's own links, which is where those rules belong.
 		doc.ignore_user_permissions = 1
+
+
+def refuse_underiving(doc) -> None:
+	"""A derived field can't have its Derived From taken away; it has to be replaced.
+
+	Clearing it would leave what `normalize` made -- a virtual field, with a
+	derived Link's doctype or a Select's choices in `options` -- but no longer a
+	derived one, so the host's controller loses the descriptor that stood in
+	front of those options. Core then evaluates a virtual field's `options` as
+	Python on every `as_dict` (`get_valid_dict`), and every form and REST read
+	of the host fails. Making it an ordinary stored field instead would need a
+	column, created empty and filled by nobody -- not what anyone clearing the
+	box expects -- so the change is refused and the way out named.
+	"""
+	if doc.is_new() or not (before := doc.get_doc_before_save()):
+		return
+	if not (before.get(DERIVED_FROM) or "").strip():
+		return
+	frappe.throw(
+		_(
+			"{0} is a derived field: it has no column, so it can't stop being derived. To store a value "
+			"here instead, delete this field and add a new one."
+		).format(frappe.bold(doc.fieldname)),
+		title=_("Derived field"),
+	)
 
 
 def check(doc, method=None) -> None:

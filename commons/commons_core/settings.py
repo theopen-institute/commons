@@ -34,10 +34,25 @@ def title() -> str:
 	before migrate runs it, and for that one window there is no doctype to read
 	a Single of.
 	"""
-	stored = None
-	if frappe.db.exists("DocType", SETTINGS, cache=True):
-		stored = frappe.db.get_single_value(SETTINGS, "title")
+	stored = (_settings() or {}).get("title")
 	return (stored or "").strip() or DEFAULT_TITLE
+
+
+def _settings():
+	"""The cached settings document, or None between this app landing and its migrate.
+
+	Asked on every request, so the missing-doctype case is the exception path
+	rather than an existence query up front: `DocType` lookups are cached only
+	for the request, so checking first cost a query on every one. Frappe raises
+	`ImportError` for a Single whose doctype isn't there; the same error from a
+	doctype that *is* there is a real fault, and is raised.
+	"""
+	try:
+		return frappe.get_cached_doc(SETTINGS)
+	except (ImportError, frappe.DoesNotExistError):
+		if frappe.db.exists("DocType", SETTINGS):
+			raise
+		return None
 
 
 # Optional features
@@ -103,9 +118,8 @@ def feature_enabled(fieldname: str) -> bool:
 	this on every permission check and the home page on every request, and a
 	save clears the cached copy.
 	"""
-	if not frappe.db.exists("DocType", SETTINGS, cache=True):
-		return False
-	return bool(frappe.get_cached_doc(SETTINGS).get(fieldname))
+	doc = _settings()
+	return bool(doc and doc.get(fieldname))
 
 
 def extend_bootinfo(bootinfo: "frappe._dict") -> None:

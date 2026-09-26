@@ -521,3 +521,70 @@ class CoreStillLooksTheSame(TestCase):
 		for path in self.OVERRIDES:
 			with self.subTest(path=path):
 				self.assertIn(path, source)
+
+
+class AutoEmailReports(TestCase):
+	"""The fourth way to a report's rows, refused at the method every route passes through."""
+
+	def report(self, gated_for, enabled=1):
+		from commons.safer_permissions import auto_email_report
+
+		class Core:
+			def get(self, key):
+				return getattr(self, key, None)
+
+			def validate(self):
+				self.validated = True
+
+			def get_report_content(self):
+				return b"rows"
+
+		class Report(auto_email_report.GatedAutoEmailReport, Core):
+			pass
+
+		doc = Report()
+		doc.report, doc.user, doc.enabled = "Salary Register", "employee@example.com", enabled
+		patcher = patch.object(
+			auto_email_report,
+			"gated_report_doctype",
+			side_effect=lambda report, user: DOCTYPE if user == gated_for else None,
+		)
+		patcher.start()
+		self.addCleanup(patcher.stop)
+		self.enterContext(patch.object(auto_email_report.frappe, "throw", side_effect=frappe.PermissionError))
+		self.enterContext(patch.object(auto_email_report, "_", side_effect=lambda text: text))
+		return doc
+
+	def test_a_gated_user_is_not_sent_the_report(self):
+		doc = self.report(gated_for="employee@example.com")
+		with self.assertRaises(frappe.PermissionError):
+			doc.get_report_content()
+
+	def test_nor_can_one_be_set_up_for_them(self):
+		doc = self.report(gated_for="employee@example.com")
+		with self.assertRaises(frappe.PermissionError):
+			doc.validate()
+
+	def test_a_disabled_one_can_still_be_saved(self):
+		doc = self.report(gated_for="employee@example.com", enabled=0)
+		doc.validate()
+		self.assertTrue(doc.validated)
+
+	def test_an_ungated_user_is_sent_it(self):
+		doc = self.report(gated_for="someone-else@example.com")
+		self.assertEqual(doc.get_report_content(), b"rows")
+
+	def test_core_still_sends_through_get_report_content(self):
+		"""Run after an upgrade, like `CoreStillLooksTheSame`: a new route to the rows goes round this."""
+		import inspect
+
+		from frappe.email.doctype.auto_email_report import auto_email_report as core
+
+		for name in ("send", "download"):
+			source = inspect.getsource(getattr(core.AutoEmailReport, name, None) or getattr(core, name))
+			with self.subTest(route=name):
+				self.assertIn("get_report_content", source)
+		self.assertIn(
+			"commons.safer_permissions.auto_email_report.GatedAutoEmailReport",
+			frappe.get_hooks("extend_doctype_class", app_name="commons").get("Auto Email Report", []),
+		)

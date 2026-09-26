@@ -56,14 +56,17 @@
 				>
 					<!-- The desk's circle that fills in when you reach for it. A
                    button in its own right, not part of the link: closing a
-                   to-do and going to read it are two different intentions. -->
+                   to-do and going to read it are two different intentions.
+                   It asks first rather than closing on the press — a list in
+                   the sidebar is brushed past all day, and a to-do closed by a
+                   stray click is gone from here with nothing to say so. -->
 					<button
 						type="button"
 						class="mt-0.5 grid size-4.5 shrink-0 place-items-center rounded-full border border-outline-gray-2 text-ink-gray-5 transition hover:border-outline-gray-4 hover:text-ink-gray-8"
-						:disabled="closing === todo.name"
+						:disabled="Boolean(closing)"
 						:aria-label="`Mark as closed: ${todo.title}`"
 						title="Mark as closed"
-						@click="close(todo)"
+						@click="confirmClose(todo)"
 					>
 						<span
 							class="lucide-check size-3 opacity-0 transition group-hover/todo:opacity-100"
@@ -117,7 +120,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Badge, ErrorMessage, Select, Skeleton, toast } from 'frappe-ui'
+import { Badge, ErrorMessage, Select, Skeleton, dialog, toast } from 'frappe-ui'
 import AppSidebarPanel from '@/components/AppSidebarPanel.vue'
 import { usePollWhileVisible } from '@/data/sidebarFeeds'
 import { formatDate } from '@/data/format'
@@ -153,26 +156,48 @@ watch(open, (isOpen) => {
 	if (isOpen) request.reload()
 })
 
-/** Which row is in flight, so only the one pressed dims. */
+/** Which row is in flight, so only the one pressed dims — and the others'
+ *  circles wait: one close at a time is what keeps each one's answer its own. */
 const closing = ref('')
 
-async function close(todo: OpenTodo) {
-	closing.value = todo.name
-	try {
-		await closeRequest.submit({ name: todo.name })
-		// `submit` resolves whether or not the server accepted it, so the error,
-		// not the result, is what says what happened.
-		if (closeRequest.error) {
-			toast.error(closeRequest.error.message || 'Could not close the to-do')
-			return
-		}
-		toast.success('Closed')
-		// The server's count is the one that counts -- it sees ToDos closed in
-		// the desk, or by an assignment being completed there, in the same
-		// breath. Re-reading the list is how this panel learns about those too.
-		await request.reload()
-	} finally {
-		closing.value = ''
-	}
+/**
+ * Close a to-do, once the person has said so.
+ *
+ * A confirmation rather than a one-press write, by the rule the rest of this
+ * app keeps: nothing is written from a base screen without a deliberate step.
+ * The dialog names the to-do, so the press that sent it is checked against
+ * what it is about to close.
+ */
+function confirmClose(todo: OpenTodo) {
+	const about =
+		todo.reference_type && todo.reference_name
+			? ` (${todo.reference_type}: ${todo.reference_name})`
+			: ''
+	dialog.confirm({
+		title: 'Close to-do',
+		message: `${todo.title || 'No description'}${about}`,
+		confirmLabel: 'Close to-do',
+		onConfirm: async () => {
+			closing.value = todo.name
+			try {
+				await closeRequest.submit({ name: todo.name })
+				// `submit` resolves whether or not the server accepted it, so the
+				// error, not the result, is what says what happened. Throwing keeps
+				// the dialog open with the reason inline.
+				if (closeRequest.error) {
+					throw new Error(closeRequest.error.message || 'Could not close the to-do')
+				}
+			} finally {
+				closing.value = ''
+			}
+			toast.success('Closed')
+			// The server's count is the one that counts -- it sees ToDos closed in
+			// the desk, or by an assignment being completed there, in the same
+			// breath. Re-reading the list is how this panel learns about those too.
+			// Not awaited: the dialog has done its job and should not sit there
+			// spinning over a list it is covering.
+			request.reload()
+		},
+	})
 }
 </script>

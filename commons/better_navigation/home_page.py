@@ -72,7 +72,9 @@ def candidates(user: str) -> list[frappe._dict]:
 		"Role",
 		# `is set` rather than a `not in ("", None)`, which SQL evaluates to NULL
 		# for every row and quietly matches nothing.
-		filters={"name": ("in", roles), "home_page": ("is", "set")},
+		# A disabled role grants nothing in core, so it decides nothing here either
+		# -- a user can keep a `Has Role` row for one after it was switched off.
+		filters={"name": ("in", roles), "home_page": ("is", "set"), "disabled": 0},
 		fields=["name", "home_page", FIELDNAME],
 		order_by=f"{FIELDNAME} asc, name asc",
 	)
@@ -80,6 +82,11 @@ def candidates(user: str) -> list[frappe._dict]:
 
 def resolve(user: str) -> str:
 	"""The home page this user's roles ask for, or "" to let core decide."""
+
+	if user == "Administrator":
+		# `get_roles` hands Administrator every role on the site, so any order
+		# over them is an order over roles nobody chose to give it. Left to core.
+		return ""
 
 	def _resolve() -> str:
 		if frappe.db.get_value("User", user, "default_workspace"):
@@ -120,10 +127,39 @@ def set_home_page_flag() -> None:
 
 
 def clear_cache(doc=None, method=None) -> None:
-	"""Drop every cached answer. Bound to Role, whose change can move anyone."""
-	frappe.cache.delete_value(CACHE_KEY)
+	"""Drop every cached answer. Bound to Role, whose change can move anyone.
+
+	Now, and again once the save has committed or rolled back: a request landing
+	in between resolves from the rows as they were and caches that, and with no
+	expiry on the hash the old landing page would stay until the next change.
+	"""
+	_after_settling(lambda: frappe.cache.delete_value(CACHE_KEY))
 
 
 def clear_user_cache(doc, method=None) -> None:
-	"""Drop one user's answer. Bound to User, which owns the `Has Role` rows."""
-	frappe.cache.hdel(CACHE_KEY, doc.name)
+	"""Drop one user's answer. Bound to User, which owns the `Has Role` rows. See `clear_cache`."""
+	user = doc.name
+	_after_settling(lambda: frappe.cache.hdel(CACHE_KEY, user))
+
+
+def _after_settling(forget) -> None:
+	forget()
+	if db := getattr(frappe.local, "db", None):
+		db.after_commit.add(forget)
+		db.after_rollback.add(forget)
+
+
+def set_home_page_on_login(login_manager) -> None:
+	"""`on_login`: settle the landing page for the user who is logging in.
+
+	`before_request` cannot: at `POST /login` the session is still Guest's when
+	it runs. Core's `post_login` fires `on_login` before it fills the response's
+	`home_page`, which is where the browser is sent next -- so without this the
+	login redirect was core's unordered first-role pick, the thing this module
+	exists to replace.
+	"""
+	if frappe.local.flags.home_page or not settings.feature_enabled(settings.ENABLE_HOME_PAGE_PRIORITY):
+		return
+	home_page = resolve(login_manager.user)
+	if home_page:
+		frappe.local.flags.home_page = home_page

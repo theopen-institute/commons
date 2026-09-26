@@ -354,11 +354,11 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 	workflow = PROCUREMENT.workflow()
 	state_field = PROCUREMENT.state_field(workflow)
 
-	names = (
-		approvals.completed_by_session(PROCUREMENT_REQUEST)
-		if decided
-		else _requests_awaiting_user(workflow, state_field)
-	)
+	# Pending: the first page of what this user may actually move, found before
+	# the page is cut -- see `wf.first_actionable`, and `PROCUREMENT.actionable`,
+	# which the badge asks too.
+	available = PROCUREMENT.actionable(workflow) if not decided else None
+	names = list(available) if not decided else approvals.completed_by_session(PROCUREMENT_REQUEST)
 
 	if not names:
 		return {"requests": [], "actions": {}, "groups": []}
@@ -370,13 +370,12 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 		limit_page_length=PROCUREMENT.page_length,
 	)
 	_add_procurement_costs(requests)
-	# `get_list` has already settled what this user may read, so the names below
-	# need no second permission pass.
-	available = wf.permitted_transitions(PROCUREMENT_REQUEST, [row.name for row in requests], workflow)
+	if decided:
+		# `get_list` has already settled what this user may read, so the names
+		# below need no second permission pass.
+		available = wf.permitted_transitions(PROCUREMENT_REQUEST, [row.name for row in requests], workflow)
 	for request in requests:
 		request.workflow_state = request.get(state_field)
-	if not decided:
-		requests = [row for row in requests if available.get(row.name)]
 	return {
 		"requests": requests,
 		"actions": available,
@@ -436,19 +435,6 @@ def group_by_department(requests: list[dict]) -> list[dict]:
 		groups.values(),
 		key=lambda group: (group["department"] is None, group["department"] or ""),
 	)
-
-
-def _requests_awaiting_user(workflow, state_field: str) -> list[str]:
-	"""Readable requests parked in a state one of this user's roles can move.
-
-	The reason this is not Frappe's own "waiting on me" list is written out in
-	`wf.names_in_movable_states`, and this workflow is the case it describes: the
-	`Expense Approver` transitions out of `Under Review` are conditioned on
-	`doc.approver == frappe.session.user`, which is false at the moment Frappe
-	writes the Workflow Action, so the one person entitled to decide is the one
-	person that list never shows it to.
-	"""
-	return wf.names_in_movable_states(PROCUREMENT_REQUEST, workflow, state_field)
 
 
 def _add_procurement_costs(requests: list[dict]) -> None:

@@ -61,9 +61,20 @@ SIDEBAR = "Workspace Sidebar"
 OTHER = "Other"
 
 
+# The site-level half of the rail: everything `resolve` reads except the user.
+CACHE_KEY = "commons_navigation_rail"
+
+
 @frappe.whitelist()
 def get_navigation_apps() -> list[dict]:
-	"""The rail, for the session user."""
+	"""The rail, for the session user -- nothing while the rail is off, or for a website user."""
+	from commons.commons_core import settings
+
+	user_type = frappe.get_cached_value("User", frappe.session.user, "user_type")
+	if user_type != "System User" or not settings.feature_enabled(
+		settings.ENABLE_NAVIGATION_RAIL
+	):
+		return []
 	return navigation_apps()
 
 
@@ -83,16 +94,45 @@ def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 def navigation_apps(user: str | None = None) -> list[dict]:
 	"""The rail for `user` (the session user by default), read from the site."""
 	user = user or frappe.session.user
-	return resolve(
-		configured=_configured(),
-		sidebars=_sidebars(),
-		installed_apps=frappe.get_installed_apps(),
-		app_meta=_app_meta(),
-		module_apps=dict(frappe.get_all("Module Def", fields=["name", "app_name"], as_list=True)),
-		icon_apps=_icon_apps(),
-		user=user,
-		user_roles=set(frappe.get_roles(user)),
+	return resolve(**_site_inputs(), user=user, user_roles=set(frappe.get_roles(user)))
+
+
+def _site_inputs() -> dict:
+	"""What the rail is built from that is the same for everyone, cached.
+
+	Seven queries and a hooks read per desk load otherwise, for data that
+	changes when an administrator edits the rail or installs an app. Kept in
+	`frappe.client_cache` (process-local, invalidated through redis) and dropped
+	by `clear_cache`, which the doc events on everything read here call.
+	"""
+	return frappe.client_cache.get_value(
+		CACHE_KEY,
+		generator=lambda: {
+			"configured": _configured(),
+			"sidebars": _sidebars(),
+			"installed_apps": frappe.get_installed_apps(),
+			"app_meta": _app_meta(),
+			"module_apps": dict(frappe.get_all("Module Def", fields=["name", "app_name"], as_list=True)),
+			"icon_apps": _icon_apps(),
+		},
 	)
+
+
+def clear_cache(*args, **kwargs) -> None:
+	"""Forget the rail's site-level inputs: now, and again when this transaction ends.
+
+	A doc event, so it takes the hook's arguments. Again at the end for the reason
+	`commons.derived_docfields.registry.clear` gives: a read in between would put
+	back a copy right for only one of commit and rollback.
+	"""
+	frappe.client_cache.delete_value(CACHE_KEY)
+	if db := getattr(frappe.local, "db", None):
+		db.after_commit.add(_forget)
+		db.after_rollback.add(_forget)
+
+
+def _forget() -> None:
+	frappe.client_cache.delete_value(CACHE_KEY)
 
 
 def resolve(

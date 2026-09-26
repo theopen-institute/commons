@@ -131,34 +131,47 @@ def remaining(budget, lock=False):
 
 
 def material_request_department(doc):
-	"""Resolve department from validated request-row links, or the explicit MR field."""
+	"""Resolve department from validated request-row links, or the explicit MR field.
+
+	The links are read in two queries for the whole request -- its rows'
+	sources, then their requests -- rather than two per row: this runs on every
+	save of every Purchase and Material Issue request, and a request mapped from
+	a long Procurement Request has a row per line.
+	"""
 	departments = set()
 	if doc.get("department"):
 		departments.add(doc.department)
+
 	for row in doc.items:
-		if row.get("procurement_request_item"):
-			source = frappe.db.get_value(
-				"Procurement Request Item",
-				row.procurement_request_item,
-				["parent", "item_code"],
-				as_dict=True,
-			)
-			if (
-				not source
-				or source.parent != row.get("procurement_request")
-				or source.item_code != row.item_code
-			):
-				frappe.throw(_("Row {0}: invalid Procurement Request item reference.").format(row.idx))
-		elif row.get("procurement_request"):
+		if row.get("procurement_request") and not row.get("procurement_request_item"):
 			frappe.throw(_("Row {0}: select the linked Procurement Request item as well.").format(row.idx))
-		else:
-			continue
-		parent = frappe.db.get_value(
-			"Procurement Request",
-			source.parent,
-			["company", "department", "docstatus"],
-			as_dict=True,
+	linked = [row for row in doc.items if row.get("procurement_request_item")]
+	sources = {
+		source.name: source
+		for source in frappe.get_all(
+			"Procurement Request Item",
+			filters={"name": ["in", sorted({row.procurement_request_item for row in linked})]},
+			fields=["name", "parent", "item_code"],
 		)
+	} if linked else {}
+	for row in linked:
+		source = sources.get(row.procurement_request_item)
+		if not source or source.parent != row.get("procurement_request") or source.item_code != row.item_code:
+			frappe.throw(_("Row {0}: invalid Procurement Request item reference.").format(row.idx))
+
+	requests = {source.parent for source in sources.values()}
+	if doc.get("procurement_request"):
+		requests.add(doc.procurement_request)
+	parents = {
+		parent.name: parent
+		for parent in frappe.get_all(
+			"Procurement Request",
+			filters={"name": ["in", sorted(requests)]},
+			fields=["name", "company", "department", "docstatus"],
+		)
+	} if requests else {}
+	for name in sorted({source.parent for source in sources.values()}):
+		parent = parents.get(name)
 		# `docstatus` 1 *is* the approval -- approving is what submits a request --
 		# so the state it is sitting in has no say here. Asking for its name as
 		# well would refuse every Material Request on a site that renamed a state,
@@ -170,15 +183,11 @@ def material_request_department(doc):
 			)
 		departments.add(parent.department)
 	if doc.get("procurement_request"):
-		parent = frappe.db.get_value(
-			"Procurement Request",
-			doc.procurement_request,
-			["department", "company", "docstatus"],
-			as_dict=True,
-		)
+		parent = parents.get(doc.procurement_request)
 		if not parent or parent.company != doc.company or parent.docstatus != 1:
 			frappe.throw(_("Invalid Procurement Request reference."))
 		departments.add(parent.department)
+
 	if len(departments) > 1:
 		frappe.throw(_("Use a separate Material Request for each department."))
 	department = next(iter(departments), None)
@@ -189,8 +198,21 @@ def material_request_department(doc):
 	return department
 
 
+def budgeted(doc) -> bool:
+	"""Whether this Material Request is charged to a department budget at all.
+
+	Every Purchase and Material Issue request a person raises is -- that is the
+	tally. The ones ERPNext raises by itself when stock falls below a reorder
+	level are not: nobody chose a department or a rate for them, the reorder job
+	submits them unattended, and refusing one only writes an Error Log while the
+	reorder silently stops happening. With no department they fall in no
+	allocation, so leaving them unchecked also leaves them uncounted.
+	"""
+	return doc.material_request_type in MR_TYPES and not doc.get("auto_created_via_reorder")
+
+
 def validate_material_request(doc, method=None):
-	if doc.material_request_type not in MR_TYPES:
+	if not budgeted(doc):
 		return
 	department = material_request_department(doc)
 	doc.department = department
@@ -275,8 +297,16 @@ def persist_amounts(name):
 	"""
 	doc = frappe.get_doc("Material Request", name)
 	budget = validate_material_request(doc)
+	# Only the rows whose stored amount differs, which is usually none: one
+	# UPDATE per row of a long request, on every submit, was most of its cost.
+	stored = dict(
+		frappe.get_all(
+			"Material Request Item", filters={"parent": doc.name}, fields=["name", "amount"], as_list=True
+		)
+	)
 	for row in doc.items:
-		frappe.db.set_value("Material Request Item", row.name, "amount", row.amount, update_modified=False)
+		if flt(stored.get(row.name)) != flt(row.amount):
+			frappe.db.set_value("Material Request Item", row.name, "amount", row.amount, update_modified=False)
 	return doc, budget
 
 
@@ -287,7 +317,7 @@ def charge_material_request(doc, method=None):
 	virtue of its docstatus.
 	"""
 	# Defense in depth: callers outside MR hooks cannot post purchasing values.
-	if doc.doctype != "Material Request" or doc.material_request_type not in MR_TYPES:
+	if doc.doctype != "Material Request" or not budgeted(doc):
 		return
 	if doc.docstatus != 1:
 		return
@@ -406,14 +436,24 @@ def provisional_requests(budget):
 	return committed, sum(values.values(), number(0)) - committed
 
 
-def outstanding_values(names, items):
-	from erpnext.stock.get_item_details import get_conversion_factor
+def ordered_stock_qty(names) -> dict[str, object]:
+	"""How much of each Procurement Request row submitted Material Requests order, in stock UOM.
 
-	# Not a locking read, unlike the tally either side of it. A quantity a
-	# concurrent Material Request covered after this transaction's snapshot is
-	# missed here, which counts that quantity as still outstanding while the
-	# Material Request tally also charges it -- the approval gate errs towards
-	# refusing, never towards letting an overrun through.
+	The one answer to "how much of this row has been ordered", for the budget's
+	outstanding estimate and for the request's own "what is left to order"
+	alike. They used to ask it separately, and the request counted every
+	Material Request type while the budget counted only the ones it charges --
+	so a Material Transfer could mark a row ordered that the budget still held
+	as outstanding. Values are as the database returns them; callers convert.
+
+	Not a locking read, unlike the tally either side of it. A quantity a
+	concurrent Material Request covered after this transaction's snapshot is
+	missed here, which counts that quantity as still outstanding while the
+	Material Request tally also charges it -- the approval gate errs towards
+	refusing, never towards letting an overrun through.
+	"""
+	if not names:
+		return {}
 	item = frappe.qb.DocType("Material Request Item")
 	request = frappe.qb.DocType("Material Request")
 	covered = (
@@ -424,12 +464,18 @@ def outstanding_values(names, items):
 		.where(
 			(request.docstatus == 1)
 			& request.material_request_type.isin(MR_TYPES)
-			& item.procurement_request.isin(names)
+			& item.procurement_request.isin(list(names))
 		)
 		.groupby(item.procurement_request_item)
 		.run(as_dict=True)
 	)
-	by_row = {row.procurement_request_item: number(row.stock_qty) for row in covered}
+	return {row.procurement_request_item: row.stock_qty for row in covered}
+
+
+def outstanding_values(names, items):
+	from erpnext.stock.get_item_details import get_conversion_factor
+
+	by_row = {row: number(qty) for row, qty in ordered_stock_qty(names).items()}
 	result = dict.fromkeys(names, number(0))
 	factors = {}
 	for row in items:

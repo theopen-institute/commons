@@ -110,6 +110,34 @@ def _permitted() -> None:
 		frappe.throw(_("Not permitted to manage Google Workspace accounts."), frappe.PermissionError)
 
 
+def _refuse_administrators(user_key: str) -> None:
+	"""Refuse to change an administrator's account from here.
+
+	Every call this integration makes runs as the super administrator it is
+	delegated to act for, so without this a System Manager on the site could
+	reset a domain administrator's password -- or point their recovery address at
+	themselves -- and hold the whole Workspace domain. Site roles and domain
+	administration are kept apart: administrators, delegated administrators and
+	the account this integration impersonates are managed in the Admin console,
+	where Google asks who is making the change. An account Google does not know is
+	left to the call itself to report.
+	"""
+	record = users.get(user_key)
+	if not record:
+		return
+	impersonated = (client.credentials().admin_email or "").strip().lower()
+	addresses = {(record.get("primaryEmail") or "").lower()} | {
+		(entry.get("address") or "").lower() for entry in record.get("emails") or []
+	}
+	if record.get("isAdmin") or record.get("isDelegatedAdmin") or (impersonated and impersonated in addresses):
+		frappe.throw(
+			_("{0} is a Google Workspace administrator. Change administrator accounts in the Admin console.").format(
+				record.get("primaryEmail") or user_key
+			),
+			frappe.PermissionError,
+		)
+
+
 def _phone(number: str) -> str:
 	"""A recovery number in the form Google insists on, or a sentence saying so.
 
@@ -338,6 +366,7 @@ def update_user(
 	an edit and should not be a stray argument on a general-purpose update.
 	"""
 	_permitted()
+	_refuse_administrators(user_key)
 
 	fields = _profile(
 		phone=phone,
@@ -390,6 +419,7 @@ def set_user_password(user_key: str, change_at_next_login: bool = True) -> str:
 	is no person to do the picking.
 	"""
 	_permitted()
+	_refuse_administrators(user_key)
 	return users.set_password(user_key, change_at_next_login=change_at_next_login)
 
 
@@ -406,6 +436,7 @@ def suspend_user(user_key: str, suspended: bool = True) -> dict:
 	the module docstring.
 	"""
 	_permitted()
+	_refuse_administrators(user_key)
 	return users.suspend(user_key, suspended=suspended)
 
 
@@ -429,6 +460,7 @@ def add_user_alias(user_key: str, alias: str) -> dict:
 	exists may be on somebody else's account.
 	"""
 	_permitted()
+	_refuse_administrators(user_key)
 	return users.add_alias(user_key, alias)
 
 
@@ -436,6 +468,7 @@ def add_user_alias(user_key: str, alias: str) -> dict:
 def remove_user_alias(user_key: str, alias: str) -> None:
 	"""Take an address away from this account, or do nothing if it has none."""
 	_permitted()
+	_refuse_administrators(user_key)
 	users.remove_alias(user_key, alias)
 
 
@@ -461,6 +494,7 @@ def set_user_photo(user_key: str, file_url: str) -> dict:
 	is where this belongs.
 	"""
 	_permitted()
+	_refuse_administrators(user_key)
 
 	name = frappe.db.get_value("File", {"file_url": file_url}, "name")
 	if not name:
@@ -488,4 +522,5 @@ def remove_user_photo(user_key: str) -> None:
 	Google goes back to drawing the letter avatar from the person's name.
 	"""
 	_permitted()
+	_refuse_administrators(user_key)
 	users.remove_photo(user_key)

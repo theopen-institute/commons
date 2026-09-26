@@ -249,11 +249,29 @@ watch(
 // The address first, then the school's current term. An address that names a
 // term wins, including one that names a term the picker has retired — an old
 // link still resolves to the register it was written for.
-watch(pickers.loaded, (ready) => {
-  if (!ready) return
+function applyQuery() {
   term.value = queryValue('term') || pickers.currentTerm.value || ''
   course.value = queryValue('course') || ''
+}
+
+watch(pickers.loaded, (ready) => {
+  if (ready) applyQuery()
 })
+
+// And again whenever the address changes under the page — a link to another
+// register followed from here, back and forward, the sidebar row clicked while
+// already on it. Vue Router keeps this component and only changes the query,
+// so reading it once on arrival left the pickers on the old register. An
+// address that already says what the pickers say is this page's own `replace`
+// below coming back round, and is left alone.
+watch(
+  () => [queryValue('term'), queryValue('course')],
+  ([nextTerm, nextCourse]) => {
+    if (!pickers.loaded.value) return
+    if (nextTerm === term.value && nextCourse === course.value) return
+    applyQuery()
+  },
+)
 
 function queryValue(key: string): string {
   const value = route.query[key]

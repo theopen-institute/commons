@@ -1,11 +1,16 @@
 """A supplier's invoice, read off a scan, drafted as a Purchase Invoice.
 
-Four endpoints, in the order the page calls them:
+Five endpoints, in the order the page calls them:
 
-`read_invoice`
+`start_reading`, then `reading_status`
 	The scan goes to Claude and comes back as the fields in `SCHEMA`, with the
 	company and suppliers on this site that it most likely means. The scan is
-	not stored.
+	not stored. Reading takes Claude anything from ten seconds to a couple of
+	minutes, which is too long to hold a web worker for, so `start_reading`
+	queues a background job and answers with a token, and the page asks
+	`reading_status` after it until the reading is done. See
+	`commons.api_integrations.claude.jobs`, which the bank statement import
+	shares.
 `suggest`
 	For the company and supplier the reader has settled on: an expense account
 	for each line, the tax options, and any invoice already booked with this
@@ -44,7 +49,9 @@ Who may use it
 Whoever may create a Purchase Invoice, checked before anything is sent to
 Claude, because every read is billed. There is also a per-person limit of
 `HOURLY_LIMIT` reads an hour, so a script, or a stuck retry, cannot run up the
-site's bill. Every read of this site's records goes through `frappe.get_list` or
+site's bill. Only reading needs a Claude key: `suggest`, `preview` and `create`
+ask only for the permission, so a key removed or rotated after a scan was read
+does not stop that draft being saved. Every read of this site's records goes through `frappe.get_list` or
 a permission-checked `get_doc`, so User Permissions and
 `commons.safer_permissions` narrow the suggestions exactly as they narrow the
 desk.
@@ -59,7 +66,7 @@ from frappe import _
 from frappe.utils import flt, today
 
 from commons.api_integrations.claude import client as claude
-from commons.api_integrations.claude import documents
+from commons.api_integrations.claude import documents, jobs
 from commons.commons_core import apps
 
 PURCHASE_INVOICE = "Purchase Invoice"
@@ -70,6 +77,18 @@ TAX_TEMPLATE = "Purchase Taxes and Charges Template"
 # Reads per person per hour. A person working through a pile of invoices needs
 # one a minute at most, and a read costs a few cents.
 HOURLY_LIMIT = 60
+
+# Seconds. How long Claude may take over one scan in the background, and a
+# margin over it for the job as a whole. An invoice is usually read in under a
+# minute; a photographed ten-page one can take several.
+READ_TIMEOUT = 300
+JOB_TIMEOUT = READ_TIMEOUT + 120
+
+# Room for the answer. 16,000 was the ceiling while the read had to fit inside
+# a web request; streamed in a job, an invoice of a few hundred lines fits, and
+# the effort's thinking with it. A document that still runs out is not one
+# invoice, and `read` says so.
+MAX_TOKENS = 32000
 
 # How far back the account suggestions look. A company here books a hundred or
 # so invoices a year, so this is several years of them.
@@ -112,7 +131,18 @@ def can_capture() -> bool:
 
 
 def _require() -> None:
+	"""For reading a scan, which is billed: ERPNext, a Claude key, and the
+	permission."""
 	if not available():
+		frappe.throw(_("Reading invoices from scans is not set up on this site."))
+	_require_drafting()
+
+
+def _require_drafting() -> None:
+	"""For everything after the read: ERPNext and the permission, and no key.
+	None of it calls Claude, and a draft read before the key was removed or
+	rotated should still be saved rather than read, and paid for, again."""
+	if not apps.has_doctype(PURCHASE_INVOICE):
 		frappe.throw(_("Reading invoices from scans is not set up on this site."))
 	if not can_capture():
 		frappe.throw(_("You are not allowed to create purchase invoices."), frappe.PermissionError)
@@ -254,20 +284,75 @@ sentence. Leave the list empty if there is nothing to say.
 """
 
 
+READING = jobs.Job("document_capture", "commons.document_capture.purchase_invoice.run_reading", JOB_TIMEOUT)
+
+
 @frappe.whitelist(methods=["POST"])
-def read_invoice() -> dict:
-	"""Read the scan in the request's `file` field.
+def start_reading() -> dict:
+	"""Take the scan in the request's `file` field and start reading it.
 
 	A multipart upload, the way Frappe's own `upload_file` receives one, so the
 	browser sends the file as it is rather than base64-encoded inside JSON.
+	Answers at once with a token for `reading_status`.
 	"""
 	_require()
 	upload = frappe.request.files.get("file") if frappe.request else None
 	if not upload:
 		frappe.throw(_("Choose a scan to read."))
+	content = upload.stream.read()
+	documents.check(content)
 	_count_read()
+	return {"token": READING.start(content, step=None, lines=0)}
 
-	extracted = documents.read(upload.stream.read(), SCHEMA, INSTRUCTIONS)
+
+@frappe.whitelist()
+def reading_status(token: str) -> dict:
+	"""Where a reading has got to: `queued`, `reading` (with the `step` and the
+	`lines` copied so far), `done` with the `result`, or `failed` with the
+	`error`. Only its starter may ask."""
+	return READING.status(token, lost=_lost())
+
+
+def run_reading(token: str) -> None:
+	"""The background job. Runs as the user who started it, since
+	`frappe.enqueue` carries the session user into the job, so the company and
+	supplier matching below is narrowed by their permissions as in a request."""
+	READING.run(
+		token,
+		read_scan,
+		missing=_("The scan was not found. Send it again."),
+		failed=_("Something went wrong reading the scan."),
+		lost=_lost(),
+		log_title="Invoice capture failed",
+	)
+
+
+def _lost() -> str:
+	return _(
+		"The reading stopped without an answer. It may have run out of time, or the worker stopped. Try again."
+	)
+
+
+def read_scan(content: bytes, progress=lambda **changes: None) -> dict:
+	"""Everything the dialog needs from one scan: what it says, and which
+	company and suppliers on this site it most likely means.
+
+	`progress` is told the step, and while Claude writes, how many lines it has
+	copied, counted by their `"description"`, which no other field in `SCHEMA`
+	has.
+	"""
+	progress(step="reading")
+	counter = jobs.RowCounter(lambda lines: progress(lines=lines))
+	extracted = documents.read(
+		content,
+		SCHEMA,
+		INSTRUCTIONS,
+		on_text=counter.feed,
+		timeout=READ_TIMEOUT,
+		max_tokens=MAX_TOKENS,
+		too_long=_("That document is too long to read in one go. Send one invoice at a time."),
+	)
+	progress(step="matching")
 	companies = _companies()
 	return {
 		"extracted": extracted,
@@ -453,7 +538,7 @@ def suggest(
 	`descriptions` are the lines as they stand, in order, and `lines` comes back
 	in the same order. `taxed` is whether the scan shows any tax.
 	"""
-	_require()
+	_require_drafting()
 	frappe.has_permission(COMPANY, "read", company, throw=True)
 	default_account = frappe.db.get_value(COMPANY, company, "default_expense_account")
 
@@ -770,7 +855,7 @@ def preview(invoice: dict, new_supplier: bool = False) -> dict:
 	`new_supplier` says the draft's supplier is one `create` will make, so
 	there is none to name yet.
 	"""
-	_require()
+	_require_drafting()
 	document = _build(invoice, supplier_to_come=new_supplier)
 	return {
 		"currency": document.currency,
@@ -802,7 +887,7 @@ def create(invoice: dict, new_supplier: dict | None = None) -> dict:
 	Inserted and not submitted. The scan is attached afterwards by the browser,
 	through Frappe's upload, which checks write permission on the new invoice.
 	"""
-	_require()
+	_require_drafting()
 	if new_supplier:
 		invoice = {**invoice, "supplier": _new_supplier(new_supplier)}
 	document = _build(invoice)

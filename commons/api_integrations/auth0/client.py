@@ -42,7 +42,8 @@ from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import get_request_session
+
+from commons.api_integrations import http
 
 SETTINGS = "Auth0 Settings"
 
@@ -62,9 +63,9 @@ EXPIRY_MARGIN = 300
 # something until the next deploy.
 FALLBACK_TTL = 3600
 
-# Long enough for Auth0 under load, short enough that a wedged call does not
-# hold a worker, or somebody's save, for minutes.
-TIMEOUT = 30
+# Connect and read timeouts, and the retry policy, are the integrations' shared
+# ones -- see `commons.api_integrations.http`.
+TIMEOUT = http.TIMEOUT
 
 
 class Auth0Error(frappe.ValidationError):
@@ -270,8 +271,8 @@ def management(
 	The retry is for a token that stopped working before its cached expiry; the
 	module docstring says when that happens. It is deliberately not a retry of
 	anything else: a 429 is Auth0's rate limiter and retrying it immediately is
-	the worst available response, and a 5xx is already retried by the session
-	`get_request_session` builds.
+	the worst available response, and a 502/503/504 is retried with backoff by
+	`commons.api_integrations.http` where that is safe.
 	"""
 	creds = credentials()
 	url = f"https://{creds.domain}/api/v2/{path.lstrip('/')}"
@@ -286,7 +287,7 @@ def management(
 def _send(method: str, url: str, bearer: str | None, json_body: dict | None, params: dict | None):
 	"""The HTTP call itself, returning the response whatever its status.
 
-	`requests` through `get_request_session`, rather than
+	`requests` through `commons.api_integrations.http`, rather than
 	`frappe.make_post_request`, for two reasons that both matter here. That
 	helper calls `raise_for_status` and hands back an `HTTPError` whose status
 	the caller then has to dig for -- and `users.ensure` is built entirely
@@ -294,10 +295,10 @@ def _send(method: str, url: str, bearer: str | None, json_body: dict | None, par
 	on every exception, so the 409 this integration treats as an ordinary outcome
 	would file an Error Log every time an account already existed.
 
-	The session is still Frappe's, so the bench's retry behaviour on 5xx and any
-	site-level request configuration are unchanged.
+	The session's retries and timeouts are the integrations' shared policy; see
+	`commons.api_integrations.http` for why they are not Frappe's.
 	"""
-	session = get_request_session()
+	session = http.session()
 	headers = {"Content-Type": "application/json"}
 	if bearer:
 		headers["Authorization"] = f"Bearer {bearer}"
@@ -308,7 +309,12 @@ def _send(method: str, url: str, bearer: str | None, json_body: dict | None, par
 		# A refused connection, a DNS failure, a timeout: no response, no
 		# status, and nothing Auth0 said. Reported as itself rather than as a
 		# missing attribute on an exception that has no `.response`.
-		frappe.log_error(title="Auth0 request failed")
+		# The plain traceback, never the default: `log_error` would otherwise
+		# take `get_traceback(with_context=True)` and write every frame's locals
+		# into the Error Log -- `bearer`, the management token, and for the token
+		# exchange a `json_body` holding the client secret. Frappe's sanitiser
+		# redacts neither. See `commons.api_integrations.google_workspace.client._send`.
+		frappe.log_error(title="Auth0 request failed", message=frappe.get_traceback())
 		frappe.throw(_("Could not reach Auth0: {0}").format(str(exception)), exc=Auth0Error)
 
 

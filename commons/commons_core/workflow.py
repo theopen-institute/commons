@@ -145,7 +145,37 @@ def permitted_transitions(doctype: str, names: list[str], workflow=None) -> dict
 	return permitted
 
 
-def names_in_movable_states(doctype: str, workflow, field: str) -> list[str]:
+# How many candidates a queue looks through for the ones this user may move. Each
+# is a document load and a `get_transitions`, so the search is bounded: a user
+# whose roles reach thousands of documents they may not act on sees a short page
+# rather than a slow one.
+SCAN_LIMIT = 500
+
+
+def first_actionable(
+	doctype: str, names: list[str], workflow, limit: int, scan_limit: int = SCAN_LIMIT
+) -> dict[str, list[dict]]:
+	"""The first `limit` of `names`, in their order, that this user may move -- with the moves.
+
+	Queues used to cut the candidates to a page and only then drop the ones this
+	user could not act on. A transition conditioned on the document's own
+	approver makes most candidates somebody else's, so twenty of those at the top
+	left the page empty and the badge at nought while the ones waiting on this
+	user sat further down. Checked a page at a time, so a queue whose first page
+	is all actionable costs what it did before.
+	"""
+	found: dict[str, list[dict]] = {}
+	names = names[:scan_limit]
+	for start in range(0, len(names), max(limit, 1)):
+		for name, actions in permitted_transitions(doctype, names[start : start + limit], workflow).items():
+			if actions:
+				found[name] = actions
+				if len(found) >= limit:
+					return found
+	return found
+
+
+def names_in_movable_states(doctype: str, workflow, field: str, order_by: str = "modified desc") -> list[str]:
 	"""Readable documents parked in a state one of this user's roles can move.
 
 	Not the open `Workflow Action` rows, which is how Frappe itself answers
@@ -172,6 +202,6 @@ def names_in_movable_states(doctype: str, workflow, field: str) -> list[str]:
 		doctype,
 		filters={field: ["in", sorted(states)]},
 		pluck="name",
-		order_by="modified desc",
+		order_by=order_by,
 		limit_page_length=0,
 	)

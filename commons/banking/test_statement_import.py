@@ -46,6 +46,46 @@ class TestAmounts(TestCase):
 			with self.subTest(printed=printed):
 				self.assertIsNone(si.parse_amount(printed))
 
+	def test_a_currency_beside_the_figure(self):
+		"""The dot in "Rs." used to be read as a decimal point: dropped, or a hundredth."""
+		cases = {
+			"Rs. 1,000.00": 1000.0,
+			"Rs.1500": 1500.0,
+			"Rs -500": -500.0,
+			"(Rs. 500)": -500.0,
+			"₹ 2,50,000": 250000.0,
+			"रु. १,२००": 1200.0,
+			"5,000 NPR": 5000.0,
+			"500.00 Cr": 500.0,
+		}
+		for printed, expected in cases.items():
+			with self.subTest(printed=printed):
+				self.assertEqual(si.parse_amount(printed), expected)
+
+	def test_minus_signs_that_are_not_hyphens(self):
+		for printed in ("−500", "–500", "500−"):
+			with self.subTest(printed=printed):
+				self.assertEqual(si.parse_amount(printed), -500.0)
+
+	def test_the_decimal_separator_is_worked_out_not_assumed(self):
+		cases = {
+			"1.234,56": 1234.56,
+			"1,234.56": 1234.56,
+			"12,50": 12.5,
+			"1,000": 1000.0,
+			"1.234.567": 1234567.0,
+			"1 234,56": 1234.56,
+			"1'234.50": 1234.5,
+		}
+		for printed, expected in cases.items():
+			with self.subTest(printed=printed):
+				self.assertEqual(si.parse_amount(printed), expected)
+
+	def test_what_cannot_be_read_without_guessing_is_nothing(self):
+		for printed in ("1,2,3", "1.234.56", "1,23.456,7", "Page 2 of 3", "Balance 5", "05/07/2026", "12ab34"):
+			with self.subTest(printed=printed):
+				self.assertIsNone(si.parse_amount(printed))
+
 
 class TestDates(TestCase):
 	def test_excel_dates_are_taken_as_they_are(self):
@@ -132,6 +172,58 @@ class TestApplyingALayout(TestCase):
 		rows = si.apply_mapping(grid, mapping)
 		self.assertEqual([(r["deposit"], r["withdrawal"]) for r in rows], [(5000.0, 0), (0, 25.0)])
 
+	def test_direction_words_are_matched_whole(self):
+		"""Anything starting with "d" used to be money out -- a "Deposit" included."""
+		grid = [
+			["05/07/2026", "Receipt", "5000", "Deposit"],
+			["05/07/2026", "Receipt", "300", "DEP"],
+			["06/07/2026", "Fee", "25", "Withdrawal"],
+			["06/07/2026", "ATM", "40", "WDL"],
+			["06/07/2026", "Card", "10", "Dr."],
+			["06/07/2026", "Refund", "7", "C/R"],
+		]
+		mapping = {**PAIRED, "first_data_row": 0, "reference_column": None, "withdrawal_column": None,
+			"deposit_column": None, "amount_column": 2, "direction_column": 3, "balance_column": None}
+		rows = si.apply_mapping(grid, mapping)
+		self.assertEqual(
+			[(r["deposit"], r["withdrawal"]) for r in rows],
+			[(5000.0, 0), (300.0, 0), (0, 25.0), (0, 40.0), (0, 10.0), (7.0, 0)],
+		)
+
+	def test_a_bare_d_is_a_deposit_beside_w_and_a_debit_beside_c(self):
+		mapping = {**PAIRED, "first_data_row": 0, "reference_column": None, "withdrawal_column": None,
+			"deposit_column": None, "amount_column": 2, "direction_column": 3, "balance_column": None}
+		with_w = [["05/07/2026", "In", "100", "D"], ["06/07/2026", "Out", "20", "W"]]
+		with_c = [["05/07/2026", "Out", "100", "D"], ["06/07/2026", "In", "20", "C"]]
+		self.assertEqual([(r["deposit"], r["withdrawal"]) for r in si.apply_mapping(with_w, mapping)], [(100.0, 0), (0, 20.0)])
+		self.assertEqual([(r["deposit"], r["withdrawal"]) for r in si.apply_mapping(with_c, mapping)], [(0, 100.0), (20.0, 0)])
+
+	def test_rows_that_cannot_be_read_are_left_out_and_said_so(self):
+		grid = [
+			["Date", "Details", "Amount", "Type"],
+			["05/07/2026", "Receipt", "5000", "CR"],
+			["06/07/2026", "Garbled", "1.234.56", "DR"],
+			["07/07/2026", "Odd", "25", "Reversal"],
+			["08/07/2026", "Nil row", "-", "DR"],
+		]
+		mapping = {**PAIRED, "first_data_row": 1, "reference_column": None, "withdrawal_column": None,
+			"deposit_column": None, "amount_column": 2, "direction_column": 3, "balance_column": None}
+		notes = []
+		rows = si.apply_mapping(grid, mapping, notes=notes)
+		self.assertEqual([r["description"] for r in rows], ["Receipt"])
+		self.assertEqual(len(notes), 2)
+		self.assertIn("sheet rows 3", notes[0])
+		self.assertIn("sheet rows 4", notes[1])
+
+	def test_a_dash_in_a_paired_column_is_a_blank(self):
+		grid = [["05/07/2026", "Receipt", "-", "5,000.00"], ["06/07/2026", "Fee", "Rs. 25", "—"]]
+		mapping = {**PAIRED, "first_data_row": 0, "reference_column": None, "withdrawal_column": 2,
+			"deposit_column": 3, "balance_column": None}
+		notes = []
+		rows = si.apply_mapping(grid, mapping, notes=notes)
+		self.assertEqual([(r["deposit"], r["withdrawal"]) for r in rows], [(5000.0, 0), (0, 25.0)])
+		self.assertEqual(notes, [])
+
 	def test_a_dr_suffix_on_the_amount_itself(self):
 		grid = [["05/07/2026", "Fee", "25.00 Dr"]]
 		mapping = {**PAIRED, "first_data_row": 0, "reference_column": None, "withdrawal_column": None,
@@ -185,6 +277,8 @@ class TestTheBackgroundJob(TestCase):
 			get_value=lambda key, expires=False: self.store.get(key),
 			set_value=lambda key, value, expires_in_sec=None: self.store.__setitem__(key, value),
 			delete_value=lambda key: self.store.pop(key, None),
+			# Where `_()` looks for translations: none, rather than a logged error.
+			hget=lambda *args, **kwargs: {},
 		)
 		self.enterContext(patch.object(si.frappe, "cache", cache))
 		self.enterContext(patch.object(si.frappe, "session", SimpleNamespace(user="accounts@example.org")))
@@ -234,3 +328,28 @@ class TestTheBackgroundJob(TestCase):
 		):
 			with self.assertRaises(ValueError):
 				si.reading_status("T")
+
+	def test_a_reading_the_worker_lost_is_reported_failed_not_left_reading(self):
+		"""RQ killed the job at its timeout, or the worker died: nothing wrote
+		`failed`, so the dialog would otherwise ask for an hour."""
+		import time
+
+		self.state().update(status="reading", queued_at=time.time() - 900, started_at=time.time() - 900)
+		self.assertGreater(900, si.JOB_TIMEOUT)
+		answer = si.reading_status("T")
+		self.assertEqual(answer["status"], "failed")
+		self.assertIn("stopped without an answer", answer["error"])
+
+	def test_a_statement_too_long_for_one_answer_says_what_to_send(self):
+		"""Not "one invoice at a time", which is what an invoice is told."""
+
+		def throw(message, exc=None, **kwargs):
+			raise ValueError(message)
+
+		cut_off = SimpleNamespace(stop_reason="max_tokens", content=[])
+		with (
+			patch.object(si.documents.client, "stream_message", return_value=cut_off),
+			patch.object(si.frappe, "throw", throw),
+		):
+			with self.assertRaisesRegex(ValueError, "fewer pages"):
+				si.read_statement(b"%PDF-1.7")

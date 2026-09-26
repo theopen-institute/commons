@@ -152,6 +152,9 @@ def _queue_filters(decided: bool, doctype: str | None = None) -> dict:
 
 def _pending_count(doctype: str | None = None) -> int:
 	"""The badge. Capped the way the queue is, so the two agree."""
+	workflow = change_workflow()
+	if workflow:
+		return len(_actionable(workflow, doctype))
 	return len(
 		frappe.get_list(
 			DOCTYPE,
@@ -160,6 +163,23 @@ def _pending_count(doctype: str | None = None) -> int:
 			limit_page_length=PAGE_LENGTH,
 		)
 	)
+
+
+def _actionable(workflow, doctype: str | None = None) -> dict[str, list[dict]]:
+	"""The first page of open requests this reviewer may move, oldest first, with the moves.
+
+	Found before the page is cut, not after: a transition's own condition can put
+	most open requests out of this reviewer's reach, and filtering a cut page left
+	it empty while theirs sat further down. See `wf.first_actionable`.
+	"""
+	names = frappe.get_list(
+		DOCTYPE,
+		filters=_queue_filters(decided=False, doctype=doctype),
+		pluck="name",
+		order_by="creation asc",
+		limit_page_length=0,
+	)
+	return wf.first_actionable(DOCTYPE, names, workflow, PAGE_LENGTH)
 
 
 def decision_vocabulary(workflow) -> list[dict]:
@@ -367,11 +387,17 @@ def _record_access(doctype: str) -> str:
 	return "forbidden" if registry.record_exists(doctype) else "missing"
 
 
-def _decorate(requests: list, workflow) -> list:
-	"""Give each row its label, its style, its diff and the outcomes this user may apply."""
+def _decorate(requests: list, workflow, moves: dict | None = None) -> list:
+	"""Give each row its label, its style, its diff and the outcomes this user may apply.
+
+	`moves` is the transitions already worked out for these rows, when the caller
+	has them; otherwise they are asked here.
+	"""
 	styles = wf.state_styles(workflow)
-	names = [row.name for row in requests]
-	moves = wf.permitted_transitions(DOCTYPE, names, workflow) if workflow else {}
+	changes = get_change_rows_for([row.name for row in requests])
+	if moves is None:
+		names = [row.name for row in requests]
+		moves = wf.permitted_transitions(DOCTYPE, names, workflow) if workflow else {}
 	can_submit = _may_review()
 	state = initial_state(workflow)
 
@@ -391,7 +417,7 @@ def _decorate(requests: list, workflow) -> list:
 		# proposal against it, so nobody raises the same correction twice.
 		request.open = request.get(wf.state_field(workflow)) == state
 		request.status_label, request.status_style = status_display(request, workflow, styles)
-		request.changes = get_change_rows(request.name)
+		request.changes = changes.get(request.name, [])
 	return requests
 
 
@@ -413,17 +439,30 @@ def get_change_rows(parent: str) -> list[dict]:
 	by caller rather than by construction, and this is a module-level function.
 	Now it is neither, and the claim the old docstring made is true.
 
-	The redundant join costs nothing worth counting: `_decorate` already issues
-	one of these per request, so this changes the shape of those queries and not
-	how many there are.
+	The redundant join costs nothing worth counting.
 	"""
-	return frappe.get_list(
+	return get_change_rows_for([parent]).get(parent, [])
+
+
+def get_change_rows_for(parents: list[str]) -> dict[str, list[dict]]:
+	"""`get_change_rows` for several requests at once, by request name.
+
+	One query for a whole queue page rather than one per request, under the same
+	`parent_doctype` permission join.
+	"""
+	if not parents:
+		return {}
+	found: dict[str, list[dict]] = {}
+	for row in frappe.get_list(
 		"Record Change Item",
-		filters={"parent": parent, "parenttype": DOCTYPE},
-		fields=["fieldname", "label", "current_value", "proposed_value"],
-		order_by="idx asc",
+		filters={"parent": ["in", parents], "parenttype": DOCTYPE},
+		fields=["parent", "fieldname", "label", "current_value", "proposed_value"],
+		order_by="parent asc, idx asc",
 		parent_doctype=DOCTYPE,
-	)
+		limit_page_length=0,
+	):
+		found.setdefault(row.pop("parent"), []).append(row)
+	return found
 
 
 def _with_state_field(workflow) -> list[str]:
@@ -542,21 +581,27 @@ def get_change_queue(decided: int = 0, doctype: str | None = None) -> list[dict]
 	frappe.has_permission(DOCTYPE, "read", throw=True)
 	workflow = change_workflow()
 
+	filters = _queue_filters(decided, doctype)
+	moves = None
+	if not decided and workflow:
+		# A request nobody can act on is not waiting on this user. Only meaningful
+		# with a workflow, where a transition's own condition may rule them out --
+		# and settled before the page is cut, not after.
+		moves = _actionable(workflow, doctype)
+		if not moves:
+			return []
+		filters = {"name": ["in", list(moves)]}
+
 	requests = frappe.get_list(
 		DOCTYPE,
-		filters=_queue_filters(decided, doctype),
+		filters=filters,
 		fields=_with_state_field(workflow),
 		# Oldest first while they are still decisions to make -- somebody has been
 		# waiting longest; most recently touched first once they are history.
 		order_by="modified desc" if decided else "creation asc",
 		limit_page_length=PAGE_LENGTH,
 	)
-	requests = _decorate(requests, workflow)
-	# A request nobody can act on is not waiting on this user. Only meaningful
-	# with a workflow, where a transition's own condition may rule them out.
-	if not decided and workflow:
-		requests = [row for row in requests if row.actions]
-	return requests
+	return _decorate(requests, workflow, moves)
 
 
 @frappe.whitelist(methods=["POST"])

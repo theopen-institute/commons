@@ -139,6 +139,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/ProcurementApprovals.vue'),
     meta: { page: 'procurement' },
   },
+  {
+    // Last, and matching anything the routes above do not. Without it an
+    // address that names no page — an old link, a typo — rendered an empty
+    // frame with no word as to why.
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('@/pages/NotFound.vue'),
+  },
 ]
 
 export default createRouter({

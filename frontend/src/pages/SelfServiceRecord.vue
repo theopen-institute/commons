@@ -34,6 +34,19 @@
 			<Button label="Try again" variant="subtle" @click="refresh" />
 		</div>
 
+		<!-- The navigation answered and names no page at this address: a link
+		     to a record type since removed, or one mistyped. Said once it is
+		     known, rather than left to the skeleton below, which waits for a
+		     record type that is never coming. -->
+		<div v-else-if="notFound" class="mx-auto mt-16 max-w-md text-center">
+			<span class="lucide-search-x mx-auto size-8 text-ink-gray-4" />
+			<p class="mt-2 text-base-medium text-ink-gray-7">Page not found</p>
+			<p class="mt-1 text-p-sm text-ink-gray-5">
+				There is no page at this address. It may have been renamed or removed.
+			</p>
+			<Button class="mt-4" variant="subtle" label="Go home" :route="{ path: '/' }" />
+		</div>
+
 		<div v-else-if="!recordsLoaded" class="mx-auto max-w-3xl space-y-4">
 			<Skeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-4" />
 		</div>
@@ -196,6 +209,9 @@ import { computed, ref, watch } from 'vue'
 import { Alert, Badge, Button, ErrorMessage, Skeleton, dialog, toast } from 'frappe-ui'
 import {
 	navBySlug,
+	navError,
+	navLoaded,
+	reloadNav,
 	useMyChanges,
 	useRaiseRequest,
 	useSelfServiceRecords,
@@ -245,9 +261,12 @@ const changes = computed(() =>
 const can = source.can
 const records = source.records
 const recordsLoaded = computed(() => Boolean(doctype.value) && source.recordsLoaded.value)
+// The navigation's failure first: without it there is no record type, and the
+// two calls below are never made to fail on their own.
 const loadError = computed(
-	() => source.permissionsError.value ?? source.recordsError.value
+	() => navError.value ?? source.permissionsError.value ?? source.recordsError.value
 )
+const notFound = computed(() => navLoaded.value && !navError.value && !nav.value)
 const request = useRaiseRequest()
 
 const showNew = ref(false)
@@ -330,6 +349,12 @@ function proposeRemoval(record: Record<string, any>) {
 }
 
 function refresh() {
+	// A failed navigation is retried here too, or "Try again" could never get
+	// past it: everything else waits on the record type it names.
+	if (navError.value) {
+		reloadNav()
+		return
+	}
 	source.reload()
 	// The open list always: it feeds the field markers and the badge whichever
 	// tab is showing. The history only when it is the one on screen.

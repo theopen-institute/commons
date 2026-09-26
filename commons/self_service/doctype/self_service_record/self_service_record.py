@@ -254,6 +254,9 @@ class SelfServiceRecord(Document):
 		a page that showed one would be handing it back in clear.
 		"""
 		meta = self.meta_for()
+		# Custom DocPerm included: `Meta` replaces the standard rows with a site's
+		# own where it has any, which is what the record's save will consult too.
+		writable_levels = {perm.permlevel or 0 for perm in meta.permissions if perm.write}
 		seen: set[str] = set()
 		for row in self.fields:
 			if not meta.has_field(row.fieldname):
@@ -299,4 +302,18 @@ class SelfServiceRecord(Document):
 					_("Row {0}: {1} is read only on {2}, so a change to it could never apply.").format(
 						row.idx, frappe.bold(row.fieldname), _(self.document_type)
 					)
+				)
+			if row.proposable and (field.permlevel or 0) > 0 and field.permlevel not in writable_levels:
+				# The same dead end by another route. A field above permlevel 0 is
+				# written only by a role granted write at its level, and the
+				# approval refuses an approver without it -- see
+				# `RecordChangeRequest.refuse_unwritable`. With no such role at all,
+				# every approval would be refused. A field at a level some role
+				# *can* write is allowed: who approves is the workflow's business,
+				# and the approval asks the approver in hand.
+				frappe.throw(
+					_(
+						"Row {0}: {1} is at permission level {2} on {3}, and no role may write "
+						"that level, so a change to it could never apply."
+					).format(row.idx, frappe.bold(row.fieldname), field.permlevel, _(self.document_type))
 				)

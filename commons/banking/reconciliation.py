@@ -98,7 +98,12 @@ def create_loan_repayments(
 	`check_permission` calls below come first only so that a refusal is reported
 	before anything is attempted, rather than halfway through.
 	"""
-	transaction = frappe.get_doc(BANK_TRANSACTION, bank_transaction)
+	# Locked for the rest of the request. Two bookkeepers booking against the
+	# same deposit at once would otherwise both pass the unallocated check below,
+	# and ERPNext's allocation would then quietly match only what the first left
+	# of the second -- a repayment submitted in full, posted to the loan, and
+	# never cleared.
+	transaction = frappe.get_doc(BANK_TRANSACTION, bank_transaction, for_update=True)
 	transaction.check_permission("write")
 	lines = _validated_lines(transaction, repayments)
 
@@ -129,6 +134,7 @@ def create_loan_repayments(
 			}
 		)
 		repayment.insert()
+		_require_statement_date(repayment, transaction)
 		if repayment.payment_account != gl_account:
 			frappe.throw(
 				_(
@@ -138,6 +144,7 @@ def create_loan_repayments(
 			)
 		if not draft:
 			repayment.submit()
+			_require_statement_date(repayment, transaction)
 		created.append(repayment.name)
 
 	if draft:
@@ -159,6 +166,9 @@ def create_loan_repayments(
 	reconciled = reconcile_vouchers(
 		transaction.name,
 		json.dumps([{"payment_doctype": LOAN_REPAYMENT, "payment_name": name} for name in created]),
+	)
+	_require_fully_matched(
+		reconciled, LOAN_REPAYMENT, {name: line["amount"] for name, line in zip(created, lines, strict=True)}
 	)
 	return {
 		"transaction": reconciled.name,
@@ -201,7 +211,8 @@ def submit_and_reconcile(bank_transaction: str, voucher_type: str, voucher: str)
 	if voucher_type not in DRAFT_VOUCHERS:
 		frappe.throw(_("{0} cannot be matched to a statement line.").format(voucher_type))
 
-	transaction = frappe.get_doc(BANK_TRANSACTION, bank_transaction)
+	# Locked, for the reason `create_loan_repayments` gives.
+	transaction = frappe.get_doc(BANK_TRANSACTION, bank_transaction, for_update=True)
 	transaction.check_permission("write")
 	if transaction.docstatus != 1:
 		frappe.throw(_("Only a submitted bank transaction can be reconciled."))
@@ -211,7 +222,12 @@ def submit_and_reconcile(bank_transaction: str, voucher_type: str, voucher: str)
 	document = frappe.get_doc(voucher_type, voucher)
 	if document.docstatus != 0:
 		frappe.throw(_("{0} {1} is not a draft.").format(voucher_type, voucher))
+	dated = document.get("posting_date")
 	document.submit()
+	if voucher_type == LOAN_REPAYMENT:
+		# Lending re-dates on submit too; the draft's own date is what stands.
+		_require_date_kept(document, dated)
+	_require_same_direction(transaction, voucher_type, document.name)
 
 	from erpnext.accounts.doctype.bank_reconciliation_tool.bank_reconciliation_tool import (
 		reconcile_vouchers,
@@ -333,3 +349,103 @@ def _validated_lines(transaction, repayments) -> list[dict]:
 			)
 		)
 	return lines
+
+
+
+def _require_date_kept(repayment, dated) -> None:
+	"""Refuse a submit that moved a draft repayment off the date it was saved with. See below."""
+	if getdate(repayment.posting_date) != getdate(dated):
+		frappe.throw(_date_moved_message(repayment, dated))
+
+
+def _require_statement_date(repayment, transaction) -> None:
+	"""Refuse a repayment that lending has dated other than the day the money arrived.
+
+	Lending's `validate` sets `posting_date` to the current time on every save;
+	two of the site's server scripts put the statement's date back. When they do
+	not run -- `server_script_enabled` missing from `common_site_config.json`,
+	which has happened -- the repayment would post to the ledger on the day it was
+	booked, with nothing on screen to say so. Refused instead, which rolls back
+	everything this request has written.
+	"""
+	if getdate(repayment.posting_date) != getdate(transaction.date):
+		frappe.throw(_date_moved_message(repayment, transaction.date))
+
+
+def _date_moved_message(repayment, meant) -> str:
+	return _(
+		"Lending dated {0} {1} instead of {2}. The site's server scripts that keep a repayment's "
+		"posting date are not running -- check that server scripts are enabled -- or book it "
+		"from the desk."
+	).format(repayment.name or _("the repayment"), getdate(repayment.posting_date), getdate(meant))
+
+
+def _require_fully_matched(transaction, voucher_type: str, amounts: dict[str, float]) -> None:
+	"""Refuse a match that left part of a voucher unallocated.
+
+	ERPNext's `allocate_payment_entries` allocates the smaller of a voucher and
+	what is left on the line, and says nothing when that is less than the
+	voucher. For a repayment made from this line, less means somebody else got
+	to the line first; the whole request is rolled back rather than leaving a
+	repayment posted in full and matched in part.
+	"""
+	precision = transaction.precision("unallocated_amount")
+	allocated: dict[str, float] = {}
+	for row in transaction.payment_entries:
+		if row.payment_document == voucher_type:
+			allocated[row.payment_entry] = allocated.get(row.payment_entry, 0) + flt(row.allocated_amount)
+	for name, amount in amounts.items():
+		if flt(allocated.get(name), precision) < flt(amount, precision):
+			frappe.throw(
+				_(
+					"Only {0} of {1} could be matched to {2}. Someone else may have matched this line "
+					"meanwhile; reload the page and try again."
+				).format(flt(allocated.get(name), precision), name, transaction.name)
+			)
+
+
+def _require_same_direction(transaction, voucher_type: str, voucher: str) -> None:
+	"""Refuse a voucher that moves this statement's bank account the other way, or not at all.
+
+	The board only pairs a deposit with money in and a withdrawal with money out,
+	but that is the browser's check. ERPNext's match compares amounts without
+	signs, so a payment out matched to a deposit would be accepted and clear the
+	line. Read off the voucher's own ledger entries, now it has been submitted:
+	a deposit debits the bank's account, a withdrawal credits it.
+	"""
+	account = frappe.db.get_value(BANK_ACCOUNT, transaction.bank_account, "account")
+	net = _net_on_account(voucher_type, voucher, account)
+	if not net:
+		frappe.throw(
+			_("{0} {1} does not post to {2}, the account this statement is for.").format(
+				voucher_type, voucher, account
+			)
+		)
+	if (net > 0) != (flt(transaction.deposit) > 0):
+		frappe.throw(
+			_("{0} {1} is money {2} this account, and the statement line is money {3}.").format(
+				voucher_type,
+				voucher,
+				_("into") if net > 0 else _("out of"),
+				_("in") if flt(transaction.deposit) > 0 else _("out"),
+			)
+		)
+
+
+
+def _net_on_account(voucher_type: str, voucher: str, account: str) -> float:
+	"""What `voucher` does to `account`, in its own currency: debits less credits."""
+	from frappe.query_builder.functions import Sum
+
+	gle = frappe.qb.DocType("GL Entry")
+	return flt(
+		frappe.qb.from_(gle)
+		.select(Sum(gle.debit_in_account_currency - gle.credit_in_account_currency))
+		.where(
+			(gle.voucher_type == voucher_type)
+			& (gle.voucher_no == voucher)
+			& (gle.account == account)
+			& (gle.is_cancelled == 0)
+		)
+		.run()[0][0]
+	)

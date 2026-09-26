@@ -12,15 +12,29 @@ from unittest.mock import patch
 from commons.commons_core import settings
 
 
+def cached(doc, installed=True):
+	"""`frappe.get_cached_doc` for the settings, as a site with or without the doctype answers.
+
+	Without it Frappe raises `ImportError`, and the settings reader then asks
+	whether the doctype exists -- which is the only database question left, so
+	`frappe.db` is stood in with just that.
+	"""
+
+	def get_cached_doc(*args, **kwargs):
+		if not installed:
+			raise ImportError("No module named commons_settings")
+		return doc
+
+	return (
+		patch.object(settings.frappe, "get_cached_doc", side_effect=get_cached_doc),
+		patch.object(settings.frappe, "db", SimpleNamespace(exists=lambda *args, **kwargs: installed)),
+	)
+
+
 class TestTitle(TestCase):
 	def title(self, stored, installed=True):
-		# The whole of `frappe.db`, not two of its methods: site-less there is no
-		# connection for the proxy to hand an attribute back from.
-		database = SimpleNamespace(
-			exists=lambda *args, **kwargs: installed,
-			get_single_value=lambda *args, **kwargs: stored,
-		)
-		with patch.object(settings.frappe, "db", database):
+		get_cached_doc, database = cached(settings.frappe._dict({"title": stored}), installed)
+		with get_cached_doc, database:
 			return settings.title()
 
 	def test_the_site_s_own_name_wins(self):
@@ -38,12 +52,10 @@ class TestTitle(TestCase):
 
 class TestOverrideEnabled(TestCase):
 	def enabled(self, stored, installed=True):
-		database = SimpleNamespace(exists=lambda *args, **kwargs: installed)
-		doc = settings.frappe._dict({settings.ENABLE_PERMISSION_GATE: stored})
-		with (
-			patch.object(settings.frappe, "db", database),
-			patch.object(settings.frappe, "get_cached_doc", return_value=doc),
-		):
+		get_cached_doc, database = cached(
+			settings.frappe._dict({settings.ENABLE_PERMISSION_GATE: stored}), installed
+		)
+		with get_cached_doc, database:
 			return settings.feature_enabled(settings.ENABLE_PERMISSION_GATE)
 
 	def test_ticking_the_switch_turns_the_override_on(self):
@@ -58,6 +70,26 @@ class TestOverrideEnabled(TestCase):
 
 	def test_a_site_migrating_into_this_app_leaves_it_off(self):
 		self.assertFalse(self.enabled(1, installed=False))
+
+	def test_a_settings_controller_that_fails_to_import_is_not_hidden(self):
+		"""The doctype is there, so an `ImportError` is a fault, not a site mid-migrate."""
+		database = SimpleNamespace(exists=lambda *args, **kwargs: True)
+		with (
+			patch.object(settings.frappe, "db", database),
+			patch.object(settings.frappe, "get_cached_doc", side_effect=ImportError("broken")),
+			self.assertRaises(ImportError),
+		):
+			settings.feature_enabled(settings.ENABLE_PERMISSION_GATE)
+
+	def test_an_installed_site_asks_no_existence_question(self):
+		"""The per-request query this used to make."""
+		database = SimpleNamespace(exists=lambda *args, **kwargs: self.fail("asked whether the doctype exists"))
+		doc = settings.frappe._dict({settings.ENABLE_PERMISSION_GATE: 1})
+		with (
+			patch.object(settings.frappe, "db", database),
+			patch.object(settings.frappe, "get_cached_doc", return_value=doc),
+		):
+			self.assertTrue(settings.feature_enabled(settings.ENABLE_PERMISSION_GATE))
 
 	def test_the_desk_is_told_each_browser_feature(self):
 		bootinfo = settings.frappe._dict()

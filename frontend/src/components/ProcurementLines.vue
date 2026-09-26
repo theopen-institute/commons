@@ -24,16 +24,24 @@
 							<span v-else>-</span>
 						</div>
 						<!-- `rel` because the link is whatever a requester pasted, and it
-                 opens outside the site. -->
+                 opens outside the site. Only an http(s) link is rendered as
+                 one: anything else (`javascript:` above all) is shown as text,
+                 so a row saved before the server checked cannot run a script. -->
 						<a
-							v-if="line.reference_url"
-							:href="line.reference_url"
+							v-if="safeHref(line.reference_url)"
+							:href="safeHref(line.reference_url) ?? undefined"
 							target="_blank"
 							rel="noopener noreferrer nofollow"
 							class="mt-0.5 inline-flex items-center gap-1 text-p-sm text-ink-blue-3 hover:underline"
 						>
-							{{ linkLabel(line.reference_url) }} ↗
+							{{ linkLabel(line.reference_url!) }} ↗
 						</a>
+						<div
+							v-else-if="line.reference_url"
+							class="mt-0.5 break-all text-p-sm text-ink-gray-5"
+						>
+							{{ line.reference_url }}
+						</div>
 					</td>
 					<td class="whitespace-nowrap px-3 py-2 text-right text-base text-ink-gray-7">
 						{{ line.qty }} {{ line.uom }}
@@ -61,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { formatCurrency } from '@/data/format'
+import { formatCurrency, safeHref } from '@/data/format'
 import type { ProcurementRequestItemRow } from '@/data/requests/procurement'
 
 /** The host, so an approver sees where a line's link goes before clicking it.

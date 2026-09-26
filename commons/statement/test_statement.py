@@ -17,6 +17,7 @@ a reader would not immediately see is in this file's subject matter:
 """
 
 import logging
+import sqlite3
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
@@ -24,7 +25,7 @@ from unittest.mock import patch
 import frappe
 from pypika import Table
 
-from commons.statement import api, ledger, parties
+from commons.statement import api, ledger, loans, parties
 from commons.statement.parties import Party, party_condition
 
 # `frappe._` reaches for the translation cache and, failing that, for a log file
@@ -412,8 +413,11 @@ class TestWhoMayReadSomebodyElsesStatement(TestCase):
 			parties.named("Student", "them@example.com")
 
 	def test_accounts_may_read_anybody_they_can_read_the_ledger_for(self):
-		"""The desk's case: printing a statement for a customer."""
+		"""The desk's case: printing a statement for a customer -- within the
+		companies they may read, which `TestAStatementReadThroughTheDesk` is
+		about."""
 		self.permissions(Student=True, **{"GL Entry": True})
+		self.enterContext(patch.object(parties.frappe, "get_list", return_value=["A"]))
 		found = parties.named("Student", "them@example.com")
 		self.assertEqual(found.name, "them@example.com")
 
@@ -495,9 +499,244 @@ class TestDownloadingWithoutThePrintFormat(TestCase):
 		response = SimpleNamespace()
 		with (
 			patch.object(api.frappe, "local", SimpleNamespace(response=response)),
-			patch.object(api.frappe, "flags", SimpleNamespace()),
+			patch.object(api.frappe, "flags", frappe._dict()),
 			patch.object(api, "_filename", return_value="Me statement"),
 		):
 			api.download_statement("Student", "me@example.com")
 		self.assertEqual(self.printed.call_args.args[:3], ("Student", "me@example.com", "Student Account Statement"))
 		self.assertEqual(response.type, "pdf")
+
+	def test_print_permissions_are_put_back_as_they_were_found(self):
+		"""Not to False. A caller that had set the flag itself -- a batch print,
+		say -- must not find it cleared by a statement rendered on the way."""
+		self.site_with(("Student Account Statement", "Student", 0))
+		flags = frappe._dict(ignore_print_permissions="set by the caller")
+		seen = []
+		self.printed.side_effect = lambda *args, **kwargs: seen.append(flags.ignore_print_permissions) or b"%PDF"
+		with (
+			patch.object(api.frappe, "local", SimpleNamespace(response=SimpleNamespace())),
+			patch.object(api.frappe, "flags", flags),
+			patch.object(api, "_filename", return_value="Me statement"),
+		):
+			api.download_statement("Student", "me@example.com")
+		self.assertEqual(seen, [True])
+		self.assertEqual(flags.ignore_print_permissions, "set by the caller")
+
+
+def _matching(sql_condition, rows):
+	"""Which of `rows` a query-builder condition selects, asked of a real database.
+
+	SQLite in memory rather than a site, so this file stays site-less -- and
+	rather than reading the SQL string, because what these tests pin is how the
+	condition *evaluates*, `NULL` included, and a string that looks right can
+	still drop every row whose `against_voucher_type` is empty.
+	"""
+	columns = ("name", "party_type", "party", "company", "account", "voucher_type", "against_voucher_type", "is_cancelled")
+	db = sqlite3.connect(":memory:")
+	db.execute(f'CREATE TABLE "tabGL Entry" ({", ".join(columns)})')
+	for row in rows:
+		values = {"party_type": "Customer", "party": "CUST-0001", "company": "A", "is_cancelled": 0, "against_voucher_type": None}
+		values.update(row)
+		db.execute(
+			f'INSERT INTO "tabGL Entry" VALUES ({", ".join("?" for _ in columns)})',
+			[values.get(column) for column in columns],
+		)
+	return sorted(name for (name,) in db.execute(f'SELECT name FROM "tabGL Entry" WHERE {sql_condition}'))
+
+
+class TestWhatTheLoanExclusionLeavesOut(TestCase):
+	"""A loan account that is also a trade account.
+
+	A Loan Product names some twenty-five accounts, and nothing stops a site
+	pointing one of them -- the refund account, the interest receivable -- at
+	its ordinary Debtors. The statement used to leave every account a Loan
+	Product named out of every statement, so that one setting dropped every
+	invoice and every fee on Debtors, for everybody, and each of them read
+	"settled". These pin that a trade entry survives whatever a Loan Product
+	names, and that a loan's own entries still do not.
+	"""
+
+	table = Table("tabGL Entry")
+
+	ROWS = (
+		{"name": "invoice", "account": "Debtors - X", "voucher_type": "Sales Invoice"},
+		{"name": "payment", "account": "Debtors - X", "voucher_type": "Payment Entry", "against_voucher_type": "Sales Invoice"},
+		{"name": "loan-demand", "account": "Debtors - X", "voucher_type": "Loan Demand", "against_voucher_type": "Loan"},
+		{"name": "loan-opening", "account": "Debtors - X", "voucher_type": "Loan"},
+		{"name": "je-against-loan", "account": "Debtors - X", "voucher_type": "Journal Entry", "against_voucher_type": "Loan"},
+		{"name": "principal", "account": "Loan Account - X", "voucher_type": "Loan Disbursement", "against_voucher_type": "Loan"},
+		{"name": "principal-by-je", "account": "Loan Account - X", "voucher_type": "Journal Entry"},
+	)
+
+	def kept(self, exclusion):
+		condition = ledger._scope(self.table, [party()], exclusion)
+		return _matching(str(condition), self.ROWS)
+
+	def test_a_shared_trade_account_keeps_its_trade_entries(self):
+		"""The bug. Debtors named by a Loan Product must not take the invoices
+		and the payments on it down with it."""
+		kept = self.kept(
+			loans.LedgerExclusion(
+				dedicated=frozenset({"Loan Account - X"}),
+				shared=frozenset({"Debtors - X"}),
+				voucher_types=("Loan", "Loan Demand", "Loan Disbursement"),
+			)
+		)
+		self.assertEqual(kept, ["invoice", "payment"])
+
+	def test_a_dedicated_loan_account_is_still_left_out_whole(self):
+		"""What the exclusion was for, unchanged: an account only lending posts
+		through is out entirely, however an entry reached it."""
+		kept = self.kept(loans.LedgerExclusion(dedicated=frozenset({"Loan Account - X"})))
+		self.assertNotIn("principal", kept)
+		self.assertNotIn("principal-by-je", kept)
+		self.assertIn("invoice", kept)
+
+	def test_nothing_to_exclude_excludes_nothing(self):
+		self.assertEqual(len(self.kept(loans.LedgerExclusion())), len(self.ROWS))
+
+
+class TestWhichLoanAccountsAreTradeAccounts(TestCase):
+	"""`loans.ledger_exclusion`, splitting lending's accounts into two kinds."""
+
+	def setUp(self):
+		self.enterContext(patch.object(loans, "available", return_value=True))
+		self.enterContext(patch.object(loans, "_lending_doctypes", return_value=("Loan", "Loan Demand")))
+		named = {
+			loans.LOAN_PRODUCT: {"Debtors - X", "Loan Account - X", "Bank - X"},
+			loans.LOAN: set(),
+			"Company": {"Debtors - X", "Creditors - X", "Bank - X"},
+			loans.PARTY_ACCOUNT: {"Special Debtors - X"},
+		}
+		self.enterContext(
+			patch.object(loans, "_accounts_named_by", side_effect=lambda doctype, filters: set(named[doctype]))
+		)
+		receivable_or_payable = {"Debtors - X", "Creditors - X", "Special Debtors - X", "Loan Account - X"}
+		self.enterContext(
+			patch.object(
+				loans.frappe,
+				"get_all",
+				side_effect=lambda doctype, filters, pluck: [
+					name for name in filters["name"][1] if name in receivable_or_payable
+				],
+			)
+		)
+		self.enterContext(patch.object(loans.frappe, "qb", SimpleNamespace(DocType=Table)))
+
+	def test_the_company_default_receivable_is_shared_not_dedicated(self):
+		exclusion = loans.ledger_exclusion([party()])
+		self.assertEqual(exclusion.shared, {"Debtors - X"})
+		self.assertIn("Loan Account - X", exclusion.dedicated)
+		self.assertNotIn("Debtors - X", exclusion.dedicated)
+		self.assertEqual(exclusion.voucher_types, ("Loan", "Loan Demand"))
+
+	def test_a_bank_account_the_company_also_names_is_not_a_trade_account(self):
+		"""Only receivable and payable accounts carry a party, so only they can
+		be somebody's trade balance."""
+		self.assertIn("Bank - X", loans.ledger_exclusion([party()]).dedicated)
+
+
+class TestAStatementReadThroughTheDesk(TestCase):
+	"""An accountant held to one company reads a party's statement in that company only.
+
+	`GL Entry` read asked without a document means "anywhere", and the ledger
+	read under it is raw -- so without a bound here, an Accounts User confined by
+	User Permission to Company A would see the party's ledger in Company B too.
+	"""
+
+	def setUp(self):
+		self.enterContext(patch.object(parties.frappe, "throw", side_effect=_raise))
+		self.enterContext(
+			patch.object(parties, "_party", side_effect=lambda doctype, name: Party(
+				party_type=doctype, name=name, title="Someone", account_type="Receivable"
+			))
+		)
+		self.enterContext(
+			patch.object(parties.frappe, "has_permission", side_effect=lambda *args, **kwargs: True)
+		)
+
+	def test_somebody_elses_party_is_confined_to_the_companies_you_may_read(self):
+		self.enterContext(patch.object(parties, "session_parties", return_value=[]))
+		self.enterContext(patch.object(parties.frappe, "get_list", return_value=["A"]))
+		found = parties.named("Customer", "CUST-0001")
+		self.assertEqual(found.companies, ("A",))
+
+	def test_and_its_ledger_in_another_company_is_not_read(self):
+		found = Party("Customer", "CUST-0001", "Someone", "Receivable", companies=("A",))
+		condition = ledger._scope(Table("tabGL Entry"), [found], loans.LedgerExclusion())
+		rows = [
+			{"name": "in-a", "account": "Debtors - A", "voucher_type": "Sales Invoice", "company": "A"},
+			{"name": "in-b", "account": "Debtors - B", "voucher_type": "Sales Invoice", "company": "B"},
+		]
+		self.assertEqual(_matching(str(condition), rows), ["in-a"])
+
+	def test_no_readable_company_is_a_refusal_not_an_empty_statement(self):
+		self.enterContext(patch.object(parties, "session_parties", return_value=[]))
+		self.enterContext(patch.object(parties.frappe, "get_list", return_value=[]))
+		with self.assertRaises(frappe.PermissionError):
+			parties.named("Customer", "CUST-0001")
+
+	def test_your_own_party_is_not_confined(self):
+		"""Your balance is yours in every company, whoever else reads those books."""
+		mine = party()
+		self.enterContext(patch.object(parties, "session_parties", return_value=[mine]))
+		self.assertIsNone(parties.named(mine.party_type, mine.name).companies)
+
+	def test_a_party_confined_to_nothing_matches_nothing(self):
+		"""Rather than an `IN ()` the database would refuse."""
+		nowhere = Party("Customer", "CUST-0001", "Someone", "Receivable", companies=())
+		self.assertIsNone(party_condition(Table("tabGL Entry"), "party_type", "party", [nowhere]))
+
+
+class TestWhichStudentsALoginIs(TestCase):
+	"""`parties._linked_rows` for Student: `user` first, the email only as a fallback.
+
+	Siblings registered under a parent's email both matched that login, and each
+	read the other's fees; and a field anybody with write access can retype was
+	enough to claim a student's statement.
+	"""
+
+	LOGIN = "parent@example.com"
+
+	def students(self, *rows):
+		"""Stand in for the Student table: `rows` are (name, user, email)."""
+		table = [frappe._dict(name=name, user=user, student_email_id=email) for name, user, email in rows]
+
+		def get_all(doctype, filters, fields, order_by, limit_page_length=None):
+			found = [row for row in table if all(row.get(key) == value for key, value in filters.items())]
+			return found[:limit_page_length] if limit_page_length else found
+
+		self.enterContext(patch.object(parties.frappe, "get_all", side_effect=get_all))
+		self.enterContext(patch.object(parties.frappe, "session", SimpleNamespace(user=self.LOGIN)))
+
+	def linked(self, has=("user", "student_email_id")):
+		meta = SimpleNamespace(has_field=lambda field: field in has)
+		rows = parties._linked_rows("Student", meta, parties.USER_LINKS["Student"], {}, ["name"])
+		return [row.name for row in rows]
+
+	def test_siblings_sharing_a_parents_email_are_neither_of_them(self):
+		self.students(("EDU-1", None, self.LOGIN), ("EDU-2", None, self.LOGIN))
+		self.assertEqual(self.linked(), [])
+
+	def test_a_student_linked_by_user_is_the_only_one(self):
+		"""Once one Student names the login in `user`, the email is not asked."""
+		self.students(("EDU-1", self.LOGIN, "child@example.com"), ("EDU-2", None, self.LOGIN))
+		self.assertEqual(self.linked(), ["EDU-1"])
+
+	def test_every_student_linked_by_user_is_theirs(self):
+		self.students(("EDU-1", self.LOGIN, None), ("EDU-2", self.LOGIN, None))
+		self.assertEqual(self.linked(), ["EDU-1", "EDU-2"])
+
+	def test_one_student_with_the_email_and_no_user_is_the_login(self):
+		"""The ordinary Education site, which fills in the email and not `user`."""
+		self.students(("EDU-1", None, self.LOGIN))
+		self.assertEqual(self.linked(), ["EDU-1"])
+
+	def test_an_email_on_a_student_linked_to_somebody_else_claims_nothing(self):
+		"""Typing your login into another student's email does not make them yours."""
+		self.students(("EDU-1", "child@example.com", self.LOGIN))
+		self.assertEqual(self.linked(), [])
+
+	def test_a_site_without_the_user_field_still_needs_the_email_to_be_unique(self):
+		self.students(("EDU-1", None, self.LOGIN), ("EDU-2", None, self.LOGIN))
+		self.assertEqual(self.linked(has=("student_email_id",)), [])

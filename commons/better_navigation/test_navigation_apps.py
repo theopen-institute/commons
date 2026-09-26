@@ -8,6 +8,7 @@ docstring is one small table here: the fallback, the one-app rule, roles that
 hide without releasing, and personal sidebars.
 """
 
+from types import SimpleNamespace
 from unittest import TestCase
 
 from commons.better_navigation.navigation_apps import OTHER, installed_app_of, resolve
@@ -152,3 +153,60 @@ class TestPersonal(TestCase):
 	def test_personal_sidebar_cannot_be_claimed(self):
 		result = rail([app("Mine Too", "Mine")], user="peter@example.com")
 		self.assertNotIn("Mine Too", [entry["title"] for entry in result])
+
+
+class FakeClientCache:
+	"""`frappe.client_cache`'s two calls the rail makes, over a dict."""
+
+	def __init__(self):
+		self.store = {}
+
+	def get_value(self, key, generator=None):
+		if key not in self.store:
+			self.store[key] = generator()
+		return self.store[key]
+
+	def delete_value(self, key):
+		self.store.pop(key, None)
+
+
+class SiteInputsAreCached(TestCase):
+	def test_read_once_until_something_they_are_read_from_changes(self):
+		from unittest.mock import patch
+
+		from commons.better_navigation import navigation_apps as nav
+
+		reads = []
+		cache = FakeClientCache()
+		with (
+			patch.object(nav.frappe, "client_cache", cache),
+			patch.object(nav.frappe, "local", SimpleNamespace(db=None)),
+			patch.object(nav, "_configured", side_effect=lambda: reads.append("configured") or []),
+			patch.object(nav, "_sidebars", return_value=[]),
+			patch.object(nav, "_app_meta", return_value={}),
+			patch.object(nav, "_icon_apps", return_value={}),
+			patch.object(nav.frappe, "get_installed_apps", return_value=["frappe"]),
+			patch.object(nav.frappe, "get_all", return_value=[]),
+		):
+			nav._site_inputs()
+			nav._site_inputs()
+			self.assertEqual(reads, ["configured"])
+			nav.clear_cache()
+			nav._site_inputs()
+			self.assertEqual(reads, ["configured", "configured"])
+
+	def test_the_endpoint_answers_nothing_to_a_website_user_or_with_the_rail_off(self):
+		from unittest.mock import patch
+
+		from commons.better_navigation import navigation_apps as nav
+		from commons.commons_core import settings
+
+		for user_type, on in (("Website User", True), ("System User", False)):
+			with (
+				self.subTest(user_type=user_type, on=on),
+				patch.object(nav.frappe, "session", SimpleNamespace(user="someone@example.com")),
+				patch.object(nav.frappe, "get_cached_value", return_value=user_type),
+				patch.object(settings, "feature_enabled", return_value=on),
+				patch.object(nav, "navigation_apps", side_effect=AssertionError("built the rail")),
+			):
+				self.assertEqual(nav.get_navigation_apps(), [])

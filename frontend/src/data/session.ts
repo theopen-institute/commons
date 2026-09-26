@@ -61,8 +61,18 @@ const logoutCall = useCall({
   immediate: false,
 })
 
-/** Ends the session, then leaves for the login page. */
+/**
+ * Ends the session, then leaves for the login page.
+ *
+ * Only once the session is known to be over. `submit` resolves whether or not
+ * the POST was accepted, and a refused one — an expired CSRF token, a dropped
+ * connection — used to land the user on `/login` still signed in, where the
+ * login page shows them straight back in. Frappe's own `/logout` page is the
+ * fallback: a fresh page load, so it carries a fresh CSRF token, and it posts
+ * the logout itself before sending them on. Not `/?cmd=web_logout`, the older
+ * answer: that method is POST-only now and a navigation to it is refused.
+ */
 export async function logout() {
   await logoutCall.submit()
-  window.location.href = '/login'
+  window.location.href = logoutCall.error ? '/logout' : '/login'
 }

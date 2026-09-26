@@ -30,7 +30,9 @@
         <template v-if="reading.busy">
           <LoadingIndicator class="mx-auto size-6 text-ink-gray-6" />
           <p class="mt-3 text-base-medium text-ink-gray-8">Reading {{ reading.pending }}</p>
-          <p class="mt-1 text-p-sm text-ink-gray-5">This usually takes ten to thirty seconds.</p>
+          <p class="mt-1 text-p-sm text-ink-gray-5">
+            {{ readingProgressText(reading.progress) ?? 'This usually takes ten to thirty seconds.' }}
+          </p>
         </template>
         <template v-else>
           <span class="lucide-scan-text mx-auto size-8 text-ink-gray-5" />
@@ -143,6 +145,8 @@ import {
   captureGate,
   deskUrl,
   readInvoice,
+  readingProgressText,
+  type InvoiceReadingState,
   useMyDrafts,
 } from '@/data/capture'
 import type { Reading } from '@/data/captureRules'
@@ -179,7 +183,9 @@ const reading = reactive<{
   pending: string
   busy: boolean
   error: string
-}>({ file: null, result: null, pending: '', busy: false, error: '' })
+  /** The background job's latest answer while it reads, for the progress line. */
+  progress: InvoiceReadingState | null
+}>({ file: null, result: null, pending: '', busy: false, error: '', progress: null })
 
 const dialogOpen = ref(false)
 const dragging = ref(false)
@@ -208,8 +214,9 @@ async function read(file: File) {
   reading.busy = true
   reading.pending = file.name
   reading.error = ''
+  reading.progress = null
   try {
-    const result = await readInvoice(file)
+    const result = await readInvoice(file, { onProgress: (state) => (reading.progress = state) })
     reading.file = file
     reading.result = result
     dialogOpen.value = true
@@ -217,6 +224,7 @@ async function read(file: File) {
     reading.error = error instanceof Error ? error.message : 'That scan could not be read.'
   } finally {
     reading.busy = false
+    reading.progress = null
   }
 }
 

@@ -27,11 +27,15 @@ before a decision is docstatus 0, `Rejected` and `Withdrawn` included, and only
 rather than off the name of a state, so a site that renames its workflow states
 keeps working.
 
-The `current_value` on each row is captured, never typed, and re-captured on
-every validate. Validate runs inside `submit()`, so the value an approved request
-records is the value the record held immediately before the change -- an accurate
-before-and-after rather than whatever the field said when the request was first
-raised.
+The `current_value` on each row is captured, never typed, and captured once:
+when the row first reaches the request. It is what the requester was looking at
+when they asked, and so what the reviewer is agreeing to replace. The approval
+then refuses any row whose field has moved on since -- see `apply_to_record` --
+which is what makes it the value the record held immediately before the change,
+too. It used to be re-captured on every validate, `submit()`'s included, and that
+read as accuracy while doing the opposite: an HR correction made while the
+request sat in the queue became the "before", and the approval overwrote it
+without anybody having seen the two side by side.
 """
 
 import re
@@ -40,6 +44,7 @@ from typing import ClassVar
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.utils import cint, flt, get_datetime, get_timedelta, getdate
 
 from commons.self_service import registry
 
@@ -62,6 +67,47 @@ def normalized(value) -> str | None:
 		return None
 	text = str(value).strip()
 	return text or None
+
+
+# Fieldtypes whose stored value is a number. A blank one is stored as 0, so a
+# blank proposal against a 0 is no change either.
+INT_TYPES = frozenset(("Int", "Check"))
+FLOAT_TYPES = frozenset(("Float", "Currency", "Percent", "Rating", "Duration"))
+
+
+def comparable(value, fieldtype: str | None):
+	"""A field value as the doctype would store it, so two spellings of it compare equal.
+
+	`normalized` is enough for text and not for anything else. Everything on a
+	row is Small Text, while the record hands back a float, a date or an int --
+	so `100` proposed against a stored `100.0`, or `2026-9-1` against
+	`2026-09-01`, read as changes that are not. That made a request that asked
+	for nothing look like one that asked for something, and a record nobody had
+	touched look as if somebody had.
+
+	Only for comparing. What is stored on the row and written to the record is
+	still `normalized`; the record's own save casts it, as it would a value typed
+	into the desk.
+	"""
+	if fieldtype in INT_TYPES:
+		return cint(normalized(value))
+	if fieldtype in FLOAT_TYPES:
+		return flt(normalized(value))
+	value = normalized(value)
+	# Tested before parsing because `getdate(None)` is today, not nothing.
+	if value is None:
+		return None
+	if fieldtype == "Date":
+		return getdate(value)
+	if fieldtype == "Datetime":
+		return get_datetime(value)
+	if fieldtype == "Time":
+		return get_timedelta(value)
+	return value
+
+
+def same_value(a, b, fieldtype: str | None) -> bool:
+	return comparable(a, fieldtype) == comparable(b, fieldtype)
 
 
 def name_field_of(doctype: str) -> str | None:
@@ -185,8 +231,14 @@ class RecordChangeRequest(Document):
 		# else reads a policy that does not exist.
 		policy = registry.policy(self.reference_doctype)
 		self.validate_mode_allowed(policy)
-		if self.docstatus == 0:
+		# The raiser's questions, asked of the raiser: when the request is made,
+		# and when its owner edits it while it is open. A reviewer saving a note
+		# or a decision is not raising anything -- asked in their session, "whose
+		# is this?" gets their answer, and a New request's record would belong
+		# to them.
+		if self.docstatus == 0 and (self.is_new() or frappe.session.user == self.owner):
 			self.validate_raiser()
+		self.validate_record_owner_unchanged()
 		self.set_reference_title()
 		self.validate_rows()
 		self.capture_current_values()
@@ -242,7 +294,8 @@ class RecordChangeRequest(Document):
 		a self-service form that can name a record is a self-service form that can
 		name the wrong one.
 
-		Only while the request is still open. At approval this runs in the
+		Only for the raiser, and only while the request is still open (see
+		`validate`). A reviewer's saves -- a note, a decision -- run in the
 		*approver's* session, where the record is somebody else's and the question
 		being asked is a different one -- whether they may write it, which
 		`on_submit` asks directly.
@@ -259,7 +312,9 @@ class RecordChangeRequest(Document):
 					_("You have nothing for a new {0} to belong to.").format(_(self.reference_doctype)),
 					frappe.PermissionError,
 				)
-			self.record_owner = owner
+			# Once, when the request is raised; see `validate_record_owner_unchanged`.
+			if self.is_new():
+				self.record_owner = owner
 			return
 		if not frappe.has_permission(self.reference_doctype, "read", doc=self.reference_name):
 			frappe.throw(
@@ -274,6 +329,22 @@ class RecordChangeRequest(Document):
 			_("You can only propose changes to your own {0} record.").format(_(self.reference_doctype)),
 			frappe.PermissionError,
 		)
+
+	def validate_record_owner_unchanged(self) -> None:
+		"""Who a New request's record will belong to is settled when it is raised.
+
+		`record_owner` is read-only on the form, but not to the REST API, and
+		`insert_record` builds the record from it at approval -- so a change after
+		the requester raised it would attach the record to somebody else, past a
+		reviewer who approved the fields they could see.
+		"""
+		if not self.is_new() and self.has_value_changed("record_owner"):
+			frappe.throw(
+				_("Who a new {0} will belong to is settled when the request is raised.").format(
+					_(self.reference_doctype)
+				),
+				frappe.PermissionError,
+			)
 
 	def validate_rows(self) -> None:
 		"""Every row names a field that may be proposed, once, with a valid value.
@@ -339,12 +410,19 @@ class RecordChangeRequest(Document):
 		)
 
 	def capture_current_values(self) -> None:
-		"""Record what the referenced record says right now, for every row.
+		"""Record what the referenced record said when each row was proposed.
 
-		One read of the whole record rather than one per row. Re-read on every
-		validate -- including the one inside `submit()` -- so the before-and-after
-		an approved request preserves is the change that was actually made, not
-		the one that was proposed against a record somebody has since edited.
+		Once per row, not once per save. A row this request already held keeps the
+		value it was captured with -- taken from the stored request, not from the
+		incoming document, so a `current_value` sent through the REST API is
+		discarded however the row arrives. Only a row that is new to the request,
+		or every row of a request that has been pointed at a different record, is
+		read fresh, in one read of the record rather than one per row.
+
+		Not re-read at approval, and that is the point: this is the value the
+		requester proposed against and the reviewer saw, and `apply_to_record`
+		refuses a row whose field no longer holds it. Re-reading it would turn an
+		edit made while the request waited into the "before" and overwrite it.
 		"""
 		if not self.changes:
 			return
@@ -355,12 +433,28 @@ class RecordChangeRequest(Document):
 			for row in self.changes:
 				row.current_value = None
 			return
-		fieldnames = list({row.fieldname for row in self.changes})
+
+		before = self.get_doc_before_save()
+		captured = {}
+		if before and (before.reference_doctype, before.reference_name, before.request_type) == (
+			self.reference_doctype,
+			self.reference_name,
+			self.request_type,
+		):
+			captured = {row.fieldname: row.current_value for row in before.changes}
+
+		fresh = list({row.fieldname for row in self.changes if row.fieldname not in captured})
 		current = (
-			frappe.db.get_value(self.reference_doctype, self.reference_name, fieldnames, as_dict=True) or {}
+			frappe.db.get_value(self.reference_doctype, self.reference_name, fresh, as_dict=True) or {}
+			if fresh
+			else {}
 		)
 		for row in self.changes:
-			row.current_value = normalized(current.get(row.fieldname))
+			row.current_value = (
+				captured[row.fieldname]
+				if row.fieldname in captured
+				else normalized(current.get(row.fieldname))
+			)
 
 	def validate_something_proposed(self) -> None:
 		"""Refuse a request that asks for nothing.
@@ -372,7 +466,12 @@ class RecordChangeRequest(Document):
 		"""
 		if self.is_deletion:
 			return
-		if any(normalized(row.proposed_value) != normalized(row.current_value) for row in self.changes):
+		# By fieldtype, so `100` proposed against a stored `100.0` is not a change.
+		meta = frappe.get_meta(self.reference_doctype)
+		if any(
+			not same_value(row.proposed_value, row.current_value, meta.get_field(row.fieldname).fieldtype)
+			for row in self.changes
+		):
 			return
 		frappe.throw(
 			_("Fill in at least one field before sending this.")
@@ -542,18 +641,29 @@ class RecordChangeRequest(Document):
 		usual cause is the correction having already been applied by hand while
 		the request sat in the queue, and re-writing an identical value would put
 		a meaningless entry in the record's change history.
+
+		Every other row is checked twice before anything is set, and the approval
+		is refused whole if any row fails -- half a request applied is a change
+		nobody asked for either. See `refuse_conflicts` and `refuse_unwritable`.
 		"""
 		record = frappe.get_doc(self.reference_doctype, self.reference_name)
 		record.check_permission("write")
 
 		self.check_links_exist()
 
-		applied = []
+		pending = []
 		for row in self.changes:
-			value = normalized(row.proposed_value)
-			if normalized(record.get(row.fieldname)) == value:
+			field = record.meta.get_field(row.fieldname)
+			if same_value(record.get(row.fieldname), row.proposed_value, field.fieldtype):
 				continue
-			record.set(row.fieldname, value)
+			pending.append((row, field))
+
+		self.refuse_conflicts(record, pending)
+		self.refuse_unwritable(record, pending)
+
+		applied = []
+		for row, _field in pending:
+			record.set(row.fieldname, normalized(row.proposed_value))
 			applied.append(row.label or row.fieldname)
 
 		if applied:
@@ -566,6 +676,98 @@ class RecordChangeRequest(Document):
 				self.reference_title or self.reference_name
 			),
 			alert=True,
+		)
+
+	def refuse_conflicts(self, record, pending: list) -> None:
+		"""Refuse to overwrite a field somebody has changed since the request was raised.
+
+		The case: an employee proposes a new address over the old one, HR corrects
+		the record to something else the next day, and a week later the reviewer
+		approves. Applied regardless, the proposal overwrites HR's correction --
+		and a history that re-read the "before" at approval would record it as a
+		change from HR's value, which is a decision nobody made: the requester
+		never saw it and the reviewer was shown the old one.
+
+		Refused rather than merged or skipped, because only people can say which
+		value is right. The reviewer rejects this one and the owner raises it
+		again against the record as it now stands, so the next decision is made
+		looking at the real before-and-after.
+		"""
+		conflicts = [
+			(row, record.get(row.fieldname))
+			for row, field in pending
+			if not same_value(record.get(row.fieldname), row.current_value, field.fieldtype)
+		]
+		if not conflicts:
+			return
+
+		def shown(value) -> str:
+			value = normalized(value)
+			return frappe.bold(value) if value is not None else _("blank")
+
+		record_title = self.reference_title or self.reference_name
+		if len(conflicts) == 1:
+			row, now = conflicts[0]
+			message = _(
+				"{0} on {1} has been changed since this request was raised: it was {2} and is now {3}, "
+				"so approving would overwrite that change. Reject this request and ask for it to be "
+				"raised again against the record as it stands."
+			).format(
+				frappe.bold(row.label or row.fieldname), record_title, shown(row.current_value), shown(now)
+			)
+		else:
+			message = _(
+				"These fields on {0} have been changed since this request was raised, so approving would "
+				"overwrite those changes: {1}. Reject this request and ask for it to be raised again "
+				"against the record as it stands."
+			).format(
+				record_title,
+				"; ".join(
+					_("{0} was {1}, is now {2}").format(
+						frappe.bold(row.label or row.fieldname), shown(row.current_value), shown(now)
+					)
+					for row, now in conflicts
+				),
+			)
+		frappe.throw(message, frappe.ValidationError, title=_("Changed since requested"))
+
+	def refuse_unwritable(self, record, pending: list) -> None:
+		"""Refuse a row the approver may not write, rather than report it written.
+
+		`check_permission("write")` above answers for the record, which means for
+		permlevel 0. A field at a higher permlevel is guarded by the record's own
+		save instead, and not by refusing: `validate_higher_perm_levels` quietly
+		puts back the stored value of any field the user has no write access to at
+		that level. So an approver without it would see "Updated Passport Number"
+		and a submitted request, with the record unchanged underneath -- a
+		decision on the books that never happened.
+
+		Asked the way Frappe will ask it, so the two cannot disagree: the same
+		permlevel access, and Administrator exempt as it is there. An approver who
+		is refused can pass the request to someone who holds the permission, or
+		reject it; `Self Service Record` refuses a proposable field that no role
+		could ever write, so there is always somebody to pass it to.
+		"""
+		if frappe.session.user == "Administrator":
+			return
+		unwritable = [
+			row
+			for row, field in pending
+			if (field.permlevel or 0) > 0
+			and not record.has_permlevel_access_to(row.fieldname, df=field, permission_type="write")
+		]
+		if not unwritable:
+			return
+		frappe.throw(
+			_(
+				"You cannot change {0} on {1}: your roles do not let you edit {2}, so the change "
+				"would be silently discarded. Ask somebody who can edit {2} to approve this, or reject it."
+			).format(
+				", ".join(frappe.bold(row.label or row.fieldname) for row in unwritable),
+				self.reference_title or self.reference_name,
+				_("that field") if len(unwritable) == 1 else _("those fields"),
+			),
+			frappe.PermissionError,
 		)
 
 	def on_cancel(self) -> None:

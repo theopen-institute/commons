@@ -99,6 +99,14 @@
 					Searching…
 				</div>
 
+				<!-- Before "No results": a search that failed found nothing because it
+				     never ran, and saying otherwise sends somebody off to create a
+				     record that already exists. -->
+				<div v-else-if="searchError" class="py-12 text-center text-p-sm">
+					<p class="text-ink-red-3">The search could not be run.</p>
+					<p class="mt-1 text-ink-gray-5">{{ searchError }}</p>
+				</div>
+
 				<div v-else-if="!sets.length" class="py-12 text-center text-p-sm text-ink-gray-5">
 					No results found
 				</div>
@@ -176,7 +184,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Button, Dialog, Dropdown, LoadingIndicator } from 'frappe-ui'
+import { Button, Dialog, Dropdown, LoadingIndicator, toast } from 'frappe-ui'
 import {
 	ensureAllowedDoctypes,
 	getGlobalResults,
@@ -214,6 +222,8 @@ const sets = ref<GlobalResultSet[]>([])
 const exhausted = ref(new Set<string>())
 const loading = ref(false)
 const loadingMore = ref('')
+/** Why the last search came back with nothing to show, when it failed. */
+const searchError = ref('')
 
 /**
  * Which search the rows on screen belong to.
@@ -268,6 +278,7 @@ async function run() {
 		keywords.value = ''
 		sets.value = []
 		exhausted.value = new Set()
+		searchError.value = ''
 		loading.value = false
 		return
 	}
@@ -279,6 +290,15 @@ async function run() {
 		keywords.value = text
 		sets.value = found
 		exhausted.value = new Set()
+		searchError.value = ''
+	} catch (problem) {
+		if (ticket !== sequence) return
+		// The last search's rows cleared, not left standing: under a box that now
+		// says something else they read as this search's answer.
+		keywords.value = text
+		sets.value = []
+		exhausted.value = new Set()
+		searchError.value = (problem as Error)?.message || 'Try again in a moment.'
 	} finally {
 		if (ticket === sequence) loading.value = false
 	}
@@ -300,6 +320,9 @@ async function showMore(set: GlobalResultSet) {
 		// A short page is the last one. Said by the count rather than by asking
 		// again, so the reader is not offered a button that returns nothing.
 		if (more.length < MORE_COUNT) exhausted.value = new Set([...exhausted.value, set.title])
+	} catch {
+		// The rows already shown are still right; only the extra page is missing.
+		if (ticket === sequence) toast.error('Could not load more results')
 	} finally {
 		if (ticket === sequence) loadingMore.value = ''
 	}

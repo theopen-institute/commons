@@ -41,11 +41,6 @@
           class="mb-3"
         />
         <ErrorMessage
-          v-if="decision.error"
-          :message="decision.error.message"
-          class="mb-3"
-        />
-        <ErrorMessage
           v-if="claimLines.error"
           :message="claimLines.error.message"
           class="mb-3"
@@ -103,15 +98,14 @@
             </div>
 
             <!-- The expenses themselves, which is what there is to decide about.
-                 An approver may allow less than was claimed; the figures they set
-                 travel with the decision in one call. -->
+                 Read-only here: an approver who allows less than was claimed
+                 types it in the review dialog, where the figures are a draft
+                 until the decision that carries them. -->
             <ExpenseClaimLines
-              v-model:sanctioned="sanctioned[claim.name]"
               class="mt-3"
               :lines="byClaim.get(claim.name) ?? []"
               :currency="claim.currency"
               :settled="claim.docstatus === 1"
-              :editable="Boolean(claim.can_decide)"
             />
 
             <p
@@ -133,37 +127,35 @@
               Nobody was named as approver on this claim.
             </p>
 
-            <!-- Drawn from the server's answer for this row, not from its
-                 docstatus: whether this user settles this claim is a question
-                 only the server can settle. -->
-            <div v-if="claim.can_decide" class="mt-4 flex flex-wrap items-center gap-2">
+            <!-- Only opens the claim: the decision, and any trimming of what
+                 is allowed, happen in the dialog and are written by a button
+                 pressed there. Offered where the server says this user settles
+                 this claim. -->
+            <div v-if="claim.can_decide" class="mt-4 flex justify-end">
               <Button
-                v-for="button in buttonsFor(claim)"
-                :key="button.decision"
-                :variant="button.variant"
-                :theme="button.theme"
-                :label="button.label"
-                :icon-left="button.icon"
-                :loading="deciding === `${claim.name}:${button.decision}`"
-                :disabled="Boolean(deciding)"
-                @click="decide(claim, button)"
+                variant="subtle"
+                icon-left="lucide-eye"
+                label="Review"
+                @click="review.show(claim)"
               />
-              <span
-                v-if="trimmed(claim)"
-                class="ml-auto text-p-sm text-ink-amber-3"
-              >
-                Allowing {{ formatCurrency(allowedTotal(claim), claim.currency) }}
-              </span>
             </div>
           </li>
         </ul>
       </div>
     </RequestGate>
+
+    <ExpenseReviewDialog
+      v-model:open="review.open"
+      :claim="review.row"
+      :lines="review.row ? (byClaim.get(review.row.name) ?? []) : []"
+      :gone="review.gone"
+      @settled="refresh"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import {
   Avatar,
   Badge,
@@ -171,12 +163,9 @@ import {
   ErrorMessage,
   Skeleton,
   TabButtons,
-  dialog,
-  toast,
 } from 'frappe-ui'
 import { user } from '@/data/session'
 import {
-  decisionButtons,
   expenseCan,
   expensePermissionsError,
   expensePermissionsLoaded,
@@ -184,13 +173,12 @@ import {
   reloadExpensePermissions,
   useExpenseApprovalQueue,
   useExpenseClaimLines,
-  useExpenseDecision,
-  type DecisionButton,
-  type ExpenseClaimRow,
 } from '@/data/requests/expense'
+import { useReviewTarget } from '@/data/requests/review'
 import { formatCurrency, formatDate, pluralise } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import ExpenseClaimLines from '@/components/ExpenseClaimLines.vue'
+import ExpenseReviewDialog from '@/components/ExpenseReviewDialog.vue'
 import RequestGate from '@/components/RequestGate.vue'
 import RequestTabs from '@/components/RequestTabs.vue'
 
@@ -208,98 +196,14 @@ const { lines: claimLines, byClaim } = useExpenseClaimLines(() =>
   (claims.data ?? []).map((claim) => claim.name),
 )
 
-const decision = useExpenseDecision()
-
-/**
- * What this approver is allowing, per claim and then per expense row.
- *
- * Only the rows they actually changed — see `ExpenseClaimLines`, which keys
- * them by the expense's own name. Cleared whenever the queue reloads: figures
- * typed against a claim that has since been edited would be settling the wrong
- * expense, and the server refuses a row name the claim no longer has rather
- * than guessing which one was meant.
- */
-const sanctioned = reactive<Record<string, Record<string, number>>>({})
-
-watch(
-  () => claims.data,
-  (rows) => {
-    for (const name of Object.keys(sanctioned)) delete sanctioned[name]
-    for (const row of rows ?? []) sanctioned[row.name] = {}
-  },
-)
-
-// Keyed by claim and decision so only the button that was pressed spins.
-const deciding = ref('')
-
-// The outcomes *this row* accepts, which the server settles per row: a
-// workflow's permitted transitions where one is running, and otherwise the
-// vocabulary less anything HRMS would refuse — a claim of the approver's own,
-// on a site that forbids settling it, offers nothing at all.
-function buttonsFor(claim: ExpenseClaimRow) {
-  return decisionButtons(claim.actions, expenseCan.value.decisions)
-}
+// The claim open for review, if any. Deciding it — the buttons, the amounts
+// being allowed, the reason a decision was refused — is the dialog's, and so is
+// the draft of those amounts: held there, per claim, a reload of this list
+// cannot wipe it. The page only refreshes once a decision reaches the server.
+const review = useReviewTarget(() => claims.data)
 
 function lineCount(name: string) {
   return byClaim.value.get(name)?.length ?? 0
-}
-
-/** Whether this approver has typed a figure other than the claim's own. */
-function trimmed(claim: ExpenseClaimRow) {
-  return Object.keys(sanctioned[claim.name] ?? {}).length > 0
-}
-
-/** What the claim would settle at, as it stands on screen. The figure that is
- *  actually written is the server's, from the same per-row amounts. */
-function allowedTotal(claim: ExpenseClaimRow) {
-  const changed = sanctioned[claim.name] ?? {}
-  return (byClaim.value.get(claim.name) ?? []).reduce(
-    (total, line) => total + (changed[line.name] ?? line.sanctioned_amount),
-    0,
-  )
-}
-
-async function decide(claim: ExpenseClaimRow, button: DecisionButton) {
-  // Whether an outcome needs confirming arrives with it. The claim is written
-  // with that decision on it, and that is not something the page can walk back
-  // on the approver's behalf.
-  if (button.confirm) {
-    dialog.danger({
-      title: `${button.label} claim`,
-      message: `${button.label} ${claim.employee_name}'s claim for ${formatCurrency(claim.total_claimed_amount, claim.currency)}? They are notified, and the claim is settled with that decision.`,
-      confirmLabel: `${button.label} claim`,
-      onConfirm: () => submitDecision(claim, button.decision),
-    })
-    return
-  }
-  await submitDecision(claim, button.decision)
-}
-
-async function submitDecision(claim: ExpenseClaimRow, verdict: string) {
-  deciding.value = `${claim.name}:${verdict}`
-  const changed = sanctioned[claim.name] ?? {}
-  try {
-    const result = await decision.submit({
-      name: claim.name,
-      decision: verdict,
-      // Left out entirely when nothing was trimmed, so the common decision
-      // carries no figures for the server to check row names against.
-      ...(Object.keys(changed).length
-        ? { sanctioned: JSON.stringify(changed) }
-        : {}),
-    })
-    // `submit` resolves null on failure; the reason renders above the list.
-    if (!result) throw decision.error ?? new Error('Could not save the decision')
-    // The outcome in the server's own words, so a site whose workflow calls it
-    // something else is quoted rather than paraphrased, and the amount as the
-    // server totalled it rather than as the page added it up.
-    toast.success(
-      `${claim.employee_name}'s claim is now ${result.status} at ${formatCurrency(result.total_sanctioned_amount, result.currency)}`,
-    )
-    refresh()
-  } finally {
-    deciding.value = ''
-  }
 }
 
 function refresh() {

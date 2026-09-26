@@ -101,9 +101,14 @@ function patch_sidebar() {
  * Host 2: the desktop navbar, immediately left of the bell
  * ----------------------------------------------------------------------- */
 
+// The navbar's panel, so a desktop redrawn from scratch -- which removes the old
+// icon without telling it -- gets one panel rather than one more.
+let navbar_panel = null;
+
 function mount_in_navbar() {
 	const $bell = $(".desktop-notifications");
 	if (!$bell.length || $(".commons-todo-navbar").length) return;
+	if (navbar_panel) navbar_panel.destroy();
 
 	let panel;
 	const $host = $(`
@@ -116,7 +121,7 @@ function mount_in_navbar() {
 		</div>
 	`).insertBefore($bell);
 
-	panel = new ToDoPanel({
+	panel = navbar_panel = new ToDoPanel({
 		container: $host,
 		placement: "navbar",
 		trigger: () => $host.find(".commons-todo-navbar-icon"),
