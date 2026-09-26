@@ -142,7 +142,7 @@ export const reconciliationPermissionsLoaded = computed(
 )
 
 /** What the sidebar row waits on. Whether the site has bank statements at all
- *  is the shell's answer already (`commons.shell.pages.available`). */
+ *  is the shell's answer already (`commons.better_navigation.pages.available`). */
 export const reconciliationGate = {
   visible: computed(() => reconciliationCan.value.reconcile),
   resolved: computed(() => canReconcileCall.isFinished),

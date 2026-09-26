@@ -51,7 +51,7 @@ export const captureCan = computed(() => ({
 }))
 
 /** What the sidebar row waits on. Whether the site has ERPNext and a Claude
- *  key is the shell's answer already (`commons.shell.pages.available`). */
+ *  key is the shell's answer already (`commons.better_navigation.pages.available`). */
 export const captureGate = {
   visible: computed(() => captureCan.value.capture),
   resolved: computed(() => canCaptureCall.isFinished),

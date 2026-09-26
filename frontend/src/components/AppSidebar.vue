@@ -132,19 +132,20 @@
 				</div>
 			</div>
 
-			<!-- Who you are, and the menu of everything that is yours rather than the
-           workspace's: your User record, display, session defaults, help,
-           reload, logout. The desk's badge opens the same menu, built by
-           `commons/public/js/user_menu.js`; before that both badges went
-           straight to the User record, which is now the menu's first entry.
+			<!-- Who you are, and -- with Commons Settings' "Enable User Menu" -- the
+           menu of everything that is yours rather than the workspace's: your
+           User record, display, session defaults, the site's tools, help,
+           logout. The desk's badge opens the same menu, built by
+           `commons/better_navigation/js/user_menu.js`, from the same switch.
 
            It opens upward -- the badge is at the foot of the column -- and as
            wide as the badge while there is a badge's width to match, like the
            header's. -->
 			<Dropdown
+				v-if="userMenu.enabled"
 				class="mt-3 shrink-0"
 				side="top"
-				:options="userMenuItems"
+				:options="accountMenu(true)"
 				:match-trigger-width="!collapsed"
 			>
 				<template #item-suffix="{ item }">
@@ -157,38 +158,26 @@
 					:class="collapsed ? 'px-0' : 'px-2'"
 					aria-label="User menu"
 				>
-					<!-- 40px of content inside 4px of padding, like the desk's row: the
-               minimum is the content's, not the padded box's, or the whole thing
-               comes up 2px short. -->
-					<div class="flex min-h-10 items-center" :class="{ 'justify-center': collapsed }">
-						<!-- The desk's avatar, not a generic one: two initials on the colour
-                 it gives this person everywhere else (see `get_avatar_color`). -->
-						<span
-							class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-base leading-none"
-							:style="avatarStyle"
-							:title="user.full_name"
-						>
-							<img
-								v-if="user.user_image"
-								:src="user.user_image"
-								alt=""
-								class="size-full object-cover"
-							/>
-							<template v-else>{{ initials }}</template>
-						</span>
-						<div v-if="!collapsed" class="ml-2 flex min-w-0 flex-col">
-							<span class="truncate text-sm leading-[1.5] text-ink-gray-8">
-								{{ user.full_name }}
-							</span>
-							<!-- The -1px is the desk's, from its own sidebar template: the two
-                   lines are a pixel tighter than their line boxes stack to. -->
-							<span class="-mt-px truncate text-sm leading-[1.5] text-ink-gray-5">
-								{{ user.email ?? user.name }}
-							</span>
-						</div>
-					</div>
+					<AppUserBadge :collapsed="collapsed" />
 				</button>
 			</Dropdown>
+			<!-- Switched off, the badge is what the desk's own is: a way to your User
+           record, and the rest of the menu is back in the header's.
+
+           The record is a desk page, so for somebody whose roles do not open the
+           desk the badge is a label rather than a link: a plain div, and without
+           the hover that is the only thing telling a row here it can be pressed.
+           It still says who is signed in, which is the other half of what it is
+           for. -->
+			<component
+				:is="hasDeskAccess ? 'a' : 'div'"
+				v-else
+				:href="hasDeskAccess ? userDeskUrl : undefined"
+				class="mt-3 block shrink-0 rounded-4 py-1"
+				:class="[{ 'app-sidebar__hover': hasDeskAccess }, collapsed ? 'px-0' : 'px-2']"
+			>
+				<AppUserBadge :collapsed="collapsed" />
+			</component>
 		</Sidebar>
 
 		<SessionDefaultsDialog v-model:open="sessionDefaultsOpen" @saved="clearCacheAndReload" />
@@ -230,6 +219,7 @@ import AppSidebarRow from '@/components/AppSidebarRow.vue'
 import AppNotifications from '@/components/AppNotifications.vue'
 import AppTodoList from '@/components/AppTodoList.vue'
 import SessionDefaultsDialog from '@/components/SessionDefaultsDialog.vue'
+import AppUserBadge from '@/components/AppUserBadge.vue'
 import { userMenu, type NavbarLink } from '@/data/userMenu'
 import {
 	availableWorkspaces,
@@ -239,28 +229,6 @@ import {
 	workspaceFor,
 	type Workspace,
 } from '@/data/shell'
-
-// Two initials, like the desk's `get_abbr`: the first letter of each of the
-// first two words, left in the case they were written in -- the desk does not
-// uppercase them either, so "José da Silva" is "Jd" in both places.
-const initials = computed(() =>
-	user.value.full_name
-		.split(' ')
-		.filter(Boolean)
-		.slice(0, 2)
-		.map((word) => word[0])
-		.join(''),
-)
-
-// The palette entry is the server's answer; these two variables are the desk's,
-// copied into index.css with the rest of its sidebar tokens.
-const avatarStyle = computed(() => {
-	const color = user.value.avatar_color ?? 'gray'
-	return {
-		backgroundColor: `var(--${color}-avatar-bg)`,
-		color: `var(--${color}-avatar-color)`,
-	}
-})
 
 // Two shapes, the desk's both: a column in the layout, and -- below 768px --
 // a drawer over it. The desk does not narrow its sidebar on a phone, it takes
@@ -408,10 +376,15 @@ const workspacesItem = computed(() => {
 	return [{ label: 'Workspaces', icon: 'lucide-layout-dashboard', submenu }]
 })
 
-// The desk's header menu (`SidebarHeader.dropdown_items`) as `user_menu.js`
-// leaves it: the navigation, and nothing else -- the rest has moved to the
-// user badge's menu below.
+// The desk's header menu (`SidebarHeader.dropdown_items`): the navigation, and
+// -- unless the user menu is switched on and has taken them to the badge --
+// the account entries under it, which is where the desk keeps them too.
 const menuItems = computed(() => [
+	...navigationItems.value,
+	...(userMenu.value.enabled ? [] : accountMenu(false)),
+])
+
+const navigationItems = computed(() => [
 	// Desktop is the desk's own name for its home.
 	...deskOnly({
 		label: 'Desktop',
@@ -450,94 +423,92 @@ function navbarLinks(links: NavbarLink[]) {
 		}))
 }
 
-// The desk badge's menu (`commons/public/js/user_menu.js`), section for
-// section: your User record; Display, Session Defaults, Help, the Navbar
-// Settings rows, Reload; Logout. What the desk has and this app cannot carry
-// is left out rather than stubbed -- Toggle Full Width and Toggle Sidebar
-// under Display (the scheme is the one display choice here), the Help rows
-// that are desk dialogs (About, Keyboard Shortcuts), and Edit Sidebar. The
-// server drops the Help and settings rows that are desk JavaScript; see
-// `commons/commons_core/user_menu.py`.
-const userMenuItems = computed(() => {
+// The desk badge's menu (`commons/better_navigation/js/user_menu.js`), section for
+// section: you (your record, how the app looks to you, this session's
+// defaults); the site (the Navbar Settings rows, Reload); Help; Logout. What
+// the desk has and this app cannot carry is left out rather than stubbed --
+// Toggle Full Width and Toggle Sidebar under Display (the scheme is the one
+// display choice here), the Help rows that are desk dialogs (About, Keyboard
+// Shortcuts), and Edit Sidebar. The server drops the Help and settings rows
+// that are desk JavaScript; see `commons/better_navigation/user_menu.py`.
+//
+// Each section is a group, and a group left with nothing in it is dropped
+// rather than drawn as an empty band between two dividers.
+//
+// Drawn in one of two places (see `menuItems`). My Settings goes only in the
+// badge's: in the header it would sit beside a badge that already links there.
+function accountMenu(onBadge: boolean) {
 	const help = navbarLinks(userMenu.value.help)
 
-	return [
-		// Your own User record, which is what the badge did before it had a menu.
-		// "My Settings" is Frappe's own name for that destination.
-		...deskOnly({
-			group: '',
-			hideLabel: true,
-			options: [
-				{
-					label: 'My Settings',
-					icon: 'lucide-user',
-					onClick: () => {
-						window.location.href = userDeskUrl.value
+	const sections = [
+		[
+			// Your own User record, which is what the badge did before it had a
+			// menu. "My Settings" is Frappe's own name for that destination.
+			...(onBadge ? deskOnly({
+				label: 'My Settings',
+				icon: 'lucide-user',
+				onClick: () => {
+					window.location.href = userDeskUrl.value
+				},
+			}) : []),
+			{
+				// The desk tucks its appearance controls behind Display; the scheme
+				// is the one choice this app has. `selected` marks the preference,
+				// so nothing is checked while the app follows the OS setting.
+				label: 'Display',
+				icon: 'lucide-palette',
+				submenu: [
+					{
+						label: 'Light mode',
+						icon: 'lucide-sun',
+						selected: colorScheme.value === 'light',
+						onClick: () => setColorScheme('light'),
 					},
-				},
-			],
-		}),
-		{
-			group: '',
-			hideLabel: true,
-			options: [
-				{
-					// The desk tucks its appearance controls behind Display; the scheme
-					// is the one choice this app has. `selected` marks the preference,
-					// so nothing is checked while the app follows the OS setting.
-					label: 'Display',
-					icon: 'lucide-palette',
-					submenu: [
+					{
+						label: 'Dark mode',
+						icon: 'lucide-moon',
+						selected: colorScheme.value === 'dark',
+						onClick: () => setColorScheme('dark'),
+					},
+				],
+			},
+			// The desk's condition too: only while Session Default Settings lists
+			// something to default.
+			...(userMenu.value.session_defaults.length
+				? [
 						{
-							label: 'Light mode',
-							icon: 'lucide-sun',
-							selected: colorScheme.value === 'light',
-							onClick: () => setColorScheme('light'),
-						},
-						{
-							label: 'Dark mode',
-							icon: 'lucide-moon',
-							selected: colorScheme.value === 'dark',
-							onClick: () => setColorScheme('dark'),
-						},
-					],
-				},
-				// The desk's condition too: only while Session Default Settings
-				// lists something to default.
-				...(userMenu.value.session_defaults.length
-					? [
-							{
-								label: 'Session Defaults',
-								icon: 'lucide-sliders-horizontal',
-								onClick: () => {
-									sessionDefaultsOpen.value = true
-								},
+							label: 'Session Defaults',
+							icon: 'lucide-sliders-horizontal',
+							onClick: () => {
+								sessionDefaultsOpen.value = true
 							},
-						]
-					: []),
-				...(help.length ? [{ label: 'Help', icon: 'lucide-info', submenu: help }] : []),
-				...navbarLinks(userMenu.value.settings),
-				{
-					label: 'Reload',
-					icon: 'lucide-rotate-cw',
-					shortcut: RELOAD_SHORTCUT,
-					onClick: clearCacheAndReload,
-				},
-			],
-		},
-		{
-			group: '',
-			hideLabel: true,
-			options: [
-				{
-					label: 'Logout',
-					icon: 'lucide-log-out',
-					onClick: logout,
-				},
-			],
-		},
+						},
+					]
+				: []),
+		],
+		[
+			...navbarLinks(userMenu.value.settings),
+			{
+				label: 'Reload',
+				icon: 'lucide-rotate-cw',
+				shortcut: RELOAD_SHORTCUT,
+				onClick: clearCacheAndReload,
+			},
+		],
+		help.length ? [{ label: 'Help', icon: 'lucide-info', submenu: help }] : [],
+		[
+			{
+				label: 'Logout',
+				icon: 'lucide-log-out',
+				onClick: logout,
+			},
+		],
 	]
-})
+
+	return sections
+		.filter((options) => options.length)
+		.map((options) => ({ group: '', hideLabel: true, options }))
+}
 </script>
 
 <style scoped>

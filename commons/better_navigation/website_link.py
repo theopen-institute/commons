@@ -17,11 +17,10 @@ nothing here is read by `get_home_page` -- it is read by the two sidebars and
 nowhere else. Left empty, both buttons keep opening the site root exactly as
 before.
 
-The browser half is `commons/public/js/website_button.js`, which rewrites the
-desk's sidebar entry from `frappe.boot`; it stays under `public/` because that is
-the only tree esbuild globs for bundles. This app's own sidebar reads the same
-value, from boot data in a production build and from the endpoint below in the
-dev server.
+The browser half is `js/website_button.js` beside this file, which rewrites the
+desk's sidebar entry from `frappe.boot`; `commons.bundle.js` imports it. This
+app's own sidebar reads the same value, from boot data in a production build and
+from the endpoint below in the dev server.
 
 Not to be confused with [home_page.py] next door, which is where people *land*.
 That is the other half of the cascade this separates.

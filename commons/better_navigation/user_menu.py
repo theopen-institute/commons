@@ -4,7 +4,7 @@
 """What the SPA's user menu lists beyond its own entries.
 
 The desk sidebar's user badge opens a menu of the account and maintenance entries
-that used to sit in its header menu (`commons/public/js/user_menu.js`). The SPA's
+that used to sit in its header menu (`commons/better_navigation/js/user_menu.js`). The SPA's
 sidebar has the same menu, and two parts of it come from site configuration
 rather than code:
 
@@ -27,6 +27,8 @@ import re
 
 import frappe
 
+from commons.commons_core import settings
+
 # `frappe.ui.toolbar.new_window('/app/system-console')`, quoted either way.
 NEW_WINDOW = re.compile(r"""^\s*frappe\.ui\.toolbar\.new_window\(\s*(['"])(?P<url>[^'"]+)\1\s*\)\s*;?\s*$""")
 
@@ -38,9 +40,14 @@ def get_user_menu() -> dict:
 	Whitelisted as well as read into the page's boot data, for the Vite dev
 	server, which serves `index.html` without the Jinja pass. Nothing here is
 	more than the desk already hands the same user on boot.
+
+	Answered whether or not the menu is switched on. Off, the same entries are
+	still drawn -- in the header menu, where the desk keeps them -- so the only
+	thing `enabled` decides is which of the two menus holds them.
 	"""
 	navbar = frappe.get_cached_doc("Navbar Settings")
 	return {
+		"enabled": settings.feature_enabled(settings.ENABLE_USER_MENU),
 		"session_defaults": get_session_defaults(),
 		"session_defaults_settings": bool(frappe.has_permission("Session Default Settings", "read")),
 		"help": [row for row in map(to_menu_item, navbar.help_dropdown) if row],

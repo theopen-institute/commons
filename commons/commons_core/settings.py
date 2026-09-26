@@ -5,7 +5,7 @@ The document is `Commons Settings`, a Single with one field, and it lives here
 rather than with the navigation it names because it is a fact about the *app*
 rather than about the sidebar. The sidebar is one reader of it; the browser tab
 is another, and the desk's Awesome Bar labels this app's pages with it
-(`commons.shell.search`). A second setting that had nothing to do with navigation
+(`commons.better_navigation.search`). A second setting that had nothing to do with navigation
 would belong here too, which is the test that settled where it goes.
 
 Reading it is one line and one caveat, so the reader sits beside the document
@@ -30,7 +30,7 @@ def title() -> str:
 	there is simply no row, and a site that has never opened the form has no
 	value in it. Both read as unset here rather than as an empty sidebar.
 
-	Read behind the same guard `shell.workspaces.installed` explains: code lands
+	Read behind the same guard `better_navigation.workspaces.installed` explains: code lands
 	before migrate runs it, and for that one window there is no doctype to read
 	a Single of.
 	"""
@@ -48,6 +48,18 @@ def title() -> str:
 # Sambat -- so it sits in the form's main section, not among the overrides.
 ENABLE_BIKRAM_SAMBAT = "enable_bikram_sambat"
 
+# Better Navigation: overrides too, of the desk's navigation, grouped in the
+# form because they are one design with this app's own sidebar
+# (`commons.better_navigation`).
+
+# `commons/better_navigation/js/user_menu.js`, and the frontend's copy of the
+# same menu (`commons.better_navigation.user_menu.get_user_menu` says which)
+ENABLE_USER_MENU = "enable_user_menu"
+# `commons/better_navigation/js/workspace_sidebar_memory.js`
+ENABLE_SIDEBAR_MEMORY = "enable_sidebar_memory"
+# `commons.better_navigation.home_page`, which preempts core's `get_home_page`
+ENABLE_HOME_PAGE_PRIORITY = "enable_home_page_priority"
+
 # Core behaviour overrides: the places this app changes how Frappe itself
 # behaves, rather than adding beside it, and which lean on details of core that
 # an upgrade can move. Each has a switch so that a site whose desk or
@@ -57,10 +69,6 @@ ENABLE_BIKRAM_SAMBAT = "enable_bikram_sambat"
 ENABLE_UNENCODED_AT = "enable_unencoded_at_in_routes"
 # `commons.safer_permissions`, and the checkbox it draws in the Role Permission Manager
 ENABLE_PERMISSION_GATE = "enable_user_permission_gate"
-# `commons.commons_core.home_page`, which preempts core's `get_home_page`
-ENABLE_HOME_PAGE_PRIORITY = "enable_home_page_priority"
-# `commons/public/js/workspace_sidebar_memory.js`
-ENABLE_SIDEBAR_MEMORY = "enable_sidebar_memory"
 # `commons.derived_docfields`, which swaps core's query engine and document
 # classes, and `commons/public/js/derived_docfields.js`
 ENABLE_DERIVED_DOCFIELDS = "enable_derived_docfields"
@@ -74,6 +82,7 @@ DESK_FEATURES = {
 	"unencoded_at_in_routes": ENABLE_UNENCODED_AT,
 	"user_permission_gate": ENABLE_PERMISSION_GATE,
 	"sidebar_memory": ENABLE_SIDEBAR_MEMORY,
+	"user_menu": ENABLE_USER_MENU,
 	"derived_docfields": ENABLE_DERIVED_DOCFIELDS,
 	"visual_email_editor": ENABLE_VISUAL_EMAIL_EDITOR,
 }

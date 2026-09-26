@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import frappe
 
-from commons.commons_core import home_page
+from commons.better_navigation import home_page
 
 
 class TestSwitch(TestCase):

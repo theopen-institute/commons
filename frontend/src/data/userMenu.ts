@@ -17,6 +17,10 @@ export interface NavbarLink {
 }
 
 export interface UserMenuData {
+  /** Commons Settings' "Enable User Menu": whether the entries below sit in a
+   *  menu on the user badge, or in the header menu with the badge a plain link
+   *  to the User record. The desk makes the same switch from the same field. */
+  enabled: boolean
   session_defaults: SessionDefault[]
   /** Whether the Session Defaults dialog links on to Session Default Settings. */
   session_defaults_settings: boolean
@@ -36,7 +40,7 @@ declare global {
 const bootMenu = window.user_menu
 
 const menuCall = useCall<UserMenuData>({
-  url: '/api/v2/method/commons.commons_core.user_menu.get_user_menu',
+  url: '/api/v2/method/commons.better_navigation.user_menu.get_user_menu',
   immediate: bootMenu === undefined,
 })
 
@@ -44,12 +48,13 @@ const menuCall = useCall<UserMenuData>({
  * The site-configured parts of the sidebar's user menu: Session Defaults, and
  * the Navbar Settings rows under Help and after it. Only the rows that are
  * URLs -- the server leaves out the ones that are desk JavaScript. See
- * `commons/commons_core/user_menu.py`.
+ * `commons/better_navigation/user_menu.py`.
  */
 export const userMenu = computed<UserMenuData>(
   () =>
     bootMenu ??
     menuCall.data ?? {
+      enabled: false,
       session_defaults: [],
       session_defaults_settings: false,
       help: [],

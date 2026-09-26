@@ -19,7 +19,7 @@ Two things are settled here, and both are settled the way the sidebar settles
 them.
 
 *Which rows exist* is the site's, read from the same `Commons Workspace`
-documents the sidebar is drawn from (`shell.workspaces`), so a site that renamed
+documents the sidebar is drawn from (`better_navigation.workspaces`), so a site that renamed
 a row or moved it to another workspace gets the renamed row here too, and a row
 nobody configured is offered nowhere.
 
@@ -60,9 +60,9 @@ from frappe.boot import get_tree_view_doctypes
 
 from commons.commons_core import settings
 from commons.self_service import registry
-from commons.shell import pages as page_list
-from commons.shell import workspaces
-from commons.shell.pages import PAGE_ACCESS, PAGE_DOCTYPES, PAGES
+from commons.better_navigation import pages as page_list
+from commons.better_navigation import workspaces
+from commons.better_navigation.pages import PAGE_ACCESS, PAGE_DOCTYPES, PAGES
 
 # Where each shipped page lives, under `hooks.app_home`. The frontend's router
 # is the authority on these (`frontend/src/router.ts`) and this is a second copy

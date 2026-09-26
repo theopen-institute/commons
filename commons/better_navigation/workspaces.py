@@ -40,8 +40,8 @@ invalidate for no measurable gain.
 import frappe
 
 from commons.self_service import registry
-from commons.shell import pages as page_list
-from commons.shell.pages import DEFAULT_REQUEST_PAGES, PAGES
+from commons.better_navigation import pages as page_list
+from commons.better_navigation.pages import DEFAULT_REQUEST_PAGES, PAGES
 
 WORKSPACE = "Commons Workspace"
 ITEM = "Commons Workspace Item"

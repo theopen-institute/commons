@@ -37,7 +37,7 @@ who has one is skipped entirely here. And a user whose roles name no home page a
 all is skipped too, which leaves Portal Settings, the `home_page` hooks and
 Website Settings to answer exactly as before.
 
-Not to be confused with [website_link.py], which is where the *Website button*
+Not to be confused with [website_link.py] next door, which is where the *Website button*
 goes. This one is the landing page.
 """
 

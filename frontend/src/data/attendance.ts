@@ -175,7 +175,7 @@ export const attendancePermissionsLoaded = computed(
  * What the sidebar row waits on.
  *
  * Only the permission half. Whether the site has a register at all is the
- * server's answer and is already in the shell: `commons.shell.pages.available`
+ * server's answer and is already in the shell: `commons.better_navigation.pages.available`
  * drops the row from every workspace on a site with no education module, so a
  * row that is there is a register that exists. See `PAGES` in `data/shell.ts`.
  */

@@ -26,9 +26,9 @@ from unittest.mock import patch
 import frappe
 
 from commons.api_integrations.claude import client as claude
-from commons.shell import workspaces
-from commons.shell.doctype.commons_workspace import commons_workspace as controller
-from commons.shell.doctype.commons_workspace.commons_workspace import CommonsWorkspace
+from commons.better_navigation import workspaces
+from commons.better_navigation.doctype.commons_workspace import commons_workspace as controller
+from commons.better_navigation.doctype.commons_workspace.commons_workspace import CommonsWorkspace
 
 # `frappe._` reaches for the translation cache and, failing that, for a log file
 # neither of which a site-less run has. See `self_service.test_self_service_api`.
@@ -83,7 +83,7 @@ def with_documents(test, parents, items, installed=True, absent=(), apps=ALL_APP
 	site does not have, such as `Leave Application` on a site running no HRMS.
 	`apps` is the site's installed apps, which is what procurement is missing
 	without ERPNext: its own doctype is this app's and is never absent. See
-	`shell.pages.available`, and `commons.commons_core.apps` on why the two are asked
+	`better_navigation.pages.available`, and `commons.commons_core.apps` on why the two are asked
 	differently.
 
 	`claude_key` is whether `Claude Settings` holds a key, which is a fourth
@@ -369,7 +369,7 @@ class TestTheAttendanceRegisterRow(TestCase):
 	It is deliberately *not* tested here that a student does not get the row.
 	That is `pages.PAGE_ACCESS`, which is a permission question about a person
 	rather than a fact about the site, and the default workspace does not ask it
-	-- the frontend and the Awesome Bar each do. See `commons.shell.search`.
+	-- the frontend and the Awesome Bar each do. See `commons.better_navigation.search`.
 	"""
 
 	ABSENT = ("Course Schedule", "Student Attendance")

@@ -9,13 +9,18 @@
  * developer mode. After this, the header keeps the navigation (Desktop,
  * Workspaces, Website) and the badge opens a menu of the rest:
  *
- *     My Settings              <- the badge's old click, as the first entry
+ *     My Settings, Display, Session Defaults    you: your record, how the desk
+ *                                               looks to you, this session's defaults
  *     ---
- *     Display, Session Defaults, Help,
- *     Navbar Settings' rows (System Console...),
- *     Edit Sidebar, Reload
+ *     Edit Sidebar, Navbar Settings' rows       the site: tools that act on the
+ *     (System Console...), Reload               system rather than on you
+ *     ---
+ *     Help                                      reading rather than doing
  *     ---
  *     Logout
+ *
+ * My Settings is the badge's old click. Navbar Settings rows always land in the
+ * second section, so adding one never scatters the order.
  *
  * Moved by wrapping `add_navbar_items`, the same seam `website_button.js` uses:
  * the constructor calls it after building `dropdown_items` and before
@@ -29,6 +34,11 @@
  * `frontend/src/components/AppSidebar.vue`.
  */
 (function patch_user_menu() {
+	// Opt-in: "Enable User Menu" in Commons Settings. Unticked, nothing here is
+	// installed and both menus are core's, from the next reload.
+	const features = (frappe.boot && frappe.boot.commons_features) || {};
+	if (!features.user_menu) return;
+
 	const Sidebar = frappe.ui && frappe.ui.Sidebar;
 	const Header = frappe.ui && frappe.ui.SidebarHeader;
 	if (
@@ -60,9 +70,12 @@
 			const index = own.findIndex(match);
 			return index === -1 ? [] : own.splice(index, 1);
 		};
-		const logout = take((item) => item.name === "logout");
-		const reload = take((item) => item.label === "Reload");
+		const display = take((item) => item.name === "display");
+		const session_defaults = take((item) => item.label === "Session Defaults");
 		const edit_sidebar = take((item) => item.name === "edit-sidebar");
+		const reload = take((item) => item.label === "Reload");
+		const help = take((item) => item.name === "help");
+		const logout = take((item) => item.name === "logout");
 
 		const settings = from_navbar
 			// Core pushes hidden rows too; Navbar Settings' Hidden should hide them.
@@ -85,10 +98,13 @@
 					icon: "user",
 					onClick: () => frappe.ui.toolbar.route_to_user(),
 				},
+				...display,
+				...session_defaults,
 			],
-			// Whatever is left of core's own is Display, Session Defaults and Help,
-			// plus anything core adds later -- kept in core's order.
-			[...own, ...settings, ...edit_sidebar, ...reload],
+			// Whatever is left in `own` is something core added after this was
+			// written. It goes with the tools, above Reload, until it is placed.
+			[...edit_sidebar, ...settings, ...own, ...reload],
+			help,
 			logout,
 		].filter((section) => section.length);
 
@@ -128,6 +144,16 @@
 	}
 
 	function nest(menu) {
+		// Core closes an open submenu only when the pointer reaches another row
+		// that has one of its own, so moving from Help onto Reload left Help's
+		// submenu standing. Any other row closes it here. Delegated from the
+		// template, which outlives the rows `make` redraws on every show.
+		menu.template.on("mouseenter", ".dropdown-menu-item", function () {
+			if (menu.nested_menus.some((nested) => nested.parent.get(0) === this)) return;
+			menu.nested_menus.forEach((nested) => nested.hide());
+			menu.current_menu = null;
+		});
+
 		menu.handle_nested_menu = function () {
 			const nested = frappe.ui.menu.prototype.handle_nested_menu.apply(this, arguments);
 			keep_on_screen(nested);

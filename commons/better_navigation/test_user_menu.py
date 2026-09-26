@@ -12,7 +12,7 @@ from unittest import TestCase
 
 import frappe
 
-from commons.commons_core.user_menu import to_menu_item
+from commons.better_navigation.user_menu import to_menu_item
 
 
 def row(**fields):

@@ -106,7 +106,7 @@ class TestTheSplitIsCheckedFirst(TestCase):
 			patch.object(reconciliation.frappe, "format_value", side_effect=lambda value, df: str(value))
 		)
 		# `frappe.throw` reaches for request-local state a site-less run does not
-		# have; see `shell.test_shell`, which stands it in the same way.
+		# have; see `better_navigation.test_shell`, which stands it in the same way.
 		self.enterContext(patch.object(reconciliation.frappe, "throw", side_effect=_raise))
 		# And `flt` with a precision asks System Settings how to round; site-less
 		# that fails, and `flt` swallows the failure and answers 0.

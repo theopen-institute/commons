@@ -1,4 +1,13 @@
-"""The frame every page of this app is drawn in: what it is called, and what is in the sidebar.
+"""Navigation, in the desk and in this app's own frontend, kept as one design.
+
+The two sidebars sit in the same place on the screen and a user crosses between
+them all day, so they are built to each other: what one's menus hold, and in
+what order, the other's hold too. This module is where both halves live, so a
+change to one is made next to the other.
+
+The frontend's frame
+--------------------
+The frame every page of `/commons` is drawn in: what it is called, and what is in the sidebar.
 
 Everything under `/commons` renders inside one sidebar, and until now that
 sidebar was written down in the frontend twice over -- a registry holding a
@@ -39,4 +48,26 @@ The frontend half is `frontend/src/data/shell.ts`. The split is the same one
 `registry.field_definitions` makes for a form: this side says which rows, in
 what order, under which heading, and what they are called; that side knows what
 a row opens, whether this user may open it, and what the badge on it says.
+
+The desk's sidebar
+------------------
+The desk halves patch Frappe's own sidebar from `commons.bundle.js`, which
+imports them from `js/` here. An entry file has to be under `public/` for
+esbuild to find it; what it imports does not.
+
+- `js/user_menu.js` and `user_menu.py`: the user badge at the foot of the
+  sidebar opens a menu of your account, display, session defaults, site tools,
+  help and logout, and the header menu keeps only navigation. The frontend's
+  badge is the same menu (`AppSidebar.vue`), and `user_menu.py` gives it the
+  Session Defaults fields and Navbar Settings rows the desk gets on boot.
+- `js/website_button.js` and `website_link.py`: where the "Website" entry goes,
+  in both sidebars.
+- `js/workspace_sidebar_memory.js`: which sidebar a refresh keeps you in.
+- `home_page.py`: where you land after logging in, when your roles name more
+  than one home page. The other half of the cascade `website_link.py` splits.
+
+Each of these but the Website button has a switch in Commons Settings' Better
+Navigation section, off until ticked (`commons.commons_core.settings`); the
+button's switch is its own target field, which does nothing until it is filled
+in. The user menu's switch covers both sidebars.
 """

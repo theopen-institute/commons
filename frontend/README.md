@@ -218,7 +218,7 @@ Nothing in the browser knows any of that. The permissions endpoint for a section
 this site cannot run answers `read: false`, which is the same answer it gives a
 user who may not read one — and that is what already hides the sidebar row, the
 tabs, the badge and the search bar's "New leave request". The server drops the
-navigation rows too (`shell.pages.available`, which asks the section rather than
+navigation rows too (`better_navigation.pages.available`, which asks the section rather than
 restating it), so the desk's Awesome Bar does not offer a page that is not
 there, and every endpoint behind a missing section refuses rather than 500s.
 
@@ -333,7 +333,7 @@ takes `parent` and is what the desk uses for the same job.
 
 Whether this reader may mark attendance is asked with
 `frappe.client.has_permission`, not with an endpoint of this app's. Whether the
-*site* has a register at all is not asked at all: `commons.shell.pages.available`
+*site* has a register at all is not asked at all: `commons.better_navigation.pages.available`
 already drops the row from every workspace on a site with no education module,
 so a row that is there is a register that exists.
 

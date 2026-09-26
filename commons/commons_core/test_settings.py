@@ -1,6 +1,6 @@
 """What the app calls itself, and what answers when nobody has said.
 
-Moved here with the document it reads. It used to sit in `shell.test_shell`,
+Moved here with the document it reads. It used to sit in `better_navigation.test_shell`,
 which was right while `Commons Settings` was the navigation's -- see
 `commons.commons_core` on why it is the app's instead.
 """
@@ -70,6 +70,7 @@ class TestOverrideEnabled(TestCase):
 				"unencoded_at_in_routes": False,
 				"user_permission_gate": False,
 				"sidebar_memory": True,
+				"user_menu": False,
 				"derived_docfields": False,
 				"visual_email_editor": False,
 			},

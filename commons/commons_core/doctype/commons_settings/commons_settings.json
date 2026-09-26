@@ -7,11 +7,13 @@
  "field_order": [
   "title",
   "enable_bikram_sambat",
+  "navigation_section",
+  "enable_user_menu",
+  "enable_sidebar_memory",
+  "enable_home_page_priority",
   "core_overrides_section",
   "enable_unencoded_at_in_routes",
   "enable_user_permission_gate",
-  "enable_home_page_priority",
-  "enable_sidebar_memory",
   "enable_derived_docfields",
   "enable_visual_email_editor"
  ],
@@ -29,6 +31,34 @@
    "fieldname": "enable_bikram_sambat",
    "fieldtype": "Check",
    "label": "Enable Bikram Sambat Calendar"
+  },
+  {
+   "collapsible": 1,
+   "description": "Changes to how people find their way around, in the desk and in Commons alike. Like the overrides below, these change how Frappe itself behaves and lean on details of its code that an upgrade can change without warning, so they are the first to switch off if navigation misbehaves after an upgrade. Changes to the desk take effect when each user reloads the page.",
+   "fieldname": "navigation_section",
+   "fieldtype": "Section Break",
+   "label": "Better Navigation"
+  },
+  {
+   "default": "0",
+   "description": "Opens a menu from your name at the foot of the sidebar, holding your account, display, session defaults, site tools, help and logout. The menu at the top of the sidebar then keeps only Desktop, Workspaces and Website. Applies to the desk and to Commons. Without it, clicking your name opens your User record and everything is in the top menu. Suspect this first if either menu is missing entries or does not open.",
+   "fieldname": "enable_user_menu",
+   "fieldtype": "Check",
+   "label": "Enable User Menu"
+  },
+  {
+   "default": "0",
+   "description": "Remembers which workspace sidebar each page was reached from, so reloading it keeps that sidebar rather than switching to the one for the page's module. Suspect this first if the workspace sidebar is missing, shows the wrong workspace, or stops changing when you navigate.",
+   "fieldname": "enable_sidebar_memory",
+   "fieldtype": "Check",
+   "label": "Enable Sidebar Memory"
+  },
+  {
+   "default": "0",
+   "description": "Uses each Role's Home Page Priority to decide where someone holding several roles lands after logging in: the lowest number wins. Without it, Frappe uses the first role the database happens to return. Suspect this first if people land on the wrong page after logging in, or opening the site root goes somewhere unexpected.",
+   "fieldname": "enable_home_page_priority",
+   "fieldtype": "Check",
+   "label": "Enable Home Page Priority"
   },
   {
    "collapsible": 1,
@@ -53,20 +83,6 @@
   },
   {
    "default": "0",
-   "description": "Uses each Role's Home Page Priority to decide where someone holding several roles lands after logging in: the lowest number wins. Without it, Frappe uses the first role the database happens to return. Suspect this first if people land on the wrong page after logging in, or opening the site root goes somewhere unexpected.",
-   "fieldname": "enable_home_page_priority",
-   "fieldtype": "Check",
-   "label": "Enable Home Page Priority"
-  },
-  {
-   "default": "0",
-   "description": "Remembers which workspace sidebar each page was reached from, so reloading it keeps that sidebar rather than switching to the one for the page's module. Suspect this first if the workspace sidebar is missing, shows the wrong workspace, or stops changing when you navigate.",
-   "fieldname": "enable_sidebar_memory",
-   "fieldtype": "Check",
-   "label": "Enable Sidebar Memory"
-  },
-  {
-   "default": "0",
    "description": "Lets a Custom Field show a value read live from a linked record, through its <b>Derived From</b> property, instead of storing a copy. Nothing is stored, so switching this off loses no data; derived fields simply read as empty. Suspect this first if lists, reports or forms of a doctype with derived fields start failing or showing wrong values.",
    "fieldname": "enable_derived_docfields",
    "fieldtype": "Check",
@@ -83,7 +99,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-25 12:00:00.000000",
+ "modified": "2026-09-26 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

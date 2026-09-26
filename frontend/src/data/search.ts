@@ -44,7 +44,7 @@ import { hasDeskAccess } from '@/data/session'
  * - this app's pages, built from the sidebar;
  * - the desk's doctypes -- "Employee List", "New ToDo" -- built the way
  *   `get_doctypes` builds them, from the four permission lists the desk gets in
- *   its boot and this app asks `commons.shell.search.desk_doctypes` for;
+ *   its boot and this app asks `commons.better_navigation.search.desk_doctypes` for;
  * - documents, from the same Global Search the desk's own dialog uses.
  *
  * All three sort against each other on one scale, which is what stops the bar
@@ -360,7 +360,7 @@ function newRequestRow(
  *
  * `frappe.search.utils.get_doctypes`, over the four permission lists the desk
  * receives in its boot and this app has to ask for -- see
- * `commons.shell.search.desk_doctypes`. Fetched once, lazily, the first time the bar
+ * `commons.better_navigation.search.desk_doctypes`. Fetched once, lazily, the first time the bar
  * is opened: it is a few tens of kilobytes on a site with ERPNext and HRMS
  * installed, which is not worth paying for on a page load that may never
  * search anything.
@@ -387,7 +387,7 @@ export function ensureDeskDoctypes(): Promise<DeskDoctypes> {
   // pointless round trip on every open of the bar for exactly those users.
   if (!canSearchDesk.value) return Promise.resolve(NO_DESK_DOCTYPES)
   if (!deskDoctypesPromise) {
-    deskDoctypesPromise = call<DeskDoctypes>('commons.shell.search.desk_doctypes')
+    deskDoctypesPromise = call<DeskDoctypes>('commons.better_navigation.search.desk_doctypes')
       .then((found) => {
         deskDoctypes.value = found ?? NO_DESK_DOCTYPES
         return deskDoctypes.value

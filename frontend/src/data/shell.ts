@@ -30,7 +30,7 @@ import { requestSection, type RequestSection, type RequestSectionKey } from './r
  * needed it: a row this user cannot use is either hidden here or opens a page
  * that explains itself.
  *
- * The keys in `PAGES` are the contract. `commons/shell/pages.py` holds the same
+ * The keys in `PAGES` are the contract. `commons/better_navigation/pages.py` holds the same
  * set, and the two halves have to agree on them.
  */
 
@@ -212,7 +212,7 @@ declare global {
 const bootShell = window.shell
 
 const shellCall = useCall<ShellData>({
-  url: '/api/v2/method/commons.shell.api.get_shell',
+  url: '/api/v2/method/commons.better_navigation.api.get_shell',
   immediate: bootShell === undefined,
 })
 

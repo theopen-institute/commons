@@ -19,7 +19,7 @@ from unittest.mock import patch
 from commons.education_extensions import attendance
 
 # `frappe._` reaches for the translation cache and, failing that, for a log file
-# neither of which a site-less run has. See `shell.test_shell`.
+# neither of which a site-less run has. See `better_navigation.test_shell`.
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
 
 

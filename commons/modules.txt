@@ -5,7 +5,7 @@ Education Extensions
 Requests
 Safer Permissions
 Self Service
-Shell
+Better Navigation
 Statement
 Derived Docfields
 Email Extensions

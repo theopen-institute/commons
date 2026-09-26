@@ -109,9 +109,9 @@ before_migrate = "commons.commons_core.install.sync_module_defs"
 # include js, css files in header of desk.html
 #
 # One bundle, loaded after core's own `app_include_js`, so the classes it patches
-# already exist. It holds the "Website" button's target -- see
-# `commons/public/js/website_button.js`, whose server half is
-# `commons/commons_core/website_link.py` -- and the Bikram Sambat readout that
+# already exist. It holds the desk halves of Better Navigation -- the sidebar's
+# user menu, the "Website" button's target and sidebar memory, all under
+# `commons/better_navigation/js/` -- and the Bikram Sambat readout that
 # `commons/public/js/bikram_sambat/` puts on Date and Datetime fields, which
 # draws itself only where Commons Settings switches it on.
 app_include_js = "commons.bundle.js"
@@ -260,9 +260,9 @@ jinja = {
 # -----------
 # This app's pages, offered in the desk's own search box. The bar builds its
 # results from `frappe.boot` -- doctypes, reports, workspaces -- so a page under
-# `/commons` is invisible to it without this. See `commons/shell/search.py`,
+# `/commons` is invisible to it without this. See `commons/better_navigation/search.py`,
 # which also explains why it offers pages and not documents.
-awesomebar_search = ["commons.shell.search.awesomebar_results"]
+awesomebar_search = ["commons.better_navigation.search.awesomebar_results"]
 
 # Permissions
 # -----------
@@ -302,11 +302,11 @@ doc_events = {
 	# Who lands where is cached per user, and both ends of the rule can move it:
 	# a Role's home page or priority, and a User's own list of roles.
 	"Role": {
-		"on_update": "commons.commons_core.home_page.clear_cache",
-		"on_trash": "commons.commons_core.home_page.clear_cache",
+		"on_update": "commons.better_navigation.home_page.clear_cache",
+		"on_trash": "commons.better_navigation.home_page.clear_cache",
 	},
 	"User": {
-		"on_update": "commons.commons_core.home_page.clear_user_cache",
+		"on_update": "commons.better_navigation.home_page.clear_user_cache",
 	},
 	# Every derived field is a Custom Field, from whichever door it came in by.
 	# See `commons.derived_docfields.validation`.
@@ -419,7 +419,7 @@ ignore_links_on_delete = ["Record Change Request"]
 # Request Events
 # ----------------
 # Core picks the home page from whichever of the user's roles the database
-# happened to return first -- see `commons/commons_core/home_page.py`. That
+# happened to return first -- see `commons/better_navigation/home_page.py`. That
 # loop cannot be ordered from outside and the hook core offers runs after it, so
 # the answer is settled here instead, early enough that login, `/` and the desk
 # boot all see it. Does nothing unless Commons Settings switches it on.
@@ -428,7 +428,7 @@ ignore_links_on_delete = ["Record Change Request"]
 # once per process, and inert per query until Commons Settings switches it on.
 # See `commons.derived_docfields.install`.
 before_request = [
-	"commons.commons_core.home_page.set_home_page_flag",
+	"commons.better_navigation.home_page.set_home_page_flag",
 	"commons.derived_docfields.install",
 ]
 # after_request = ["commons.utils.after_request"]
@@ -503,9 +503,9 @@ page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
 
 # The desk's "Website" button reads its target from the boot, so the sidebar does
 # not have to fetch a setting before it can render. See
-# `commons/commons_core/website_link.py` for why this is not simply the home page.
+# `commons/better_navigation/website_link.py` for why this is not simply the home page.
 extend_bootinfo = [
-	"commons.commons_core.website_link.extend_bootinfo",
+	"commons.better_navigation.website_link.extend_bootinfo",
 	"commons.commons_core.settings.extend_bootinfo",
 	# Which Email Templates each doctype's forms offer, so a form can draw its
 	# Email menu without asking. See `commons.email_extensions`.

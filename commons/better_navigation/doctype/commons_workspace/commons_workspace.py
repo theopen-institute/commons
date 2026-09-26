@@ -6,7 +6,7 @@ the profile pages and the three request sections in that order. All of that is
 this document now, and a site may have as many as it likes.
 
 What a workspace is made of is deliberately narrow. A row points either at a
-page this app ships -- the ones in `commons.shell.pages` -- or at a
+page this app ships -- the ones in `commons.better_navigation.pages` -- or at a
 `Self Service Record`, which is itself configuration and already says what it is
 called. Nothing else can be put in the sidebar, because nothing else is a page
 this app has.
@@ -36,8 +36,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from commons.shell import workspaces
-from commons.shell.pages import PAGES
+from commons.better_navigation import workspaces
+from commons.better_navigation.pages import PAGES
 
 
 class CommonsWorkspace(Document):
@@ -49,7 +49,7 @@ class CommonsWorkspace(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
-		from commons.shell.doctype.commons_workspace_item.commons_workspace_item import (
+		from commons.better_navigation.doctype.commons_workspace_item.commons_workspace_item import (
 			CommonsWorkspaceItem,
 		)
 

@@ -1,6 +1,6 @@
 """What the statement has to get right, and what would fail quietly if it did not.
 
-Site-less, like `shell.test_shell` and `self_service.test_self_service_api`: what
+Site-less, like `better_navigation.test_shell` and `self_service.test_self_service_api`: what
 stands between this section and a database is `frappe.get_all` and a query
 builder, so the parts pinned here are the ones that are arithmetic and wording
 rather than SQL. That is not a compromise. Every bug this section can have that
@@ -28,7 +28,7 @@ from commons.statement import api, ledger, parties
 from commons.statement.parties import Party, party_condition
 
 # `frappe._` reaches for the translation cache and, failing that, for a log file
-# neither of which a site-less run has. See `shell.test_shell`.
+# neither of which a site-less run has. See `better_navigation.test_shell`.
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
 
 
@@ -376,7 +376,7 @@ class TestWhoMayReadSomebodyElsesStatement(TestCase):
 
 	def setUp(self):
 		# `frappe.throw` reaches for `frappe.flags`, which a site-less run has no
-		# binding for -- the same stand-in `shell.test_shell` makes, except that
+		# binding for -- the same stand-in `better_navigation.test_shell` makes, except that
 		# this one keeps the exception class, because which refusal is given is
 		# half of what these tests are about.
 		self.enterContext(patch.object(parties.frappe, "throw", side_effect=_raise))

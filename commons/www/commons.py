@@ -17,9 +17,9 @@ def get_context(context: dict) -> dict:
 	if frappe.session.user == "Guest":
 		frappe.throw(frappe._("You need to be logged in to access this page."), frappe.PermissionError)
 
-	from commons.commons_core.user_menu import get_user_menu
-	from commons.commons_core.website_link import get_website_button_url
-	from commons.shell.api import get_shell
+	from commons.better_navigation.user_menu import get_user_menu
+	from commons.better_navigation.website_link import get_website_button_url
+	from commons.better_navigation.api import get_shell
 
 	context.no_cache = 1
 	context.boot = {
@@ -33,7 +33,7 @@ def get_context(context: dict) -> dict:
 		# What the app is called and what is in its sidebar, so the first paint
 		# is the real sidebar rather than a frame waiting for one. The endpoint
 		# behind it stays whitelisted for the dev server -- see
-		# `commons.shell.api`.
+		# `commons.better_navigation.api`.
 		"shell": get_shell(),
 	}
 	return context

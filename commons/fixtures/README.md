@@ -64,12 +64,12 @@ checked against a site, and is what the test above keeps checking.
 opens. A Custom Field rather than a fork of Website Settings: the target of a
 button is site configuration, and carrying a patched core doctype to say so
 would mean re-patching it on every Frappe release. Read by
-`commons.commons_core.website_link`, which serves it through `extend_bootinfo`
+`commons.better_navigation.website_link`, which serves it through `extend_bootinfo`
 so the sidebar does not have to fetch a setting before it can render.
 
 **`Role.home_page_priority`** — which role's Home Page wins when someone holds
 several that each name one. Core picks whichever role the database returned
-first; `commons.commons_core.home_page` orders them by this instead. Sits
+first; `commons.better_navigation.home_page` orders them by this instead. Sits
 directly under the field it orders. Inert unless "Enable Home Page Priority" is
 ticked in Commons Settings, which the field's description says.
 

@@ -22,7 +22,7 @@ of them.
 import frappe
 
 from commons.commons_core.settings import title
-from commons.shell import workspaces
+from commons.better_navigation import workspaces
 
 
 @frappe.whitelist()
