@@ -1,0 +1,133 @@
+{
+ "actions": [],
+ "creation": "2026-09-26 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "links": [],
+ "modified": "2026-09-26 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Better Navigation",
+ "owner": "Administrator",
+ "row_format": "Dynamic",
+ "sort_field": "rail_order",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1,
+ "autoname": "field:title",
+ "naming_rule": "By fieldname",
+ "allow_rename": 1,
+ "name": "Navigation App",
+ "description": "An entry on the navigation rail: a named group of sidebars. The rail lists these first; every sidebar none of them claims is still reachable, grouped under the installed app it belongs to.",
+ "title_field": "title",
+ "field_order": [
+  "app_section",
+  "title",
+  "enabled",
+  "rail_order",
+  "column_break_app",
+  "icon",
+  "logo",
+  "sidebars_section",
+  "sidebars",
+  "access_section",
+  "roles"
+ ],
+ "fields": [
+  {
+   "fieldname": "app_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "What the rail's tooltip and the sidebar header call this app."
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "in_list_view": 1,
+   "description": "A disabled app is left off the rail and claims none of its sidebars, so they fall back to the installed apps they belong to."
+  },
+  {
+   "default": "0",
+   "fieldname": "rail_order",
+   "fieldtype": "Int",
+   "label": "Rail Order",
+   "in_list_view": 1,
+   "description": "Lower numbers sit higher on the rail. Ties are broken by title."
+  },
+  {
+   "fieldname": "column_break_app",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "icon",
+   "fieldtype": "Icon",
+   "label": "Icon",
+   "description": "Drawn on the rail when there is no logo."
+  },
+  {
+   "fieldname": "logo",
+   "fieldtype": "Attach Image",
+   "label": "Logo",
+   "description": "Drawn on the rail in place of the icon."
+  },
+  {
+   "fieldname": "sidebars_section",
+   "fieldtype": "Section Break",
+   "label": "Sidebars"
+  },
+  {
+   "fieldname": "sidebars",
+   "fieldtype": "Table",
+   "label": "Sidebars",
+   "options": "Navigation App Sidebar",
+   "description": "The modules offered in this app's top menu, in order. The first is where the app opens. A sidebar can belong to only one enabled app."
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "access_section",
+   "fieldtype": "Section Break",
+   "label": "Access"
+  },
+  {
+   "fieldname": "roles",
+   "fieldtype": "Table",
+   "label": "Roles",
+   "options": "Has Role",
+   "description": "Only people with one of these roles see the app on the rail. Left empty, everyone does. Either way, a sidebar a person cannot open is not offered to them."
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  },
+  {
+   "role": "Workspace Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  }
+ ]
+}

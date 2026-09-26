@@ -2,3 +2,5 @@
 // names one file however many features end up here.
 @import "bikram_sambat";
 @import "desk_todos";
+// Better Navigation keeps its styles beside its scripts; see commons.bundle.js.
+@import "../../better_navigation/scss/navigation_rail";

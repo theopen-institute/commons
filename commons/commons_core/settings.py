@@ -52,6 +52,9 @@ ENABLE_BIKRAM_SAMBAT = "enable_bikram_sambat"
 # form because they are one design with this app's own sidebar
 # (`commons.better_navigation`).
 
+# `commons/better_navigation/js/navigation_rail.js`, from the apps
+# `commons.better_navigation.navigation_apps` resolves
+ENABLE_NAVIGATION_RAIL = "enable_navigation_rail"
 # `commons/better_navigation/js/user_menu.js`, and the frontend's copy of the
 # same menu (`commons.better_navigation.user_menu.get_user_menu` says which)
 ENABLE_USER_MENU = "enable_user_menu"
@@ -83,6 +86,7 @@ DESK_FEATURES = {
 	"user_permission_gate": ENABLE_PERMISSION_GATE,
 	"sidebar_memory": ENABLE_SIDEBAR_MEMORY,
 	"user_menu": ENABLE_USER_MENU,
+	"navigation_rail": ENABLE_NAVIGATION_RAIL,
 	"derived_docfields": ENABLE_DERIVED_DOCFIELDS,
 	"visual_email_editor": ENABLE_VISUAL_EMAIL_EDITOR,
 }

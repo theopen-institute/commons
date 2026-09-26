@@ -71,6 +71,7 @@ class TestOverrideEnabled(TestCase):
 				"user_permission_gate": False,
 				"sidebar_memory": True,
 				"user_menu": False,
+				"navigation_rail": False,
 				"derived_docfields": False,
 				"visual_email_editor": False,
 			},

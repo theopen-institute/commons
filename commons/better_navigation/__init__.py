@@ -49,6 +49,16 @@ The frontend half is `frontend/src/data/shell.ts`. The split is the same one
 what order, under which heading, and what they are called; that side knows what
 a row opens, whether this user may open it, and what the badge on it says.
 
+The rail
+--------
+`Navigation App` is the level above the sidebars: an entry on the rail, holding
+the modules its top menu offers, each of them a `Workspace Sidebar`. Frappe has
+no document for that level (upstream's v17 calls it a Dock), and a site's apps
+need not be installed apps -- "Finance" may hold sidebars from two of them.
+Nothing configured, the rail is the installed apps; configured, it is those
+apps first and every sidebar they leave unclaimed still under its installed
+app. `navigation_apps.py` resolves it and says why each rule is there.
+
 The desk's sidebar
 ------------------
 The desk halves patch Frappe's own sidebar from `commons.bundle.js`, which

@@ -5,12 +5,16 @@
  "document_type": "Setup",
  "engine": "InnoDB",
  "field_order": [
+  "general_tab",
   "title",
   "enable_bikram_sambat",
+  "navigation_tab",
   "navigation_section",
+  "enable_navigation_rail",
   "enable_user_menu",
   "enable_sidebar_memory",
   "enable_home_page_priority",
+  "core_overrides_tab",
   "core_overrides_section",
   "enable_unencoded_at_in_routes",
   "enable_user_permission_gate",
@@ -18,6 +22,11 @@
   "enable_visual_email_editor"
  ],
  "fields": [
+  {
+   "fieldname": "general_tab",
+   "fieldtype": "Tab Break",
+   "label": "General"
+  },
   {
    "default": "Commons",
    "description": "Shown under the workspace in this app's sidebar, and as the browser tab's title. Left blank it reads Commons.",
@@ -33,15 +42,25 @@
    "label": "Enable Bikram Sambat Calendar"
   },
   {
-   "collapsible": 1,
-   "description": "Changes to how people find their way around, in the desk and in Commons alike. Like the overrides below, these change how Frappe itself behaves and lean on details of its code that an upgrade can change without warning, so they are the first to switch off if navigation misbehaves after an upgrade. Changes to the desk take effect when each user reloads the page.",
-   "fieldname": "navigation_section",
-   "fieldtype": "Section Break",
+   "fieldname": "navigation_tab",
+   "fieldtype": "Tab Break",
    "label": "Better Navigation"
   },
   {
+   "description": "Changes to how people find their way around, in the desk and in Commons alike. Like the Core Overrides, these change how Frappe itself behaves and lean on details of its code that an upgrade can change without warning, so they are the first to switch off if navigation misbehaves after an upgrade. Changes to the desk take effect when each user reloads the page.",
+   "fieldname": "navigation_section",
+   "fieldtype": "Section Break"
+  },
+  {
    "default": "0",
-   "description": "Opens a menu from your name at the foot of the sidebar, holding your account, display, session defaults, site tools, help and logout. The menu at the top of the sidebar then keeps only Desktop, Workspaces and Website. Applies to the desk and to Commons. Without it, clicking your name opens your User record and everything is in the top menu. Suspect this first if either menu is missing entries or does not open.",
+   "description": "Adds a narrow rail down the left of the sidebar: Home, one icon per app, then Search, Notifications, To Do and Website. The apps are the Navigation Apps configured here, then every installed app for the sidebars those leave unclaimed. Picking an app opens its first module, and the menu at the top of the sidebar then lists that app's modules. Applies to the desk; the Commons frontend does not have the rail yet. Suspect this first if the rail or the sidebar's top menu are missing entries or open the wrong page.",
+   "fieldname": "enable_navigation_rail",
+   "fieldtype": "Check",
+   "label": "Enable Navigation Rail"
+  },
+  {
+   "default": "0",
+   "description": "Opens a menu from your name at the foot of the sidebar, holding your account, display, session defaults, site tools, help and logout. The menu at the top of the sidebar then keeps only navigation. Applies to the desk and to Commons. Without it, clicking your name opens your User record and everything is in the top menu. Suspect this first if either menu is missing entries or does not open.",
    "fieldname": "enable_user_menu",
    "fieldtype": "Check",
    "label": "Enable User Menu"
@@ -61,11 +80,14 @@
    "label": "Enable Home Page Priority"
   },
   {
-   "collapsible": 1,
+   "fieldname": "core_overrides_tab",
+   "fieldtype": "Tab Break",
+   "label": "Core Overrides"
+  },
+  {
    "description": "Opt-in features that change how Frappe itself behaves, not just what Commons adds on top of it. They depend on details of Frappe's code that an upgrade can change without warning. If something in the desk or in permissions stops working the way it should, especially just after an upgrade, try switching these off first. Changes to the desk take effect when each user reloads the page.",
    "fieldname": "core_overrides_section",
-   "fieldtype": "Section Break",
-   "label": "Core Behaviour Overrides"
+   "fieldtype": "Section Break"
   },
   {
    "default": "0",
@@ -99,7 +121,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-26 12:00:00.000000",
+ "modified": "2026-09-26 14:20:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

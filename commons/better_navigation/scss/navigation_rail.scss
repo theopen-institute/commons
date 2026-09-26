@@ -1,0 +1,186 @@
+/**
+ * The navigation rail (`better_navigation/js/navigation_rail.js`): a column of
+ * icons before the desk's sidebar, in the sidebar's own colours so the two read
+ * as one piece of chrome with a seam down it.
+ *
+ * It is a flex item of `body`, which already lays the sidebar and the page out
+ * in a row, so it takes its width from the page rather than overlapping it. The
+ * sidebar's expanded panel is absolutely positioned from where its container
+ * starts, which is after the rail, so it opens beside it rather than over it.
+ */
+.commons-rail {
+	position: sticky;
+	top: 0;
+	z-index: 1021;
+	display: flex;
+	flex: 0 0 auto;
+	flex-direction: column;
+	justify-content: space-between;
+	width: 56px;
+	height: 100vh;
+	padding: 0 0 10px;
+	background: var(--surface-menu-bar);
+	border-right: 1px solid var(--sidebar-border-color);
+}
+
+.commons-rail__top,
+.commons-rail__bottom,
+.commons-rail__apps {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+}
+
+.commons-rail__top {
+	min-height: 0;
+	gap: 8px;
+}
+
+// Home sits in a band exactly the height of the page's top bar, with the same
+// rule under it, so the line runs straight across from the rail into the page.
+// `content-box`, as core's `.page-head` is: the rule is below the height, not
+// inside it.
+.commons-rail__home {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	box-sizing: content-box;
+	width: 100%;
+	height: var(--page-head-height);
+	border-bottom: 1px solid var(--border-color);
+}
+
+// More apps than fit scroll within their own band, so Home and the foot stay put.
+.commons-rail__apps {
+	overflow-y: auto;
+	scrollbar-width: none;
+}
+
+.commons-rail__item {
+	position: relative;
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	border: none;
+	border-radius: 10px;
+	background: transparent;
+	color: var(--ink-gray-7);
+
+	&:hover {
+		background-color: var(--sidebar-hover-color);
+	}
+
+	&.active {
+		background-color: var(--sidebar-active-color);
+		box-shadow: var(--shadow-sm);
+	}
+
+	&.hidden {
+		display: none;
+	}
+}
+
+.commons-rail__mark {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 0;
+
+	// Line icons (Home, the foot, an app's own icon) at the size the sidebar's
+	// rows would draw them if they were a size up.
+	> svg.icon {
+		width: 20px;
+		height: 20px;
+	}
+}
+
+// An app's mark is the size of the one in the sidebar's header, since it is the
+// same mark: the header shows the app you picked here.
+.commons-rail__app .commons-rail__mark {
+	width: 32px;
+	height: 32px;
+
+	> img,
+	> div,
+	> span {
+		width: 32px;
+		height: 32px;
+		object-fit: contain;
+		border-radius: 8px;
+	}
+
+	// The letter tile core draws for an app with no mark sizes its letter for a
+	// smaller square; centre it in this one.
+	> div {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+}
+
+// A count on Notifications and To Do, carried over from the rows they stand in for.
+.commons-rail__badge {
+	position: absolute;
+	top: -2px;
+	right: -4px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	border-radius: 8px;
+	background: var(--blue-500);
+	color: var(--white);
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 16px;
+	text-align: center;
+
+	&.hidden {
+		display: none;
+	}
+}
+
+// The sidebar rows the rail's foot now carries. Hidden rather than removed: the
+// rail's buttons press them, and core and `desk_todos` keep updating them.
+body.commons-rail-on .standard-items-sections {
+	.navbar-search-bar,
+	.sidebar-notification,
+	.commons-todo-sidebar-item {
+		display: none !important;
+	}
+}
+
+// Notifications and To Do open over the sidebar, from its left edge, rather
+// than beside it: with the rail on, a panel to the right of the sidebar sits a
+// rail and a sidebar away from the button that opened it.
+// Core's own rule is `.body-sidebar .standard-items-sections .dropdown-notifications
+// .notifications-list`, so this names the same path to outrank it.
+body.commons-rail-on {
+	.body-sidebar .standard-items-sections .dropdown-notifications .notifications-list,
+	.commons-todo-panel--sidebar {
+		left: 0;
+		// Over the sidebar now rather than beside it, and the sidebar's rows come
+		// later in the page: without a place in the stack they paint over it.
+		z-index: 10;
+	}
+}
+
+// Below the desk's mobile width the sidebar is a drawer with its own rows back.
+@media (max-width: 767.98px) {
+	.commons-rail {
+		display: none;
+	}
+
+	body.commons-rail-on .standard-items-sections {
+		.navbar-search-bar,
+		.sidebar-notification,
+		.commons-todo-sidebar-item {
+			display: flex !important;
+		}
+	}
+}

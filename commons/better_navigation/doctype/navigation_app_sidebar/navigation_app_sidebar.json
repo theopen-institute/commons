@@ -1,0 +1,46 @@
+{
+ "actions": [],
+ "creation": "2026-09-26 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "links": [],
+ "modified": "2026-09-26 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Better Navigation",
+ "owner": "Administrator",
+ "row_format": "Dynamic",
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1,
+ "autoname": "hash",
+ "naming_rule": "Random",
+ "istable": 1,
+ "editable_grid": 1,
+ "name": "Navigation App Sidebar",
+ "field_order": [
+  "sidebar",
+  "label"
+ ],
+ "fields": [
+  {
+   "columns": 4,
+   "fieldname": "sidebar",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sidebar",
+   "options": "Workspace Sidebar",
+   "reqd": 1,
+   "link_filters": "[[\"Workspace Sidebar\",\"for_user\",\"is\",\"not set\"]]"
+  },
+  {
+   "columns": 4,
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label",
+   "description": "What the top menu calls this module. Left blank, the sidebar's own title."
+  }
+ ],
+ "permissions": []
+}

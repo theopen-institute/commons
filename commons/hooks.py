@@ -506,6 +506,8 @@ page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
 # `commons/better_navigation/website_link.py` for why this is not simply the home page.
 extend_bootinfo = [
 	"commons.better_navigation.website_link.extend_bootinfo",
+	# The navigation rail's apps, when Commons Settings switches it on.
+	"commons.better_navigation.navigation_apps.extend_bootinfo",
 	"commons.commons_core.settings.extend_bootinfo",
 	# Which Email Templates each doctype's forms offer, so a form can draw its
 	# Email menu without asking. See `commons.email_extensions`.

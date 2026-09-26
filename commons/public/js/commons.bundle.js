@@ -5,6 +5,8 @@ import "./unencoded_at_in_routes";
 import "../../better_navigation/js/website_button";
 import "../../better_navigation/js/user_menu";
 import "../../better_navigation/js/workspace_sidebar_memory";
+// Last of the three: it wraps `add_navbar_items` outermost, after the user menu.
+import "../../better_navigation/js/navigation_rail";
 import "./bikram_sambat/date_control";
 import "./desk_todos";
 import "./derived_docfields";
