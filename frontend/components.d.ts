@@ -56,6 +56,7 @@ declare module 'vue' {
     RequestTabs: typeof import('./src/components/RequestTabs.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SessionDefaultsDialog: typeof import('./src/components/SessionDefaultsDialog.vue')['default']
     StatementLines: typeof import('./src/components/StatementLines.vue')['default']
   }
 }

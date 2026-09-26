@@ -17,6 +17,7 @@ def get_context(context: dict) -> dict:
 	if frappe.session.user == "Guest":
 		frappe.throw(frappe._("You need to be logged in to access this page."), frappe.PermissionError)
 
+	from commons.commons_core.user_menu import get_user_menu
 	from commons.commons_core.website_link import get_website_button_url
 	from commons.shell.api import get_shell
 
@@ -27,6 +28,8 @@ def get_context(context: dict) -> dict:
 		"user": frappe.session.user,
 		"user_info": get_user_info(),
 		"website_button_url": get_website_button_url(),
+		# Session Defaults and the Navbar Settings rows the user menu lists.
+		"user_menu": get_user_menu(),
 		# What the app is called and what is in its sidebar, so the first paint
 		# is the real sidebar rather than a frame waiting for one. The endpoint
 		# behind it stays whitelisted for the dev server -- see
