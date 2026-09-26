@@ -124,11 +124,15 @@ the next save), and `use_html` is read-only while it has to stay ticked.
 
 **`Notification.email_template`** — the template whose content a Notification
 sends in place of its own message; read by `commons.email_extensions.notification`.
-The field itself is *not* a fixture any more: Frappe's develop branch has it as a
-standard field, and a fixture for it fails the install there ("A field with the
-name email_template already exists"). `sync_template_field` (after install and
-migrate) creates the Custom Field where Frappe lacks the field and deletes it
-where Frappe has it. Three Property Setters go with it: the Message field and its examples are hidden
+It has a file to itself, `custom_field_notification.json`, because Frappe's
+develop branch has the field as a standard one, and there the fixture would
+fail every install and migrate ("A field with the name email_template already
+exists" is a ValidationError, which `import_fixtures` does not catch). A
+Custom Field `before_import` hook, `notification.skip_field_fixture`, raises
+`DoesNotExistError` for it on such a Frappe -- deleting a Custom Field left from
+before the upgrade first -- so the file is skipped the way a missing app's is,
+and a raise can only cost the rest of this one file. Three Property Setters go
+with it: the Message field and its examples are hidden
 while a template is named, and Subject stops being mandatory, since the
 template's subject stands in for a blank one. They replace no property a site
 had set: none of the three had a Property Setter on the site this was written

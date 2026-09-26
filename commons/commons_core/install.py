@@ -7,19 +7,27 @@ written by Frappe's fixture sync on install and every migrate; the fields for
 an app a site may not have are in a file of that app's own, which a site
 without it skips (`commons/fixtures/README.md`). The desk icon is a file under
 `desktop_icon/`, written by the model sync. None of that needs a hook. The hooks
-left in `hooks.py` do only what no sync can: `commons.self_service.install`
-drops a cache whose key `frappe.clear_cache` does not know about,
-`commons.safer_permissions.install` gets a changed `page_js` in front of admins
-whose desks still hold the last copy of it, and `commons.statement.install`
-creates a print format for each party type a site has set up, where none
-exists yet.
+left in `hooks.py` do only what no sync can: this module registers the app's
+modules, `commons.self_service.install` drops a cache whose key
+`frappe.clear_cache` does not know about, and `commons.safer_permissions.install`
+gets a changed `page_js` in front of admins whose desks still hold the last copy
+of it. None of them creates a document a site would think of as its own.
 
-Workflows, self-service configuration and Property Setters are a System Manager's
-to set up on a new site, and the app ships none of them -- not as a seed, not as
-a fixture, not at all. The one exception is `commons/fixtures/property_setter.json`,
-which points the image field of this app's own member doctypes at the derived
-`image` it ships beside them: a property of the app's schema, not a site's
-configuration of it.
+Workflows, self-service configuration and statement print formats are a System
+Manager's to set up on a new site, and the app ships none of them -- not as a
+seed, not as a fixture, not at all. Property Setters are shipped only where they
+belong to something else the app ships, in `commons/fixtures/property_setter.json`:
+
+* the image and title fields of this app's own member doctypes, pointed at the
+  derived fields beside them -- a property of the app's schema;
+* two on Frappe's `Email Template`, hiding the compiled HTML and making
+  `use_html` read-only while a template is written in MJML -- the other half of
+  the MJML Custom Fields;
+* three on Frappe's `Notification`, hiding Message and relaxing Subject while an
+  Email Template is named -- the other half of `Notification.email_template`.
+
+The last five change Frappe's own forms, and only in ways that follow from a
+field this app adds: each is inert until that field is set.
 
 About that desk icon. It ships as a file in `commons/desktop_icon/`,
 which `frappe.model.sync` imports on every migrate -- `desktop_icon` is one of its

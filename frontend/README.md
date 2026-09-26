@@ -139,13 +139,32 @@ balance better than a missing row does.
 
 ### The same statement as a PDF
 
-`commons/statement/install.py` creates one `Print Format` per party doctype the
-site has — Customer, Student, Supplier, Employee — and each is a two-line stub:
+The PDF is drawn by a `Print Format`, one per party doctype, which a System
+Manager adds by hand — the app does not create them. For each party type the
+site statements are wanted for (Customer, Student, Supplier, Employee), a new
+Print Format with:
+
+| Field | Value |
+|---|---|
+| Name | `<Party Type> Account Statement`, e.g. `Customer Account Statement` |
+| DocType | the party type, e.g. `Customer` |
+| Standard | No |
+| Custom Format | ticked |
+| Print Format Type | Jinja |
+| HTML | the two lines below |
 
 ```jinja
 {%- set statement = party_statement(doc.doctype, doc.name) -%}
 {% include "commons/statement/print/statement.html" %}
 ```
+
+The name has to be exactly that: `commons.statement.print_format_name` spells
+it, and `download_statement` looks it up by it. Where it is missing (or
+disabled) the download is refused with a message naming it, rather than printed
+without it — Frappe would otherwise fall back to "Standard" and print the whole
+party record. Everything the statement shows is behind the include and the
+call, so the stub never needs changing when the statement does, and restyling it
+is safe.
 
 `party_statement` is the app's own endpoint, reachable from Jinja through the
 `jinja` hook in `hooks.py`. So the printed statement asks the app what somebody

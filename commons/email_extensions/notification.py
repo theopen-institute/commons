@@ -4,11 +4,12 @@ Core's Notification writes its own subject and message, so a letter that is
 also sent by hand from the form's Email menu had to be written twice and kept
 the same by hand. `email_template` on Notification names a template instead
 (Frappe's own field where it has one, else a Custom Field -- see
-`sync_template_field`): its body is sent in place of the Notification's
+`skip_field_fixture`): its body is sent in place of the Notification's
 Message, and its subject stands in when the Notification's own Subject is left
 blank -- which is still the one to fill in when a list of notifications should
 say what each one is about, or the email's subject should differ from the
-letter's.
+letter's. (Frappe's own field hides Subject while a template is named, so there
+the template's subject is always the one sent.)
 
 Only the content. Who the email goes to, from which account, with which print,
 and when, are still the Notification's: that is what a Notification is for, and
@@ -53,29 +54,13 @@ FIELD = "email_template"
 # Frappe's develop branch (after 16.x) has `email_template` on Notification
 # itself, with its own sending: `send_an_email(doc, context, template_content)`
 # and `get_email_template_content(doc)`. Where it does, the field is Frappe's
-# and this module keeps only what it says differently -- the Notification's own
-# Subject still wins over the template's, and `doc`, `alert` and `comments` are
-# there to render with -- by answering `get_email_template_content`. Where it
-# does not, the field is a Custom Field and the template is swapped in around
-# core's `send_an_email`, as before.
-FIELD_DEFINITION = {
-	"fieldname": FIELD,
-	"label": "Email Template",
-	"fieldtype": "Link",
-	"options": TEMPLATE,
-	"insert_after": "message_sb",
-	"depends_on": "eval:doc.channel == 'Email'",
-	"is_system_generated": 1,
-	"description": "Send this template's message in place of the one below. Its subject is used when Subject "
-	"above is left blank. Write it against the document's fields (<code>{{ program }}</code>), as in any "
-	"template; <code>doc</code>, <code>alert</code> and <code>comments</code> work too. Recipients, sender "
-	"and attachments are still set here.",
-}
+# and so is the form: Subject is hidden while a template is named, and the
+# template's subject is sent. This module then only renders the template the
+# way it always has, with `doc`, `alert` and `comments` beside the document's
+# fields, by answering `get_email_template_content`. Where it does not, the
+# field is the Custom Field in `fixtures/custom_field_notification.json` and
+# the template is swapped in around core's `send_an_email`, as before.
 CUSTOM_FIELD = f"Notification-{FIELD}"
-
-# Frappe's own field hides Subject while a template is named, which would hide a
-# Subject this module still sends. Its depends_on without that last clause.
-NATIVE_SUBJECT_DEPENDS_ON = "eval: in_list(['Email', 'Slack', 'System Notification'], doc.channel)"
 
 
 def core_has_field() -> bool:
@@ -90,31 +75,30 @@ def core_sends_templates() -> bool:
 	return hasattr(Notification, "get_email_template_content")
 
 
-def sync_template_field() -> None:
-	"""Put `email_template` on Notification, unless Frappe already has it there.
+def skip_field_fixture(doc, method=None) -> None:
+	"""Custom Field `before_import`: skip this module's field where Frappe has its own.
 
-	Not a fixture: a fixture can only say "this Custom Field exists", and on a
-	Frappe with the standard field that fails the install (a field of that name
-	is already there) and, on a site upgraded into it, would leave the form with
-	the field twice. The Custom Field is deleted there instead; the column is the
-	same one, so every Notification keeps the template it named.
+	The fixture is re-imported on every install and migrate, and each import
+	deletes the record and inserts it again, so on a Frappe with the standard
+	field every one of them would fail Custom Field's "a field with that name
+	already exists" -- a ValidationError, which aborts the whole migrate.
+
+	`DoesNotExistError` is raised instead because it is one of the two
+	exceptions Frappe's `import_fixtures` catches: it prints the reason and
+	skips the file, the same skip the ERPNext and Education fixtures rely on
+	(`fixtures/README.md`). That is why the field has a file to itself: a raise
+	stops the rest of its file. The name is not quite the truth -- what is
+	missing is the need for the field -- and `test_fixtures` pins the behaviour.
+
+	A site upgraded into such a Frappe still has the Custom Field, which would
+	show the field on the form twice. It is deleted here, before the raise; the
+	column is the standard field's too, so every Notification keeps its template.
 	"""
-	from frappe.custom.doctype.custom_field.custom_field import create_custom_field
-	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
-
-	if not core_has_field():
-		if not frappe.db.exists("Custom Field", CUSTOM_FIELD):
-			create_custom_field("Notification", FIELD_DEFINITION)
+	if doc.name != CUSTOM_FIELD or not core_has_field():
 		return
-
 	if frappe.db.exists("Custom Field", CUSTOM_FIELD):
 		frappe.delete_doc("Custom Field", CUSTOM_FIELD, ignore_permissions=True, force=True)
-	make_property_setter(
-		"Notification", "subject", "depends_on", NATIVE_SUBJECT_DEPENDS_ON, "Data", validate_fields_for_doctype=False
-	)
-	make_property_setter(
-		"Notification", FIELD, "description", FIELD_DEFINITION["description"], "Text", validate_fields_for_doctype=False
-	)
+	raise frappe.DoesNotExistError(_("Notification already has {0} from Frappe").format(FIELD))
 
 
 def template_context(doc, context: dict, template, sender: str | None = None) -> dict:
@@ -140,15 +124,15 @@ class TemplateNotificationMixin:
 			self.subject, self.message = subject, message
 
 	def get_email_template_content(self, doc):
-		"""Core's hook where core sends templates itself: this module's subject and context, not core's."""
+		"""Core's hook where core sends templates itself: the template rendered with this module's context."""
 		if not self.get(FIELD):
 			return None
-		context = self._notification_context(doc)
-		with self._template_content(doc, context) as merged:
-			subject = self.subject or ""
-			if "{" in subject:
-				subject = frappe.render_template(subject, merged, restrict_globals=True)
-			message = frappe.render_template(self.message, merged, restrict_globals=True)
+		template = frappe.get_cached_doc(TEMPLATE, self.get(FIELD))
+		merged = template_context(doc, self._notification_context(doc), template, sender=self.get("sender_email"))
+		subject = template.subject or ""
+		if "{" in subject:
+			subject = frappe.render_template(subject, merged, restrict_globals=True)
+		message = frappe.render_template(template.response_, merged, restrict_globals=True)
 		if not message:
 			frappe.throw(_("Email Template {0} has no content to send").format(self.get(FIELD)))
 		return {"subject": subject, "message": message}

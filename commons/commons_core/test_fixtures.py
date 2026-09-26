@@ -39,6 +39,9 @@ OPTIONAL = {
 	"custom_field_erpnext.json": "erpnext",
 }
 
+# The field skipped where Frappe has its own; its file holds nothing else.
+NOTIFICATION_FILE = "custom_field_notification.json"
+
 ABSENT = "Commons Fixture Probe Absent"
 PROBE = "commons_fixture_probe"
 
@@ -67,6 +70,15 @@ class TestFixtureFiles(TestCase):
 				continue
 			named = {row.get("dt") or row.get("doc_type") for row in records(fname)}
 			self.assertFalse(named & optional, fname)
+
+	def test_the_notification_field_has_a_file_to_itself(self):
+		"""`skip_field_fixture` raises for it, which would stop anything after it in the file."""
+		from commons.email_extensions.notification import CUSTOM_FIELD
+
+		self.assertEqual([row["name"] for row in records(NOTIFICATION_FILE)], [CUSTOM_FIELD])
+		for fname in sorted(os.listdir(FIXTURES)):
+			if fname.endswith(".json") and fname != NOTIFICATION_FILE:
+				self.assertNotIn(CUSTOM_FIELD, {row.get("name") for row in records(fname)}, fname)
 
 	def test_optional_app_files_do_not_share_doctypes(self):
 		seen = {}
@@ -139,6 +151,36 @@ class TestFixturesForAbsentApps(TestCase):
 		self.assertFalse(frappe.db.exists("Custom Field", f"{ABSENT}-{PROBE}"))
 		self.assertTrue(
 			frappe.db.exists("Custom Field", f"ToDo-{PROBE}"), "the file after it was not imported"
+		)
+
+	def import_with_frappe_field(self, frappe_has_it: bool) -> str:
+		"""The Notification field's skip, played on a probe so the real field is never touched."""
+		probe = self.custom_field("ToDo", PROBE)
+		self.write("a_notification.json", [probe])
+		self.write("b_present.json", [self.custom_field("ToDo", PROBE + "_after")])
+		with (
+			patch("commons.email_extensions.notification.CUSTOM_FIELD", probe["name"]),
+			patch("commons.email_extensions.notification.core_has_field", return_value=frappe_has_it),
+		):
+			return self.import_fixtures()
+
+	def test_the_notification_field_is_imported_where_frappe_lacks_it(self):
+		printed = self.import_with_frappe_field(False)
+
+		self.assertNotIn("Skipping", printed)
+		self.assertTrue(frappe.db.exists("Custom Field", f"ToDo-{PROBE}"))
+
+	def test_the_notification_field_is_skipped_where_frappe_has_it(self):
+		# A site upgraded into such a Frappe: the Custom Field from before is there.
+		self.import_with_frappe_field(False)
+		self.assertTrue(frappe.db.exists("Custom Field", f"ToDo-{PROBE}"))
+
+		printed = self.import_with_frappe_field(True)
+
+		self.assertIn("Skipping fixture syncing from the file a_notification.json", printed)
+		self.assertFalse(frappe.db.exists("Custom Field", f"ToDo-{PROBE}"), "the old Custom Field is left")
+		self.assertTrue(
+			frappe.db.exists("Custom Field", f"ToDo-{PROBE}_after"), "the file after it was not imported"
 		)
 
 	def test_each_optional_file_names_only_its_own_apps_doctypes(self):

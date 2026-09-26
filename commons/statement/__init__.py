@@ -79,9 +79,8 @@ def print_format_name(party_type: str) -> str:
 	statement and includes `print/statement.html`, which is where the printed
 	statement actually lives.
 
-	Named here rather than in either of the two modules that need it.
-	`install.py` creates them under this name and `api.download_statement` asks
-	for one by it, and a name spelled in both places is a name that can be
-	changed in one.
+	A site adds them by hand, under this name (`frontend/README.md`), and
+	`api.download_statement` asks for one by it -- refusing the download where
+	it is missing rather than printing without it.
 	"""
 	return f"{party_type} Account Statement"

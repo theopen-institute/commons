@@ -54,30 +54,26 @@ website_route_rules = [
 # Almost nothing is left here, and that is the point. The desk icon ships as a
 # file under `commons/desktop_icon/`; every Custom Field this app adds, to
 # Frappe's doctypes, to ERPNext's and Education's, and the derived fields on its
-# own, ships under `commons/fixtures/`, as does the one Property Setter. All of it
-# is written by Frappe's own sync on install and on every migrate. None of it
-# needs a hook, and a hook that re-asserted it would only be a second, quieter
-# copy of the same declaration.
+# own, ships under `commons/fixtures/`, as do the Property Setters that go with
+# them (`commons/fixtures/README.md` lists both). All of it is written by
+# Frappe's own sync on install and on every migrate. None of it needs a hook,
+# and a hook that re-asserted it would only be a second, quieter copy of the
+# same declaration.
 #
-# What is left are the things no sync can do: dropping a cache whose key
-# `frappe.clear_cache` does not know about, getting a changed `page_js` in front
-# of admins whose desks are still holding the last copy of it, and creating the
-# statement print formats -- one per party type the site has actually set up,
-# and only where none exists yet, neither of which a fixture can say. See
-# `commons.statement.install`. The one Custom Field that is not a fixture,
-# `Notification.email_template`, is the same kind of thing: newer Frappe has the
-# field itself, and a fixture cannot say "unless it is already there".
+# What is left are the things no sync can do: registering this app's modules,
+# dropping a cache whose key `frappe.clear_cache` does not know about, and
+# getting a changed `page_js` in front of admins whose desks are still holding
+# the last copy of it.
 #
-# No approval chain and no self-service configuration. Those are a System
-# Manager's to set up on a new site, and a deploy is not where they get made.
-# The app ships none of them in any form, and the code reads whatever a site has
-# rather than assuming any particular shape -- see
-# `commons.requests.procurement_workflow` and `commons.self_service.registry`.
+# No approval chain, no self-service configuration and no statement print
+# formats. Those are a System Manager's to set up on a new site, and a deploy is
+# not where they get made. The app ships none of them in any form, and the code
+# reads whatever a site has rather than assuming any particular shape -- see
+# `commons.requests.procurement_workflow`, `commons.self_service.registry` and
+# `commons.statement.api.download_statement`.
 after_install = [
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
-	"commons.statement.install.sync_statement_print_formats",
-	"commons.email_extensions.notification.sync_template_field",
 ]
 after_migrate = [
 	# The other half of `before_migrate`'s module registration: records for
@@ -86,10 +82,6 @@ after_migrate = [
 	"commons.commons_core.install.drop_stale_module_defs",
 	"commons.self_service.install.sync_self_service",
 	"commons.safer_permissions.install.sync_permission_manager",
-	"commons.statement.install.sync_statement_print_formats",
-	# Notification.email_template: a Custom Field, or nothing on a Frappe that
-	# has the field itself. See `commons.email_extensions.notification`.
-	"commons.email_extensions.notification.sync_template_field",
 	# A migrate is when a doctype along some derived field's path most often
 	# changes under it. Reports what no longer resolves; repairs nothing.
 	"commons.derived_docfields.validation.check_all",
@@ -324,6 +316,9 @@ doc_events = {
 		"on_update": "commons.derived_docfields.registry.clear",
 		# Not `on_trash`, which runs while the row is still there to be re-read.
 		"after_delete": "commons.derived_docfields.registry.clear",
+		# Notification.email_template is skipped as a fixture on a Frappe that has
+		# the field itself. See `commons.email_extensions.notification`.
+		"before_import": "commons.email_extensions.notification.skip_field_fixture",
 	},
 	"Material Request": {
 		"validate": "commons.requests.budget.validate_material_request",

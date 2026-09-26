@@ -24,7 +24,7 @@ from unittest.mock import patch
 import frappe
 from pypika import Table
 
-from commons.statement import api, install, ledger, parties
+from commons.statement import api, ledger, parties
 from commons.statement.parties import Party, party_condition
 
 # `frappe._` reaches for the translation cache and, failing that, for a log file
@@ -439,87 +439,65 @@ class TestWhoMayReadSomebodyElsesStatement(TestCase):
 				parties.named("Student", "nobody@example.com")
 
 
-class TestThePrintFormatsThatGetInstalled(TestCase):
-	"""One per party doctype the site has, and none for the ones it has not.
+class TestDownloadingWithoutThePrintFormat(TestCase):
+	"""`api.download_statement` where the site has not set the print format up.
 
-	The trap this avoids is set out in `commons.statement.install`: every
-	doctype named here belongs to another app and every one is optional. A
-	format shipped as a fixture would be imported on every site whatever it
-	named -- unlike a Custom Field, a Print Format for a missing doctype does not
-	fail -- leaving each site with print formats attached to doctypes it does
-	not have.
+	The print formats are added by hand now, so a site without one is ordinary.
+	`frappe.get_print` given a missing print format falls back to "Standard",
+	which prints every field of the party document -- and the download sets
+	print permissions aside -- so a missing format has to be a refusal, never a
+	print.
 	"""
 
-	def with_site(self, doctypes=(), party_types=()):
-		self.enterContext(
-			patch.object(install.apps, "has_doctype", side_effect=lambda name: name in doctypes)
-		)
-		self.enterContext(
-			patch.object(
-				install.frappe,
-				"db",
-				SimpleNamespace(exists=lambda doctype, name: name in party_types),
-			)
-		)
-		created = []
+	def setUp(self):
+		self.enterContext(patch.object(api.frappe, "throw", side_effect=_raise))
+		self.enterContext(patch.object(api.frappe, "bold", side_effect=lambda text: text))
 		self.enterContext(
 			patch.object(
-				install.frappe,
-				"get_doc",
-				side_effect=lambda values: SimpleNamespace(
-					insert=lambda **kwargs: created.append(values)
-				),
+				api.parties,
+				"named",
+				return_value=Party(party_type="Student", name="me@example.com", title="Me", account_type="Receivable"),
 			)
 		)
-		return created
+		self.printed = self.enterContext(patch.object(api.frappe, "get_print", return_value=b"%PDF"))
 
-	def test_one_format_per_party_type_the_site_has(self):
-		created = self.with_site(
-			doctypes={"Party Type", "Print Format", "Customer", "Employee"},
-			party_types={"Customer", "Employee"},
-		)
-		install.sync_statement_print_formats()
-		self.assertEqual(
-			[(row["name"], row["doc_type"]) for row in created],
-			[("Customer Account Statement", "Customer"), ("Employee Account Statement", "Employee")],
-		)
+	def site_with(self, *formats):
+		"""Stand in for the Print Format table: `formats` are (name, doc_type, disabled) rows."""
 
-	def test_a_doctype_that_is_not_a_party_type_gets_none(self):
-		"""`Employee` is on every site with HRMS. It is only a party where
-		somebody has said so, and a statement for a doctype with no
-		`account_type` has nothing to read a balance against."""
-		created = self.with_site(
-			doctypes={"Party Type", "Print Format", "Customer", "Employee"},
-			party_types={"Customer"},
-		)
-		install.sync_statement_print_formats()
-		self.assertEqual([row["doc_type"] for row in created], ["Customer"])
+		def exists(doctype, filters):
+			return any(
+				(name, doc_type, disabled) == (filters["name"], filters["doc_type"], filters["disabled"])
+				for name, doc_type, disabled in formats
+			)
 
-	def test_a_site_with_no_ledger_gets_none(self):
-		created = self.with_site(doctypes={"Print Format"}, party_types=set())
-		install.sync_statement_print_formats()
-		self.assertEqual(created, [])
+		self.enterContext(patch.object(api.frappe, "db", SimpleNamespace(exists=exists)))
 
-	def test_a_format_that_is_already_there_is_left_alone(self):
-		"""Created, not maintained. An administrator who restyles the stub keeps
-		their restyling -- and still gets every later change to the statement
-		itself, because the stub is two lines and everything it draws is behind
-		the include."""
-		self.enterContext(
-			patch.object(install.apps, "has_doctype", side_effect=lambda name: True)
-		)
-		self.enterContext(
-			patch.object(install.frappe, "db", SimpleNamespace(exists=lambda doctype, name: True))
-		)
-		self.enterContext(
-			patch.object(install.frappe, "get_doc", side_effect=AssertionError("should not insert"))
-		)
-		install.sync_statement_print_formats()
+	def test_a_missing_print_format_is_refused_rather_than_printed(self):
+		self.site_with()
+		with self.assertRaises(frappe.DoesNotExistError):
+			api.download_statement("Student", "me@example.com")
+		self.printed.assert_not_called()
 
-	def test_the_stub_defers_to_the_shared_template(self):
-		"""What makes "created, not maintained" safe. If this record ever grows
-		the statement's markup, the argument for leaving it alone goes with it.
-		"""
-		self.assertIn("party_statement(doc.doctype, doc.name)", install.STUB)
-		self.assertIn('include "commons/statement/print/statement.html"', install.STUB)
-		self.assertLess(len(install.STUB.strip().splitlines()), 4)
+	def test_a_disabled_print_format_is_refused(self):
+		self.site_with(("Student Account Statement", "Student", 1))
+		with self.assertRaises(frappe.DoesNotExistError):
+			api.download_statement("Student", "me@example.com")
+		self.printed.assert_not_called()
+
+	def test_a_format_of_that_name_for_another_doctype_is_refused(self):
+		self.site_with(("Student Account Statement", "Customer", 0))
+		with self.assertRaises(frappe.DoesNotExistError):
+			api.download_statement("Student", "me@example.com")
+		self.printed.assert_not_called()
+
+	def test_the_print_format_that_is_there_is_the_one_printed(self):
+		self.site_with(("Student Account Statement", "Student", 0))
+		response = SimpleNamespace()
+		with (
+			patch.object(api.frappe, "local", SimpleNamespace(response=response)),
+			patch.object(api.frappe, "flags", SimpleNamespace()),
+			patch.object(api, "_filename", return_value="Me statement"),
+		):
+			api.download_statement("Student", "me@example.com")
+		self.assertEqual(self.printed.call_args.args[:3], ("Student", "me@example.com", "Student Account Statement"))
+		self.assertEqual(response.type, "pdf")

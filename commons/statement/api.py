@@ -27,6 +27,7 @@ way out of here -- see `ledger.direction`.
 """
 
 import frappe
+from frappe import _
 from frappe.utils import flt
 
 from commons.statement import ledger, loans, parties, print_format_name
@@ -196,17 +197,29 @@ def download_statement(party_type: str, party: str) -> None:
 
 	Nothing of the document itself is rendered. The print format draws the
 	statement and nothing else -- see `print/statement.html`.
+
+	The print format is a site's to add by hand (`frontend/README.md` has the
+	two lines), so it may not be there -- and it is refused rather than printed
+	without it. `frappe.get_print` given a print format that does not exist
+	falls back to "Standard" without a word, and "Standard" draws every field
+	of the party document; with print permissions set aside above, that would
+	hand a student their whole Student record, or an employee their Employee
+	record, in place of a statement.
 	"""
 	resolved = parties.named(party_type, party)
 
+	name = print_format_name(resolved.party_type)
+	if not frappe.db.exists("Print Format", {"name": name, "doc_type": resolved.party_type, "disabled": 0}):
+		frappe.throw(
+			_("Statements cannot be downloaded yet: the print format {0} has not been set up.").format(
+				frappe.bold(name)
+			),
+			frappe.DoesNotExistError,
+		)
+
 	frappe.flags.ignore_print_permissions = True
 	try:
-		pdf = frappe.get_print(
-			resolved.party_type,
-			resolved.name,
-			print_format_name(resolved.party_type),
-			as_pdf=True,
-		)
+		pdf = frappe.get_print(resolved.party_type, resolved.name, name, as_pdf=True)
 	finally:
 		frappe.flags.ignore_print_permissions = False
 
