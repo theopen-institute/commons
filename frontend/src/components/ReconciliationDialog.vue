@@ -72,6 +72,7 @@
         :suggestions="suggestions"
         @dirty="(value) => (drafts.loan = value)"
         @done="done"
+        @drafted="drafted"
         @switch="(to) => (tab = to)"
       />
       <ReconciliationMatchPanel
@@ -91,6 +92,7 @@
         mode="payment"
         @dirty="(value) => (drafts.payment = value)"
         @done="done"
+        @drafted="drafted"
       />
       <ReconciliationVoucherPanel
         v-if="visited.journal"
@@ -99,6 +101,7 @@
         mode="journal"
         @dirty="(value) => (drafts.journal = value)"
         @done="done"
+        @drafted="drafted"
       />
       <ReconciliationDetailsPanel
         v-if="visited.details"
@@ -146,6 +149,9 @@ const emit = defineEmits<{
   /** Reference, party or links changed. */
   updated: [name: string, values: Partial<TransactionRow>]
   step: [direction: 1 | -1]
+  /** A draft was made from the line. It stays open; the page reads its
+   *  drafts again so the new one is on the board. */
+  drafted: []
 }>()
 
 const drafts = reactive<Record<Tab, boolean>>({
@@ -211,6 +217,11 @@ watch(tab, (value) => (visited[value] = true))
 watch(isOpenLine, (openLine) => {
   if (!openLine) tab.value = 'details'
 })
+
+function drafted() {
+  for (const key of Object.keys(drafts) as Tab[]) drafts[key] = false
+  emit('drafted')
+}
 
 function done(unallocated: number) {
   for (const key of Object.keys(drafts) as Tab[]) drafts[key] = false

@@ -212,12 +212,20 @@
           @click="reset"
         />
         <Button
+          variant="subtle"
+          :label="lines.length > 1 ? `Make ${lines.length} drafts` : 'Make draft'"
+          :loading="busy && drafting"
+          :disabled="!lines.length || check.errors.length > 0 || (busy && !drafting)"
+          title="Create the repayments as drafts, without posting them or matching them to this line"
+          @click="save(true)"
+        />
+        <Button
           variant="solid"
           :label="saveLabel"
-          :loading="busy"
-          :disabled="!lines.length || check.errors.length > 0"
+          :loading="busy && !drafting"
+          :disabled="!lines.length || check.errors.length > 0 || (busy && drafting)"
           :title="check.errors.join(' · ')"
-          @click="save"
+          @click="save(false)"
         />
       </div>
     </div>
@@ -251,6 +259,8 @@ const emit = defineEmits<{
   done: [unallocated: number]
   dirty: [dirty: boolean]
   switch: [tab: 'match']
+  /** Drafts were created; nothing was posted or matched. */
+  drafted: []
 }>()
 
 const create = useCreateLoanRepayments()
@@ -258,6 +268,8 @@ const lines = reactive<RepaymentLine[]>([])
 const reference = ref('')
 const query = ref('')
 const busy = ref(false)
+/** Which button the write in progress came from, for its spinner. */
+const drafting = ref(false)
 const problem = ref('')
 
 const outstanding = computed<Record<string, number>>(() =>
@@ -332,18 +344,31 @@ watch(
 const dirty = computed(() => lines.length > 0)
 watch(dirty, (value) => emit('dirty', value), { immediate: true })
 
-async function save() {
+/** Book the lines, or with `draft` leave them as drafts: inserted and
+ *  checked, but not submitted and not matched. A draft is finished later from
+ *  the board ("Include drafts", then "Submit and match") or from the desk. */
+async function save(draft: boolean) {
   if (!lines.length || check.value.errors.length) return
   busy.value = true
+  drafting.value = draft
   problem.value = ''
   try {
     const done = await write(create, {
       bank_transaction: props.transaction.name,
       repayments: lines.map((line) => ({ loan: line.loan, amount: money(line.amount) })),
       reference_number: reference.value,
+      draft,
     })
     if (!done.ok || !done.data) {
       problem.value = done.error?.message || 'The repayments could not be booked'
+      return
+    }
+    if (draft) {
+      toast.success(
+        `${pluralise(done.data.repayments.length, 'draft repayment')} created: ${done.data.repayments.join(', ')}. The line stays open until ${done.data.repayments.length === 1 ? 'it is' : 'they are'} submitted and matched.`,
+      )
+      lines.splice(0, lines.length)
+      emit('drafted')
       return
     }
     toast.success(

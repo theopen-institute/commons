@@ -94,13 +94,23 @@
         {{ mode === 'payment' ? (transaction.deposit > 0 ? 'Receive' : 'Pay') : 'Book' }}
         {{ formatExact(transaction.unallocated_amount, transaction.currency) }}
       </p>
-      <Button
-        variant="solid"
-        :label="mode === 'payment' ? 'Create payment entry and reconcile' : 'Create journal entry and reconcile'"
-        :disabled="!ready"
-        :loading="busy"
-        @click="save"
-      />
+      <div class="flex gap-2">
+        <Button
+          variant="subtle"
+          label="Make draft"
+          :disabled="!ready || (busy && !drafting)"
+          :loading="busy && drafting"
+          :title="`Create the ${mode === 'payment' ? 'payment' : 'journal'} entry as a draft, without submitting it or matching it to this line`"
+          @click="save(true)"
+        />
+        <Button
+          variant="solid"
+          :label="mode === 'payment' ? 'Create payment entry and reconcile' : 'Create journal entry and reconcile'"
+          :disabled="!ready || (busy && drafting)"
+          :loading="busy && !drafting"
+          @click="save(false)"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -124,7 +134,12 @@ const props = defineProps<{
   mode: 'payment' | 'journal'
 }>()
 
-const emit = defineEmits<{ done: [unallocated: number]; dirty: [dirty: boolean] }>()
+const emit = defineEmits<{
+  done: [unallocated: number]
+  dirty: [dirty: boolean]
+  /** A draft was created; nothing was posted or matched. */
+  drafted: []
+}>()
 
 /** `Journal Entry.voucher_type`, minus the ones a bank line is never. */
 const ENTRY_TYPES = ['Bank Entry', 'Journal Entry', 'Contra Entry', 'Credit Card Entry', 'Cash Entry']
@@ -139,6 +154,8 @@ const referenceNumber = ref('')
 const modeOfPayment = ref<string | null>(null)
 const costCenter = ref<string | null>(null)
 const busy = ref(false)
+/** Which button the write in progress came from, for its spinner. */
+const drafting = ref(false)
 const problem = ref('')
 
 const createPayment = useCreatePaymentEntry()
@@ -204,8 +221,13 @@ const ready = computed(() => {
   return Boolean(account.value && (!partyType.value || party.value))
 })
 
-async function save() {
+/** Create the entry and reconcile it, or with `draft` create it as a draft:
+ *  the same document, inserted but not submitted and not matched. The line
+ *  stays open; the draft can be finished from the board ("Include drafts",
+ *  then "Submit and match") or from the desk. */
+async function save(draft: boolean) {
   busy.value = true
+  drafting.value = draft
   problem.value = ''
   const values = Object.fromEntries(dimensions.value.map((d) => [d.fieldname, dimensionValues[d.fieldname] ?? null]))
   try {
@@ -223,6 +245,7 @@ async function save() {
               cost_center: costCenter.value || undefined,
             },
             values,
+            draft,
           )
         : await createJournal.run(
             {
@@ -236,7 +259,20 @@ async function save() {
               party: party.value,
             },
             values,
+            draft,
           )
+    if (draft) {
+      if (!done.ok || !done.name) {
+        problem.value = done.error?.message || 'The draft could not be created'
+        return
+      }
+      toast.success(
+        `Draft ${entryLabel()} ${done.name} created. The line stays open until it is submitted and matched.`,
+      )
+      reset()
+      emit('drafted')
+      return
+    }
     if (!done.ok || done.unallocated === null) {
       problem.value = done.error?.message || 'The entry could not be created'
       return
@@ -246,5 +282,9 @@ async function save() {
   } finally {
     busy.value = false
   }
+}
+
+function entryLabel() {
+  return props.mode === 'payment' ? 'payment entry' : 'journal entry'
 }
 </script>

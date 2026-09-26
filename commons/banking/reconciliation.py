@@ -76,8 +76,16 @@ def create_loan_repayments(
 	bank_transaction: str,
 	repayments: list[dict],
 	reference_number: str | None = None,
+	draft: bool = False,
 ) -> dict:
 	"""Book one deposit as repayments of one or more loans, and reconcile them.
+
+	With `draft`, the repayments are inserted, with every check below, and left
+	as drafts: not submitted, so nothing is posted, and not matched to the line.
+	For a bookkeeper who wants someone else to look before anything reaches the
+	ledger. The line stays open, and the drafts appear on the page's board
+	under "Include drafts", where "Submit and match" finishes the job and still
+	posts on the day the money arrived.
 
 	`repayments` is `[{"loan": ..., "amount": ...}]`. There is more than one
 	when a borrower pays two loans with one transfer, or somebody pays for a
@@ -108,14 +116,18 @@ def create_loan_repayments(
 				"against_loan": line["loan"],
 				"repayment_type": "Normal Repayment",
 				"amount_paid": line["amount"],
-						# `posting_date` is set by `post_on_value_date` just before
-				# submit: `LoanRepayment.validate` overwrites anything sent here.
+				# Both dates are the day the money arrived. Lending's `validate`
+				# replaces `posting_date` with the current time on every save;
+				# the site's server scripts "Loan Repayment - Remember Posting
+				# Date" and "... - Keep Posting Date" put it back, so the
+				# ledger entries are dated as sent here. Without them, lending
+				# posts on the day of booking.
+				"posting_date": get_datetime(transaction.date),
 				"value_date": get_datetime(transaction.date),
 				"reference_number": reference or None,
 				"reference_date": getdate(transaction.date) if reference else None,
 			}
 		)
-		repayment.flags.post_on_value_date = True
 		repayment.insert()
 		if repayment.payment_account != gl_account:
 			frappe.throw(
@@ -124,8 +136,18 @@ def create_loan_repayments(
 					"Set the Loan Product's repayment account, or book it from the desk."
 				).format(line["loan"], repayment.payment_account, transaction.bank_account, gl_account)
 			)
-		repayment.submit()
+		if not draft:
+			repayment.submit()
 		created.append(repayment.name)
+
+	if draft:
+		return {
+			"transaction": transaction.name,
+			"status": transaction.status,
+			"unallocated_amount": transaction.unallocated_amount,
+			"repayments": created,
+			"draft": True,
+		}
 
 	from erpnext.accounts.doctype.bank_reconciliation_tool.bank_reconciliation_tool import (
 		reconcile_vouchers,
@@ -189,8 +211,6 @@ def submit_and_reconcile(bank_transaction: str, voucher_type: str, voucher: str)
 	document = frappe.get_doc(voucher_type, voucher)
 	if document.docstatus != 0:
 		frappe.throw(_("{0} {1} is not a draft.").format(voucher_type, voucher))
-	if voucher_type == LOAN_REPAYMENT:
-		document.flags.post_on_value_date = True
 	document.submit()
 
 	from erpnext.accounts.doctype.bank_reconciliation_tool.bank_reconciliation_tool import (
@@ -258,31 +278,6 @@ def accounting_dimensions(company: str) -> list[dict]:
 		}
 		for row in rows
 	]
-
-
-def post_on_value_date(doc, method=None) -> None:
-	"""`before_submit` on Loan Repayment: date the ledger entries on the value date.
-
-	Lending's `validate` sets `posting_date` to the current time on every save,
-	and submitting saves, so a repayment of money that arrived on 5 August and
-	was booked on 25 September posts to the ledger on 25 September. For a
-	repayment booked from a bank statement line that is the wrong day: the books
-	then disagree with the bank for every day in between, and a period closed
-	since would already have been reported without the money in it.
-
-	This runs after `validate` and before `on_submit`, which is where lending
-	writes its GL entries (and its write-off and credit-note entries, which read
-	the same field). It also runs before the site's own Before Submit server
-	scripts, which Frappe calls after an app's hooks, so "Loan Repayment - Make
-	GFL Income Entry" dates its journal the same day. Amounts and demands were
-	already worked out from `value_date` in `validate`, so nothing else moves.
-
-	Only for repayments the reconciliation page flags. One made in the desk
-	keeps lending's behaviour; changing that is a decision about lending, not
-	about this page.
-	"""
-	if doc.flags.get("post_on_value_date") and doc.value_date:
-		doc.posting_date = get_datetime(doc.value_date)
 
 
 def _validated_lines(transaction, repayments) -> list[dict]:

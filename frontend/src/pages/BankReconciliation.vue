@@ -212,6 +212,7 @@
       :has-next="stepTarget(1) !== null"
       @done="onDone"
       @updated="onUpdated"
+      @drafted="loadProgress"
       @step="step"
     />
 

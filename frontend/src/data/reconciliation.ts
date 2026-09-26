@@ -878,8 +878,14 @@ export function useReconcileVouchers() {
 
 export function useCreateLoanRepayments() {
   return useCall<
-    { transaction: string; status: string; unallocated_amount: number; repayments: string[] },
-    { bank_transaction: string; repayments: { loan: string; amount: number }[]; reference_number: string }
+    { transaction: string; status: string; unallocated_amount: number; repayments: string[]; draft?: boolean },
+    {
+      bank_transaction: string
+      repayments: { loan: string; amount: number }[]
+      reference_number: string
+      /** Insert the repayments as drafts: not submitted, not matched. */
+      draft?: boolean
+    }
   >({ url: `${COMMONS}.create_loan_repayments`, method: 'POST', immediate: false })
 }
 
@@ -966,15 +972,53 @@ export function useCreatePaymentEntry() {
     { bank_transaction_name: string; payment_entry_doc: Record<string, unknown> }
   >({ url: `${TOOL}.create_payment_entry_and_reconcile`, method: 'POST', immediate: false })
 
+  const insert = useInsertDraft()
+
   return {
-    async run(params: PaymentEntryParams, dimensions: DimensionValues) {
+    /** With `draft`, the entry ERPNext built is inserted as a draft instead:
+     *  not submitted, not matched. The line keeps what it had left. */
+    async run(params: PaymentEntryParams, dimensions: DimensionValues, draft = false): Promise<EntryResult> {
       const built = await write(prepare, { ...params, allow_edit: 1 })
-      if (!built.ok || !built.data) return { ok: false, error: built.error, unallocated: null }
+      if (!built.ok || !built.data) return { ok: false, error: built.error, unallocated: null, name: null }
+      if (draft) {
+        const { name: _unsaved, ...doc } = built.data
+        return insert.run({ ...doc, ...present(dimensions), doctype: 'Payment Entry', docstatus: 0 })
+      }
       const done = await write(create, {
         bank_transaction_name: params.bank_transaction_name,
         payment_entry_doc: { ...built.data, ...present(dimensions) },
       })
-      return { ok: done.ok, error: done.error, unallocated: done.data?.transaction.unallocated_amount ?? null }
+      return {
+        ok: done.ok,
+        error: done.error,
+        unallocated: done.data?.transaction.unallocated_amount ?? null,
+        name: null,
+      }
+    },
+  }
+}
+
+/** What creating an entry from a line comes back with: whether it worked, what
+ *  is left on the line, and for a draft, the draft's name. */
+export interface EntryResult {
+  ok: boolean
+  error: Error | null
+  unallocated: number | null
+  name: string | null
+}
+
+/** Insert one draft document through `frappe.client.insert`, which runs its
+ *  validation and checks `create`, and submits nothing. */
+function useInsertDraft() {
+  const call = useCall<{ name: string }, { doc: string }>({
+    url: `${CLIENT}.insert`,
+    method: 'POST',
+    immediate: false,
+  })
+  return {
+    async run(doc: Record<string, unknown>, unallocated: number | null = null): Promise<EntryResult> {
+      const done = await write(call, { doc: JSON.stringify(doc) })
+      return { ok: done.ok, error: done.error, unallocated, name: done.data?.name ?? null }
     },
   }
 }
@@ -1018,19 +1062,77 @@ export function useCreateJournalEntry() {
     }
   >({ url: `${TOOL}.create_bank_entry_and_reconcile`, method: 'POST', immediate: false })
 
+  const accountType = documentList<{ report_type: string | null }>('Account')
+  const company = documentList<{ cost_center: string | null }>('Company')
+  const insert = useInsertDraft()
+
+  /**
+   * The company's default cost center, for the other side when it is an
+   * income or expense account. What `create_bank_entry_and_reconcile` adds
+   * itself, so a draft gets it too and can be submitted as it stands. Left
+   * out, rather than failing, if either cannot be read: the draft is still
+   * made, and the desk asks for it at submit.
+   */
+  async function costCenterFor(account: string, companyName: string | null): Promise<string | null> {
+    if (!companyName) return null
+    try {
+      const [[typed], [owner]] = await Promise.all([
+        fetchRows(accountType, { fields: JSON.stringify(['report_type']), filters: JSON.stringify([['name', '=', account]]), limit: 1 }),
+        fetchRows(company, { fields: JSON.stringify(['cost_center']), filters: JSON.stringify([['name', '=', companyName]]), limit: 1 }),
+      ])
+      return typed?.report_type === 'Profit and Loss' ? (owner?.cost_center ?? null) : null
+    } catch {
+      return null
+    }
+  }
+
   return {
-    async run(params: JournalEntryParams, dimensions: DimensionValues) {
+    /** With `draft`, the same two rows are inserted as a draft Journal Entry
+     *  instead: not submitted, not matched. The line keeps what it had left. */
+    async run(params: JournalEntryParams, dimensions: DimensionValues, draft = false): Promise<EntryResult> {
       const [row] = await fetchRows(bank, {
         fields: JSON.stringify(['account']),
         filters: JSON.stringify([['name', '=', params.transaction.bank_account]]),
         limit: 1,
       })
       if (!row?.account) {
-        return { ok: false, error: new Error('This bank account has no GL account.'), unallocated: null }
+        return { ok: false, error: new Error('This bank account has no GL account.'), unallocated: null, name: null }
       }
       const amount = money(params.transaction.unallocated_amount)
       const deposit = params.transaction.deposit > 0
       const tags = present(dimensions)
+      if (draft) {
+        const costCenter = await costCenterFor(params.account, params.transaction.company)
+        return insert.run(
+          {
+            doctype: 'Journal Entry',
+            docstatus: 0,
+            voucher_type: params.entry_type,
+            company: params.transaction.company,
+            posting_date: params.posting_date,
+            cheque_no: params.reference_number,
+            cheque_date: params.reference_date,
+            accounts: [
+              {
+                account: row.account,
+                bank_account: params.transaction.bank_account,
+                debit_in_account_currency: deposit ? amount : 0,
+                credit_in_account_currency: deposit ? 0 : amount,
+                ...tags,
+              },
+              {
+                account: params.account,
+                debit_in_account_currency: deposit ? 0 : amount,
+                credit_in_account_currency: deposit ? amount : 0,
+                ...(params.party ? { party_type: params.party_type, party: params.party } : {}),
+                ...(costCenter ? { cost_center: costCenter } : {}),
+                ...tags,
+              },
+            ],
+          },
+          params.transaction.unallocated_amount,
+        )
+      }
       const done = await write(create, {
         bank_transaction_name: params.transaction.name,
         cheque_date: params.reference_date,
@@ -1054,7 +1156,12 @@ export function useCreateJournalEntry() {
           },
         ],
       })
-      return { ok: done.ok, error: done.error, unallocated: done.data?.transaction.unallocated_amount ?? null }
+      return {
+        ok: done.ok,
+        error: done.error,
+        unallocated: done.data?.transaction.unallocated_amount ?? null,
+        name: null,
+      }
     },
   }
 }

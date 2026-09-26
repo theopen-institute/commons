@@ -371,6 +371,18 @@ because they are not in the ledger. A line paired with a draft is
 matched by `commons.banking.reconciliation.submit_and_reconcile`, which
 submits the draft as it stands and matches it in one transaction.
 
+**Make draft.** The loan repayment, payment entry and journal entry tabs each
+have a "Make draft" button beside the one that creates, submits and
+reconciles. It creates the same document, with the same checks and
+dimensions, as a draft: nothing is posted and the line stays open. Drafts show
+up on the board under "Include drafts", where "Submit and match" finishes them.
+A loan repayment is saved with the day the money arrived as its posting date.
+Lending replaces that with "now" on every save, and two server scripts on the
+site ("Loan Repayment - Remember Posting Date" and "... - Keep Posting Date")
+put it back. Without them, repayments post on the day they are booked. Loan repayment drafts
+go through `create_loan_repayments(draft=True)`, and payment and journal entry
+drafts through `frappe.client.insert`.
+
 **Accounting dimensions.** The payment and journal entry tabs ask for every
 accounting dimension the company makes mandatory (on register.localhost,
 Department, for both Profit and Loss and Balance Sheet accounts), with the
