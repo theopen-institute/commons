@@ -31,14 +31,13 @@ SIDEBARS = [
 	sidebar("Stock", app="erpnext", header_icon="package"),
 	sidebar("Accounting", app="erpnext"),
 	sidebar("Education", app="education"),
-	# Made on the site: no app, so its module or a Desktop Icon has to say.
+	# Made on the site: no app, so its module has to say.
 	sidebar("Students", module="Education"),
 	sidebar("Assessments", module="Education Extensions"),
 	sidebar("Helpdesk"),
 	sidebar("Mine", for_user="peter@example.com"),
 ]
 MODULES = {"Education": "education", "Education Extensions": "commons"}
-ICONS = {"Helpdesk": "helpdesk"}
 
 
 def rail(configured=(), user="someone@example.com", roles=("Desk User",), sidebars=SIDEBARS, frontends=None):
@@ -48,7 +47,6 @@ def rail(configured=(), user="someone@example.com", roles=("Desk User",), sideba
 		installed_apps=INSTALLED,
 		app_meta=META,
 		module_apps=MODULES,
-		icon_apps=ICONS,
 		user=user,
 		user_roles=set(roles),
 		frontends=frontends,
@@ -80,7 +78,7 @@ class TestFallback(TestCase):
 				("ERPNext", ["Accounting", "Stock"]),
 				("Education", ["Education", "Students"]),
 				("Commons", ["Assessments"]),
-				# Helpdesk's icon names an app this site does not run.
+				# Neither an app nor a module says where Helpdesk goes.
 				(OTHER, ["Helpdesk"]),
 			],
 		)
@@ -93,11 +91,11 @@ class TestFallback(TestCase):
 
 	def test_which_app_a_sidebar_belongs_to(self):
 		self.assertEqual(
-			installed_app_of(sidebar("A", app="erpnext", module="Education"), MODULES, ICONS), "erpnext"
+			installed_app_of(sidebar("A", app="erpnext", module="Education"), MODULES), "erpnext"
 		)
-		self.assertEqual(installed_app_of(sidebar("A", module=" Education "), MODULES, ICONS), "education")
-		self.assertEqual(installed_app_of(sidebar("Helpdesk"), MODULES, ICONS), "helpdesk")
-		self.assertIsNone(installed_app_of(sidebar("Nowhere"), MODULES, ICONS))
+		self.assertEqual(installed_app_of(sidebar("A", module=" Education "), MODULES), "education")
+		self.assertIsNone(installed_app_of(sidebar("A", module="Nowhere"), MODULES))
+		self.assertIsNone(installed_app_of(sidebar("Nowhere"), MODULES))
 
 
 class TestConfigured(TestCase):
@@ -189,7 +187,7 @@ class SiteInputsAreCached(TestCase):
 			patch.object(nav, "_configured", side_effect=lambda: reads.append("configured") or []),
 			patch.object(nav, "_sidebars", return_value=[]),
 			patch.object(nav, "_app_meta", return_value={}),
-			patch.object(nav, "_icon_apps", return_value={}),
+			patch.object(nav, "_frontends", return_value={}),
 			patch.object(nav.frappe, "get_installed_apps", return_value=["frappe"]),
 			patch.object(nav.frappe, "get_all", return_value=[]),
 		):
@@ -215,6 +213,99 @@ class SiteInputsAreCached(TestCase):
 				patch.object(nav, "navigation_apps", side_effect=AssertionError("built the rail")),
 			):
 				self.assertEqual(nav.get_navigation_apps(), [])
+
+
+def bound(name, installed_app, *sidebars, mode="Add", hidden=0, **kwargs):
+	return {
+		**app(name, *sidebars, **kwargs),
+		"installed_app": installed_app,
+		"sidebar_mode": mode,
+		"hidden": hidden,
+	}
+
+
+class TestBoundApps(TestCase):
+	"""A Navigation App standing for an installed app, or for Other."""
+
+	def test_takes_the_installed_apps_place_and_keeps_its_sidebars(self):
+		result = rail([bound("Books", "erpnext")])
+		self.assertEqual(shape(result)[0], ("Books", ["Accounting", "Stock"]))
+		# Not drawn a second time among the installed apps.
+		self.assertNotIn("ERPNext", [entry["title"] for entry in result])
+		self.assertEqual(result[0]["key"], "app:erpnext")
+		self.assertTrue(result[0]["configured"])
+
+	def test_add_mode_adds_and_relabels(self):
+		books = bound("Books", "erpnext", "Stock", "Students", labels={"Stock": "Inventory"})
+		entry = rail([books])[0]
+		self.assertEqual([s["sidebar"] for s in entry["sidebars"]], ["Accounting", "Stock", "Students"])
+		self.assertEqual(next(s for s in entry["sidebars"] if s["sidebar"] == "Stock")["label"], "Inventory")
+		# Claimed away from Education.
+		self.assertIn(("Education", ["Education"]), shape(rail([books])))
+
+	def test_replace_mode_keeps_only_the_list_and_sends_the_rest_to_other(self):
+		result = shape(rail([bound("Books", "erpnext", "Stock", mode="Replace")]))
+		self.assertEqual(result[0], ("Books", ["Stock"]))
+		self.assertEqual(result[-1], (OTHER, ["Accounting", "Helpdesk"]))
+
+	def test_another_app_claiming_one_of_its_sidebars_takes_it(self):
+		result = shape(rail([bound("Books", "erpnext"), app("Stores", "Stock")]))
+		self.assertEqual(result[:2], [("Books", ["Accounting"]), ("Stores", ["Stock"])])
+
+	def test_hidden_takes_the_app_and_its_sidebars_off_the_rail(self):
+		result = shape(rail([bound("Books", "erpnext", "Students", hidden=1)]))
+		self.assertNotIn("Books", [title for title, _ in result])
+		self.assertNotIn("ERPNext", [title for title, _ in result])
+		self.assertFalse(any(s in ("Accounting", "Stock", "Students") for _, row in result for s in row))
+
+	def test_roles_hide_without_releasing(self):
+		books = bound("Books", "erpnext", roles=("Accounts User",))
+		self.assertEqual(
+			shape(rail([books], roles=("Accounts User",)))[0], ("Books", ["Accounting", "Stock"])
+		)
+		result = shape(rail([books]))
+		self.assertFalse(any(title in ("Books", "ERPNext") for title, _ in result))
+
+	def test_inherits_the_logo_and_frontend_unless_it_has_its_own(self):
+		entry = rail([bound("Books", "erpnext")], frontends={"erpnext": "/shop"})[0]
+		self.assertEqual(entry["logo"], "/erpnext.svg")
+		self.assertEqual(entry["frontend"], {"label": "Books app", "url": "/shop"})
+		# An icon of its own is a mark of its own: the app's logo would cover it.
+		entry = rail([bound("Books", "erpnext", icon="book")])[0]
+		self.assertEqual((entry["icon"], entry["logo"]), ("book", None))
+		entry = rail([{**bound("Books", "erpnext"), "logo": "/books.svg", "frontend_url": "/books"}])[0]
+		self.assertEqual((entry["logo"], entry["frontend"]["url"]), ("/books.svg", "/books"))
+
+	def test_other_is_bindable(self):
+		result = rail([bound("Unsorted", OTHER)])
+		self.assertEqual(shape(result)[0], ("Unsorted", ["Helpdesk"]))
+		self.assertEqual(result[0]["key"], f"app:{OTHER}")
+		self.assertEqual(result[0]["logo"], "/assets/commons/images/commons-other-logo.svg")
+		self.assertNotIn(OTHER, [entry["title"] for entry in result])
+		hidden = shape(rail([bound("Unsorted", OTHER, hidden=1)]))
+		self.assertFalse(any(title in ("Unsorted", OTHER) for title, _ in hidden))
+
+	def test_other_replacing_drops_what_it_does_not_list(self):
+		result = shape(
+			rail(
+				[
+					bound("Books", "erpnext", "Stock", mode="Replace"),
+					bound("Unsorted", OTHER, "Users", mode="Replace"),
+				]
+			)
+		)
+		self.assertEqual(result[:2], [("Books", ["Stock"]), ("Unsorted", ["Users"])])
+		self.assertFalse(any(s in ("Accounting", "Helpdesk") for _, row in result for s in row))
+
+	def test_only_the_first_record_for_an_app_stands_for_it(self):
+		result = rail([bound("Books", "erpnext"), bound("Ledger", "erpnext", "Stock")])
+		self.assertEqual(shape(result)[:2], [("Books", ["Accounting"]), ("Ledger", ["Stock"])])
+		self.assertEqual(result[1]["key"], "navigation-app:Ledger")
+
+	def test_an_app_not_installed_is_only_a_grouping(self):
+		result = rail([bound("Desk", "helpdesk", "Helpdesk")])
+		self.assertEqual(result[0]["key"], "navigation-app:Desk")
+		self.assertEqual(shape(result)[0], ("Desk", ["Helpdesk"]))
 
 
 class TestFrontends(TestCase):
@@ -255,3 +346,26 @@ class TestFrontends(TestCase):
 		for url in ("/helpdesk", "/commons/announcements", "/builder", "https://example.com/app/x"):
 			with self.subTest(url=url):
 				self.assertFalse(is_desk_route(url))
+
+	def test_read_from_hooks_not_desktop_icons(self):
+		from unittest.mock import patch
+
+		from commons.better_navigation import navigation_apps as nav
+
+		hooks = {
+			("add_to_apps_screen", "helpdesk"): [{"route": "/helpdesk"}],
+			("add_to_apps_screen", "hrms"): [{"route": "/desk/people"}],
+			# Its own hook wins over the apps screen's route.
+			("add_to_apps_screen", "commons"): [{"route": "/commons/announcements"}],
+			("navigation_frontend_url", "commons"): ["/commons"],
+		}
+		with (
+			patch.object(
+				nav.frappe, "get_installed_apps", return_value=["frappe", "helpdesk", "hrms", "commons"]
+			),
+			patch.object(
+				nav.frappe, "get_hooks", side_effect=lambda hook, app_name: hooks.get((hook, app_name), [])
+			),
+			patch.object(nav.frappe, "get_all", side_effect=AssertionError("read the database")),
+		):
+			self.assertEqual(nav._frontends(), {"helpdesk": "/helpdesk", "commons": "/commons"})

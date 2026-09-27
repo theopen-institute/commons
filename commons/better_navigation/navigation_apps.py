@@ -16,6 +16,16 @@ maps onto a Dock when that arrives.)
 site wants on its rail -- "Finance" holding sidebars from ERPNext and from this
 app, say -- and a site may add as many as it likes.
 
+One can also stand for an installed app, or for "Other", by naming it in
+`installed_app`. It then takes that app's place on the rail rather than
+appearing beside it: in its own Rail Order, under its own title, roles and
+mark, falling back to the app's hooks for the logo and the frontend. Its
+sidebars table either adds to what the app already holds (and relabels
+anything it lists) or, set to Replace, is the whole list, and what the app
+would have held goes to Other. Hidden takes it off the rail, and its sidebars
+with it. "Other" is bindable like any installed app: the one group no hooks
+describe, but as much the site's to rename, restrict or hide.
+
 The fallback is the installed apps
 ----------------------------------
 A site that has configured nothing still gets a rail: one entry per installed
@@ -28,9 +38,10 @@ configuring is only ever a matter of claiming what should move.
 Which installed app a sidebar belongs to is not one field. A standard sidebar
 names its app; one made on the site usually does not (the form only offers the
 field for standard ones). So it is asked in turn: the sidebar's own `app`, then
-the app of its `module`, then the app of a Desktop Icon of the same name. A
-sidebar none of those place is grouped under "Other", which is the honest answer
-and a hint that it wants claiming.
+the app of its `module` -- the sidebar's own fields and nothing else, the same
+order core's header follows when it names the app. A sidebar neither places is
+grouped under "Other", which is the honest answer and a hint that it wants a
+module or claiming.
 
 Two rules
 ---------
@@ -60,6 +71,12 @@ SIDEBAR = "Workspace Sidebar"
 
 # Where a sidebar goes when nothing says which app it belongs to.
 OTHER = "Other"
+OTHER_LOGO = "/assets/commons/images/commons-other-logo.svg"
+
+# A Navigation App bound to an installed app either adds its sidebars table to
+# what the app already holds, or replaces it.
+ADD = "Add"
+REPLACE = "Replace"
 
 
 # The site-level half of the rail: everything `resolve` reads except the user.
@@ -112,7 +129,6 @@ def _site_inputs() -> dict:
 			"installed_apps": frappe.get_installed_apps(),
 			"app_meta": _app_meta(),
 			"module_apps": dict(frappe.get_all("Module Def", fields=["name", "app_name"], as_list=True)),
-			"icon_apps": _icon_apps(),
 			"frontends": _frontends(),
 		},
 	)
@@ -142,7 +158,6 @@ def resolve(
 	installed_apps: list[str],
 	app_meta: dict[str, dict],
 	module_apps: dict[str, str],
-	icon_apps: dict[str, str],
 	user: str,
 	user_roles: set[str],
 	frontends: dict[str, str] | None = None,
@@ -150,10 +165,11 @@ def resolve(
 	"""The rail, from plain data: configured apps first, then the installed ones.
 
 	`configured` is the enabled Navigation Apps in rail order, each with its
-	`sidebars` rows (`sidebar`, `label`) and `roles`. `sidebars` is every
-	Workspace Sidebar (`name`, `header_icon`, `app`, `module`, `for_user`).
-	The rest say what an installed app is called and which app a module or a
-	Desktop Icon belongs to, and `frontends` where an installed app's own
+	`sidebars` rows (`sidebar`, `label`), `roles`, and optionally the
+	`installed_app` it stands for, its `sidebar_mode` and whether it is `hidden`.
+	`sidebars` is every Workspace Sidebar (`name`, `header_icon`, `app`,
+	`module`, `for_user`). The rest say what an installed app is called and
+	which app a module belongs to, and `frontends` where an installed app's own
 	frontend is, outside the desk.
 
 	Every entry carries `frontend` -- `{label, url}` or None -- beside its
@@ -163,8 +179,11 @@ def resolve(
 	frontends = frontends or {}
 	by_name = {sidebar["name"]: sidebar for sidebar in sidebars}
 	claimed: set[str] = set()
-	rail: list[dict] = []
 
+	# Claims first, all of them, so what is left for the installed apps is known
+	# before any entry is drawn: a bound app early on the rail still gets the
+	# sidebars no later app claims.
+	claims: list[list[dict]] = []
 	for app in configured:
 		entries = []
 		for row in app["sidebars"]:
@@ -174,24 +193,7 @@ def resolve(
 				continue
 			claimed.add(sidebar["name"])
 			entries.append(_entry(sidebar, row.get("label")))
-
-		roles = set(app.get("roles") or ())
-		if roles and not roles & user_roles:
-			continue
-		frontend = _frontend(app["title"], app.get("frontend_url"), app.get("frontend_label"))
-		if entries or frontend:
-			entries.sort(key=_by_label)
-			rail.append(
-				{
-					"key": f"navigation-app:{app['name']}",
-					"title": app["title"],
-					"icon": app.get("icon") or None,
-					"logo": app.get("logo") or None,
-					"configured": True,
-					"sidebars": entries,
-					"frontend": frontend,
-				}
-			)
+		claims.append(entries)
 
 	grouped: dict[str, list[dict]] = {}
 	for sidebar in sidebars:
@@ -199,12 +201,67 @@ def resolve(
 			continue
 		if sidebar.get("for_user") and sidebar["for_user"] != user:
 			continue
-		owner = installed_app_of(sidebar, module_apps, icon_apps)
+		owner = installed_app_of(sidebar, module_apps)
 		if owner not in installed_apps:
 			owner = OTHER
 		grouped.setdefault(owner, []).append(_entry(sidebar))
 
+	# Which configured app stands for which installed app: the first enabled one
+	# to name it, as with claims. A later one naming the same app is only a
+	# grouping of its own.
+	bound: dict[str, int] = {}
+	for index, app in enumerate(configured):
+		target = app.get("installed_app")
+		if target and target not in bound and (target in installed_apps or target == OTHER):
+			bound[target] = index
+
+	# Replacing drops what the app would have held into Other, where every
+	# sidebar nothing places goes -- unless it is Other that replaces, when
+	# there is nowhere further for them to go.
+	for target, index in bound.items():
+		if configured[index].get("sidebar_mode") == REPLACE and target != OTHER:
+			grouped.setdefault(OTHER, []).extend(grouped.pop(target, []))
+
+	rail: list[dict] = []
+	for index, app in enumerate(configured):
+		target = next((t for t, i in bound.items() if i == index), None)
+		entries = list(claims[index])
+		if target and app.get("sidebar_mode") != REPLACE:
+			entries += grouped.get(target) or []
+
+		# Hidden, or restricted to roles this user lacks: off the rail, and what it
+		# holds goes with it rather than back to an installed app.
+		if app.get("hidden"):
+			continue
+		roles = set(app.get("roles") or ())
+		if roles and not roles & user_roles:
+			continue
+
+		meta = app_meta.get(target) or {}
+		own_mark = app.get("logo") or app.get("icon")
+		frontend = _frontend(
+			app["title"],
+			app.get("frontend_url") or (frontends.get(target) if target else None),
+			app.get("frontend_label"),
+		)
+		if entries or frontend:
+			rail.append(
+				{
+					# A bound app keeps its installed app's key: the browser finds an
+					# app by it and remembers each app's last module under it.
+					"key": f"app:{target}" if target else f"navigation-app:{app['name']}",
+					"title": app["title"],
+					"icon": app.get("icon") or None,
+					"logo": app.get("logo") or (None if own_mark else _default_logo(target, meta)),
+					"configured": True,
+					"sidebars": sorted(entries, key=_by_label),
+					"frontend": frontend,
+				}
+			)
+
 	for app_name in [*installed_apps, OTHER]:
+		if app_name in bound:
+			continue
 		entries = grouped.get(app_name) or []
 		meta = app_meta.get(app_name) or {}
 		title = meta.get("title") or (OTHER if app_name == OTHER else app_name)
@@ -216,13 +273,18 @@ def resolve(
 				"key": f"app:{app_name}",
 				"title": title,
 				"icon": None,
-				"logo": meta.get("logo") or None,
+				"logo": _default_logo(app_name, meta),
 				"configured": False,
 				"sidebars": sorted(entries, key=_by_label),
 				"frontend": frontend,
 			}
 		)
 	return rail
+
+
+def _default_logo(app_name: str | None, meta: dict) -> str | None:
+	"""An installed app's logo from its hooks, or Other's own."""
+	return meta.get("logo") or (OTHER_LOGO if app_name == OTHER else None)
 
 
 def _frontend(app_title: str, url: str | None, label: str | None = None) -> dict | None:
@@ -236,7 +298,7 @@ def _frontend(app_title: str, url: str | None, label: str | None = None) -> dict
 def is_desk_route(url: str) -> bool:
 	"""Whether a link leads into the desk rather than out of it.
 
-	Several apps point their Desktop tile at a desk page (Frappe HR at
+	Several apps point their apps screen entry at a desk page (Frappe HR at
 	`/desk/people`, Lending at `/app/lending`); that is the app's desk home, which
 	its sidebars already reach, not a frontend of its own.
 	"""
@@ -244,14 +306,12 @@ def is_desk_route(url: str) -> bool:
 	return path in ("/app", "/desk") or path.startswith(("/app/", "/desk/"))
 
 
-def installed_app_of(sidebar: dict, module_apps: dict[str, str], icon_apps: dict[str, str]) -> str | None:
+def installed_app_of(sidebar: dict, module_apps: dict[str, str]) -> str | None:
 	"""Which installed app a sidebar belongs to, asked in the order the module docstring gives."""
 	if sidebar.get("app"):
 		return sidebar["app"]
 	module = (sidebar.get("module") or "").strip()
-	if module in module_apps:
-		return module_apps[module]
-	return icon_apps.get(sidebar["name"])
+	return module_apps.get(module)
 
 
 def _by_label(entry: dict) -> str:
@@ -283,7 +343,17 @@ def _configured() -> list[dict]:
 	apps = frappe.get_all(
 		APP,
 		filters={"enabled": 1},
-		fields=["name", "title", "icon", "logo", "frontend_url", "frontend_label"],
+		fields=[
+			"name",
+			"title",
+			"icon",
+			"logo",
+			"frontend_url",
+			"frontend_label",
+			"installed_app",
+			"sidebar_mode",
+			"hidden",
+		],
 		order_by="rail_order asc, title asc",
 	)
 	if not apps:
@@ -314,42 +384,24 @@ def _sidebars() -> list[dict]:
 	return frappe.get_all(SIDEBAR, fields=["name", "header_icon", "app", "module", "for_user"])
 
 
-def _icon_apps() -> dict[str, str]:
-	"""A Desktop Icon's app, by label, for the icons that open a sidebar."""
-	return dict(
-		frappe.get_all(
-			"Desktop Icon",
-			filters={"link_type": "Workspace Sidebar", "app": ["is", "set"]},
-			fields=["label", "app"],
-			as_list=True,
-		)
-	)
-
-
 def _frontends() -> dict[str, str]:
-	"""Each installed app's own frontend, where its Desktop tile says it has one.
+	"""Each installed app's own frontend, outside the desk, as its hooks declare it.
 
-	The same App-type icon with an external link that draws the app's tile on
-	the Desktop, so the rail and the Desktop cannot disagree about where an
-	app's frontend is. Hidden tiles, and tiles that only open a desk page, are
-	not frontends.
+	`navigation_frontend_url` first, for an app whose frontend is not on the
+	apps screen (this one: an `add_to_apps_screen` entry would also put a
+	second Commons tile on the Desktop), then the apps screen's `route`, the
+	hook the title and logo already come from. Code, not site data, so the rail
+	describes an installed app the same way on every site; a site that wants a
+	different link sets it on a Navigation App. Routes that only open a desk
+	page are not frontends.
 	"""
-	rows = frappe.get_all(
-		"Desktop Icon",
-		filters={
-			"icon_type": "App",
-			"link_type": "External",
-			"hidden": 0,
-			"app": ["is", "set"],
-			"link": ["is", "set"],
-		},
-		fields=["app", "link"],
-		order_by="idx asc",
-	)
 	found: dict[str, str] = {}
-	for row in rows:
-		if row.app not in found and not is_desk_route(row.link):
-			found[row.app] = row.link.strip()
+	for app_name in frappe.get_installed_apps():
+		screen = (frappe.get_hooks("add_to_apps_screen", app_name=app_name) or [{}])[0]
+		url = next(iter(frappe.get_hooks("navigation_frontend_url", app_name=app_name)), None)
+		url = (url or screen.get("route") or "").strip()
+		if url and not is_desk_route(url):
+			found[app_name] = url
 	return found
 
 

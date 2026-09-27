@@ -4,6 +4,13 @@ app_publisher = "Peter"
 app_description = "Shared tools for Frappe"
 app_email = "pgraif@gmail.com"
 app_license = "none"
+# The same mark as the Desktop Icon in `desktop_icon/commons.json`. The rail and
+# the sidebar header read an app's logo from this hook, not from its desk icon.
+app_logo_url = "/assets/commons/images/commons-logo.svg"
+# The rail's "Commons app" row. Not an `add_to_apps_screen` entry, which would
+# also put a second Commons tile on the Desktop beside `desktop_icon/commons.json`.
+# See `commons.better_navigation.navigation_apps._frontends`.
+navigation_frontend_url = "/commons"
 
 # Send non-GET requests for this app's endpoints as native `application/json`
 # bodies instead of form-encoded, per-key JSON-stringified values.
@@ -342,7 +349,7 @@ doc_events = {
 			"on_update": "commons.better_navigation.navigation_apps.clear_cache",
 			"after_delete": "commons.better_navigation.navigation_apps.clear_cache",
 		}
-		for doctype in ("Navigation App", "Workspace Sidebar", "Desktop Icon", "Module Def")
+		for doctype in ("Navigation App", "Workspace Sidebar", "Module Def")
 	},
 	# A cancelled document's Notification emails that are still waiting in the
 	# queue are not sent. See `commons.email_extensions.scheduled`.

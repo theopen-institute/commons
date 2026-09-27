@@ -1,11 +1,16 @@
 # Copyright (c) 2026, Peter and contributors
 # For license information, please see license.txt
 
-"""An entry on the navigation rail: a named group of sidebars.
+"""An entry on the navigation rail: a named group of sidebars, or the stand-in
+for an installed app.
 
 What the rail makes of these, and of the sidebars none of them claims, is
 `commons.better_navigation.navigation_apps`. This controller only refuses the
-three shapes that resolver could not give a stable answer for:
+shapes that resolver could not give a stable answer for:
+
+- an installed app that is not installed, or one another enabled record
+  already stands for. The rail has one place for each app, so the second is
+  refused and told which record has it;
 
 - the same sidebar twice in one app, which would put it in the top menu twice;
 - a personal sidebar (`for_user`), which is one person's and not the site's;
@@ -19,7 +24,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from commons.better_navigation.navigation_apps import APP, APP_SIDEBAR, SIDEBAR
+from commons.better_navigation.navigation_apps import APP, APP_SIDEBAR, OTHER, SIDEBAR
 
 
 class NavigationApp(Document):
@@ -39,16 +44,43 @@ class NavigationApp(Document):
 		enabled: DF.Check
 		frontend_label: DF.Data | None
 		frontend_url: DF.Data | None
+		hidden: DF.Check
 		icon: DF.Icon | None
+		installed_app: DF.Autocomplete | None
 		logo: DF.AttachImage | None
 		rail_order: DF.Int
 		roles: DF.Table[HasRole]
+		sidebar_mode: DF.Literal["Add", "Replace"]
 		sidebars: DF.Table[NavigationAppSidebar]
 		title: DF.Data
 	# end: auto-generated types
 
 	def validate(self):
+		self.validate_installed_app()
 		self.validate_sidebars()
+
+	def validate_installed_app(self):
+		self.installed_app = (self.installed_app or "").strip() or None
+		if not self.installed_app:
+			return
+		# Checked only when it changes, so a record for an app since uninstalled
+		# can still be saved (the rail ignores it until the app is back).
+		if self.has_value_changed("installed_app") and self.installed_app not in installed_app_names():
+			frappe.throw(_("{0} is not an installed app.").format(frappe.bold(self.installed_app)))
+		if not self.enabled:
+			return
+		held = frappe.get_all(
+			APP,
+			filters={"enabled": 1, "installed_app": self.installed_app, "name": ["!=", self.name or ""]},
+			pluck="name",
+			limit=1,
+		)
+		if held:
+			frappe.throw(
+				_("{0} already stands for {1}. An installed app can have only one enabled record.").format(
+					frappe.bold(held[0]), frappe.bold(self.installed_app)
+				)
+			)
 
 	def validate_sidebars(self):
 		seen = set()
@@ -100,3 +132,20 @@ def claimed_elsewhere(app: str | None) -> dict[str, str]:
 		parent_doctype=APP,
 	)
 	return {row.sidebar: row.parent for row in rows}
+
+
+def installed_app_names() -> list[str]:
+	return [*frappe.get_installed_apps(), OTHER]
+
+
+@frappe.whitelist()
+def installed_app_options() -> list[dict]:
+	"""What the Installed App field offers: each installed app by title, then Other."""
+	frappe.has_permission(APP, "read", throw=True)
+	from commons.better_navigation.navigation_apps import _app_meta
+
+	meta = _app_meta()
+	return [
+		{"value": name, "label": (meta.get(name) or {}).get("title") or name}
+		for name in installed_app_names()
+	]
