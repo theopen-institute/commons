@@ -9,3 +9,6 @@ Better Navigation
 Statement
 Derived Docfields
 Email Extensions
+Banking
+Document Capture
+Pseudo Islands

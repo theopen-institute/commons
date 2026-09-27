@@ -428,6 +428,10 @@ override_whitelisted_methods = {
 	"frappe.desk.query_report.export_query": "commons.safer_permissions.permissions.export_query_report",
 	# Runs a report without going through either of the two above.
 	"frappe.core.doctype.prepared_report.prepared_report.make_prepared_report": "commons.safer_permissions.permissions.make_prepared_report",
+	# Not an override: v16 has no `frappe.utils.island`. The name is the one an
+	# `<Island>` host calls on frappe develop, so it keeps working when v17
+	# brings the real one and this line goes. See `commons/pseudo_islands/`.
+	"frappe.utils.island.get_island_assets": "commons.pseudo_islands.registry.get_island_assets",
 }
 #
 # each overriding function accepts a `data` argument;
@@ -556,4 +560,7 @@ extend_bootinfo = [
 	# Which Email Templates each doctype's forms offer, so a form can draw its
 	# Email menu without asking. See `commons.email_extensions`.
 	"commons.email_extensions.api.extend_bootinfo",
+	# The islands this site has, which frappe develop sends itself and v16 does
+	# not, when Commons Settings switches desk islands on.
+	"commons.pseudo_islands.boot.extend_bootinfo",
 ]

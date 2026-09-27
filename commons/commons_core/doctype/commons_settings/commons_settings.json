@@ -19,7 +19,8 @@
   "enable_unencoded_at_in_routes",
   "enable_user_permission_gate",
   "enable_derived_docfields",
-  "enable_visual_email_editor"
+  "enable_visual_email_editor",
+  "enable_pseudo_islands"
  ],
  "fields": [
   {
@@ -116,12 +117,19 @@
    "fieldname": "enable_visual_email_editor",
    "fieldtype": "Check",
    "label": "Enable Visual HTML Email Editor"
+  },
+  {
+   "default": "0",
+   "description": "Lets desk pages show screens from this app's own frontend, such as Bank Reconciliation at <b>/app/commons-banking</b> and Document Capture at <b>/app/commons-capture</b>. It installs, on this version of Frappe, the way of doing this that the next version of Frappe will ship (desk islands). Nothing is stored, so switching this off loses nothing; the pages then point to the same screens under <b>/commons</b>. Suspect this first if a desk page drawn by this app is blank or its dialogs misbehave.",
+   "fieldname": "enable_pseudo_islands",
+   "fieldtype": "Check",
+   "label": "Enable Desk Islands"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-26 14:20:00.000000",
+ "modified": "2026-09-27 17:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

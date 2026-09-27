@@ -1,0 +1,39 @@
+{
+  "name": "@framework/ui",
+  "version": "0.0.0-commons.beeaa33c6b",
+  "description": "The desk-island half of frappe develop's @framework/ui, copied for Frappe v16. See ../../README.md.",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./island": {
+      "import": "./island/index.js"
+    },
+    "./island/host": {
+      "import": "./island/host.js"
+    },
+    "./island/Island.vue": "./island/Island.vue",
+    "./vite": {
+      "import": "./vite/index.js"
+    },
+    "./vite/island": {
+      "import": "./vite/island/index.js"
+    }
+  },
+  "files": [
+    "island",
+    "patches",
+    "vite"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@vitejs/plugin-vue": ">=4",
+    "autoprefixer": "^10.4.0",
+    "frappe-ui": ">=1.0.0-beta.63",
+    "tailwindcss": "^3.4.0",
+    "typescript": ">=5",
+    "vite": ">=4",
+    "vue": ">=3.3.0",
+    "vue-router": "^4.1.5"
+  }
+}

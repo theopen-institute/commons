@@ -472,10 +472,16 @@ class CoreStillLooksTheSame(TestCase):
 		permissions.CORE_MAKE_PREPARED: "commons.safer_permissions.permissions.make_prepared_report",
 	}
 
+	# The hook's one entry that is not a report override: a name v16 lacks,
+	# served by `commons.pseudo_islands` until v17 brings it.
+	NOT_REPORTS: ClassVar[dict[str, str]] = {
+		"frappe.utils.island.get_island_assets": "commons.pseudo_islands.registry.get_island_assets",
+	}
+
 	def test_hooks_override_exactly_these_paths(self):
 		from commons import hooks
 
-		self.assertEqual(hooks.override_whitelisted_methods, self.OVERRIDES)
+		self.assertEqual(hooks.override_whitelisted_methods, {**self.OVERRIDES, **self.NOT_REPORTS})
 
 	def core_function(self, path):
 		"""The definition at `path`, read from core's source rather than imported.

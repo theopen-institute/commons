@@ -92,6 +92,9 @@ ENABLE_PERMISSION_GATE = "enable_user_permission_gate"
 ENABLE_DERIVED_DOCFIELDS = "enable_derived_docfields"
 # `commons/public/js/email_composer.js`, which adds to core's email composer
 ENABLE_VISUAL_EMAIL_EDITOR = "enable_visual_email_editor"
+# `commons.pseudo_islands`, which installs frappe develop's `frappe.ui.mount_island`
+# on a v16 desk and draws this app's island pages with it
+ENABLE_PSEUDO_ISLANDS = "enable_pseudo_islands"
 
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.
@@ -104,6 +107,7 @@ DESK_FEATURES = {
 	"navigation_rail": ENABLE_NAVIGATION_RAIL,
 	"derived_docfields": ENABLE_DERIVED_DOCFIELDS,
 	"visual_email_editor": ENABLE_VISUAL_EMAIL_EDITOR,
+	"pseudo_islands": ENABLE_PSEUDO_ISLANDS,
 }
 
 

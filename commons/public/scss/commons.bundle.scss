@@ -4,3 +4,5 @@
 @import "desk_todos";
 // Better Navigation keeps its styles beside its scripts; see commons.bundle.js.
 @import "../../better_navigation/scss/navigation_rail";
+// Desk islands' page box, until Frappe v17 ships its own copy of it.
+@import "../../pseudo_islands/scss/island_page";
