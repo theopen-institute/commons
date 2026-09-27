@@ -196,10 +196,16 @@ app_include_css = "commons.bundle.css"
 # this app creates. For `party_statement` that is why it does its own permission
 # check rather than trusting its caller -- see `commons.statement.parties.named`;
 # `make_qr_code` reads nothing and so has nothing to check.
+#
+# `render_web_template` is the third: one Web Template, a layout kept on the
+# site, printed from as many doctypes' formats as call it, each through the
+# template's own Context Prep. It reads only the `doc` its caller already holds.
+# See `commons.print_templates`.
 jinja = {
 	"methods": [
 		"commons.commons_core.jinja.make_qr_code",
 		"commons.statement.api.party_statement",
+		"commons.print_templates.api.render_web_template",
 	],
 }
 
@@ -352,6 +358,11 @@ doc_events = {
 	# here on every save. See `commons.email_extensions.mjml`.
 	"Email Template": {
 		"before_validate": "commons.email_extensions.mjml.compile_template",
+	},
+	# A Web Template's Context Prep is Python every print through it runs, so
+	# only a Script Manager may change it. See `commons.print_templates`.
+	"Web Template": {
+		"validate": "commons.print_templates.api.validate_template",
 	},
 }
 

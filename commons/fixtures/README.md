@@ -15,7 +15,7 @@ rewritten.
 
 | File | What it holds |
 | --- | --- |
-| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, and the derived fields it adds to its own |
+| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, three on Web Template, and the derived fields it adds to its own |
 | `custom_field_education.json` | The four fields the attendance register adds to Education's doctypes |
 | `custom_field_erpnext.json` | The four fields the requests section adds to ERPNext's doctypes |
 | `property_setter.json` | The image and title fields of this app's member doctypes, and which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification |
@@ -149,6 +149,16 @@ receipt sent on submit, where correcting a payment is cancel, amend, submit.
 it is queued: nothing else tells a Notification's email from one somebody wrote,
 and only a Notification's are the module's to take back or to count. Indexed,
 since both of those look it up.
+
+**The Print section on `Web Template`** — `print_section`, `context_prep` and
+`test_values`, read by `commons.print_templates`. A Web Template is the one
+Jinja record a site can keep that belongs to no doctype, which is what lets a
+layout be printed from several doctypes' Print Formats through
+`render_web_template`. `context_prep` is the Python that turns each doctype's
+document into the variables the layout reads, and `test_values` stands in for
+its output so Test PDF can print the layout with no document. Custom Fields
+rather than a doctype of this app's own, so the layout, its prep and its test
+data are one record, edited on the form Frappe already has for it.
 
 ### This app's own doctypes (`custom_field.json`)
 

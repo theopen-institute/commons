@@ -13,3 +13,4 @@ import "./derived_docfields";
 import "./email_extensions";
 import "./email_mjml";
 import "./email_composer";
+import "./print_templates";

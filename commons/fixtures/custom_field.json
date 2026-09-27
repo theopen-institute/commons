@@ -674,5 +674,44 @@
   "read_only": 1,
   "search_index": 1,
   "description": "The Notification whose email this is, when it is one. Set by Commons as the email is queued."
+ },
+ {
+  "doctype": "Custom Field",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Web Template",
+  "name": "Web Template-print_section",
+  "fieldname": "print_section",
+  "label": "Print",
+  "fieldtype": "Section Break",
+  "insert_after": "fields",
+  "collapsible": 1,
+  "description": "For a template printed from Print Formats with <code>{{ render_web_template(\"Template Name\", doc) }}</code>, one per doctype that shares the layout. <b>Test PDF</b> in the toolbar prints it with the Test Values below."
+ },
+ {
+  "doctype": "Custom Field",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Web Template",
+  "name": "Web Template-context_prep",
+  "fieldname": "context_prep",
+  "label": "Context Prep",
+  "fieldtype": "Code",
+  "options": "Python",
+  "insert_after": "print_section",
+  "description": "Python run in the Server Script sandbox before each print, with the printed document as <code>doc</code>. Set <code>values</code> to a dict; its keys are the template's variables. Left empty, the template is given <code>doc</code>. Only a Script Manager may change it."
+ },
+ {
+  "doctype": "Custom Field",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Web Template",
+  "name": "Web Template-test_values",
+  "fieldname": "test_values",
+  "label": "Test Values",
+  "fieldtype": "Code",
+  "options": "JSON",
+  "insert_after": "context_prep",
+  "description": "What Test PDF renders the template with: a JSON object standing in for what Context Prep returns. <b>Fill from a Record</b> writes it from a real document."
  }
 ]
