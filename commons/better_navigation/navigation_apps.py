@@ -22,7 +22,9 @@ appearing beside it: in its own Rail Order, under its own title, roles and
 mark, falling back to the app's hooks for the logo and the frontend. Its
 sidebars table either adds to what the app already holds (and relabels
 anything it lists) or, set to Replace, is the whole list, and what the app
-would have held goes to Other. Hidden takes it off the rail, and its sidebars
+would have held goes to Other. The table's row order is the order the rail
+lists them in; only what nobody has put in order is sorted, landing module
+first (see `_default_order`). Hidden takes it off the rail, and its sidebars
 with it. "Other" is bindable like any installed app: the one group no hooks
 describe, but as much the site's to rename, restrict or hide.
 
@@ -77,6 +79,9 @@ OTHER_LOGO = "/assets/commons/images/commons-other-logo.svg"
 # what the app already holds, or replaces it.
 ADD = "Add"
 REPLACE = "Replace"
+
+# The module an app starts from, when its name does not say so already.
+HOME = "home"
 
 
 # The site-level half of the rail: everything `resolve` reads except the user.
@@ -225,9 +230,13 @@ def resolve(
 	rail: list[dict] = []
 	for index, app in enumerate(configured):
 		target = next((t for t, i in bound.items() if i == index), None)
+		meta = app_meta.get(target) or {}
+		# Listed rows in the table's order, then (Add) what the app already held,
+		# in the default order.
 		entries = list(claims[index])
 		if target and app.get("sidebar_mode") != REPLACE:
-			entries += grouped.get(target) or []
+			names = {app["title"], meta.get("title") or target, target}
+			entries += _default_order(grouped.get(target) or [], names)
 
 		# Hidden, or restricted to roles this user lacks: off the rail, and what it
 		# holds goes with it rather than back to an installed app.
@@ -237,7 +246,6 @@ def resolve(
 		if roles and not roles & user_roles:
 			continue
 
-		meta = app_meta.get(target) or {}
 		own_mark = app.get("logo") or app.get("icon")
 		frontend = _frontend(
 			app["title"],
@@ -254,7 +262,7 @@ def resolve(
 					"icon": app.get("icon") or None,
 					"logo": app.get("logo") or (None if own_mark else _default_logo(target, meta)),
 					"configured": True,
-					"sidebars": sorted(entries, key=_by_label),
+					"sidebars": entries,
 					"frontend": frontend,
 				}
 			)
@@ -275,7 +283,7 @@ def resolve(
 				"icon": None,
 				"logo": _default_logo(app_name, meta),
 				"configured": False,
-				"sidebars": sorted(entries, key=_by_label),
+				"sidebars": _default_order(entries, {title, app_name}),
 				"frontend": frontend,
 			}
 		)
@@ -314,9 +322,25 @@ def installed_app_of(sidebar: dict, module_apps: dict[str, str]) -> str | None:
 	return module_apps.get(module)
 
 
-def _by_label(entry: dict) -> str:
-	"""Modules are always listed alphabetically, by what the menus call them."""
-	return entry["label"].casefold()
+def _default_order(entries: list[dict], app_names: set[str]) -> list[dict]:
+	"""Modules nobody has put in order: the app's landing module, then the rest.
+
+	Workspace Sidebar has no order of its own, and the only one core has, the
+	Desktop Icons' `idx`, is a rail's worth of ties. So alphabetical, by what
+	the menus call them -- except that a module called "Home", or called what
+	the app is (Education's "Education", Lending's "Lending"), is where the app
+	starts, and goes first. Home before the app-named one if an app has both.
+	A Navigation App's sidebars table is an order someone chose, and is never
+	passed through this.
+	"""
+	names = {name.casefold() for name in app_names if name}
+
+	def rank(entry: dict) -> tuple[int, str]:
+		keys = {entry["sidebar"].casefold(), entry["label"].casefold()}
+		landing = 0 if HOME in keys else 1 if keys & names else 2
+		return landing, entry["label"].casefold()
+
+	return sorted(entries, key=rank)
 
 
 def _entry(sidebar: dict, label: str | None = None) -> dict:

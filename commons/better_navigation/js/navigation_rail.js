@@ -8,9 +8,10 @@
  *     (bottom)
  *     Search, Notifications, To Do, Website
  *
- * A module is a Workspace Sidebar, and an app's modules are always listed
- * alphabetically (the server sorts them). What picking an app does depends on
- * "Open Last Module", a per-browser choice under Display, next to the theme:
+ * A module is a Workspace Sidebar, listed in the order the server gives: a
+ * Navigation App's own table order, else the app's landing module (Home, or
+ * the one named after the app) first and the rest alphabetically. What picking
+ * an app does depends on "Open Last Module", a per-browser choice under Display, next to the theme:
  *
  *   on   the app opens the module you were last in, or its first module on a
  *        first visit.
@@ -96,7 +97,7 @@
 		.filter((app) => app.sidebars.length || app.frontend);
 
 	// What an app offers: its own frontend if it has one, first and apart, then
-	// its modules in the server's alphabetical order. The frontend leaves the
+	// its modules in the server's order. The frontend leaves the
 	// desk, so it stands outside the modules' flow rather than sorting in among
 	// them, marked as a way out.
 	function choices(app) {

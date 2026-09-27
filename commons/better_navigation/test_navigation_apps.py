@@ -99,13 +99,13 @@ class TestFallback(TestCase):
 
 
 class TestConfigured(TestCase):
-	def test_configured_apps_come_first_with_their_modules_alphabetical(self):
+	def test_configured_apps_come_first_with_their_modules_in_table_order(self):
 		result = rail([app("Finance", "Stock", "Accounting"), app("School", "Students", "Assessments")])
 		self.assertEqual(
 			shape(result),
 			[
-				("Finance", ["Accounting", "Stock"]),
-				("School", ["Assessments", "Students"]),
+				("Finance", ["Stock", "Accounting"]),
+				("School", ["Students", "Assessments"]),
 				("Frappe Framework", ["Users"]),
 				# Emptied by the claims above, so gone rather than drawn empty.
 				("Education", ["Education"]),
@@ -119,11 +119,9 @@ class TestConfigured(TestCase):
 		entry = rail([app("Finance", "Accounting", labels={"Accounting": "Books"})])[0]
 		self.assertEqual(entry["sidebars"][0], {"sidebar": "Accounting", "label": "Books", "icon": None})
 
-	def test_modules_sort_by_the_label_the_menu_shows(self):
-		entry = rail(
-			[app("Finance", "Accounting", "Stock", labels={"Stock": "Inventory", "Accounting": "Books"})]
-		)[0]
-		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Books", "Inventory"])
+	def test_a_relabelled_row_keeps_its_place_in_the_table(self):
+		entry = rail([app("Finance", "Stock", "Accounting", labels={"Stock": "Zebra"})])[0]
+		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Zebra", "Accounting"])
 
 	def test_first_claim_wins(self):
 		result = rail([app("Finance", "Stock"), app("Warehouse", "Stock", "Accounting")])
@@ -238,7 +236,8 @@ class TestBoundApps(TestCase):
 	def test_add_mode_adds_and_relabels(self):
 		books = bound("Books", "erpnext", "Stock", "Students", labels={"Stock": "Inventory"})
 		entry = rail([books])[0]
-		self.assertEqual([s["sidebar"] for s in entry["sidebars"]], ["Accounting", "Stock", "Students"])
+		# The listed ones in table order, then what ERPNext already held.
+		self.assertEqual([s["sidebar"] for s in entry["sidebars"]], ["Stock", "Students", "Accounting"])
 		self.assertEqual(next(s for s in entry["sidebars"] if s["sidebar"] == "Stock")["label"], "Inventory")
 		# Claimed away from Education.
 		self.assertIn(("Education", ["Education"]), shape(rail([books])))
@@ -306,6 +305,43 @@ class TestBoundApps(TestCase):
 		result = rail([bound("Desk", "helpdesk", "Helpdesk")])
 		self.assertEqual(result[0]["key"], "navigation-app:Desk")
 		self.assertEqual(shape(result)[0], ("Desk", ["Helpdesk"]))
+
+
+LANDING = [
+	sidebar("Stock", app="erpnext"),
+	sidebar("Accounting", app="erpnext"),
+	sidebar("ERPNext", app="erpnext"),
+	sidebar("Home", app="erpnext"),
+	sidebar("Courses", app="education"),
+	sidebar("Education", app="education"),
+]
+
+
+class TestOrder(TestCase):
+	"""Chosen order where there is one; landing module, then alphabetical, where not."""
+
+	def test_home_then_the_app_named_module_go_first(self):
+		result = shape(rail(sidebars=LANDING))
+		self.assertIn(("ERPNext", ["Home", "ERPNext", "Accounting", "Stock"]), result)
+		self.assertIn(("Education", ["Education", "Courses"]), result)
+
+	def test_a_landing_module_by_its_label_counts_too(self):
+		entry = rail([bound("Books", "erpnext", "Stock", labels={"Stock": "Home"})], sidebars=LANDING)[0]
+		# Listed, so its row decides -- it is first because it is the only row.
+		self.assertEqual(
+			[s["sidebar"] for s in entry["sidebars"]], ["Stock", "Home", "ERPNext", "Accounting"]
+		)
+
+	def test_the_table_order_is_kept_and_the_rest_follow(self):
+		entry = rail([bound("Books", "erpnext", "Stock", "Accounting")], sidebars=LANDING)[0]
+		# The record is called Books, but the app is still ERPNext: its module still lands first.
+		self.assertEqual(
+			[s["sidebar"] for s in entry["sidebars"]], ["Stock", "Accounting", "Home", "ERPNext"]
+		)
+
+	def test_a_synthetic_app_is_only_its_table(self):
+		entry = rail([app("Finance", "Stock", "Home", "Accounting")], sidebars=LANDING)[0]
+		self.assertEqual([s["sidebar"] for s in entry["sidebars"]], ["Stock", "Home", "Accounting"])
 
 
 class TestFrontends(TestCase):
