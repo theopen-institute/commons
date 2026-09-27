@@ -476,10 +476,15 @@ class TestTheCaptureRow(TestCase):
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertNotIn("capture", [row["key"] for row in rows])
 
-	def test_is_absent_without_erpnext(self):
-		with_documents(self, [], [], absent=("Purchase Invoice",), claude_key=True)
+	def test_is_absent_without_erpnext_and_hrms(self):
+		with_documents(self, [], [], absent=("Purchase Invoice", "Expense Claim"), claude_key=True)
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertNotIn("capture", [row["key"] for row in rows])
+
+	def test_hrms_alone_is_enough_for_receipts(self):
+		with_documents(self, [], [], absent=("Purchase Invoice",), claude_key=True)
+		rows = workspaces.workspaces()[0]["items"]
+		self.assertIn("capture", [row["key"] for row in rows])
 
 	def test_a_configured_row_names_it_by_its_desk_wording(self):
 		with_documents(

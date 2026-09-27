@@ -3,6 +3,7 @@ import {
   checks,
   draftFrom,
   draftProblems,
+  expenseLinesFrom,
   invoicePayload,
   isoDate,
   isTaxed,
@@ -11,6 +12,7 @@ import {
   rateFromTotal,
   scanProblems,
   totalMatches,
+  type ExpenseReading,
   type Reading,
   type ScannedInvoice,
   type Totals,
@@ -58,6 +60,15 @@ function reading(overrides: Partial<Reading> = {}): Reading {
       },
     ],
     model: 'claude-opus-5',
+    capture: {
+      name: 'CAP-1',
+      document_type: 'Purchase Invoice',
+      scan: '/private/files/bill.pdf',
+      file_name: 'bill.pdf',
+      subject: null,
+      sender: null,
+      owner: 'a@example.com',
+    },
     ...overrides,
   }
 }
@@ -362,5 +373,84 @@ describe('the draft sent to the server', () => {
     draft.lines[0].expense_account = 'Utility Expenses - KC'
     draft.due_date = '2024-08-01'
     expect(draftProblems(draft).due_date).toBeDefined()
+  })
+})
+
+describe('a receipt becomes one expense each', () => {
+  const capture = {
+    name: 'CAP-1',
+    document_type: 'Expense Claim' as const,
+    scan: '/private/files/r.jpg',
+    file_name: 'r.jpg',
+    subject: null,
+    sender: null,
+    owner: 'a@example.com',
+  }
+  const reading = (expenses: ExpenseReading['extracted']['expenses'], types = ['Travel', 'Food']): ExpenseReading => ({
+    extracted: { is_receipt: true, currency: 'NPR', expenses, notes: [] },
+    defaults: {
+      employee: 'EMP-1',
+      company: 'KC',
+      currency: 'NPR',
+      approver: null,
+      expense_types: types.map((name) => ({ name, description: null })),
+    },
+    model: 'claude-opus-5',
+    capture,
+  })
+  const expense = (values: Partial<ExpenseReading['extracted']['expenses'][number]> = {}) => ({
+    merchant: null,
+    receipt_number: null,
+    date: null,
+    description: 'Taxi to the airport',
+    amount: 850,
+    expense_type: null,
+    ...values,
+  })
+
+  it('keeps the amount as printed, and leaves a missing one blank', () => {
+    const [printed, missing] = expenseLinesFrom(reading([expense(), expense({ amount: null })]), '2026-09-27')
+    expect(printed.amount).toBe(850)
+    expect(missing.amount).toBeNull()
+  })
+
+  it("keeps Claude's type only if the company can book to it", () => {
+    const [known, unknown] = expenseLinesFrom(
+      reading([expense({ expense_type: 'Travel' }), expense({ expense_type: 'Entertainment' })]),
+      '2026-09-27',
+    )
+    expect(known.expense_type).toBe('Travel')
+    expect(unknown.expense_type).toBe('')
+  })
+
+  it('takes the only type there is', () => {
+    const [line] = expenseLinesFrom(reading([expense()], ['Travel']), '2026-09-27')
+    expect(line.expense_type).toBe('Travel')
+  })
+
+  it('converts a Bikram Sambat date, and says so when one is not a date', () => {
+    const [bs, bad] = expenseLinesFrom(
+      reading([
+        expense({ date: { printed: '2083/06/11', year: 2083, month: 6, day: 11, calendar: 'BS' } }),
+        expense({ date: { printed: '31/02/2026', year: 2026, month: 2, day: 31, calendar: 'AD' } }),
+      ]),
+      '2026-09-27',
+    )
+    expect(bs.expense_date).toBe(isoDate({ printed: '', year: 2083, month: 6, day: 11, calendar: 'BS' }))
+    expect(bs.printed).toBe('')
+    expect(bad.expense_date).toBe('2026-09-27')
+    expect(bad.printed).toContain('31/02/2026')
+  })
+
+  it('names the merchant once', () => {
+    const [named, already] = expenseLinesFrom(
+      reading([
+        expense({ merchant: 'Pathao', description: 'Ride to office' }),
+        expense({ merchant: 'Bhojan Griha', description: 'Lunch at Bhojan Griha' }),
+      ]),
+      '2026-09-27',
+    )
+    expect(named.description).toBe('Ride to office (Pathao)')
+    expect(already.description).toBe('Lunch at Bhojan Griha')
   })
 })

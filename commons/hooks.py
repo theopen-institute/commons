@@ -295,6 +295,9 @@ awesomebar_search = ["commons.better_navigation.search.awesomebar_results"]
 # nobody has gated.
 permission_query_conditions = {
 	"*": "commons.safer_permissions.permissions.permission_query_conditions",
+	# Purchase invoice captures to the accounts team, receipts to their sender.
+	# See `commons.document_capture.capture`.
+	"Captured Document": "commons.document_capture.capture.permission_query_conditions",
 }
 
 has_permission = {
@@ -303,6 +306,7 @@ has_permission = {
 	# may access the report read them. Core registers its own hook for this
 	# doctype too; both are consulted, and either can deny.
 	"Prepared Report": "commons.safer_permissions.permissions.has_prepared_report_permission",
+	"Captured Document": "commons.document_capture.capture.has_permission",
 }
 
 # Document Events

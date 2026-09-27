@@ -87,13 +87,106 @@ export interface CompanyRow {
   default_currency: string | null
 }
 
-/** What `read_invoice` answers. */
+/** The `Captured Document` a reading is of, as the dialogs show it. */
+export interface CaptureInfo {
+  name: string
+  document_type: 'Purchase Invoice' | 'Expense Claim'
+  /** The stored scan's URL, private, readable by whoever may read the capture. */
+  scan: string | null
+  file_name: string
+  subject: string | null
+  sender: string | null
+  owner: string
+}
+
+/** What `capture.status` and `capture.open_capture` answer for an invoice:
+ *  the reading, matched to this site as the viewer may see it. */
 export interface Reading {
   extracted: ScannedInvoice
   companies: CompanyRow[]
   company: { name: string | null; reason: string | null }
   suppliers: SupplierCandidate[]
-  model: string
+  model: string | null
+  capture: CaptureInfo
+}
+
+/* -------------------------------------------------------------------------- */
+/* Receipts                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** One receipt, as `expense_claim.schema` asks for it. */
+export interface ScannedExpense {
+  merchant: string | null
+  receipt_number: string | null
+  date: ScannedDate | null
+  description: string
+  /** The total paid, as printed. */
+  amount: number | null
+  /** Claude's pick from the site's types, or null. */
+  expense_type: string | null
+}
+
+export interface ScannedReceipts {
+  is_receipt: boolean
+  currency: string | null
+  expenses: ScannedExpense[]
+  notes: string[]
+}
+
+/** What a blank claim of the viewer's opens with; `get_expense_claim_defaults`. */
+export interface ExpenseDefaults {
+  employee: string | null
+  company: string | null
+  currency: string | null
+  approver: string | null
+  expense_types: { name: string; description: string | null }[]
+}
+
+export interface ExpenseReading {
+  extracted: ScannedReceipts
+  defaults: ExpenseDefaults
+  model: string | null
+  capture: CaptureInfo
+}
+
+export interface ExpenseDraftLine {
+  key: number
+  expense_date: string
+  expense_type: string
+  description: string
+  /** As printed, or null for the claimant to enter. Never worked out. */
+  amount: number | null
+  /** What the scan printed for the date, when it was not a date. */
+  printed: string
+}
+
+/**
+ * The claim's lines, one per receipt, from what was read.
+ *
+ * The type is kept only when it is one the claimant's company can book to,
+ * or the only one there is; otherwise it is left for them to pick. The date
+ * is the receipt's, converted from Bikram Sambat where it was printed so,
+ * and today's where there is none to read.
+ */
+export function expenseLinesFrom(reading: ExpenseReading, today: string): ExpenseDraftLine[] {
+  const types = reading.defaults.expense_types.map((type) => type.name)
+  const only = types.length === 1 ? types[0] : ''
+  return reading.extracted.expenses.map((expense) => {
+    const date = isoDate(expense.date)
+    const merchant = expense.merchant?.trim()
+    const description = expense.description.trim()
+    return {
+      key: nextKey++,
+      expense_date: date ?? today,
+      expense_type: expense.expense_type && types.includes(expense.expense_type) ? expense.expense_type : only,
+      description:
+        merchant && !description.toLowerCase().includes(merchant.toLowerCase())
+          ? `${description} (${merchant})`
+          : description,
+      amount: expense.amount,
+      printed: expense.date && !date ? printedDate(expense.date) : '',
+    }
+  })
 }
 
 export interface DraftLine {

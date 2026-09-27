@@ -2,9 +2,9 @@
 
 Site-less, like `banking.test_reconciliation`. What is pinned here is the part
 that fails quietly: a supplier chosen for the reader that is not the one on the
-invoice, an account guessed where the history had an answer, last invoice's
-fixed tax amount copied onto this one, and a read billed to the site for
-somebody who was never going to be allowed to save it.
+invoice, an account guessed where the history had an answer, and last
+invoice's fixed tax amount copied onto this one. What is billed, and for whom,
+is `test_capture`'s.
 
 That the draft inserts, and that ERPNext's totals come out right, was checked
 against register.localhost's own invoices (see `purchase_invoice.py`), and is
@@ -61,64 +61,6 @@ class TestWhetherTheSiteHasIt(TestCase):
 
 
 @patch.object(capture.frappe, "throw", _raise)
-class TestNothingIsReadForSomebodyWhoCannotSave(TestCase):
-	"""Every read is billed, so the refusal has to come before the job is
-	queued."""
-
-	def request(self, content=b"%PDF-1.7"):
-		return SimpleNamespace(files={"file": SimpleNamespace(stream=SimpleNamespace(read=lambda: content))})
-
-	def test_no_permission_no_read(self):
-		with (
-			patch.object(capture, "available", return_value=True),
-			patch.object(capture, "can_capture", return_value=False),
-			patch.object(capture.READING, "start") as start,
-		):
-			with self.assertRaises(frappe.PermissionError):
-				capture.start_reading()
-		start.assert_not_called()
-
-	def test_past_the_hourly_limit_no_read(self):
-		cache = SimpleNamespace(
-			make_key=lambda key: key,
-			incrby=lambda key, by: capture.HOURLY_LIMIT + 1,
-			expire=lambda key, seconds: None,
-		)
-		with (
-			patch.object(capture, "_require"),
-			patch.object(capture.frappe, "cache", cache, create=True),
-			patch.object(capture.frappe, "request", self.request(), create=True),
-			patch.object(capture.frappe, "session", SimpleNamespace(user="a@example.com"), create=True),
-			patch.object(capture.READING, "start") as start,
-		):
-			with self.assertRaises(frappe.RateLimitExceededError):
-				capture.start_reading()
-		start.assert_not_called()
-
-	def test_an_empty_file_is_refused_at_once_and_not_counted(self):
-		with (
-			patch.object(capture, "_require"),
-			patch.object(capture.frappe, "request", self.request(b""), create=True),
-			patch.object(capture, "_count_read") as counted,
-			patch.object(capture.READING, "start") as start,
-		):
-			with self.assertRaisesRegex(ValueError, "empty"):
-				capture.start_reading()
-		counted.assert_not_called()
-		start.assert_not_called()
-
-	def test_a_readable_scan_is_handed_to_the_job(self):
-		with (
-			patch.object(capture, "_require"),
-			patch.object(capture.frappe, "request", self.request(), create=True),
-			patch.object(capture, "_count_read"),
-			patch.object(capture.READING, "start", return_value="T") as start,
-		):
-			self.assertEqual(capture.start_reading(), {"token": "T"})
-		start.assert_called_once_with(b"%PDF-1.7", step=None, lines=0)
-
-
-@patch.object(capture.frappe, "throw", _raise)
 class TestSavingAReadDraftNeedsNoKey(TestCase):
 	"""A key removed or rotated after the scan was read must not strand the
 	draft: `suggest`, `preview` and `create` never call Claude."""
@@ -128,9 +70,7 @@ class TestSavingAReadDraftNeedsNoKey(TestCase):
 		self.enterContext(patch.object(capture.claude, "available", return_value=False))
 
 	def test_reading_still_needs_the_key(self):
-		with patch.object(capture, "can_capture", return_value=True):
-			with self.assertRaisesRegex(ValueError, "not set up"):
-				capture._require()
+		self.assertFalse(capture.available())
 
 	def test_preview_and_create_go_ahead_without_it(self):
 		built = SimpleNamespace(
@@ -181,29 +121,37 @@ class TestSavingAReadDraftNeedsNoKey(TestCase):
 
 
 class TestReadingInTheBackground(TestCase):
-	def test_reads_with_the_jobs_allowance_and_matches_what_it_read(self):
+	def test_reads_with_the_jobs_allowance_and_stores_only_what_it_read(self):
+		from commons.document_capture.capture import READ_TIMEOUT
+
 		extracted = {"buyer": {"name": "KC"}, "supplier": {"name": "Vianet"}}
 		steps = []
 		with (
 			patch.object(capture.documents, "read", return_value=extracted) as read,
-			patch.object(capture, "_companies", return_value=[]),
-			patch.object(capture, "_match_company", return_value={"name": "KC", "reason": None}),
-			patch.object(capture, "_match_suppliers", return_value=[]),
-			patch.object(capture.claude, "model", return_value="claude-opus-5"),
+			patch.object(capture, "_companies") as companies,
 		):
 			result = capture.read_scan(b"%PDF-1.7", progress=lambda **changes: steps.append(changes))
 		sent = read.call_args.kwargs
-		self.assertEqual((sent["timeout"], sent["max_tokens"]), (capture.READ_TIMEOUT, capture.MAX_TOKENS))
+		self.assertEqual((sent["timeout"], sent["max_tokens"]), (READ_TIMEOUT, capture.MAX_TOKENS))
 		self.assertGreater(capture.MAX_TOKENS, 16000)
 		self.assertIn("one invoice at a time", sent["too_long"])
+		self.assertEqual(result, extracted)
+		self.assertEqual(steps, [{"step": "reading"}])
+		# Matching is the viewer's, when the reading is opened, not the job's.
+		companies.assert_not_called()
+
+	def test_opening_matches_what_was_read_for_the_viewer(self):
+		extracted = {"buyer": {"name": "KC"}, "supplier": {"name": "Vianet"}}
+		with (
+			patch.object(capture, "_require_drafting"),
+			patch.object(capture, "_companies", return_value=[]),
+			patch.object(capture, "_match_company", return_value={"name": "KC", "reason": None}),
+			patch.object(capture, "_match_suppliers", return_value=[]) as suppliers,
+		):
+			result = capture.reading(None, extracted)
 		self.assertEqual(result["extracted"], extracted)
 		self.assertEqual(result["company"]["name"], "KC")
-		self.assertEqual(steps, [{"step": "reading"}, {"step": "matching"}])
-
-	def test_the_job_may_run_as_long_as_the_read_and_more(self):
-		self.assertGreater(capture.JOB_TIMEOUT, capture.READ_TIMEOUT)
-		self.assertEqual(capture.READING.timeout, capture.JOB_TIMEOUT)
-		self.assertEqual(capture.READING.method, f"{capture.__name__}.run_reading")
+		suppliers.assert_called_once_with({"name": "Vianet"})
 
 
 class TestSimilarity(TestCase):

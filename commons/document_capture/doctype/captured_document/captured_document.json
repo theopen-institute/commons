@@ -1,0 +1,303 @@
+{
+ "actions": [],
+ "autoname": "CAP-.YYYY.-.#####",
+ "creation": "2026-09-27 18:00:00.000000",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "email_append_to": 1,
+ "sender_field": "sender",
+ "sender_name_field": "sender_name",
+ "recipient_account_field": "email_account",
+ "engine": "InnoDB",
+ "field_order": [
+  "document_section",
+  "document_type",
+  "scan",
+  "column_break_status",
+  "status",
+  "source",
+  "draft_doctype",
+  "draft_name",
+  "error",
+  "email_section",
+  "sender",
+  "sender_name",
+  "subject",
+  "column_break_email",
+  "email_account",
+  "communication",
+  "reading_section",
+  "model",
+  "queued_at",
+  "column_break_reading",
+  "read_started",
+  "read_at",
+  "extracted_section",
+  "extracted"
+ ],
+ "fields": [
+  {
+   "fieldname": "document_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Select",
+   "label": "Document Type",
+   "options": "Purchase Invoice\nExpense Claim",
+   "default": "Purchase Invoice",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "What the scan is drafted as. Change it before the scan is read, not after: a reading is only of one kind."
+  },
+  {
+   "fieldname": "scan",
+   "fieldtype": "Attach",
+   "label": "Scan",
+   "description": "The PDF or image that is read. One document per capture."
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Received\nUnread\nQueued\nReading\nRead\nFailed\nDrafted\nDiscarded",
+   "default": "Unread",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Source",
+   "options": "Upload\nEmail",
+   "default": "Upload",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "draft_doctype",
+   "fieldtype": "Link",
+   "label": "Draft Type",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "draft_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Draft",
+   "options": "draft_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Why It Was Not Read",
+   "read_only": 1,
+   "depends_on": "eval:doc.error"
+  },
+  {
+   "fieldname": "email_section",
+   "fieldtype": "Section Break",
+   "label": "Email",
+   "depends_on": "eval:doc.source=='Email'",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "sender",
+   "fieldtype": "Data",
+   "label": "Sender",
+   "options": "Email",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "sender_name",
+   "fieldtype": "Data",
+   "label": "Sender Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "label": "Title",
+   "length": 140,
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "The email's subject, or the name of the file that was uploaded."
+  },
+  {
+   "fieldname": "column_break_email",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "email_account",
+   "fieldtype": "Link",
+   "label": "Email Account",
+   "options": "Email Account",
+   "read_only": 1
+  },
+  {
+   "fieldname": "communication",
+   "fieldtype": "Link",
+   "label": "Email",
+   "options": "Communication",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reading_section",
+   "fieldtype": "Section Break",
+   "label": "Reading",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Read By",
+   "read_only": 1
+  },
+  {
+   "fieldname": "queued_at",
+   "fieldtype": "Datetime",
+   "label": "Queued At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_reading",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "read_started",
+   "fieldtype": "Datetime",
+   "label": "Reading Started",
+   "read_only": 1
+  },
+  {
+   "fieldname": "read_at",
+   "fieldtype": "Datetime",
+   "label": "Read At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "extracted_section",
+   "fieldtype": "Section Break",
+   "collapsible": 1,
+   "label": "What Claude Read"
+  },
+  {
+   "fieldname": "extracted",
+   "fieldtype": "JSON",
+   "label": "Extracted",
+   "read_only": 1,
+   "description": "The scan as Claude copied it, before anybody checked it. The draft is made from this in Document Capture, where it is checked against the scan."
+  }
+ ],
+ "icon": "fa fa-file-image",
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-27 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Document Capture",
+ "name": "Captured Document",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 0,
+   "cancel": 0,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "share": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "amend": 0,
+   "cancel": 0,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "share": 1,
+   "write": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "amend": 0,
+   "cancel": 0,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "share": 1,
+   "write": 1,
+   "role": "Accounts User"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "write": 1,
+   "email": 1,
+   "print": 1,
+   "if_owner": 1,
+   "role": "Employee"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [
+  {
+   "color": "Gray",
+   "title": "Unread"
+  },
+  {
+   "color": "Blue",
+   "title": "Queued"
+  },
+  {
+   "color": "Blue",
+   "title": "Reading"
+  },
+  {
+   "color": "Orange",
+   "title": "Read"
+  },
+  {
+   "color": "Red",
+   "title": "Failed"
+  },
+  {
+   "color": "Green",
+   "title": "Drafted"
+  },
+  {
+   "color": "Gray",
+   "title": "Discarded"
+  },
+  {
+   "color": "Gray",
+   "title": "Received"
+  }
+ ],
+ "title_field": "subject",
+ "track_changes": 1
+}

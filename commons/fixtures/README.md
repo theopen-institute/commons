@@ -15,7 +15,7 @@ rewritten.
 
 | File | What it holds |
 | --- | --- |
-| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, two on Web Template, and the derived fields it adds to its own |
+| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, one on Email Account, two on Web Template, and the derived fields it adds to its own |
 | `custom_field_education.json` | The four fields the attendance register adds to Education's doctypes |
 | `custom_field_erpnext.json` | The four fields the requests section adds to ERPNext's doctypes |
 | `property_setter.json` | The image and title fields of this app's member doctypes, and which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification, and the fieldtypes a Web Template's inputs may have |
@@ -162,6 +162,13 @@ are one record, edited on the form Frappe already has for it. A plain section,
 not a collapsed one, so the description is in view. Test PDF's values are
 deliberately not a field: they are often a real record's figures, and are kept
 nowhere.
+
+**`Email Account.capture_document_type`** — what the scans emailed to an
+account whose Append To is Captured Document become: purchase invoices or
+expense receipts. One account per kind, bills@ and receipts@ say, rather than
+Claude guessing from the scan, which would be billed for and sometimes wrong.
+Read by `commons.document_capture.capture.sort_email`. Shown only while the
+account appends to Captured Document.
 
 ### This app's own doctypes (`custom_field.json`)
 

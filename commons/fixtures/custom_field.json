@@ -699,5 +699,20 @@
   "options": "Python",
   "insert_after": "print_section",
   "description": "Python run in the Server Script sandbox before each print. The inputs are in <code>inputs</code> (for example <code>inputs.student</code>), and the printed document in <code>doc</code> when the Print Format passes one. Set <code>values</code> to a dict; its keys are the template's variables. Left empty, the template is given the inputs themselves. Only a Script Manager may change it."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Email Account-capture_document_type",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Email Account",
+  "fieldname": "capture_document_type",
+  "label": "Captures Become",
+  "fieldtype": "Select",
+  "options": "Purchase Invoice\nExpense Claim",
+  "default": "Purchase Invoice",
+  "insert_after": "append_to",
+  "depends_on": "eval:doc.append_to=='Captured Document'",
+  "description": "What the scans emailed to this account are drafted as in Document Capture. They are read automatically only when the sender is a user on this site."
  }
 ]

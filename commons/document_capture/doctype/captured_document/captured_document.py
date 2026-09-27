@@ -1,0 +1,91 @@
+"""One scan waiting to become a draft, and what Claude read off it.
+
+The record is the scan's holding place, from the moment it arrives until a
+person has made a draft from it or thrown it away. What happens to it is in
+`commons.document_capture.capture`, and this controller only keeps the record
+consistent with itself.
+
+The statuses, in the order a capture usually passes through them:
+
+* `Received`: an email created it, and its attachments have not been sorted
+  yet. `capture.sort_email` settles it within moments.
+* `Unread`: held with nothing read. An upload that was never sent to be read,
+  an email from somebody who is not a user here, or an email with no PDF or
+  image on it.
+* `Queued`, `Reading`: a background job has it. Claude's reading is billed,
+  so there is only ever one job per capture.
+* `Read`: `extracted` holds what Claude copied, waiting for a person to check it
+  against the scan and make the draft.
+* `Failed`: the reading went wrong, and `error` says how. The scan is kept, so
+  it can be read again without being sent again.
+* `Drafted`: a draft was made from it, `draft_doctype` and `draft_name` say
+  which, and the scan is attached to that draft too.
+* `Discarded`: somebody decided it was not worth a draft. Kept rather than
+  deleted, so the email it came from still points at something.
+"""
+
+import frappe
+from frappe import _
+from frappe.model.document import Document
+
+# A capture in these statuses has a job that may still write to it, or has
+# already become a draft, so what it is and what it holds are settled.
+SETTLED = ("Queued", "Reading", "Drafted")
+
+
+class CapturedDocument(Document):
+	# begin: auto-generated types
+	# This code is auto-generated. Do not modify anything in this block.
+
+	from typing import TYPE_CHECKING
+
+	if TYPE_CHECKING:
+		from frappe.types import DF
+
+		communication: DF.Link | None
+		document_type: DF.Literal["Purchase Invoice", "Expense Claim"]
+		draft_doctype: DF.Link | None
+		draft_name: DF.DynamicLink | None
+		email_account: DF.Link | None
+		error: DF.SmallText | None
+		extracted: DF.JSON | None
+		model: DF.Data | None
+		queued_at: DF.Datetime | None
+		read_at: DF.Datetime | None
+		read_started: DF.Datetime | None
+		scan: DF.Attach | None
+		sender: DF.Data | None
+		sender_name: DF.Data | None
+		source: DF.Literal["Upload", "Email"]
+		status: DF.Literal[
+			"Received", "Unread", "Queued", "Reading", "Read", "Failed", "Drafted", "Discarded"
+		]
+		subject: DF.Data | None
+	# end: auto-generated types
+
+	def before_insert(self):
+		# Frappe's inbound mail makes the record with only the sender and the
+		# account filled in (`InboundMail._create_reference_document`), before
+		# the email's attachments are saved. Marked so `capture.sort_email` can
+		# tell it from an upload, and from a capture a reply was threaded onto.
+		if self.email_account and not self.scan and not self.flags.sorted_email:
+			self.source = "Email"
+			self.status = "Received"
+
+	def after_insert(self):
+		if self.status == "Received":
+			from commons.document_capture import capture
+
+			capture.queue_email_sorting(self.name)
+
+	def validate(self):
+		before = self.get_doc_before_save()
+		if not before or before.status not in SETTLED:
+			return
+		for field in ("document_type", "scan"):
+			if self.has_value_changed(field):
+				frappe.throw(
+					_("{0} can no longer be changed: this capture is {1}.").format(
+						_(self.meta.get_label(field)), _(before.status).lower()
+					)
+				)

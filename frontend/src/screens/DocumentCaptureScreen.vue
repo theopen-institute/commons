@@ -1,21 +1,48 @@
 <template>
 	<div class="px-5 py-4">
-		<!-- The sidebar hides this page from anybody who cannot create a Purchase
-         Invoice, so only somebody following a link lands here. -->
+		<!-- The sidebar hides this page from anybody who can draft neither kind,
+         so only somebody following a link lands here. -->
 		<div v-if="captureGate.resolved.value && !captureCan.capture" class="mt-16 text-center">
 			<span class="lucide-lock mx-auto size-8 text-ink-gray-4" />
 			<p class="mt-2 text-base-medium text-ink-gray-7">
-				Booking purchase invoices isn't yours to do
+				There is nothing here for you to draft
 			</p>
 			<p class="mt-1 text-p-sm text-ink-gray-5">
-				This page drafts purchase invoices from scans. Ask whoever administers permissions
-				if that should include you.
+				This page drafts purchase invoices and expense claims from scans. Ask whoever
+				administers permissions if that should include you.
 			</p>
 		</div>
 
 		<div v-else class="mx-auto max-w-3xl">
-			<!-- The one thing the page does. Choosing a file reads it; nothing is
-           written to the site until the draft is created in the dialog. -->
+			<!-- What the scan should become, when this person may make both. -->
+			<div
+				v-if="captureCan.kinds.length > 1"
+				class="mb-3 grid gap-2 sm:grid-cols-2"
+				role="radiogroup"
+				aria-label="What the scan is"
+			>
+				<button
+					v-for="kind in captureCan.kinds"
+					:key="kind"
+					type="button"
+					role="radio"
+					:aria-checked="uploadKind === kind"
+					class="rounded-4 border px-4 py-3 text-left transition-colors"
+					:class="
+						uploadKind === kind
+							? 'border-outline-gray-4 bg-surface-gray-2'
+							: 'border-outline-gray-2 hover:bg-surface-gray-1'
+					"
+					:disabled="reading.busy"
+					@click="uploadKind = kind"
+				>
+					<p class="text-base-medium text-ink-gray-8">{{ KIND_LABELS[kind].noun }}</p>
+					<p class="mt-0.5 text-p-sm text-ink-gray-5">{{ KIND_LABELS[kind].hint }}</p>
+				</button>
+			</div>
+
+			<!-- Choosing a file stores it as a capture and reads it; the draft is
+           only made in the dialog that opens. -->
 			<section
 				class="rounded-4 border-2 border-dashed px-6 py-8 text-center transition-colors"
 				:class="
@@ -39,11 +66,21 @@
 				</template>
 				<template v-else>
 					<span class="lucide-scan-text mx-auto size-8 text-ink-gray-5" />
-					<p class="mt-2 text-base-medium text-ink-gray-8">Scan a supplier's invoice</p>
+					<p class="mt-2 text-base-medium text-ink-gray-8">
+						Scan
+						{{ uploadKind === EXPENSE_CLAIM ? 'a receipt' : "a supplier's invoice" }}
+					</p>
 					<p class="mx-auto mt-1 max-w-md text-p-sm text-ink-gray-5">
-						A photo or a PDF of one invoice. Claude reads it and drafts a purchase
-						invoice for you to check against the scan, and the scan is attached to the
-						draft.
+						<template v-if="uploadKind === EXPENSE_CLAIM">
+							A photo or a PDF of what you paid for. Claude reads it and drafts your
+							expense claim for you to check, and the receipt is attached to the
+							claim.
+						</template>
+						<template v-else>
+							A photo or a PDF of one invoice. Claude reads it and drafts a purchase
+							invoice for you to check against the scan, and the scan is attached to
+							the draft.
+						</template>
 					</p>
 					<Button
 						class="mt-4"
@@ -68,42 +105,85 @@
 
 			<ErrorMessage v-if="reading.error" :message="reading.error" class="mt-3" />
 
-			<!-- A reading is paid for, so closing the dialog does not throw it away. -->
-			<section
-				v-if="reading.result && !dialogOpen && !reading.busy"
-				class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-4 border border-outline-gray-2 px-4 py-3"
-			>
-				<div class="min-w-0">
-					<p class="truncate text-base-medium text-ink-gray-8">
-						{{ reading.result.extracted.supplier.name || reading.file?.name }}
-					</p>
-					<p class="text-p-sm text-ink-gray-5">
-						Read, not yet saved<template
-							v-if="reading.result.extracted.total !== null"
-						>
-							·
-							{{
-								formatExact(
-									reading.result.extracted.total,
-									reading.result.extracted.currency
-								)
-							}}</template
-						>
-					</p>
-				</div>
-				<div class="flex shrink-0 gap-2">
-					<Button variant="ghost" label="Discard" @click="discard" />
-					<Button
-						variant="subtle"
-						label="Continue checking"
-						@click="dialogOpen = true"
-					/>
-				</div>
-			</section>
-
+			<!-- Every scan is kept as a capture until it is drafted or discarded,
+           so a closed dialog, a failed read or an emailed scan waits here. A
+           click only opens a dialog; reading and discarding are its buttons. -->
 			<section class="mt-8">
 				<div class="flex items-center justify-between">
-					<h2 class="text-base-medium text-ink-gray-8">Your drafts</h2>
+					<h2 class="text-base-medium text-ink-gray-8">Waiting to be checked</h2>
+					<Button
+						variant="ghost"
+						icon-left="lucide-refresh-cw"
+						label="Refresh"
+						:loading="waiting.loading.value"
+						@click="waiting.load()"
+					/>
+				</div>
+				<p class="mt-1 text-p-sm text-ink-gray-5">
+					Scans uploaded here or emailed in that are not drafts yet. Open one to check it
+					and make the draft, or to read it again.
+				</p>
+
+				<ErrorMessage
+					v-if="waiting.error.value"
+					:message="waiting.error.value.message"
+					class="mt-3"
+				/>
+
+				<div v-if="!waiting.loaded.value" class="mt-3 space-y-2">
+					<Skeleton v-for="n in 2" :key="n" class="h-14 w-full rounded-4" />
+				</div>
+
+				<p
+					v-else-if="!waiting.rows.value.length"
+					class="mt-6 text-center text-p-sm text-ink-gray-5"
+				>
+					Nothing waiting.
+				</p>
+
+				<ul
+					v-else
+					class="mt-3 divide-y divide-outline-gray-1 rounded-4 border border-outline-gray-1"
+				>
+					<li v-for="row in waiting.rows.value" :key="row.name">
+						<button
+							type="button"
+							class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-gray-1 disabled:cursor-default disabled:hover:bg-transparent"
+							:disabled="
+								row.state === 'queued' ||
+								row.state === 'reading' ||
+								row.state === 'received'
+							"
+							@click="openRow(row)"
+						>
+							<div class="min-w-0">
+								<p class="truncate text-base text-ink-gray-8">
+									{{ row.subject || row.name }}
+								</p>
+								<p class="truncate text-p-sm text-ink-gray-5">
+									{{ KIND_LABELS[row.document_type]?.noun ?? row.document_type }}
+									·
+									<template v-if="row.source === 'Email'">
+										from {{ row.sender_name || row.sender }}
+									</template>
+									<template v-else>uploaded</template>
+									{{ formatDate(row.creation) }}
+								</p>
+							</div>
+							<Badge
+								:label="STATE_LABELS[row.state].label"
+								:theme="STATE_LABELS[row.state].theme"
+								variant="subtle"
+								class="shrink-0"
+							/>
+						</button>
+					</li>
+				</ul>
+			</section>
+
+			<section v-if="captureCan.invoices" class="mt-8">
+				<div class="flex items-center justify-between">
+					<h2 class="text-base-medium text-ink-gray-8">Your draft invoices</h2>
 					<Button
 						variant="ghost"
 						icon-left="lucide-refresh-cw"
@@ -168,44 +248,62 @@
 		</div>
 
 		<CaptureInvoiceDialog
-			v-model:open="dialogOpen"
-			:reading="reading.result"
-			:file="reading.file"
+			v-model:open="invoiceOpen"
+			:reading="invoiceReading"
 			@created="onCreated"
+		/>
+		<CaptureExpenseDialog
+			v-model:open="expenseOpen"
+			:reading="expenseReading"
+			@created="onCreated"
+		/>
+		<CaptureDetailsDialog
+			v-model:open="detailsOpen"
+			:capture="detailsRow"
+			@queued="onQueued"
+			@discarded="waiting.load()"
 		/>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
-import { Button, ErrorMessage, LoadingIndicator, Skeleton } from 'frappe-ui'
+import { onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { Badge, Button, ErrorMessage, LoadingIndicator, Skeleton, toast } from 'frappe-ui'
+import CaptureDetailsDialog from '@/components/CaptureDetailsDialog.vue'
+import CaptureExpenseDialog from '@/components/CaptureExpenseDialog.vue'
 import CaptureInvoiceDialog from '@/components/CaptureInvoiceDialog.vue'
 import {
 	ACCEPTED_SCANS,
+	EXPENSE_CLAIM,
+	KIND_LABELS,
 	PURCHASE_INVOICE,
+	ReadingCancelled,
 	captureCan,
 	captureGate,
 	deskUrl,
-	readInvoice,
 	readingProgressText,
-	type InvoiceReadingState,
+	uploadScan,
 	useMyDrafts,
+	useOpenCapture,
+	useWaitingCaptures,
+	waitForReading,
+	type CaptureKind,
+	type CaptureReadingState,
+	type CaptureRow,
+	type CaptureState,
 } from '@/data/capture'
-import type { Reading } from '@/data/captureRules'
+import type { ExpenseReading, Reading } from '@/data/captureRules'
 import type { PageAction } from '@/islands/contract'
 import { formatDate, formatExact } from '@/data/format'
 
 /**
- * Document capture: a scan in, a draft Purchase Invoice out.
+ * Document capture: a scan in, a draft Purchase Invoice or Expense Claim out.
  *
- * The page itself writes nothing. Choosing a scan sends it to be read, which
- * stores nothing either, and the dialog that opens holds the draft and has the
- * one button that saves it. See `commons.document_capture` for the order of
- * the calls, and `CaptureInvoiceDialog.vue` for the draft.
- *
- * Purchase invoices are the only document it takes so far. The page is named
- * for what it does rather than for them, because bank statements are the next
- * thing it should read.
+ * Every scan is kept as a `Captured Document` from the moment it is chosen
+ * here or emailed in, and read in the background. The page lists the ones
+ * that are not drafts yet; a click opens a dialog, and only the dialogs'
+ * buttons write anything (reading, discarding, making the draft). See
+ * `commons.document_capture` for the order of the calls.
  *
  * It draws no header. It reports its `title` and its `actions` (none), and
  * each host puts them in its own chrome: the SPA's page
@@ -228,29 +326,49 @@ const emit = defineEmits<{
 emit('title', 'Document Capture')
 emit('actions', [])
 
+const STATE_LABELS: Record<
+	CaptureState,
+	{ label: string; theme: 'gray' | 'blue' | 'amber' | 'red' }
+> = {
+	received: { label: 'Arriving', theme: 'gray' },
+	unread: { label: 'Not read', theme: 'gray' },
+	queued: { label: 'Waiting to be read', theme: 'blue' },
+	reading: { label: 'Reading', theme: 'blue' },
+	done: { label: 'Ready to check', theme: 'amber' },
+	failed: { label: 'Reading failed', theme: 'red' },
+}
+
 const drafts = useMyDrafts()
+const waiting = useWaitingCaptures()
+const opener = useOpenCapture()
+
+const uploadKind = ref<CaptureKind>(PURCHASE_INVOICE)
 
 watch(
-	() => captureCan.value.capture,
-	(can) => {
-		if (can) drafts.load()
+	() => captureCan.value.kinds,
+	(kinds) => {
+		if (kinds.length && !kinds.includes(uploadKind.value)) uploadKind.value = kinds[0]
+		if (kinds.length) waiting.load()
+		if (kinds.includes(PURCHASE_INVOICE)) drafts.load()
 	},
 	{ immediate: true }
 )
 
-/** The scan the dialog shows and the reading of it, which stay together: a
- *  failed read of a second scan leaves the first one's reading as it was. */
+/** The scan being read now, from the upload box or from a row read again. */
 const reading = reactive<{
-	file: File | null
-	result: Reading | null
+	name: string
 	pending: string
 	busy: boolean
 	error: string
-	/** The background job's latest answer while it reads, for the progress line. */
-	progress: InvoiceReadingState | null
-}>({ file: null, result: null, pending: '', busy: false, error: '', progress: null })
+	progress: CaptureReadingState | null
+}>({ name: '', pending: '', busy: false, error: '', progress: null })
 
-const dialogOpen = ref(false)
+const invoiceOpen = ref(false)
+const expenseOpen = ref(false)
+const detailsOpen = ref(false)
+const invoiceReading = ref<Reading | null>(null)
+const expenseReading = ref<ExpenseReading | null>(null)
+const detailsRow = ref<CaptureRow | null>(null)
 const dragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const justCreated = ref('')
@@ -262,45 +380,120 @@ function pick() {
 function onPicked(event: Event) {
 	const input = event.target as HTMLInputElement
 	const file = input.files?.[0]
-	// Cleared so the same file can be chosen again after a failed read.
+	// Cleared so the same file can be chosen again.
 	input.value = ''
-	if (file) read(file)
+	if (file) readFile(file)
 }
 
 function onDrop(event: DragEvent) {
 	dragging.value = false
 	const file = event.dataTransfer?.files?.[0]
-	if (file && !reading.busy) read(file)
+	if (file && !reading.busy) readFile(file)
 }
 
-async function read(file: File) {
+async function readFile(file: File) {
 	reading.busy = true
 	reading.pending = file.name
 	reading.error = ''
 	reading.progress = null
 	try {
-		const result = await readInvoice(file, {
-			onProgress: (state) => (reading.progress = state),
-		})
-		reading.file = file
-		reading.result = result
-		dialogOpen.value = true
+		const name = await uploadScan(file, uploadKind.value)
+		waiting.load()
+		await follow(name)
 	} catch (error) {
 		reading.error = error instanceof Error ? error.message : 'That scan could not be read.'
-	} finally {
 		reading.busy = false
-		reading.progress = null
 	}
 }
 
-function discard() {
-	reading.file = null
-	reading.result = null
+/** Wait for a capture's reading, then open its dialog. A failure is shown,
+ *  and the capture stays in the list to be read again. */
+async function follow(name: string) {
+	reading.busy = true
+	reading.name = name
+	reading.error = ''
+	try {
+		const result = await waitForReading(name, {
+			onProgress: (state) => (reading.progress = state),
+			cancelled: () => reading.name !== name,
+		})
+		showReading(result)
+	} catch (error) {
+		if (error instanceof ReadingCancelled) return
+		reading.error = `${
+			error instanceof Error ? error.message : 'That scan could not be read.'
+		} The scan is kept in the list below.`
+	} finally {
+		if (reading.name === name) {
+			reading.busy = false
+			reading.progress = null
+		}
+		waiting.load()
+	}
+}
+
+function showReading(result: Reading | ExpenseReading) {
+	if (result.capture.document_type === EXPENSE_CLAIM) {
+		expenseReading.value = result as ExpenseReading
+		expenseOpen.value = true
+	} else {
+		invoiceReading.value = result as Reading
+		invoiceOpen.value = true
+	}
+}
+
+async function openRow(row: CaptureRow) {
+	if (row.state === 'done') {
+		// The same reading again keeps a half-checked draft as it was left.
+		const open =
+			row.document_type === EXPENSE_CLAIM ? expenseReading.value : invoiceReading.value
+		if (open?.capture.name === row.name) {
+			showReading(open)
+			return
+		}
+		const result = await opener.submit({ name: row.name })
+		if (result) showReading(result)
+		else toast.error(opener.error?.message ?? 'That capture could not be opened.')
+		return
+	}
+	detailsRow.value = row
+	detailsOpen.value = true
+}
+
+function onQueued(name: string) {
+	const row = waiting.rows.value.find((one) => one.name === name)
+	reading.pending = row?.subject || name
+	waiting.load()
+	follow(name)
 }
 
 function onCreated(name: string) {
 	justCreated.value = name
-	discard()
-	drafts.load()
+	invoiceReading.value = null
+	expenseReading.value = null
+	waiting.load()
+	if (captureCan.value.invoices) drafts.load()
 }
+
+// A closed dialog leaves its capture read and waiting; the list says so.
+watch([invoiceOpen, expenseOpen], ([invoice, expense]) => {
+	if (!invoice && !expense) waiting.load()
+})
+
+// Emailed scans arrive and are read without this page: while any row is
+// still arriving or being read, ask again every few seconds.
+let timer: ReturnType<typeof setTimeout> | null = null
+// Watched by the list itself, which is a new array on every load, so each
+// answer that still has one in progress schedules the next.
+watch(
+	() => waiting.rows.value,
+	(rows) => {
+		if (timer) clearTimeout(timer)
+		const busy = rows.some((row) => ['received', 'queued', 'reading'].includes(row.state))
+		timer = busy ? setTimeout(() => waiting.load(), 5000) : null
+	}
+)
+onBeforeUnmount(() => {
+	if (timer) clearTimeout(timer)
+})
 </script>
