@@ -13,7 +13,7 @@ Two ways in
 `upload`
 	The page's own. The file arrives as multipart, the way Frappe's
 	`upload_file` takes one, with `doctype` saying what it should become. It is
-	saved as a private File on a new capture, and the capture is queued at once.
+	saved as a private File on a new capture, which waits unread.
 Email
 	An Email Account whose "Append To" is Captured Document. Frappe's inbound
 	mail creates the capture itself (`InboundMail._create_reference_document`),
@@ -29,14 +29,16 @@ Email
 	supplier's monthly "Invoice" would add to last month's capture rather
 	than starting its own.
 
-Who is read without being asked
--------------------------------
-A read is billed, and an email address can be written to by anybody. So an
-emailed scan is read automatically only when its sender is an enabled user
-on this site. The capture is then theirs (`owner`), within their hourly
-limit. Anything else is kept unread, with the reason in `error`, for somebody
-to read by hand from the page. The sender is whatever the From header says.
-Anything that checks it (SPF, DKIM) is the mail server's job, not this one's.
+Nothing is read until somebody asks
+-----------------------------------
+A read is billed, so no capture is read when it arrives, however it arrived.
+It waits `Unread` until a person presses Read, on the page or on the desk
+form, which is `read`, within that person's hourly limit.
+
+An emailed scan whose sender is an enabled user here is theirs (`owner`), so
+the page lists it for them and an expense receipt can be claimed by them.
+The sender is whatever the From header says. Anything that checks it (SPF,
+DKIM) is the mail server's job, not this one's.
 
 The job
 -------
@@ -159,10 +161,10 @@ def context() -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def upload() -> dict:
-	"""Take the scan in the request's `file` field and start reading it.
+	"""Keep the scan in the request's `file` field as a new capture.
 
-	`doctype` is what it should become. Answers with the new capture's name,
-	which `status` then reports on.
+	`doctype` is what it should become. Answers with the new capture's name.
+	Nothing is read: that is `read`, when the person asks for it.
 	"""
 	kind = _kind(frappe.form_dict.get("doctype"))
 	_require_reading(kind)
@@ -171,7 +173,6 @@ def upload() -> dict:
 		frappe.throw(_("Choose a scan to read."))
 	content = upload.stream.read()
 	documents.check(content)
-	_count_read(frappe.session.user)
 
 	file_name = upload.filename or "scan"
 	capture = frappe.get_doc(
@@ -197,7 +198,6 @@ def upload() -> dict:
 	)
 	scan.insert()
 	capture.db_set("scan", scan.file_url)
-	_queue(capture)
 	return {"name": capture.name}
 
 
@@ -214,8 +214,8 @@ def queue_email_sorting(name: str) -> None:
 
 
 def sort_email(name: str) -> None:
-	"""Give each PDF or image on the email a capture, and read the ones whose
-	sender is a user here.
+	"""Give each PDF or image on the email a capture, owned by the sender
+	where the sender is a user here. None of them is read.
 
 	The first scan goes on the capture Frappe made; any others get captures of
 	their own, alike in everything but the scan.
@@ -268,12 +268,6 @@ def sort_email(name: str) -> None:
 			# The sender's, so the page lists it for them and an expense
 			# receipt can be claimed by them alone.
 			frappe.db.set_value(CAPTURED_DOCUMENT, each.name, "owner", user, update_modified=False)
-		each.reload()
-		reason = _why_not_read(each, user)
-		if reason:
-			each.db_set("error", reason)
-		else:
-			_queue(each)
 
 
 def _account_kind(email_account: str | None) -> str:
@@ -313,21 +307,6 @@ def _site_user(email: str | None) -> str | None:
 		"User", {"name": email, "enabled": 1}, "name"
 	)
 	return None if user in (None, "Administrator", "Guest") else user
-
-
-def _why_not_read(capture, user: str | None) -> str | None:
-	"""Why an emailed scan is being held for a person to read, if it is."""
-	if not user:
-		return _("Not read automatically: {0} is not a user on this site.").format(capture.sender)
-	if not _kind(capture.document_type).available():
-		return _("Not read automatically: reading scans into a {0} is not set up on this site.").format(
-			_(capture.document_type)
-		)
-	if not _count_read(user, throw=False):
-		return _(
-			"Not read automatically: {0} has sent {1} scans in the last hour, which is the limit."
-		).format(user, HOURLY_LIMIT)
-	return None
 
 
 # --------------------------------------------------------------------------- #
@@ -481,23 +460,20 @@ def _failed() -> str:
 	return _("Something went wrong reading the scan.")
 
 
-def _count_read(user: str, throw: bool = True) -> bool:
+def _count_read(user: str) -> None:
 	"""Count a read against this person's hourly limit, in a rolling hour that
-	starts at their first. Past the limit, refuse, or with `throw` off, say no."""
+	starts at their first, and refuse one past it."""
 	key = frappe.cache.make_key(f"commons:document_capture:reads:{user}")
 	count = frappe.cache.incrby(key, 1)
 	if count == 1:
 		frappe.cache.expire(key, 3600)
-	if count <= HOURLY_LIMIT:
-		return True
-	if throw:
+	if count > HOURLY_LIMIT:
 		frappe.throw(
 			_("That is {0} scans in the last hour, which is the limit. Try again later.").format(
 				HOURLY_LIMIT
 			),
 			frappe.RateLimitExceededError,
 		)
-	return False
 
 
 # --------------------------------------------------------------------------- #

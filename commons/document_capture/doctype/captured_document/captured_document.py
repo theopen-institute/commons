@@ -9,9 +9,10 @@ The statuses, in the order a capture usually passes through them:
 
 * `Received`: an email created it, and its attachments have not been sorted
   yet. `capture.sort_email` settles it within moments.
-* `Unread`: held with nothing read. An upload that was never sent to be read,
-  an email from somebody who is not a user here, or an email with no PDF or
-  image on it.
+* `Unread`: arrived, and waiting for somebody to press Read. Every capture
+  starts here, uploaded or emailed: nothing is read, and billed, until a
+  person asks. An email with no PDF or image on it waits here too, with
+  `error` saying so.
 * `Queued`, `Reading`: a background job has it. Claude's reading is billed,
   so there is only ever one job per capture.
 * `Read`: `extracted` holds what Claude copied, waiting for a person to check it
@@ -80,12 +81,22 @@ class CapturedDocument(Document):
 
 	def validate(self):
 		before = self.get_doc_before_save()
-		if not before or before.status not in SETTLED:
+		if not before:
 			return
-		for field in ("document_type", "scan"):
-			if self.has_value_changed(field):
-				frappe.throw(
-					_("{0} can no longer be changed: this capture is {1}.").format(
-						_(self.meta.get_label(field)), _(before.status).lower()
-					)
+		changed = [field for field in ("document_type", "scan") if self.has_value_changed(field)]
+		if not changed:
+			return
+		if before.status in SETTLED:
+			frappe.throw(
+				_("{0} can no longer be changed: this capture is {1}.").format(
+					_(self.meta.get_label(changed[0])), _(before.status).lower()
 				)
+			)
+		# A reading is of one scan, as one kind. Another scan or another kind
+		# makes it the wrong reading, so the capture is unread again.
+		if before.status in ("Read", "Failed"):
+			self.status = "Unread"
+			self.extracted = None
+			self.model = None
+			self.read_at = None
+			self.error = None

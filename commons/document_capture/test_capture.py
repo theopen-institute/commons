@@ -1,8 +1,8 @@
 """What is read, for whom, and what is kept when a read goes wrong.
 
 Site-less, like `test_purchase_invoice`. What is pinned here is what bills the
-site or loses a scan: a read for somebody who could never save it, a read past
-the hourly limit, an email from a stranger read automatically, a job that
+site or loses a scan: a capture read without anybody pressing Read, a read
+for somebody who could never save it or past the hourly limit, a job that
 reads a scan nobody is waiting for any more, and a failure that throws the
 scan away instead of keeping it with the reason.
 """
@@ -75,9 +75,9 @@ def cache(count=1):
 
 
 @patch.object(capture.frappe, "throw", _raise)
-class TestNothingIsReadForSomebodyWhoCannotSave(TestCase):
-	"""Every read is billed, so the refusal has to come before anything is
-	stored or queued."""
+class TestAnUploadIsKeptAndNotRead(TestCase):
+	"""An upload stores the scan and reads nothing: a reading is billed, and
+	only happens when somebody presses Read."""
 
 	def request(self, content=b"%PDF-1.7"):
 		upload = SimpleNamespace(stream=SimpleNamespace(read=lambda: content), filename="bill.pdf")
@@ -104,16 +104,6 @@ class TestNothingIsReadForSomebodyWhoCannotSave(TestCase):
 		self.get_doc.assert_not_called()
 		self.queued.assert_not_called()
 
-	def test_past_the_hourly_limit_no_read(self):
-		with (
-			patch.object(capture, "_require_reading"),
-			patch.object(capture.frappe, "cache", cache(capture.HOURLY_LIMIT + 1), create=True),
-			patch.object(capture.frappe, "request", self.request(), create=True),
-		):
-			with self.assertRaises(frappe.RateLimitExceededError):
-				capture.upload()
-		self.get_doc.assert_not_called()
-
 	def test_an_empty_file_is_refused_at_once_and_not_counted(self):
 		with (
 			patch.object(capture, "_require_reading"),
@@ -125,7 +115,7 @@ class TestNothingIsReadForSomebodyWhoCannotSave(TestCase):
 		counted.assert_not_called()
 		self.get_doc.assert_not_called()
 
-	def test_a_readable_scan_is_kept_and_queued(self):
+	def test_a_readable_scan_is_kept_unread_and_not_counted(self):
 		stored = FakeCapture()
 		stored.insert = lambda: None
 		scan = SimpleNamespace(insert=lambda: None, file_url="/private/files/bill.pdf")
@@ -133,12 +123,67 @@ class TestNothingIsReadForSomebodyWhoCannotSave(TestCase):
 		with (
 			patch.object(capture, "_require_reading"),
 			patch.object(capture.frappe, "request", self.request(), create=True),
-			patch.object(capture, "_count_read"),
+			patch.object(capture, "_count_read") as counted,
 		):
 			self.assertEqual(capture.upload(), {"name": "CAP-1"})
 		made, attached = (call.args[0] for call in self.get_doc.call_args_list)
-		self.assertEqual((made["document_type"], made["source"]), ("Purchase Invoice", "Upload"))
+		self.assertEqual(
+			(made["document_type"], made["source"], made["status"]), ("Purchase Invoice", "Upload", "Unread")
+		)
 		self.assertEqual((attached["attached_to_name"], attached["is_private"]), ("CAP-1", 1))
+		self.queued.assert_not_called()
+		counted.assert_not_called()
+
+
+@patch.object(capture.frappe, "throw", _raise)
+class TestReadingIsAskedFor(TestCase):
+	"""`read`, the one way a capture is read: the button, on the page or the
+	desk form. The refusals come before anything is queued."""
+
+	def setUp(self):
+		self.enterContext(
+			patch.object(capture.frappe, "session", SimpleNamespace(user="a@example.com"), create=True)
+		)
+		self.queued = self.enterContext(patch.object(capture, "_queue"))
+
+	def read(self, stored, count=1, **kwargs):
+		with (
+			patch.object(capture.frappe, "get_doc", return_value=stored),
+			patch.object(capture.frappe, "cache", cache(count), create=True),
+			patch.object(capture.purchase_invoice, "available", return_value=True),
+			patch.object(capture.purchase_invoice, "can_capture", return_value=True),
+		):
+			return capture.read("CAP-1", **kwargs)
+
+	def test_an_unread_capture_is_queued(self):
+		stored = FakeCapture()
+		self.assertEqual(self.read(stored), {"name": "CAP-1"})
+		self.queued.assert_called_once_with(stored)
+
+	def test_past_the_hourly_limit_no_read(self):
+		with self.assertRaises(frappe.RateLimitExceededError):
+			self.read(FakeCapture(), count=capture.HOURLY_LIMIT + 1)
+		self.queued.assert_not_called()
+
+	def test_one_being_read_is_not_read_twice(self):
+		stored = FakeCapture(status="Reading", read_started=frappe.utils.now_datetime())
+		with self.assertRaisesRegex(ValueError, "already being read"):
+			self.read(stored)
+		self.queued.assert_not_called()
+
+	def test_one_without_a_scan_is_refused(self):
+		with self.assertRaisesRegex(ValueError, "Attach the scan"):
+			self.read(FakeCapture(scan=None))
+		self.queued.assert_not_called()
+
+	def test_reading_as_another_kind_drops_the_last_reading(self):
+		stored = FakeCapture(status="Read", extracted='{"total": 1}')
+		with (
+			patch.object(capture.expense_claim, "available", return_value=True),
+			patch.object(capture.expense_claim, "can_capture", return_value=True),
+		):
+			self.read(stored, document_type="Expense Claim")
+		self.assertEqual((stored.document_type, stored.extracted), ("Expense Claim", None))
 		self.queued.assert_called_once_with(stored)
 
 
@@ -261,27 +306,23 @@ class TestEmailedScans(TestCase):
 	def scan(self, name):
 		return frappe._dict(name=f"F-{name}", file_name=name, file_url=f"/private/files/{name}", is_private=1)
 
-	def test_a_stranger_is_held_unread_with_the_reason(self):
-		stored, _siblings, queued, _db = self.sort("vendor@example.com", [self.scan("bill.pdf")])
+	def test_a_strangers_scan_waits_unread(self):
+		stored, _siblings, queued, db = self.sort("vendor@example.com", [self.scan("bill.pdf")])
 		queued.assert_not_called()
-		self.assertEqual((stored.status, stored.scan), ("Unread", "/private/files/bill.pdf"))
-		self.assertIn("not a user", stored.error)
+		self.assertEqual(
+			(stored.status, stored.scan, stored.error), ("Unread", "/private/files/bill.pdf", None)
+		)
+		db.set_value.assert_not_called()
 
-	def test_a_user_is_read_and_owns_it(self):
+	def test_a_users_scan_is_theirs_and_waits_unread_too(self):
 		stored, _siblings, queued, db = self.sort(
 			"peter@example.com", [self.scan("bill.pdf")], user="peter@example.com"
 		)
-		queued.assert_called_once_with(stored)
+		queued.assert_not_called()
+		self.assertEqual(stored.status, "Unread")
 		db.set_value.assert_called_once_with(
 			"Captured Document", "CAP-1", "owner", "peter@example.com", update_modified=False
 		)
-
-	def test_a_user_past_the_hourly_limit_is_held(self):
-		stored, _siblings, queued, _db = self.sort(
-			"peter@example.com", [self.scan("bill.pdf")], user="peter@example.com", count=10_000
-		)
-		queued.assert_not_called()
-		self.assertIn("limit", stored.error)
 
 	def test_each_scan_gets_a_capture_of_its_own(self):
 		stored, siblings, _queued, _db = self.sort(

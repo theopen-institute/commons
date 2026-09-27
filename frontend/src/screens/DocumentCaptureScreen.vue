@@ -55,9 +55,9 @@
 				<template v-if="reading.busy">
 					<LoadingIndicator class="mx-auto size-6 text-ink-gray-6" />
 					<p class="mt-3 text-base-medium text-ink-gray-8">
-						Reading {{ reading.pending }}
+						{{ reading.uploading ? 'Keeping' : 'Reading' }} {{ reading.pending }}
 					</p>
-					<p class="mt-1 text-p-sm text-ink-gray-5">
+					<p v-if="!reading.uploading" class="mt-1 text-p-sm text-ink-gray-5">
 						{{
 							readingProgressText(reading.progress) ??
 							'This usually takes ten to thirty seconds.'
@@ -72,14 +72,14 @@
 					</p>
 					<p class="mx-auto mt-1 max-w-md text-p-sm text-ink-gray-5">
 						<template v-if="uploadKind === EXPENSE_CLAIM">
-							A photo or a PDF of what you paid for. Claude reads it and drafts your
-							expense claim for you to check, and the receipt is attached to the
-							claim.
+							A photo or a PDF of what you paid for. It is kept for you to read with
+							Claude, which drafts your expense claim for you to check, with the
+							receipt attached.
 						</template>
 						<template v-else>
-							A photo or a PDF of one invoice. Claude reads it and drafts a purchase
-							invoice for you to check against the scan, and the scan is attached to
-							the draft.
+							A photo or a PDF of one invoice. It is kept for you to read with
+							Claude, which drafts a purchase invoice for you to check against the
+							scan, with the scan attached.
 						</template>
 					</p>
 					<Button
@@ -300,7 +300,8 @@ import { formatDate, formatExact } from '@/data/format'
  * Document capture: a scan in, a draft Purchase Invoice or Expense Claim out.
  *
  * Every scan is kept as a `Captured Document` from the moment it is chosen
- * here or emailed in, and read in the background. The page lists the ones
+ * here or emailed in, and read in the background once somebody presses Read
+ * in its dialog; nothing is read on arrival, because a reading is billed. The page lists the ones
  * that are not drafts yet; a click opens a dialog, and only the dialogs'
  * buttons write anything (reading, discarding, making the draft). See
  * `commons.document_capture` for the order of the calls.
@@ -359,9 +360,11 @@ const reading = reactive<{
 	name: string
 	pending: string
 	busy: boolean
+	/** Sending the file, before there is any reading to report on. */
+	uploading: boolean
 	error: string
 	progress: CaptureReadingState | null
-}>({ name: '', pending: '', busy: false, error: '', progress: null })
+}>({ name: '', pending: '', busy: false, uploading: false, error: '', progress: null })
 
 const invoiceOpen = ref(false)
 const expenseOpen = ref(false)
@@ -391,18 +394,24 @@ function onDrop(event: DragEvent) {
 	if (file && !reading.busy) readFile(file)
 }
 
+/** Keep a scan as a capture, then open it: reading is billed, so it waits
+ *  for the Read button in that dialog rather than starting here. */
 async function readFile(file: File) {
 	reading.busy = true
+	reading.uploading = true
 	reading.pending = file.name
 	reading.error = ''
 	reading.progress = null
 	try {
 		const name = await uploadScan(file, uploadKind.value)
-		waiting.load()
-		await follow(name)
+		await waiting.load()
+		detailsRow.value = waiting.rows.value.find((row) => row.name === name) ?? null
+		detailsOpen.value = Boolean(detailsRow.value)
 	} catch (error) {
-		reading.error = error instanceof Error ? error.message : 'That scan could not be read.'
+		reading.error = error instanceof Error ? error.message : 'That scan could not be kept.'
+	} finally {
 		reading.busy = false
+		reading.uploading = false
 	}
 }
 
