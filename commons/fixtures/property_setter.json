@@ -124,5 +124,17 @@
   "property": "mandatory_depends_on",
   "property_type": "Data",
   "value": "eval: in_list(['Email', 'Slack'], doc.channel) && !doc.email_template"
+ },
+ {
+  "doctype": "Property Setter",
+  "name": "Web Template Field-fieldtype-options",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "doctype_or_field": "DocField",
+  "doc_type": "Web Template Field",
+  "field_name": "fieldtype",
+  "property": "options",
+  "property_type": "Text",
+  "value": "Attach Image\nCheck\nCurrency\nData\nDate\nFloat\nInt\nJSON\nLink\nSelect\nSmall Text\nText\nMarkdown Editor\nSection Break\nColumn Break\nTable Break"
  }
 ]

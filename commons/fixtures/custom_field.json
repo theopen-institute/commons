@@ -685,8 +685,7 @@
   "label": "Print",
   "fieldtype": "Section Break",
   "insert_after": "fields",
-  "collapsible": 1,
-  "description": "For a template printed from Print Formats with <code>{{ render_web_template(\"Template Name\", doc) }}</code>, one per doctype that shares the layout. <b>Test PDF</b> in the toolbar prints it with the Test Values below."
+  "description": "To print this template from a Print Format, write <code>{{ render_web_template(\"Template Name\", input_name=value, ...) }}</code> there. Each input is a row in the Fields table above: its fieldname is the name to pass, and its type and Required say what to pass. For example <code>{{ render_web_template(\"Student Statement\", student=doc.name) }}</code>. Context Prep turns the inputs into what the template reads; <b>Test PDF</b> in the toolbar asks for them and prints the result.<br><br>Frappe places the letter head chosen in the print dialog only on its standard format, so a Print Format that should carry one includes the same markup around the call:<pre style=\"margin-top: 6px; white-space: pre-wrap\"><code>{% if letter_head and not no_letterhead %}\n&lt;div {% if print_settings.repeat_header_footer %}id=&quot;header-html&quot; class=&quot;hidden-pdf&quot;{% endif %}&gt;\n\t&lt;div class=&quot;letter-head&quot;&gt;{{ letter_head }}&lt;/div&gt;\n&lt;/div&gt;\n{% endif %}\n\n{{ render_web_template(&quot;Student Statement&quot;, student=doc.name) }}\n\n{% if footer and not no_letterhead %}\n&lt;div {% if print_settings.repeat_header_footer %}id=&quot;footer-html&quot; class=&quot;visible-pdf&quot;{% endif %}&gt;\n\t&lt;div class=&quot;letter-head-footer&quot;&gt;{{ footer }}&lt;/div&gt;\n&lt;/div&gt;\n{% endif %}</code></pre>"
  },
  {
   "doctype": "Custom Field",
@@ -699,19 +698,6 @@
   "fieldtype": "Code",
   "options": "Python",
   "insert_after": "print_section",
-  "description": "Python run in the Server Script sandbox before each print, with the printed document as <code>doc</code>. Set <code>values</code> to a dict; its keys are the template's variables. Left empty, the template is given <code>doc</code>. Only a Script Manager may change it."
- },
- {
-  "doctype": "Custom Field",
-  "owner": "Administrator",
-  "is_system_generated": 1,
-  "dt": "Web Template",
-  "name": "Web Template-test_values",
-  "fieldname": "test_values",
-  "label": "Test Values",
-  "fieldtype": "Code",
-  "options": "JSON",
-  "insert_after": "context_prep",
-  "description": "What Test PDF renders the template with: a JSON object standing in for what Context Prep returns. <b>Fill from a Record</b> writes it from a real document."
+  "description": "Python run in the Server Script sandbox before each print. The inputs are in <code>inputs</code> (for example <code>inputs.student</code>), and the printed document in <code>doc</code> when the Print Format passes one. Set <code>values</code> to a dict; its keys are the template's variables. Left empty, the template is given the inputs themselves. Only a Script Manager may change it."
  }
 ]

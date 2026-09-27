@@ -15,10 +15,10 @@ rewritten.
 
 | File | What it holds |
 | --- | --- |
-| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, three on Web Template, and the derived fields it adds to its own |
+| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, two on Web Template, and the derived fields it adds to its own |
 | `custom_field_education.json` | The four fields the attendance register adds to Education's doctypes |
 | `custom_field_erpnext.json` | The four fields the requests section adds to ERPNext's doctypes |
-| `property_setter.json` | The image and title fields of this app's member doctypes, and which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification |
+| `property_setter.json` | The image and title fields of this app's member doctypes, and which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification, and the fieldtypes a Web Template's inputs may have |
 
 All of the Custom Fields are schema: code dereferences every one of them, and
 the part of the app that reads them does not work without them. Order within a
@@ -150,15 +150,18 @@ it is queued: nothing else tells a Notification's email from one somebody wrote,
 and only a Notification's are the module's to take back or to count. Indexed,
 since both of those look it up.
 
-**The Print section on `Web Template`** — `print_section`, `context_prep` and
-`test_values`, read by `commons.print_templates`. A Web Template is the one
-Jinja record a site can keep that belongs to no doctype, which is what lets a
-layout be printed from several doctypes' Print Formats through
-`render_web_template`. `context_prep` is the Python that turns each doctype's
-document into the variables the layout reads, and `test_values` stands in for
-its output so Test PDF can print the layout with no document. Custom Fields
-rather than a doctype of this app's own, so the layout, its prep and its test
-data are one record, edited on the form Frappe already has for it.
+**The Print section on `Web Template`** — `print_section` and `context_prep`,
+read by `commons.print_templates`. A Web Template is the one Jinja record a
+site can keep that belongs to no doctype, which is what lets a layout be
+printed from several doctypes' Print Formats through `render_web_template`.
+The template's inputs are declared in core's own Fields table; `context_prep`
+is the Python that turns them into the variables the layout reads, and the
+section's description says how a Print Format passes them. A Custom Field
+rather than a doctype of this app's own, so the layout, its inputs and its prep
+are one record, edited on the form Frappe already has for it. A plain section,
+not a collapsed one, so the description is in view. Test PDF's values are
+deliberately not a field: they are often a real record's figures, and are kept
+nowhere.
 
 ### This app's own doctypes (`custom_field.json`)
 
@@ -242,3 +245,11 @@ it saves a DocType. The DocType JSON still says `member_id`. When "Enable Derive
 Docfields" is off, queries leave `full_name` out rather than failing, and the
 desk shows the record's name, which is the member ID. It does the same for a
 record whose `member_id` is empty.
+
+`Web Template Field.fieldtype`'s options, with Currency, Date, Float and JSON
+added to core's list. A Web Template's Fields table is where
+`commons.print_templates.contract` reads a print template's inputs, and core
+offers only the types a website block is written with — text, images, a
+checkbox — where a print's inputs can be amounts, dates or structured data.
+Core's Web Page values editor draws all four with its own controls, so a
+template used on a web page is unaffected.
