@@ -41,6 +41,11 @@
 	border-right: 1px solid var(--sidebar-border-color);
 }
 
+// Hidden with the sidebar, on the pages that hide it (the Desktop).
+.commons-rail.hidden {
+	display: none;
+}
+
 .commons-rail__top,
 .commons-rail__bottom,
 .commons-rail__apps {
@@ -256,15 +261,23 @@ body.commons-rail-on .standard-items-sections {
 // Notifications and To Do open over the sidebar, from its left edge, rather
 // than beside it: with the rail on, a panel to the right of the sidebar sits a
 // rail and a sidebar away from the button that opened it.
-// Core's own rule is `.body-sidebar .standard-items-sections .dropdown-notifications
-// .notifications-list`, so this names the same path to outrank it.
-body.commons-rail-on {
-	.body-sidebar .standard-items-sections .dropdown-notifications .notifications-list,
+// Once used, both panels live in a holder beside the rail rather than inside
+// the sidebar, so they open in the same place on every page and over the
+// sidebar's rows rather than under them. The holder is a zero-width
+// column at the rail's edge; the panels hang off it, over the sidebar.
+.commons-rail-panels {
+	position: fixed;
+	top: 0;
+	left: 56px;
+	width: 0;
+	height: 100vh;
+	// Over the Desktop's sticky navbar (1030, and later in the page, so a tie
+	// goes to it), under Frappe's modals and their backdrop (1040 and up).
+	z-index: 1035;
+
+	.notifications-list,
 	.commons-todo-panel--sidebar {
 		left: 0;
-		// Over the sidebar now rather than beside it, and the sidebar's rows come
-		// later in the page: without a place in the stack they paint over it.
-		z-index: 10;
 	}
 }
 

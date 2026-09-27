@@ -10,11 +10,11 @@
  *
  * A module is a Workspace Sidebar, and an app's modules are always listed
  * alphabetically (the server sorts them). What picking an app does depends on
- * "Show Modules", a per-browser choice under Display, next to the theme:
+ * "Open Last Module", a per-browser choice under Display, next to the theme:
  *
- *   off  the app opens the module you were last in, or its first module on a
+ *   on   the app opens the module you were last in, or its first module on a
  *        first visit.
- *   on   the sidebar turns into the app's module list -- the header reads the
+ *   off  (the default) the sidebar turns into the app's module list -- the header reads the
  *        app's name over its module count, the rows are its modules -- and
  *        nothing else moves until a module is picked. Navigating anywhere
  *        else puts back the sidebar for wherever you land. An app with only
@@ -61,7 +61,9 @@
  *
  * Opt-in: "Enable Navigation Rail" in Commons Settings. Off, nothing here is
  * installed. Below the desk's mobile width the rail is not drawn; the sidebar
- * is a drawer there and keeps its own rows.
+ * is a drawer there and keeps its own rows. And it goes wherever a page hides
+ * the sidebar -- the Desktop's app picker is meant to stand alone, minimal,
+ * with no chrome down its side.
  */
 (function patch_navigation_rail() {
 	const features = (frappe.boot && frappe.boot.commons_features) || {};
@@ -171,7 +173,9 @@
 	// Per browser, like the theme: a convenience, so storage that throws or comes
 	// back empty only costs the choice or the memory, never the page.
 	const LAST_KEY = "commons_rail_last_module";
-	const SHOW_MODULES_KEY = "commons_rail_show_modules";
+	// Its own key rather than the old "Show Modules" one flipped: a stored value
+	// from that switch meant the opposite, and would now read backwards.
+	const OPEN_LAST_KEY = "commons_rail_open_last_module";
 
 	const storage = {
 		get(key, fallback) {
@@ -191,7 +195,8 @@
 		},
 	};
 
-	const show_modules = () => storage.get(SHOW_MODULES_KEY, false) === true;
+	// The module list is the default; "Open Last Module" skips it.
+	const show_modules = () => storage.get(OPEN_LAST_KEY, false) !== true;
 
 	// The module you were last in, per app. Only modules an app lists: the
 	// made-up module sidebars are placed under an app for orientation, but are
@@ -366,10 +371,10 @@
 					open_frontend(app.frontend.url);
 				}
 			} else if (tool) {
-				// Notifications closes itself on any click outside its own row, and
-				// this button is outside it: keep the click from getting that far.
+				// Both panels close themselves on a click outside them, and this
+				// button is outside them: keep the click from getting that far.
 				event.stopPropagation();
-				sidebar.wrapper.find(tool.row).first().trigger("click");
+				press_tool(sidebar, tool);
 			} else if (name === "home") {
 				frappe.set_route("desk");
 			} else if (name === "website") {
@@ -387,7 +392,7 @@
 	}
 
 	// An app's tooltip says what clicking it does when that is not simply "go
-	// there": with "Show Modules" on it shows the app's modules, which is also
+	// there": unless "Open Last Module" is on, it shows the app's modules, which is also
 	// the way back to them from inside one.
 	function title_apps(sidebar) {
 		if (!sidebar.$commons_rail) return;
@@ -399,6 +404,58 @@
 			sidebar.$commons_rail
 				.find(`.commons-rail__app[data-name="${app.key}"]`)
 				.attr({ title: label, "aria-label": label });
+		}
+	}
+
+	// Search presses its sidebar row, which opens a dialog over the page wherever
+	// the row is. Notifications and To Do open panels, and those live inside the
+	// sidebar, where they sit under its rows and only open while it is drawn. So
+	// on first use each panel is moved into a holder beside the rail, the same
+	// place on every page, and opened here rather than through its row. Moving a node keeps the handlers
+	// and references core and `desk_todos` hold on it.
+	function panel_holder(sidebar) {
+		let $holder = sidebar.$commons_rail.siblings(".commons-rail-panels");
+		if (!$holder.length)
+			$holder = $('<div class="commons-rail-panels"></div>').insertAfter(
+				sidebar.$commons_rail
+			);
+		return $holder;
+	}
+
+	function notifications_panel(sidebar) {
+		if (!sidebar.commons_notifications) {
+			// The sidebar's own, not the Desktop navbar's dropdown of the same class.
+			const $panel = sidebar.wrapper
+				.find(".standard-items-sections .dropdown-notifications")
+				.first();
+			if (!$panel.length) return null;
+			sidebar.commons_notifications = $panel.appendTo(panel_holder(sidebar));
+		}
+		return sidebar.commons_notifications;
+	}
+
+	function todo_panel(sidebar) {
+		const panel = sidebar.commons_todos;
+		if (!panel) return null;
+		if (!panel.$panel.parent().is(".commons-rail-panels"))
+			panel.$panel.appendTo(panel_holder(sidebar));
+		return panel;
+	}
+
+	function press_tool(sidebar, tool) {
+		const notifications = tool.name === "notifications" && notifications_panel(sidebar);
+		const todos = tool.name === "todo" && todo_panel(sidebar);
+
+		if (notifications) {
+			todo_panel(sidebar)?.hide();
+			// What core's own row does: show or hide, and tell the list to load.
+			notifications.toggleClass("hidden");
+			if (!notifications.hasClass("hidden")) notifications.trigger("show.bs.dropdown");
+		} else if (todos) {
+			notifications_panel(sidebar)?.addClass("hidden");
+			todos.toggle();
+		} else {
+			sidebar.wrapper.find(tool.row).first().trigger("click");
 		}
 	}
 
@@ -432,7 +489,7 @@
 	}
 
 	// ---------------------------------------------------------------------------------
-	// The module list ("Show Modules" on)
+	// The module list (the default; "Open Last Module" skips it)
 	// ---------------------------------------------------------------------------------
 
 	// Draws an app's modules into the sidebar in place of its rows, and the app
@@ -531,6 +588,23 @@
 		}
 	};
 
+	// The rail shows and hides with the sidebar. Core hides the sidebar for a page
+	// that asks (`hide_sidebar`, which the Desktop does) through this call, so
+	// the rail follows the same answer rather than keeping a list of pages. A
+	// panel left open goes with it.
+	if (typeof Sidebar.prototype.toggle === "function") {
+		const toggle = Sidebar.prototype.toggle;
+		Sidebar.prototype.toggle = function (hide) {
+			toggle.apply(this, arguments);
+			if (!this.$commons_rail) return;
+			this.$commons_rail.toggleClass("hidden", Boolean(hide));
+			if (hide) {
+				this.commons_notifications?.addClass("hidden");
+				this.commons_todos?.hide();
+			}
+		};
+	}
+
 	const setup = Sidebar.prototype.setup;
 	Sidebar.prototype.setup = function () {
 		// Any rebuild is the real sidebar again.
@@ -553,7 +627,7 @@
 		};
 	}
 
-	// "Show Modules" beside the theme under Display, ticked while on. The same
+	// "Open Last Module" beside the theme under Display, ticked while on. The same
 	// item object is re-rendered each time the submenu opens, so updating its
 	// icon is enough to show the new state.
 	if (typeof Header.prototype.get_display_siblings === "function") {
@@ -561,19 +635,19 @@
 		Header.prototype.get_display_siblings = function () {
 			const items = get_display_siblings.apply(this, arguments);
 			const item = {
-				name: "show-modules",
-				label: __("Show Modules"),
+				name: "open-last-module",
+				label: __("Open Last Module"),
 				onClick: () => {
-					const on = !show_modules();
-					storage.set(SHOW_MODULES_KEY, on);
+					const on = show_modules();
+					storage.set(OPEN_LAST_KEY, on);
 					tick(on);
 					const sidebar = frappe.app.sidebar;
 					title_apps(sidebar);
 					if (sidebar.commons_module_list) leave_module_list(sidebar);
 					frappe.show_alert({
 						message: on
-							? __("Picking an app now shows its modules")
-							: __("Picking an app now opens your last module"),
+							? __("Picking an app now opens your last module")
+							: __("Picking an app now shows its modules"),
 						indicator: "blue",
 					});
 				},
@@ -582,7 +656,7 @@
 				item.icon = on ? "check" : "";
 				item.icon_html = on ? undefined : "&nbsp;";
 			};
-			tick(show_modules());
+			tick(!show_modules());
 			return [...items, item];
 		};
 	}
