@@ -110,5 +110,6 @@ class TestOverrideEnabled(TestCase):
 				"navigation_rail": False,
 				"derived_docfields": False,
 				"visual_email_editor": False,
+				"pseudo_islands": False,
 			},
 		)
