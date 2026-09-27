@@ -184,9 +184,10 @@ app_include_css = "commons.bundle.css"
 # whose own hook is where sites that print QR codes first got the name.
 #
 # `party_statement` is the other kind: the statement section's own data function,
-# the same one the SPA calls over HTTP. It is here so the print format at
-# `commons/statement/print/statement.html` asks the app what somebody's balance
-# is rather than working it out again in Jinja, which is the whole reason the
+# the same one the SPA calls over HTTP. It is here so a printed statement asks
+# the app what somebody's balance is rather than working it out again in Jinja
+# (the layout is a site's own Web Template now, which fetches it through
+# `frappe.call` in its Context Prep), which is the whole reason the
 # printed statement and the one in the browser cannot drift. Which way a balance
 # runs, which accounts are left out because they belong to the lending module,
 # how a running balance reconciles with a total: all of that is answered once, in

@@ -140,9 +140,35 @@ balance better than a missing row does.
 ### The same statement as a PDF
 
 The PDF is drawn by a `Print Format`, one per party doctype, which a System
-Manager adds by hand — the app does not create them. For each party type the
-site statements are wanted for (Customer, Student, Supplier, Employee), a new
-Print Format with:
+Manager adds by hand — the app does not create them, and it no longer ships the
+layout either. The layout is a site record: a Web Template named **Account
+Statement**, printed through `render_web_template` (see
+`commons/print_templates/__init__.py`), so a site restyles its statement in the
+desk without a deploy. Copy it from a site that has one; each copy is that
+site's own to edit.
+
+The Web Template:
+
+| Field | Value |
+|---|---|
+| Name | `Account Statement` |
+| Type | Component |
+| Standard | No |
+| Template | the statement layout; it reads one variable, `statement` |
+| Context Prep | the lines below |
+
+```python
+values = {
+    "statement": frappe.call(
+        "commons.statement.api.party_statement",
+        party_type=doc.doctype,
+        party=doc.name,
+    )
+}
+```
+
+Then, for each party type the site statements are wanted for (Customer,
+Student, Supplier, Employee), a new Print Format with:
 
 | Field | Value |
 |---|---|
@@ -151,20 +177,18 @@ Print Format with:
 | Standard | No |
 | Custom Format | ticked |
 | Print Format Type | Jinja |
-| HTML | the two lines below |
+| HTML | the line below |
 
 ```jinja
-{%- set statement = party_statement(doc.doctype, doc.name) -%}
-{% include "commons/statement/print/statement.html" %}
+{{ render_web_template("Account Statement", doc) }}
 ```
 
 The name has to be exactly that: `commons.statement.print_format_name` spells
 it, and `download_statement` looks it up by it. Where it is missing (or
 disabled) the download is refused with a message naming it, rather than printed
 without it — Frappe would otherwise fall back to "Standard" and print the whole
-party record. Everything the statement shows is behind the include and the
-call, so the stub never needs changing when the statement does, and restyling it
-is safe.
+party record. The four formats are one line each and never need changing;
+everything the statement shows is in the Web Template and the call.
 
 `party_statement` is the app's own endpoint, reachable from Jinja through the
 `jinja` hook in `hooks.py`. So the printed statement asks the app what somebody
@@ -177,9 +201,10 @@ Which is why `direction` is a field on the payload rather than something this
 frontend derives. It used to be derived here, from the sign and the account
 type, and that is exactly the kind of small derivation that gets written a
 second time the moment the same page is wanted as a document. The server says
-which way a balance runs; `statement.ts` and `print/statement.html` each only
-choose the English for it, and they word it differently on purpose — one is
-addressed to the reader, the other may be read by whoever was handed it.
+which way a balance runs; `statement.ts` and the Account Statement Web
+Template each only choose the English for it, and they word it differently on
+purpose — one is addressed to the reader, the other may be read by whoever was
+handed it.
 
 Each account on the page carries a **PDF** link to
 `commons.statement.api.download_statement`, which renders that same print format

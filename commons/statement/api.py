@@ -194,10 +194,11 @@ def download_statement(party_type: str, party: str) -> None:
 	customer record in the desk".
 
 	Nothing of the document itself is rendered. The print format draws the
-	statement and nothing else -- see `print/statement.html`.
+	statement and nothing else, through the site's Account Statement Web
+	Template.
 
 	The print format is a site's to add by hand (`frontend/README.md` has the
-	two lines), so it may not be there -- and it is refused rather than printed
+	line), so it may not be there -- and it is refused rather than printed
 	without it. `frappe.get_print` given a print format that does not exist
 	falls back to "Standard" without a word, and "Standard" draws every field
 	of the party document; with print permissions set aside above, that would

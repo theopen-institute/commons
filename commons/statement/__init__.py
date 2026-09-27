@@ -74,9 +74,9 @@ def print_format_name(party_type: str) -> str:
 
 	A print format is attached to exactly one doctype, so there is one of these
 	per party type -- four of them where a site has all four. They are four
-	records and one template: each holds a two-line stub that fetches the
-	statement and includes `print/statement.html`, which is where the printed
-	statement actually lives.
+	records and one template: each is one line handing the document to the
+	site's Account Statement Web Template, whose Context Prep fetches the
+	statement and whose layout is where the printed statement actually lives.
 
 	A site adds them by hand, under this name (`frontend/README.md`), and
 	`api.download_statement` asks for one by it -- refusing the download where
