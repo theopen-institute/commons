@@ -95,6 +95,12 @@ ENABLE_VISUAL_EMAIL_EDITOR = "enable_visual_email_editor"
 # `commons.pseudo_islands`, which installs frappe develop's `frappe.ui.mount_island`
 # on a v16 desk and draws this app's island pages with it
 ENABLE_PSEUDO_ISLANDS = "enable_pseudo_islands"
+# `commons.banking.payable_party`, which adds to ERPNext's Payment Entry ledger
+# lines. Server-side only, so not among the desk's features.
+ENABLE_PAYABLE_PARTY = "enable_party_on_payable_payment_lines"
+# `commons.banking.payroll_lines`, which splits HRMS's payroll accrual journal.
+# Server-side only too.
+ENABLE_PAYROLL_LINES = "enable_payroll_lines_per_employee"
 
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.

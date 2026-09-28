@@ -546,6 +546,13 @@ extend_doctype_class = {
 	# An Auto Email Report runs its report without the endpoints the permission
 	# gate stands in front of. See `commons.safer_permissions.auto_email_report`.
 	"Auto Email Report": ["commons.safer_permissions.auto_email_report.GatedAutoEmailReport"],
+	# A payment's party on its tax and deduction lines to payable accounts, such
+	# as TDS. Extended rather than overridden, so it sits on top of HRMS's own
+	# Payment Entry class. See `commons.banking.payable_party`.
+	"Payment Entry": ["commons.banking.payable_party.PayablePartyPaymentEntryMixin"],
+	# A payroll run's accrual journal split per employee, with their department
+	# and, on payable accounts, their party. See `commons.banking.payroll_lines`.
+	"Payroll Entry": ["commons.banking.payroll_lines.EmployeePayrollLinesMixin"],
 }
 
 # The gate checkbox is drawn next to "Only if Creator" rather than among the

@@ -20,7 +20,9 @@
   "enable_user_permission_gate",
   "enable_derived_docfields",
   "enable_visual_email_editor",
-  "enable_pseudo_islands"
+  "enable_pseudo_islands",
+  "enable_party_on_payable_payment_lines",
+  "enable_payroll_lines_per_employee"
  ],
  "fields": [
   {
@@ -124,12 +126,26 @@
    "fieldname": "enable_pseudo_islands",
    "fieldtype": "Check",
    "label": "Enable Desk Islands"
+  },
+  {
+   "default": "0",
+   "description": "Puts a Payment Entry's own party on its tax and deduction lines to Payable accounts, such as TDS, so that each withholding is kept against the party it was withheld from and shows in Accounts Payable. Without it ERPNext leaves those lines without a party, and then refuses to submit them. The party is added where ERPNext first builds the ledger lines, so cancelling, reconciling and reposting the payment all undo the rows it made; a GL Entry server script that sets the party instead leaves a cancelled payment on Accounts Payable. Affects payments submitted, cancelled or reposted while it is on. Suspect this first if a payment's ledger lines name a party they should not.",
+   "fieldname": "enable_party_on_payable_payment_lines",
+   "fieldtype": "Check",
+   "label": "Enable Party on Payable Payment Lines"
+  },
+  {
+   "default": "0",
+   "description": "Splits a payroll run's accrual journal into one line per employee for each earnings and deduction account, each with the employee's department from their salary slip, and with the employee as party on Payable accounts such as TDS. HRMS's own totals are kept: a line whose employees' parts do not add up to HRMS's total is posted as HRMS's single line and an error is logged. Payroll Payable is split per employee by Payroll Settings' <b>Process Payroll Accounting Entry Based on Employee</b>, which should be on as well; this adds the department to those lines. Only the accrual journal is changed, and only for runs whose accrual is made while this is on. Suspect this first if a payroll run will not submit or its journal's lines look wrong.",
+   "fieldname": "enable_payroll_lines_per_employee",
+   "fieldtype": "Check",
+   "label": "Enable Payroll Lines per Employee"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-27 17:00:00.000000",
+ "modified": "2026-09-28 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

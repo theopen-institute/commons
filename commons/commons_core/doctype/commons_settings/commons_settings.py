@@ -31,6 +31,8 @@ class CommonsSettings(Document):
 		enable_derived_docfields: DF.Check
 		enable_home_page_priority: DF.Check
 		enable_navigation_rail: DF.Check
+		enable_party_on_payable_payment_lines: DF.Check
+		enable_payroll_lines_per_employee: DF.Check
 		enable_sidebar_memory: DF.Check
 		enable_unencoded_at_in_routes: DF.Check
 		enable_user_menu: DF.Check
