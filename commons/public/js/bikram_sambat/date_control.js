@@ -160,7 +160,7 @@ function attach(control) {
 	host.addClass("bs-readout-host");
 
 	control.$bs_readout = $(
-		'<button type="button" class="commons-bs-readout" tabindex="-1"></button>',
+		'<button type="button" class="commons-bs-readout" tabindex="-1"></button>'
 	)
 		.attr("title", __("Bikram Sambat — click, or press B in the field, to pick a date"))
 		.appendTo(host);
@@ -170,6 +170,7 @@ function attach(control) {
 	// There it hides while the field has focus and the cell is being typed in.
 	const wrapper = host.closest(".frappe-control").addClass("has-bs-readout");
 	if (control.only_input) wrapper.addClass("bs-compact");
+	control.$bs_readout_host = host;
 
 	control.$bs_readout.on("click", (event) => {
 		event.preventDefault();
@@ -191,8 +192,25 @@ function attach(control) {
 	refresh(control);
 }
 
+/**
+ * Keep the readout inside the input's right edge when the host is padded.
+ *
+ * Where the host is the `.frappe-control` itself -- `only_input` -- that element
+ * is often a padded layout box rather than the input's own outline: a report or
+ * list filter is a `.form-group` column with 10-16px of right padding, and the
+ * stylesheet's `right: 1px` would put the readout in that gutter, past the end
+ * of the field. Measuring the padding follows whatever the context sets.
+ */
+function align(control) {
+	const host = control.$bs_readout_host?.get(0);
+	if (!host || host === control.$input_wrapper?.get(0)) return;
+	const padding = parseFloat(getComputedStyle(host).paddingRight) || 0;
+	control.$bs_readout.css("right", padding ? `${padding + 1}px` : "");
+}
+
 function refresh(control) {
 	if (!control.$bs_readout) return;
+	align(control);
 	const bs = current_bs(control);
 	const text = bs ? format(bs) : "";
 	const pickable = can_pick(control);
@@ -214,7 +232,7 @@ function refresh(control) {
 			"aria-label",
 			text
 				? __("Bikram Sambat: {0}. Open the Bikram Sambat calendar.", [text])
-				: __("Open the Bikram Sambat calendar"),
+				: __("Open the Bikram Sambat calendar")
 		);
 }
 
@@ -330,7 +348,7 @@ function wrap(prototype, name, after) {
 			if (Object.prototype.hasOwnProperty.call(datetime_control.prototype, method)) {
 				console.warn(
 					`commons: ControlDatetime now defines its own ${method}(); ` +
-						"the Bikram Sambat readout needs patching there too.",
+						"the Bikram Sambat readout needs patching there too."
 				);
 			}
 		}
