@@ -10,6 +10,14 @@ custom doctypes in a custom `Community` module, with Member's controller
 replaced by two Server Scripts. A site whose four tables are empty is left
 alone, and Frappe's orphan cleanup removes the definitions there.
 
+One thing is added rather than carried over: a Client Script that clears
+Member's Membership Details when its type changes. The link names a record of
+the old type, and core checks links before any validate event runs, so the
+save failed before the Server Script (or the controller before it) could
+repoint it -- and the field is read-only, so nobody could clear it by hand.
+Cleared, the save repoints it. A type changed through the API or an import
+still has to clear the field itself.
+
 Why a `before_migrate` hook and not a patch, or a command run by hand
 ---------------------------------------------------------------------
 Two parts of the same migrate would otherwise take the doctypes with them, and
@@ -151,6 +159,24 @@ if name:
 	},
 )
 
+CLIENT_SCRIPT = {
+	"name": "Member: clear Membership Details on a type change",
+	"script": """\
+// Membership Details names a record of the member's type, so a new type leaves
+// it pointing at a record the link can no longer find, and the save fails on
+// that before "Member: full name and detail record" can repoint it. The field
+// is read-only, so it is cleared here; the save then finds or makes the record
+// of the new type.
+frappe.ui.form.on("Member", {
+	member_type(frm) {
+		if (frm.doc.member_details) {
+			frm.set_value("member_details", null);
+		}
+	},
+});
+""",
+}
+
 
 def run() -> None:
 	if not due():
@@ -163,6 +189,7 @@ def run() -> None:
 		convert(doctype)
 	for script in SERVER_SCRIPTS:
 		add_server_script(script)
+	add_client_script()
 
 	frappe.clear_cache()
 	differences = [
@@ -283,6 +310,22 @@ def add_server_script(script: dict) -> None:
 			"reference_doctype": "Member",
 			"module": MODULE,
 			**script,
+		}
+	).insert(ignore_permissions=True)
+
+
+def add_client_script() -> None:
+	"""Also run by hand on a site the handover has already converted."""
+	if frappe.db.exists("Client Script", CLIENT_SCRIPT["name"]):
+		return
+	frappe.get_doc(
+		{
+			"doctype": "Client Script",
+			"dt": "Member",
+			"view": "Form",
+			"enabled": 1,
+			"module": MODULE,
+			**CLIENT_SCRIPT,
 		}
 	).insert(ignore_permissions=True)
 
