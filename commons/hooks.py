@@ -107,6 +107,10 @@ before_migrate = [
 	# the orphan cleanup, both of which would otherwise take them. Remove, with
 	# the module, once both register sites have migrated. See its docstring.
 	"commons.commons_core.community_handover.run",
+	# TEMPORARY, the same way: `Education Extensions` becomes the register's own
+	# custom module, and its three workspaces leave the sites that never used
+	# them. Remove once every site has migrated. See its docstring.
+	"commons.commons_core.education_handover.run",
 	"commons.commons_core.install.sync_module_defs",
 ]
 

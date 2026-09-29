@@ -46,13 +46,10 @@ by a doctype the site has never heard of. That is what runs here, from
 standing need rather than a one-off, because the next module this app adds
 meets the same gap on every site that already has the app.
 
-`Education Extensions` is the same gap seen from the other end, and is why this
-runs unfiltered. It is a module a site filled in through the desk under an app
-since retired, and this app now ships the three workspaces under it as files --
-so a site that gained the module on an upgrade rather than at install had those
-workspaces naming a `Module Def` that was never written. There is no longer any
-module here that is somebody else's: every name in `modules.txt` is one this app
-answers for, and every one of them gets a record.
+It runs unfiltered: every name in `modules.txt` is one this app answers for,
+and every one of them gets a record. None is somebody else's any more --
+`Education Extensions`, a site's module this app once claimed, is that site's
+own custom module now (`commons.commons_core.education_handover`).
 
 Why this is in `commons_core` and not at the app root
 -----------------------------------------------------

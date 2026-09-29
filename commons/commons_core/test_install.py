@@ -66,10 +66,10 @@ class TestRetiredAppIsGone(TestCase):
 
 	The app was retired, its two modules were taken over so that uninstalling it
 	would not delete the site's own records, and both halves of that have now
-	been settled: `Education Extensions` is this app's module and keeps its
-	name, and `NepalERP` was emptied -- `Prize` and `Prize Submission` moved to
-	`Education Extensions`, `Approval` and `User Link` to `Commons Core` -- and
-	then deleted.
+	been settled: `Education Extensions` kept its name and is now the site's
+	own custom module, and `NepalERP` was emptied -- `Prize` and `Prize
+	Submission` moved to `Education Extensions`, `Approval` and `User Link` to
+	`Commons Core` -- and then deleted.
 
 	This is the one thing that would not be obvious from the tree if it came
 	back: a `modules.txt` line reintroducing an empty module named after
