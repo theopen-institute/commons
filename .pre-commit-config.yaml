@@ -43,6 +43,7 @@ repos:
                 .*boilerplate.*|
                 commons/templates/includes/.*|
                 commons/public/js/lib/.*|
+                commons/banking/report/open_(receivables|payables)/.*\.js|
                 commons/pseudo_islands/vendor/.*
             )$
 
@@ -62,6 +63,7 @@ repos:
                 .*boilerplate.*|
                 commons/templates/includes/.*|
                 commons/public/js/lib/.*|
+                commons/banking/report/open_(receivables|payables)/.*\.js|
                 commons/pseudo_islands/vendor/.*
             )$
 
