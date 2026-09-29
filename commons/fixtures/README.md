@@ -15,10 +15,10 @@ rewritten.
 
 | File | What it holds |
 | --- | --- |
-| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, one on Email Account, two on Web Template, and the derived fields it adds to its own |
+| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, one on Email Account, and two on Web Template |
 | `custom_field_education.json` | The four fields the attendance register adds to Education's doctypes |
 | `custom_field_erpnext.json` | The four fields the requests section adds to ERPNext's doctypes |
-| `property_setter.json` | The image and title fields of this app's member doctypes, and which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification, and the fieldtypes a Web Template's inputs may have |
+| `property_setter.json` | Which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification, and the fieldtypes a Web Template's inputs may have |
 
 All of the Custom Fields are schema: code dereferences every one of them, and
 the part of the app that reads them does not work without them. Order within a
@@ -170,23 +170,6 @@ Claude guessing from the scan, which would be billed for and sometimes wrong.
 Read by `commons.document_capture.capture.sort_email`. Shown only while the
 account appends to Captured Document.
 
-### This app's own doctypes (`custom_field.json`)
-
-**The Member Details section on `Faculty`, `Associate Faculty` and `Fellow`** —
-first, middle, last and full name, image, alternate email address and phone
-number, each a derived field reading through `member_id` from the Member the
-record is about. Custom Fields on this app's own doctypes, which is unusual, and
-the reason is that a derived field can only be one: `derived_from` lives on
-Custom Field (see above). The same nine rows on each doctype: a section and a
-column break for the layout, and seven derived fields. The image is hidden on
-the form, where it shows as the doctype's image instead (`property_setter.json`).
-Nothing is stored, so the Member stays the one place a name or phone number is
-kept. Empty until "Enable Derived Docfields" is ticked in Commons Settings,
-which the section says once, in its description, rather than every field
-saying it; the fields are still created on a site that hasn't, and the check
-that would refuse a new derived field while the switch is off stands aside for
-a migrate.
-
 ### Education (`custom_field_education.json`)
 
 What the attendance register records that Education has nowhere to put. Read by
@@ -235,23 +218,6 @@ accounting dimension would add a separate per-row `department` to Material
 Request Item, which is ERPNext's accounting attribution and not this.
 
 ## Property Setters (`property_setter.json`)
-
-The image field of `Faculty`, `Associate Faculty` and `Fellow`, set to the
-derived `image` above, so the form, list and link previews show the Member's
-photograph. A Property Setter rather than `image_field` in the DocType's own
-JSON, because core checks that a DocType's image field is one of its fields
-whenever the DocType is saved, and in CI when it syncs too — before the Custom
-Field it names has been imported. Its name, `<doctype>-main-image_field`, is the
-one core gives this setting, so a site that pointed it somewhere by hand has
-that record replaced rather than a second one added.
-
-The title field of the same three, set to the derived `full_name`, so lists,
-link fields and breadcrumbs show the Member's name rather than their ID. It is a
-Property Setter for the same reason, and core also checks the title field when
-it saves a DocType. The DocType JSON still says `member_id`. When "Enable Derived
-Docfields" is off, queries leave `full_name` out rather than failing, and the
-desk shows the record's name, which is the member ID. It does the same for a
-record whose `member_id` is empty.
 
 `Web Template Field.fieldtype`'s options, with Currency, Date, Float and JSON
 added to core's list. A Web Template's Fields table is where

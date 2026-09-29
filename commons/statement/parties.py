@@ -24,7 +24,7 @@ down, next to the app that owns it, and a party type with no entry is reported
 on for nobody.
 
 That is also why `Member` is absent, and worth saying out loud since this app
-ships it. `commons.community.Member` is not a `Party Type`: nothing posts a
+used to ship it. The register's `Member` is not a `Party Type`: nothing posts a
 ledger entry against a member, and the fees a member owes are posted against
 whatever they are underneath -- a `Student`, usually -- which is the row this
 module resolves. A member with a balance has it as one of the four below.

@@ -1,6 +1,5 @@
 API Integrations
 Commons Core
-Community
 Education Extensions
 Requests
 Safer Permissions
