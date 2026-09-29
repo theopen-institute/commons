@@ -123,3 +123,23 @@ class TestTree(TestCase):
 		# Only SI-1 is past due on 2026-02-01; the payment is never overdue.
 		self.assertEqual(account.overdue, 100)
 		self.assertEqual(data[5].days_overdue, 12)
+
+	def test_party_at_the_top_puts_its_accounts_under_it(self):
+		vouchers = self.vouchers()
+		next(v for v in vouchers if v.voucher_no == "SI-1").account = "Other Debtors"
+		data = oi.tree(vouchers, date(2026, 2, 1), False, "Party")
+		self.assertEqual(
+			[(r.indent, r.row_type, r.label) for r in data],
+			[
+				(0, "party", "C1"),
+				(1, "account", "Debtors"),
+				(2, "voucher", "PE-1"),
+				(2, "voucher", "SI-2"),
+				(0, "party", "C2"),
+				(1, "account", "Other Debtors"),
+				(2, "voucher", "SI-1"),
+				(0, "total", "Total"),
+			],
+		)
+		self.assertEqual((data[0].accounts, data[0].outstanding), (1, 20))
+		self.assertNotIn("parties", data[1])

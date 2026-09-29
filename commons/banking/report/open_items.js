@@ -27,6 +27,14 @@ commons.open_items.register = function (report_name, account_type) {
 				),
 			},
 			{
+				fieldname: "group_by",
+				label: __("Group By"),
+				fieldtype: "Select",
+				options: ["Account", "Party"].join("\n"),
+				default: "Account",
+				description: __("What the rows at the top of the tree are."),
+			},
+			{
 				fieldname: "account",
 				label:
 					account_type === "Receivable"
@@ -93,7 +101,7 @@ commons.open_items.register = function (report_name, account_type) {
 	};
 
 	// Accounting dimensions go after Project, as filters of their own.
-	erpnext.utils.add_dimensions(report_name, 7);
+	erpnext.utils.add_dimensions(report_name, 8);
 };
 
 commons.open_items.label = function (data) {
@@ -105,16 +113,19 @@ commons.open_items.label = function (data) {
 	if (data.row_type === "voucher") {
 		return link(data.voucher_type, data.voucher_no, data.voucher_no);
 	}
+	// Only the rows at the top say how many of the next level they hold.
+	const count = (n, text) => (n ? ` <span class="text-muted">· ${__(text, [n])}</span>` : "");
 	if (data.row_type === "party") {
-		return `<b>${link(data.party_type, data.party, data.label)}</b>`;
+		return `<b>${link(data.party_type, data.party, data.label)}</b>${count(
+			data.accounts,
+			"{0} accounts"
+		)}`;
 	}
 	if (data.row_type === "account") {
-		const parties = __("{0} parties", [data.parties]);
-		return `<b>${link(
-			"Account",
-			data.account,
-			data.label
-		)}</b> <span class="text-muted">· ${parties}</span>`;
+		return `<b>${link("Account", data.account, data.label)}</b>${count(
+			data.parties,
+			"{0} parties"
+		)}`;
 	}
 	return `<b>${esc(data.label)}</b>`;
 };

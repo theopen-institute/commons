@@ -62,7 +62,7 @@ def execute(filters, account_type):
 	add_details(vouchers)
 
 	foreign = any(v.account_currency != company_currency for v in vouchers)
-	data = tree(vouchers, getdate(today()), foreign)
+	data = tree(vouchers, getdate(today()), foreign, filters.group_by)
 	for row in data:
 		row.currency = company_currency
 	return (
@@ -332,56 +332,64 @@ def party_names(vouchers):
 # --- The tree ----------------------------------------------------------------
 
 
-def tree(vouchers, on, foreign):
+def tree(vouchers, on, foreign, top="Account"):
 	"""Account rows at the top, each party under its account, each voucher
-	under its party; every group row carries its totals. A grand total last."""
-	data = []
-	accounts = defaultdict(lambda: defaultdict(list))
+	under its party -- or parties at the top and their accounts under them.
+	Every group row carries its totals. A grand total last."""
+	outer, inner = ("party", "account") if top == "Party" else ("account", "party")
+	groups = defaultdict(lambda: defaultdict(list))
 	for v in vouchers:
-		accounts[v.account][(v.party_type, v.party)].append(v)
+		groups[group_key(outer, v)][group_key(inner, v)].append(v)
 
-	for account in sorted(accounts):
-		parties = accounts[account]
-		members = [v for vs in parties.values() for v in vs]
-		data.append(group_row("account", account, 0, members, on, foreign, account=account))
-		for party_type, party in sorted(parties, key=lambda p: (parties[p][0].party_name or "").lower()):
-			vs = sorted(parties[(party_type, party)], key=lambda v: (v.posting_date, v.voucher_no))
-			data.append(
-				group_row(
-					"party",
-					vs[0].party_name if vs[0].party_name == party else f"{vs[0].party_name} ({party})",
-					1,
-					vs,
-					on,
-					foreign,
-					account=account,
-					party_type=party_type,
-					party=party,
-				)
-			)
+	data = []
+	for first in sorted(groups, key=lambda k: sort_key(outer, next(iter(groups[k].values()))[0])):
+		members = [v for vs in groups[first].values() for v in vs]
+		data.append(group_row(outer, 0, members, on, foreign))
+		for second in sorted(groups[first], key=lambda k: sort_key(inner, groups[first][k][0])):
+			vs = sorted(groups[first][second], key=lambda v: (v.posting_date, v.voucher_no))
+			data.append(group_row(inner, 1, vs, on, foreign))
 			data.extend(voucher_row(v, on, foreign) for v in vs)
 
 	if data:
-		data.append(group_row("total", _("Total"), 0, vouchers, on, False))
+		data.append(group_row("total", 0, vouchers, on, False))
 	return data
 
 
-def group_row(row_type, label, indent, vouchers, on, foreign, **extra):
+def group_key(kind, v):
+	return v.account if kind == "account" else (v.party_type, v.party)
+
+
+def sort_key(kind, v):
+	return v.account if kind == "account" else ((v.party_name or v.party or "").lower(), v.party)
+
+
+def group_row(row_type, indent, vouchers, on, foreign):
+	v = vouchers[0]
 	row = frappe._dict(
 		row_type=row_type,
-		label=label,
 		indent=indent,
 		vouchers=len(vouchers),
 		amount=sum(v.amount for v in vouchers),
 		outstanding=sum(v.outstanding for v in vouchers),
 		overdue=sum(v.outstanding for v in vouchers if overdue_days(v, on)),
-		**extra,
 	)
 	if row_type == "account":
-		row.parties = len({(v.party_type, v.party) for v in vouchers})
-	if foreign and row_type != "total":
-		row.account_currency = vouchers[0].account_currency
-		row.outstanding_in_account_currency = sum(v.outstanding_in_account_currency for v in vouchers)
+		row.update(label=v.account, account=v.account)
+	elif row_type == "party":
+		label = v.party_name if v.party_name == v.party else f"{v.party_name} ({v.party})"
+		row.update(label=label, party_type=v.party_type, party=v.party)
+	else:
+		row.label = _("Total")
+	# What the top rows hold, shown beside their name.
+	if indent == 0 and row_type == "account":
+		row.parties = len({(x.party_type, x.party) for x in vouchers})
+	if indent == 0 and row_type == "party":
+		row.accounts = len({x.account for x in vouchers})
+	# A party's accounts may be in different currencies; add up only one.
+	currencies = {x.account_currency for x in vouchers}
+	if foreign and row_type != "total" and len(currencies) == 1:
+		row.account_currency = v.account_currency
+		row.outstanding_in_account_currency = sum(x.outstanding_in_account_currency for x in vouchers)
 	row.settled = row.amount - row.outstanding
 	return row
 
