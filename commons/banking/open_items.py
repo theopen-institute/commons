@@ -456,9 +456,9 @@ def columns(account_type, foreign):
 		{"fieldname": "due_date", "label": _("Due Date"), "fieldtype": "Date", "width": 105},
 		{"fieldname": "reference", "label": _("Reference"), "fieldtype": "Data", "width": 130},
 		{"fieldname": "vouchers", "label": _("Vouchers"), "fieldtype": "Int", "width": 80},
+		money("outstanding", _("Outstanding")),
 		money("amount", _("Amount")),
 		money("settled", settled),
-		money("outstanding", _("Outstanding")),
 		money("overdue", _("Overdue")),
 		{"fieldname": "days_overdue", "label": _("Days Overdue"), "fieldtype": "Int", "width": 100},
 	]
