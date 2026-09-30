@@ -101,6 +101,9 @@ ENABLE_PAYABLE_PARTY = "enable_party_on_payable_payment_lines"
 # `commons.banking.payroll_lines`, which splits HRMS's payroll accrual journal.
 # Server-side only too.
 ENABLE_PAYROLL_LINES = "enable_payroll_lines_per_employee"
+# `commons.banking.internal_transfers`, which sets the clearance date of journal
+# entries that move no money at the bank. Server-side only too.
+ENABLE_CLEAR_INTERNAL_TRANSFERS = "enable_clearing_internal_transfers"
 
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.

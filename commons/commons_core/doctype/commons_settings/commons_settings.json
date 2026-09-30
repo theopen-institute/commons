@@ -22,7 +22,8 @@
   "enable_visual_email_editor",
   "enable_pseudo_islands",
   "enable_party_on_payable_payment_lines",
-  "enable_payroll_lines_per_employee"
+  "enable_payroll_lines_per_employee",
+  "enable_clearing_internal_transfers"
  ],
  "fields": [
   {
@@ -140,12 +141,19 @@
    "fieldname": "enable_payroll_lines_per_employee",
    "fieldtype": "Check",
    "label": "Enable Payroll Lines per Employee"
+  },
+  {
+   "default": "0",
+   "description": "Clears a Journal Entry on its own posting date when it moves no money at the bank: every bank and cash account on it nets to nothing, as when money moves between two departments that share one bank account. No bank statement will carry a line for such an entry, so without this it waits in Bank Clearance and the Bank Reconciliation Statement until it is cleared by hand. An entry that also moves money on another bank account is left to be cleared as usual, and one that already has a clearance date keeps it. Ticking this also clears, once, the submitted entries of this kind that are still waiting. Suspect this first if a journal entry is cleared that should not be.",
+   "fieldname": "enable_clearing_internal_transfers",
+   "fieldtype": "Check",
+   "label": "Enable Clearing Internal Transfers"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-28 18:00:00.000000",
+ "modified": "2026-09-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

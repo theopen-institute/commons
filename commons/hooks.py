@@ -352,6 +352,11 @@ doc_events = {
 		# the field itself. See `commons.email_extensions.notification`.
 		"before_import": "commons.email_extensions.notification.skip_field_fixture",
 	},
+	# A journal entry that moves no money at the bank is cleared on its own date.
+	# See `commons.banking.internal_transfers`.
+	"Journal Entry": {
+		"on_submit": "commons.banking.internal_transfers.clear_on_submit",
+	},
 	"Material Request": {
 		"validate": "commons.requests.budget.validate_material_request",
 		"before_update_after_submit": "commons.requests.budget.protect_submitted_material_request",

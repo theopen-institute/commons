@@ -17,6 +17,8 @@ whose Single has never been saved and therefore has no row to read at all.
 
 from frappe.model.document import Document
 
+from commons.banking.internal_transfers import clear_existing_when_switched_on
+
 
 class CommonsSettings(Document):
 	# begin: auto-generated types
@@ -28,6 +30,7 @@ class CommonsSettings(Document):
 		from frappe.types import DF
 
 		enable_bikram_sambat: DF.Check
+		enable_clearing_internal_transfers: DF.Check
 		enable_derived_docfields: DF.Check
 		enable_home_page_priority: DF.Check
 		enable_navigation_rail: DF.Check
@@ -41,4 +44,5 @@ class CommonsSettings(Document):
 		title: DF.Data | None
 	# end: auto-generated types
 
-	pass
+	def on_update(self):
+		clear_existing_when_switched_on(self)
