@@ -20,17 +20,22 @@ right to the day it ran. On 2026-09-27, LM-REP-0140 was entered for April and
 took LM-REP-0118 and LM-REP-0124 with it. A third script on the repost, After
 Submit, books them again on their own dates.
 
+Commons Settings' "Enable Loan Vouchers on Their Own Dates" does all of that
+in the app, and write-offs and disbursements too (`commons.banking.loan_own_dates`).
+With it on, the scripts are redundant.
+
 `find_discrepancies` asks whether the books agree with the documents, whatever
-the scripts say. `safeguards` asks whether the scripts are there and working.
-It runs the two repayment scripts on an unsaved document inside a savepoint
-that is rolled back, so it tests what they do rather than what they are called.
+keeps them there. `safeguards` asks whether that is in place. With the setting
+on, it checks that each doctype's class carries its extension. Without it, it
+runs the two repayment scripts on an unsaved document inside a savepoint that
+is rolled back, so it tests what they do rather than what they are called.
 
 The repair touches Loan Repayments only. It cancels the repayment's live GL
 and books it again from the document, as the repost script does, and refuses
 when the document's own `posting_date` is not its value date, because lending
 would book it on the wrong day again. Write-offs and disbursements are only
-reported. Their `posting_date` is always the day they were saved, so booking
-them again would change nothing.
+reported. Their `posting_date` is the day they were saved, so booking them
+again would change nothing.
 """
 
 import frappe
@@ -62,7 +67,9 @@ REBOOK_CALLS = ("make_gl_entries(cancel=1)", "make_gl_entries()")
 
 OK = "OK"
 MISSING = "Missing"
-NOT_COVERED = "Not covered"
+# Server scripts doing what the setting now does: harmless, but a second
+# re-booking of every reposted repayment.
+REDUNDANT = "Redundant"
 
 
 def _gl_dates(voucher_type: str, names: list[str]) -> dict:
@@ -236,59 +243,104 @@ def _repost_scripts() -> list[str]:
 	]
 
 
+def _extended(doctype: str) -> bool:
+	"""Whether this site's class for `doctype` carries the commons extension."""
+	from commons.banking.loan_own_dates import MIXINS
+
+	return issubclass(frappe.get_doc({"doctype": doctype}).__class__, MIXINS[doctype])
+
+
 def safeguards() -> list[dict]:
-	"""What keeps lending's GL on the voucher's date, and whether it is in place."""
+	"""What keeps lending's GL on the voucher's date, and whether it is in place.
+
+	With Commons Settings' "Enable Loan Vouchers on Their Own Dates" on, the
+	app does it, and each doctype's class must carry its extension. Without it,
+	repayments may still be kept by the site's own server scripts, which are
+	checked as they always were; write-offs and disbursements have nothing.
+	"""
 	from frappe.utils.safe_exec import is_safe_exec_enabled
+
+	from commons.commons_core.settings import ENABLE_LOAN_OWN_DATES, feature_enabled
 
 	rows = []
 
-	def add(check, ok, detail, status=None):
-		rows.append(frappe._dict(check=check, status=status or (OK if ok else MISSING), detail=detail))
+	def add(check, ok, detail):
+		rows.append(frappe._dict(check=check, status=OK if ok else MISSING, detail=detail))
 
-	enabled = is_safe_exec_enabled()
-	add(
-		_("Server scripts can run"),
-		enabled,
-		_("server_script_enabled is set in common_site_config.json")
-		if enabled
-		else _("Set server_script_enabled in common_site_config.json; site_config is not read for it"),
+	on = feature_enabled(ENABLE_LOAN_OWN_DATES)
+	setting = _("Commons Settings: Enable Loan Vouchers on Their Own Dates")
+	checks = (
+		("Loan Repayment", _("Loan Repayment keeps the posting date entered")),
+		("Loan Repayment Repost", _("Repost books repayments on their own dates")),
+		("Loan Write Off", _("Loan Write Off: GL on the Value Date")),
+		("Loan Disbursement", _("Loan Disbursement: GL on the Disbursement Date")),
 	)
 
-	if apps.has_doctype("Loan Repayment"):
-		kept, why = probe_repayment_date() if enabled else (False, _("server scripts cannot run"))
-		scripts = ", ".join(_repayment_scripts()) or _("none enabled")
-		add(
-			_("Loan Repayment keeps the posting date entered"),
-			kept,
-			_("Tested now, rolled back. Scripts: {0}").format(scripts)
-			if kept
-			else _("{0}. Scripts: {1}").format(why, scripts),
-		)
-
-	if apps.has_doctype("Loan Repayment Repost"):
-		found = _repost_scripts()
-		add(
-			_("Repost books repayments on their own dates"),
-			bool(found) and enabled,
-			", ".join(found)
-			if found
-			else _(
-				"No enabled After Submit script on Loan Repayment Repost calls make_gl_entries(cancel=1) and make_gl_entries()"
-			),
-		)
-
-	for voucher_type, date_field in (
-		("Loan Write Off", "Value Date"),
-		("Loan Disbursement", "Disbursement Date"),
-	):
-		if apps.has_doctype(voucher_type):
+	if on:
+		for doctype, check in checks:
+			if not apps.has_doctype(doctype):
+				continue
+			extended = _extended("Loan Repayment" if doctype == "Loan Repayment Repost" else doctype)
 			add(
-				_("{0}: GL on the {1}").format(voucher_type, date_field),
+				check,
+				extended,
+				_("{0} is on").format(setting)
+				if extended
+				else _(
+					"{0} is on, but the {1} class does not carry the extension. Restart the bench."
+				).format(setting, doctype),
+			)
+		redundant = _repayment_scripts() + _repost_scripts()
+		if redundant:
+			rows.append(
+				frappe._dict(
+					check=_("Server scripts replaced by the setting"),
+					status=REDUNDANT,
+					detail=_("Still enabled, and no longer needed: {0}").format(", ".join(redundant)),
+				)
+			)
+		return rows
+
+	enabled = is_safe_exec_enabled()
+	scripts_wanted = apps.has_doctype("Loan Repayment")
+	if scripts_wanted:
+		add(
+			_("Server scripts can run"),
+			enabled,
+			_("server_script_enabled is set in common_site_config.json")
+			if enabled
+			else _("Set server_script_enabled in common_site_config.json; site_config is not read for it"),
+		)
+
+	for doctype, check in checks:
+		if not apps.has_doctype(doctype):
+			continue
+		if doctype == "Loan Repayment":
+			kept, why = probe_repayment_date() if enabled else (False, _("server scripts cannot run"))
+			scripts = ", ".join(_repayment_scripts()) or _("none enabled")
+			add(
+				check,
+				kept,
+				_("Tested now, rolled back. Scripts: {0}").format(scripts)
+				if kept
+				else _("{0}. Scripts: {1}. Or tick {2}.").format(why, scripts, setting),
+			)
+		elif doctype == "Loan Repayment Repost":
+			found = _repost_scripts()
+			add(
+				check,
+				bool(found) and enabled,
+				", ".join(found)
+				if found
+				else _(
+					"No enabled After Submit script on Loan Repayment Repost calls make_gl_entries(cancel=1) and make_gl_entries(). Or tick {0}."
+				).format(setting),
+			)
+		else:
+			add(
+				check,
 				False,
-				_(
-					"Nothing keeps it there: lending dates a {0}'s GL on the day it is submitted. A backdated one shows under GL dates."
-				).format(voucher_type),
-				status=NOT_COVERED,
+				_("Lending dates a {0}'s GL on the day it is submitted. Tick {1}.").format(doctype, setting),
 			)
 	return rows
 

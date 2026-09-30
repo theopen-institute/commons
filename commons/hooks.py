@@ -569,6 +569,11 @@ extend_doctype_class = {
 	# A payroll run's accrual journal split per employee, with their department
 	# and, on payable accounts, their party. See `commons.banking.payroll_lines`.
 	"Payroll Entry": ["commons.banking.payroll_lines.EmployeePayrollLinesMixin"],
+	# Lending's vouchers and their GL on their own dates, not the day they are
+	# saved. See `commons.banking.loan_own_dates`.
+	"Loan Repayment": ["commons.banking.loan_own_dates.OwnDateLoanRepaymentMixin"],
+	"Loan Write Off": ["commons.banking.loan_own_dates.OwnDateLoanWriteOffMixin"],
+	"Loan Disbursement": ["commons.banking.loan_own_dates.OwnDateLoanDisbursementMixin"],
 }
 
 # The gate checkbox is drawn next to "Only if Creator" rather than among the

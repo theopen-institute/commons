@@ -23,7 +23,8 @@
   "enable_pseudo_islands",
   "enable_party_on_payable_payment_lines",
   "enable_payroll_lines_per_employee",
-  "enable_clearing_internal_transfers"
+  "enable_clearing_internal_transfers",
+  "enable_loan_vouchers_on_own_dates"
  ],
  "fields": [
   {
@@ -148,12 +149,19 @@
    "fieldname": "enable_clearing_internal_transfers",
    "fieldtype": "Check",
    "label": "Enable Clearing Internal Transfers"
+  },
+  {
+   "default": "0",
+   "description": "Books a Loan Repayment, Loan Write Off or Loan Disbursement on its own date: the posting date entered on a repayment, the value date of a write-off, the disbursement date of a disbursement. Without it lending dates them, and their GL, on the day they are saved, so one entered after the fact sits in the books on the wrong day. It also keeps the repayments after a backdated one on their own dates when lending reposts them, which it otherwise books on the day of the repost. On a disbursement with a monthly schedule and no first repayment date, the first repayment then counts from the disbursement date. Affects vouchers saved or reposted while it is on; the Loan Date Audit lists those booked before. Suspect this first if a lending voucher's ledger is dated other than lending would date it.",
+   "fieldname": "enable_loan_vouchers_on_own_dates",
+   "fieldtype": "Check",
+   "label": "Enable Loan Vouchers on Their Own Dates"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-30 12:00:00.000000",
+ "modified": "2026-09-30 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

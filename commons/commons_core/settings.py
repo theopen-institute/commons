@@ -104,6 +104,9 @@ ENABLE_PAYROLL_LINES = "enable_payroll_lines_per_employee"
 # `commons.banking.internal_transfers`, which sets the clearance date of journal
 # entries that move no money at the bank. Server-side only too.
 ENABLE_CLEAR_INTERNAL_TRANSFERS = "enable_clearing_internal_transfers"
+# `commons.banking.loan_own_dates`, which keeps lending's vouchers and their GL on
+# their own dates. Server-side only too.
+ENABLE_LOAN_OWN_DATES = "enable_loan_vouchers_on_own_dates"
 
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.

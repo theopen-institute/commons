@@ -90,7 +90,7 @@ def _summary(checks, rows):
 		summary.append(
 			_figure(sum(r.status == loan_dates.MISSING for r in rows), _("Safeguards missing"), "Red")
 		)
-		uncovered = sum(r.status == loan_dates.NOT_COVERED for r in rows)
-		if uncovered:
-			summary.append(_figure(uncovered, _("Not covered"), "Orange"))
+		redundant = sum(r.status == loan_dates.REDUNDANT for r in rows)
+		if redundant:
+			summary.append(_figure(redundant, _("Redundant server scripts"), "Orange"))
 	return summary

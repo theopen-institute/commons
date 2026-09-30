@@ -10,7 +10,7 @@ const SAFEGUARDS = "Safeguards";
 const GL_DATE = "GL not on the voucher's date";
 const API = "commons.banking.loan_dates.";
 const CAN_REPAIR = () => frappe.user.has_role(["Accounts Manager", "System Manager"]);
-const STATUS_COLOR = { OK: "green", Missing: "red", "Not covered": "orange", "Wrong date": "red" };
+const STATUS_COLOR = { OK: "green", Missing: "red", Redundant: "orange", "Wrong date": "red" };
 
 frappe.query_reports["Loan Date Audit"] = {
 	filters: [
@@ -160,7 +160,7 @@ function explain(voucher_type, voucher_no, issue) {
 			<p>${
 				why ||
 				__(
-					"Lending dates a {0}'s GL on the day it is submitted, so booking it again would not move it. Cancel and amend it, or correct it with a journal entry.",
+					"Lending booked this {0} on the day it was submitted, and booking it again would not move it. Cancel and amend it with Enable Loan Vouchers on Their Own Dates on in Commons Settings, or correct it with a journal entry.",
 					[esc(voucher_type)]
 				)
 			}</p>`,
