@@ -1,8 +1,11 @@
 // Where the payment ledger disagrees with the GL, where an invoice's outstanding
 // disagrees with the payment ledger, and where Payment Reconciliation offers a
-// refund line twice; and the fixes. Every fix opens a dialog that shows what
-// will change and writes only on its button; nothing on the report itself writes.
+// refund line twice; and the fixes. All three checks run by default and share
+// one list; the Check filter narrows it to one. Every fix opens a dialog that
+// shows what will change and writes only on its button; nothing on the report
+// itself writes.
 
+const ALL = "All";
 const LEDGER = "Payment ledger vs GL";
 const OUTSTANDING = "Invoice outstanding vs payment ledger";
 const NETTED = "Reconciliation: refunds counted twice";
@@ -24,8 +27,8 @@ frappe.query_reports["Payment Ledger Audit"] = {
 			fieldname: "view",
 			label: __("Check"),
 			fieldtype: "Select",
-			options: [LEDGER, OUTSTANDING, NETTED].join("\n"),
-			default: LEDGER,
+			options: [ALL, LEDGER, OUTSTANDING, NETTED].join("\n"),
+			default: ALL,
 			reqd: 1,
 		},
 		{ fieldname: "from_date", label: __("From Date"), fieldtype: "Date" },
@@ -73,6 +76,7 @@ frappe.query_reports["Payment Ledger Audit"] = {
 	formatter(value, row, column, data, default_formatter) {
 		if (column.fieldname === "action" && data && data.voucher_no && CAN_REPAIR()) {
 			return `<button class="btn btn-xs btn-default pla-review"
+				data-check="${frappe.utils.escape_html(data.check)}"
 				data-voucher-type="${frappe.utils.escape_html(data.voucher_type)}"
 				data-voucher-no="${frappe.utils.escape_html(data.voucher_no)}">${__("Review")}</button>`;
 		}
@@ -81,11 +85,10 @@ frappe.query_reports["Payment Ledger Audit"] = {
 
 	onload(report) {
 		$(report.page.wrapper).on("click", ".pla-review", (e) => {
-			const { voucherType, voucherNo } = e.currentTarget.dataset;
-			const view = report.get_filter_value("view");
-			if (view === OUTSTANDING) {
+			const { check, voucherType, voucherNo } = e.currentTarget.dataset;
+			if (check === OUTSTANDING) {
 				review_outstanding(report, voucherType, voucherNo);
-			} else if (view === NETTED) {
+			} else if (check === NETTED) {
 				review_netted(report, voucherNo);
 			} else {
 				review_voucher(report, voucherType, voucherNo);
@@ -189,7 +192,10 @@ function voucher_body(voucher_type, voucher_no, plan) {
 
 function review_outstanding(report, voucher_type, voucher_no) {
 	const row = (frappe.query_report.data || []).find(
-		(r) => r.voucher_type === voucher_type && r.voucher_no === voucher_no
+		(r) =>
+			r.check === OUTSTANDING &&
+			r.voucher_type === voucher_type &&
+			r.voucher_no === voucher_no
 	);
 	const d = new frappe.ui.Dialog({
 		title: __("Recompute outstanding for {0}", [voucher_no]),
@@ -220,8 +226,8 @@ function review_outstanding(report, voucher_type, voucher_no) {
 	});
 	d.fields_dict.body.$wrapper.html(`
 		<p>${__("The invoice says {0} is outstanding; its payment ledger rows add up to {1}.", [
-			money(row && row.recorded),
-			money(row && row.ledger),
+			money(row && row.found),
+			money(row && row.expected),
 		])}</p>
 		<p class="text-muted small">${__(
 			"Recompute sets the invoice's outstanding amount and status from the payment ledger, as ERPNext does after every payment. Repair any payment ledger discrepancy for this invoice first, or the recomputed amount will be wrong too."
@@ -298,43 +304,41 @@ function review_netted(report, voucher_no) {
 }
 
 function repair_all(report) {
-	if (report.get_filter_value("view") === OUTSTANDING) {
-		frappe.msgprint(__("Recompute invoices one at a time with Review."));
-		return;
-	}
-	const netted = report.get_filter_value("view") === NETTED;
-	const rows = frappe.query_report.data || [];
-	const issues = [...new Set(rows.map((r) => r.issue))];
-	if (!issues.length) {
-		frappe.msgprint(__("Nothing to repair."));
+	// Outstanding amounts are recomputed one at a time: each is only right once
+	// the payment ledger under it is, so they are left out here.
+	const rows = (frappe.query_report.data || []).filter((r) => r.check !== OUTSTANDING);
+	const key = (r) => r.check + "\u0000" + r.issue;
+	const kinds = [...new Map(rows.map((r) => [key(r), r])).values()];
+	if (!kinds.length) {
+		frappe.msgprint(
+			__(
+				"Nothing to repair in bulk. Recompute invoice outstanding amounts one at a time with Review."
+			)
+		);
 		return;
 	}
 	const d = new frappe.ui.Dialog({
-		title: netted ? __("Stop offering refunds as payments") : __("Repair payment ledger"),
+		title: __("Repair shown problems"),
 		size: "large",
 		fields: [
 			{
 				fieldtype: "HTML",
 				fieldname: "intro",
-				options: `<p>${
-					netted
-						? __(
-								"Each journal entry is checked again on the server and fixed on its own. Entries that pay out more than they charge are skipped and listed. No amounts change."
-						  )
-						: __(
-								"Each voucher is checked again on the server and repaired on its own. Vouchers whose document disagrees with its GL are skipped and listed. Only the payment ledger changes."
-						  )
-				}</p>`,
+				options: `<p>${__(
+					"Each voucher is checked again on the server and fixed on its own. Payment ledger repairs change only the payment ledger, and skip vouchers whose document disagrees with its GL. Refund fixes change no amounts, and skip entries that pay out more than they charge. Skipped vouchers are listed. Invoice outstanding amounts are recomputed one at a time with Review, once the ledger is right."
+				)}</p>`,
 			},
 			{
 				fieldtype: "MultiCheck",
 				fieldname: "issues",
 				label: __("Fix these issues"),
 				columns: 1,
-				options: issues.map((i) => ({
-					label: `${i} (${rows.filter((r) => r.issue === i).length})`,
-					value: i,
-					checked: !i.endsWith("no party"),
+				options: kinds.map((k) => ({
+					label: `${k.check}: ${k.issue} (${
+						rows.filter((r) => key(r) === key(k)).length
+					})`,
+					value: key(k),
+					checked: !k.issue.endsWith("no party") && !k.issue.startsWith("Pays out more"),
 				})),
 			},
 			{ fieldtype: "HTML", fieldname: "result" },
@@ -342,49 +346,61 @@ function repair_all(report) {
 		primary_action_label: __("Repair"),
 		primary_action(values) {
 			const chosen = new Set(values.issues || []);
-			const seen = new Set();
-			const vouchers = rows
-				.filter((r) => chosen.has(r.issue))
-				.filter(
-					(r) =>
-						!seen.has(r.voucher_type + "\u0000" + r.voucher_no) &&
-						seen.add(r.voucher_type + "\u0000" + r.voucher_no)
-				)
-				.map((r) => ({ voucher_type: r.voucher_type, voucher_no: r.voucher_no }));
-			if (!vouchers.length) return;
+			const picked = rows.filter((r) => chosen.has(key(r)));
+			const unique = (list) => [
+				...new Map(list.map((v) => [JSON.stringify(v), v])).values(),
+			];
+			const ledger = unique(
+				picked
+					.filter((r) => r.check === LEDGER)
+					.map((r) => ({ voucher_type: r.voucher_type, voucher_no: r.voucher_no }))
+			);
+			const netted = unique(
+				picked.filter((r) => r.check === NETTED).map((r) => r.voucher_no)
+			);
+			if (!ledger.length && !netted.length) return;
 			frappe.confirm(
-				netted
-					? __("Fix the refund lines of {0} journal entr(ies)?", [vouchers.length])
-					: __("Repair the payment ledger of {0} voucher(s)?", [vouchers.length]),
-				() => {
+				__(
+					"Repair the payment ledger of {0} voucher(s) and fix the refund lines of {1} journal entr(ies)?",
+					[ledger.length, netted.length]
+				),
+				async () => {
 					d.disable_primary_action();
-					frappe
-						.call({
-							method: netted
-								? NETTED_API + "fix_netted_many"
-								: API + "repair_vouchers",
-							args: {
-								vouchers: netted ? vouchers.map((v) => v.voucher_no) : vouchers,
-							},
-							freeze: true,
-						})
-						.then(({ message: results }) => {
-							d.get_primary_btn().hide();
-							d.fields_dict.issues.$wrapper.hide();
-							d.fields_dict.result.$wrapper.html(
-								table(
-									[__("Voucher"), __("Result")],
-									results.map((r) => [
-										esc(r.voucher_no),
-										r.status === "failed"
-											? `<span class="text-danger">${esc(r.error)}</span>`
-											: esc(r.status),
-									])
-								)
-							);
-							report.refresh();
-						})
-						.catch(() => d.enable_primary_action());
+					try {
+						const results = [];
+						if (ledger.length) {
+							const { message } = await frappe.call({
+								method: API + "repair_vouchers",
+								args: { vouchers: ledger },
+								freeze: true,
+							});
+							results.push(...message);
+						}
+						if (netted.length) {
+							const { message } = await frappe.call({
+								method: NETTED_API + "fix_netted_many",
+								args: { vouchers: netted },
+								freeze: true,
+							});
+							results.push(...message);
+						}
+						d.get_primary_btn().hide();
+						d.fields_dict.issues.$wrapper.hide();
+						d.fields_dict.result.$wrapper.html(
+							table(
+								[__("Voucher"), __("Result")],
+								results.map((r) => [
+									esc(r.voucher_no),
+									r.status === "failed"
+										? `<span class="text-danger">${esc(r.error)}</span>`
+										: esc(r.status),
+								])
+							)
+						);
+					} catch (e) {
+						d.enable_primary_action();
+					}
+					report.refresh();
 				}
 			);
 		},

@@ -3,39 +3,84 @@ the general ledger, where an invoice's outstanding amount disagrees with the
 payment ledger, and where Payment Reconciliation offers a journal entry line as
 a payment although its own entry already netted it. The checks and the fixes
 are in `commons.banking.ledger_audit` and `commons.banking.netted_payments`.
-"""
 
-from collections import Counter
+Every check runs by default and their problems share one list, so a clean
+report means all three are clean. Each row says which check found it, in the
+same columns: what the amount should be, what it is, and the difference.
+"""
 
 import frappe
 from frappe import _
+from frappe.utils import flt, fmt_money
 
 from commons.banking import ledger_audit, netted_payments
 
+ALL = "All"
 LEDGER = "Payment ledger vs GL"
 OUTSTANDING = "Invoice outstanding vs payment ledger"
 NETTED = "Reconciliation: refunds counted twice"
+# In the order to fix them: an outstanding amount is only right once the
+# payment ledger under it is.
+CHECKS = (LEDGER, OUTSTANDING, NETTED)
 
 
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
-	if filters.get("view") == OUTSTANDING:
-		rows = ledger_audit.find_outstanding_discrepancies(filters)
-		return _outstanding_columns(), rows, None, None, _outstanding_summary(rows)
-	if filters.get("view") == NETTED:
-		rows = netted_payments.for_display(netted_payments.find_netted_payments(filters))
-		return _netted_columns(), rows, None, None, _netted_summary(rows)
-	rows = ledger_audit.find_discrepancies(filters)
-	return _ledger_columns(), rows, None, None, _ledger_summary(rows)
+	chosen = filters.get("view")
+	checks = [chosen] if chosen in CHECKS else list(CHECKS)
+	rows = []
+	for check in checks:
+		rows += FINDERS[check](filters)
+	return _columns(), rows, None, None, _summary(checks, rows)
 
 
-def _action_column():
-	return {"fieldname": "action", "label": _("Action"), "fieldtype": "Data", "width": 90}
-
-
-def _ledger_columns():
+def _ledger_rows(filters):
 	return [
-		_action_column(),
+		frappe._dict(
+			r,
+			check=LEDGER,
+			detail=r.voucher_status,
+			expected=r.gl_amount,
+			found=r.ple_amount,
+		)
+		for r in ledger_audit.find_discrepancies(filters)
+	]
+
+
+def _outstanding_rows(filters):
+	return [
+		frappe._dict(
+			r,
+			check=OUTSTANDING,
+			issue=_("Outstanding on invoice differs"),
+			expected=r.ledger,
+			found=r.recorded,
+		)
+		for r in ledger_audit.find_outstanding_discrepancies(filters)
+	]
+
+
+def _netted_rows(filters):
+	return [
+		frappe._dict(
+			r,
+			check=NETTED,
+			detail=_("Lines {0}; the entry charges {1}").format(r["rows"], fmt_money(r["charged"])),
+			expected=0,
+			found=r["offered"],
+			difference=flt(r["offered"], 2),
+		)
+		for r in netted_payments.for_display(netted_payments.find_netted_payments(filters))
+	]
+
+
+FINDERS = {LEDGER: _ledger_rows, OUTSTANDING: _outstanding_rows, NETTED: _netted_rows}
+
+
+def _columns():
+	return [
+		{"fieldname": "action", "label": _("Action"), "fieldtype": "Data", "width": 90},
+		{"fieldname": "check", "label": _("Check"), "fieldtype": "Data", "width": 190},
 		{"fieldname": "issue", "label": _("Issue"), "fieldtype": "Data", "width": 260},
 		{"fieldname": "posting_date", "label": _("Posting Date"), "fieldtype": "Date", "width": 100},
 		{
@@ -52,13 +97,13 @@ def _ledger_columns():
 			"options": "voucher_type",
 			"width": 170,
 		},
-		{"fieldname": "voucher_status", "label": _("Status"), "fieldtype": "Data", "width": 90},
+		{"fieldname": "detail", "label": _("Detail"), "fieldtype": "Data", "width": 160},
 		{
 			"fieldname": "account",
 			"label": _("Account"),
 			"fieldtype": "Link",
 			"options": "Account",
-			"width": 240,
+			"width": 220,
 		},
 		{"fieldname": "party_type", "label": _("Party Type"), "fieldtype": "Data", "width": 90},
 		{
@@ -68,14 +113,14 @@ def _ledger_columns():
 			"options": "party_type",
 			"width": 160,
 		},
-		{"fieldname": "gl_amount", "label": _("GL"), "fieldtype": "Float", "precision": 2, "width": 110},
 		{
-			"fieldname": "ple_amount",
-			"label": _("Payment Ledger"),
+			"fieldname": "expected",
+			"label": _("Should Be"),
 			"fieldtype": "Float",
 			"precision": 2,
-			"width": 120,
+			"width": 110,
 		},
+		{"fieldname": "found", "label": _("Is"), "fieldtype": "Float", "precision": 2, "width": 110},
 		{
 			"fieldname": "difference",
 			"label": _("Difference"),
@@ -86,154 +131,17 @@ def _ledger_columns():
 	]
 
 
-def _outstanding_columns():
-	return [
-		_action_column(),
-		{"fieldname": "posting_date", "label": _("Posting Date"), "fieldtype": "Date", "width": 100},
-		{
-			"fieldname": "voucher_type",
-			"label": _("Voucher Type"),
-			"fieldtype": "Link",
-			"options": "DocType",
-			"width": 130,
-		},
-		{
-			"fieldname": "voucher_no",
-			"label": _("Invoice"),
-			"fieldtype": "Dynamic Link",
-			"options": "voucher_type",
-			"width": 180,
-		},
-		{
-			"fieldname": "account",
-			"label": _("Account"),
-			"fieldtype": "Link",
-			"options": "Account",
-			"width": 200,
-		},
-		{"fieldname": "party_type", "label": _("Party Type"), "fieldtype": "Data", "width": 90},
-		{
-			"fieldname": "party",
-			"label": _("Party"),
-			"fieldtype": "Dynamic Link",
-			"options": "party_type",
-			"width": 180,
-		},
-		{
-			"fieldname": "recorded",
-			"label": _("Outstanding on Invoice"),
-			"fieldtype": "Float",
-			"precision": 2,
-			"width": 160,
-		},
-		{
-			"fieldname": "ledger",
-			"label": _("Per Payment Ledger"),
-			"fieldtype": "Float",
-			"precision": 2,
-			"width": 150,
-		},
-		{
-			"fieldname": "difference",
-			"label": _("Difference"),
-			"fieldtype": "Float",
-			"precision": 2,
-			"width": 110,
-		},
-	]
-
-
-def _netted_columns():
-	return [
-		_action_column(),
-		{"fieldname": "issue", "label": _("Issue"), "fieldtype": "Data", "width": 260},
-		{"fieldname": "posting_date", "label": _("Posting Date"), "fieldtype": "Date", "width": 100},
-		{
-			"fieldname": "voucher_no",
-			"label": _("Journal Entry"),
-			"fieldtype": "Link",
-			"options": "Journal Entry",
-			"width": 170,
-		},
-		{
-			"fieldname": "account",
-			"label": _("Account"),
-			"fieldtype": "Link",
-			"options": "Account",
-			"width": 240,
-		},
-		{"fieldname": "party_type", "label": _("Party Type"), "fieldtype": "Data", "width": 90},
-		{
-			"fieldname": "party",
-			"label": _("Party"),
-			"fieldtype": "Dynamic Link",
-			"options": "party_type",
-			"width": 160,
-		},
-		{"fieldname": "rows", "label": _("Lines"), "fieldtype": "Data", "width": 70},
-		{
-			"fieldname": "charged",
-			"label": _("Charged in Entry"),
-			"fieldtype": "Float",
-			"precision": 2,
-			"width": 130,
-		},
-		{
-			"fieldname": "offered",
-			"label": _("Offered as Payment"),
-			"fieldtype": "Float",
-			"precision": 2,
-			"width": 140,
-		},
-	]
-
-
-def _netted_summary(rows):
-	if not rows:
-		return [{"value": _("None"), "label": _("Refund lines"), "indicator": "Green", "datatype": "Data"}]
-	return [
-		{"value": len(rows), "label": _("Refund lines"), "indicator": "Orange", "datatype": "Int"},
-		{
-			"value": len({r["voucher_no"] for r in rows}),
-			"label": _("Journal Entries"),
-			"indicator": "Orange",
-			"datatype": "Int",
-		},
-		{
-			"value": sum(r["offered"] for r in rows),
-			"label": _("Offered twice"),
-			"indicator": "Orange",
-			"datatype": "Float",
-		},
-	]
-
-
-def _ledger_summary(rows):
-	if not rows:
-		return [{"value": _("None"), "label": _("Discrepancies"), "indicator": "Green", "datatype": "Data"}]
-	counts = Counter(r.issue for r in rows)
-	summary = [
-		{"value": len(rows), "label": _("Discrepancies"), "indicator": "Red", "datatype": "Int"},
-		{
-			"value": len({(r.voucher_type, r.voucher_no) for r in rows}),
-			"label": _("Vouchers"),
-			"indicator": "Red",
-			"datatype": "Int",
-		},
-	]
-	summary += [
-		{"value": n, "label": issue, "indicator": "Orange", "datatype": "Int"}
-		for issue, n in counts.most_common()
-	]
+def _summary(checks, rows):
+	"""One figure per check run, green when it found nothing."""
+	summary = []
+	for check in checks:
+		n = sum(r.check == check for r in rows)
+		summary.append(
+			{
+				"value": n or _("None"),
+				"label": check,
+				"indicator": "Red" if n else "Green",
+				"datatype": "Int" if n else "Data",
+			}
+		)
 	return summary
-
-
-def _outstanding_summary(rows):
-	return [
-		{
-			"value": len(rows) if rows else _("None"),
-			"label": _("Invoices"),
-			"indicator": "Red" if rows else "Green",
-			"datatype": "Int" if rows else "Data",
-		}
-	]
