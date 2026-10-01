@@ -48,15 +48,27 @@
 // does the same, for MJML that comes from anywhere else.
 import grapesjs from "grapesjs";
 import mjml_plugin from "grapesjs-mjml";
-import init_mrml, { Engine } from "mrml/web/mrml_wasm.js";
+// mrml's bundler build, minus the one line that imports the `.wasm` -- which
+// esbuild can't -- so it is instantiated here. Not the web build: that one
+// falls back to `import.meta.url`, which esbuild warns of on every build.
+import * as mrml from "mrml/bundler/mrml_wasm_bg.js";
 
 // Served from the app's node_modules, which bench links into every app's public
 // folder. The bundler would otherwise have to inline 1 MB of WebAssembly.
-const WASM = "/assets/commons/node_modules/mrml/web/mrml_wasm_bg.wasm";
+const WASM = "/assets/commons/node_modules/mrml/bundler/mrml_wasm_bg.wasm";
 
 let engine_loading = null;
 const load_engine = () =>
-	(engine_loading ||= init_mrml({ module_or_path: WASM }).then(() => new Engine()));
+	(engine_loading ||= fetch(WASM)
+		// The bytes, not the response: streaming needs a server that sends
+		// `application/wasm`, and not every nginx does.
+		.then((response) => response.arrayBuffer())
+		.then((bytes) => WebAssembly.instantiate(bytes, { "./mrml_wasm_bg.js": mrml }))
+		.then(({ instance }) => {
+			mrml.__wbg_set_wasm(instance.exports);
+			instance.exports.__wbindgen_start();
+			return new mrml.Engine();
+		}));
 
 const compiler = (engine) => (input) => {
 	const mjml = input
@@ -64,7 +76,10 @@ const compiler = (engine) => (input) => {
 		.replace(/<\/mj-body>\s*<\/mj-body>/, "</mj-body>");
 	const result = engine.toHtml(mjml);
 	if (result.type !== "success") {
-		return { html: "", errors: [{ message: result.message, formattedMessage: result.message }] };
+		return {
+			html: "",
+			errors: [{ message: result.message, formattedMessage: result.message }],
+		};
 	}
 	return { html: result.content.replace(/(<body[^>]*>)/, "$1\n"), errors: [] };
 };
@@ -90,7 +105,8 @@ const unescape_jinja = (source) =>
 // unescaped again on the way out), a bare `&` escaped, an HTML-only entity as
 // its number, and an HTML void tag closed.
 const XML_ENTITIES = new Set(["lt", "gt", "amp", "quot", "apos"]);
-const VOID_TAG = /<(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)(\s[^<>]*?)?\s*>/gi;
+const VOID_TAG =
+	/<(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)(\s[^<>]*?)?\s*>/gi;
 
 const entity_number = (name) => {
 	const probe = document.createElement("textarea");
@@ -101,9 +117,13 @@ const entity_number = (name) => {
 
 export const as_xml = (source) =>
 	source
-		.replace(JINJA, (tag) => tag.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"))
+		.replace(JINJA, (tag) =>
+			tag.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+		)
 		.replace(/&(?![A-Za-z][A-Za-z0-9]*;|#[0-9]+;|#[xX][0-9A-Fa-f]+;)/g, "&amp;")
-		.replace(/&([A-Za-z][A-Za-z0-9]*);/g, (whole, name) => (XML_ENTITIES.has(name) ? whole : entity_number(name)))
+		.replace(/&([A-Za-z][A-Za-z0-9]*);/g, (whole, name) =>
+			XML_ENTITIES.has(name) ? whole : entity_number(name)
+		)
 		.replace(VOID_TAG, (whole, name, attributes = "") =>
 			attributes.trimEnd().endsWith("/") ? whole : `<${name}${attributes}/>`
 		);
@@ -113,8 +133,17 @@ export const as_xml = (source) =>
 // been at it. The content of an element that holds text or HTML (an "ending
 // tag", in MJML's terms) is left exactly as it is.
 const ENDING = new Set([
-	"mj-text", "mj-button", "mj-raw", "mj-title", "mj-preview", "mj-style", "mj-table",
-	"mj-navbar-link", "mj-social-element", "mj-accordion-title", "mj-accordion-text",
+	"mj-text",
+	"mj-button",
+	"mj-raw",
+	"mj-title",
+	"mj-preview",
+	"mj-style",
+	"mj-table",
+	"mj-navbar-link",
+	"mj-social-element",
+	"mj-accordion-title",
+	"mj-accordion-text",
 ]);
 const TAG = /<(\/?)(mjml|mj-[a-z-]+)((?:\s[^>]*?)?)(\/?)>/g;
 
@@ -196,7 +225,9 @@ const upload_images = (editor) => async (event) => {
 		});
 		const data = await response.json().catch(() => ({}));
 		if (!response.ok || !data.message) {
-			frappe.msgprint(__("{0} could not be uploaded.", [frappe.utils.escape_html(file.name)]));
+			frappe.msgprint(
+				__("{0} could not be uploaded.", [frappe.utils.escape_html(file.name)])
+			);
 			continue;
 		}
 		editor.AssetManager.add({ src: data.message.file_url, name: data.message.file_name });
@@ -206,12 +237,22 @@ const upload_images = (editor) => async (event) => {
 // "Insert field", in the text toolbar: a field of the template's doctype, as
 // the `{{ fieldname }}` the email is filled in from.
 const field_options = (doctype) => {
-	const skip = new Set(frappe.model.layout_fields.concat(frappe.model.table_fields, ["Button", "HTML", "Image", "Attach Image"]));
+	const skip = new Set(
+		frappe.model.layout_fields.concat(frappe.model.table_fields, [
+			"Button",
+			"HTML",
+			"Image",
+			"Attach Image",
+		])
+	);
 	const fields = ((doctype && frappe.get_meta(doctype)) || {}).fields || [];
 	return [{ value: "name", label: `${__("ID")} (name)` }].concat(
 		fields
 			.filter((df) => !skip.has(df.fieldtype))
-			.map((df) => ({ value: df.fieldname, label: `${__(df.label || df.fieldname)} (${df.fieldname})` }))
+			.map((df) => ({
+				value: df.fieldname,
+				label: `${__(df.label || df.fieldname)} (${df.fieldname})`,
+			}))
 	);
 };
 
@@ -221,7 +262,11 @@ const add_field_action = (editor, doctype) => {
 		attributes: { title: __("Insert field") },
 		result(rte) {
 			if (!doctype) {
-				frappe.msgprint(__("Set a Document Type on the template's Form Button tab to insert its fields."));
+				frappe.msgprint(
+					__(
+						"Set a Document Type on the template's Form Button tab to insert its fields."
+					)
+				);
 				return;
 			}
 			const doc = rte.el.ownerDocument;
@@ -300,7 +345,8 @@ const follow_changes = (editor) =>
 		const before = component.previous("attributes") || {};
 		const after = component.get("attributes") || {};
 		new Set([...Object.keys(before), ...Object.keys(after)]).forEach((name) => {
-			if (name !== "style" && name !== "id" && before[name] !== after[name]) component.cm_written.add(name);
+			if (name !== "style" && name !== "id" && before[name] !== after[name])
+				component.cm_written.add(name);
 		});
 	});
 
@@ -333,7 +379,11 @@ class EmailDesigner {
 			fromElement: false,
 			storageManager: false,
 			colorPicker: { appendTo: "parent" },
-			assetManager: { upload: false, assets: [], uploadFile: (event) => upload_images(this.editor)(event) },
+			assetManager: {
+				upload: false,
+				assets: [],
+				uploadFile: (event) => upload_images(this.editor)(event),
+			},
 			canvasCss: `[data-gjs-type="mj-head"] { display: none !important; }`,
 			plugins: [mjml_plugin],
 			pluginsOpts: {
@@ -387,7 +437,8 @@ class EmailDesigner {
 }
 
 frappe.provide("commons.email_designer");
-commons.email_designer.open = (options) => (commons.email_designer.current = new EmailDesigner(options));
+commons.email_designer.open = (options) =>
+	(commons.email_designer.current = new EmailDesigner(options));
 commons.email_designer.format_mjml = format_mjml;
 commons.email_designer.unescape_jinja = unescape_jinja;
 commons.email_designer.as_xml = as_xml;
