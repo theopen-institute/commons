@@ -2,7 +2,14 @@ import { computed } from 'vue'
 import { upload, useCall } from 'frappe-ui'
 import { user } from './session'
 import { pollReading, readingDeadlineMs, type JobState } from './backgroundReading'
-import type { ExpenseReading, InvoicePayload, Reading, Totals } from './captureRules'
+import {
+  offeredKinds,
+  type CaptureKind,
+  type ExpenseReading,
+  type InvoicePayload,
+  type Reading,
+  type Totals,
+} from './captureRules'
 import { permissionCall } from './permissions'
 
 /**
@@ -27,10 +34,10 @@ const CAPTURE = 'commons.document_capture.capture'
 const INVOICES = 'commons.document_capture.purchase_invoice'
 const EXPENSES = 'commons.document_capture.expense_claim'
 
-export const PURCHASE_INVOICE = 'Purchase Invoice'
-export const EXPENSE_CLAIM = 'Expense Claim'
+export const PURCHASE_INVOICE = 'Purchase Invoice' satisfies CaptureKind
+export const EXPENSE_CLAIM = 'Expense Claim' satisfies CaptureKind
 
-export type CaptureKind = typeof PURCHASE_INVOICE | typeof EXPENSE_CLAIM
+export type { CaptureKind }
 
 /** How each kind is named to the person choosing one. */
 export const KIND_LABELS: Record<CaptureKind, { noun: string; hint: string }> = {
@@ -49,8 +56,9 @@ export const KIND_LABELS: Record<CaptureKind, { noun: string; hint: string }> = 
 /* -------------------------------------------------------------------------- */
 
 /** Which kinds of scan this person may capture here: the server's own test,
- *  `capture.kinds`. */
-const contextCall = useCall<{ kinds: CaptureKind[]; hourly_limit: number }>({
+ *  `capture.kinds`, which leaves out a kind Document Capture Settings has
+ *  switched off. */
+const contextCall = useCall<{ kinds: string[]; hourly_limit: number }>({
   url: `${METHOD}/${CAPTURE}.context`,
 })
 
@@ -58,7 +66,7 @@ const contextCall = useCall<{ kinds: CaptureKind[]; hourly_limit: number }>({
 const canCreateSupplierCall = permissionCall('Supplier', 'create')
 
 export const captureCan = computed(() => {
-  const kinds = contextCall.data?.kinds ?? []
+  const kinds = offeredKinds(contextCall.data?.kinds)
   return {
     kinds,
     capture: kinds.length > 0,

@@ -93,11 +93,18 @@ class FakeMeta:
 		return frappe._dict(fieldname=fieldname, fieldtype=fieldtype) if fieldtype else None
 
 
-# The register site's four fields, as Education plus its Custom Fields has them.
+# The register site's four fields, as Education plus its Custom Fields has them,
+# and an hours field it does not have but another school might.
 METAS = {
 	attendance.STUDENT_ATTENDANCE: FakeMeta({"custom_late": "Check", "status": "Select"}),
 	attendance.COURSE_SCHEDULE: FakeMeta(
-		{"custom_session_type": "Data", "custom_session_details": "Data", "color": "Color"}
+		{
+			"custom_session_type": "Data",
+			"custom_session_details": "Data",
+			"custom_hours": "Float",
+			"custom_periods": "Int",
+			"color": "Color",
+		}
 	),
 	attendance.ACADEMIC_TERM: FakeMeta({"custom_inactive": "Check", "term_name": "Data"}),
 }
@@ -108,6 +115,9 @@ CONFIGURED = {
 	"session_type_field": "custom_session_type",
 	"session_details_field": "custom_session_details",
 	"inactive_term_field": "custom_inactive",
+	"session_hours_field": "custom_hours",
+	"group_resolution": "Both",
+	"leave_counts_as": "Excused",
 }
 
 
@@ -129,11 +139,16 @@ class TestWhichFieldsTheRegisterUses(TestCase):
 				"session_type_field": "custom_session_type",
 				"session_details_field": "custom_session_details",
 				"inactive_term_field": "custom_inactive",
+				"session_hours_field": "custom_hours",
+				"group_resolution": "Both",
+				"leave_counts_as": "Excused",
 			},
 		)
 
 	def test_a_site_that_set_nothing_gets_nothing(self):
-		"""And a late arrival worth a full session, which is the field's default, not 0."""
+		"""And today's rules: a late arrival worth a full session, which is the
+		field's default rather than 0, groups found through their programme, and
+		leave read as absence."""
 		self.assertEqual(
 			self.fields(frappe._dict()),
 			{
@@ -142,12 +157,17 @@ class TestWhichFieldsTheRegisterUses(TestCase):
 				"session_type_field": None,
 				"session_details_field": None,
 				"inactive_term_field": None,
+				"session_hours_field": None,
+				"group_resolution": "Programme",
+				"leave_counts_as": "Absent",
 			},
 		)
 
 	def test_before_migrate_there_are_no_settings_to_read(self):
 		self.assertIsNone(self.fields(None)["late_field"])
 		self.assertEqual(self.fields(None)["late_credit"], 1.0)
+		self.assertEqual(self.fields(None)["group_resolution"], "Programme")
+		self.assertEqual(self.fields(None)["leave_counts_as"], "Absent")
 
 	def test_a_field_the_doctype_lacks_is_blank(self):
 		"""A typo would otherwise be in the filter of every read the page makes."""
@@ -167,7 +187,10 @@ class TestWhichFieldsTheRegisterUses(TestCase):
 
 	def test_without_education_everything_is_blank(self):
 		fields = self.fields(frappe._dict(CONFIGURED), doctypes=())
-		self.assertEqual({key for key, value in fields.items() if value}, {"late_credit"})
+		self.assertEqual(
+			{key for key, value in fields.items() if value},
+			{"late_credit", "group_resolution", "leave_counts_as"},
+		)
 
 	def test_whitespace_around_a_name_is_not_a_different_name(self):
 		settings = frappe._dict(CONFIGURED, late_field=" custom_late ")
@@ -178,3 +201,33 @@ class TestWhichFieldsTheRegisterUses(TestCase):
 			with self.subTest(stored=stored):
 				settings = frappe._dict(CONFIGURED, late_credit=stored)
 				self.assertEqual(self.fields(settings)["late_credit"], expected)
+
+	def test_the_hours_field_is_a_number(self):
+		"""Float or Int; a Data field of numbers-as-text would be summed as strings."""
+		for fieldname, expected in (("custom_hours", "custom_hours"), ("custom_periods", "custom_periods")):
+			with self.subTest(fieldname=fieldname):
+				settings = frappe._dict(CONFIGURED, session_hours_field=fieldname)
+				self.assertEqual(self.fields(settings)["session_hours_field"], expected)
+		for fieldname in ("custom_session_type", "custom_late", "custom_missing"):
+			with self.subTest(fieldname=fieldname):
+				settings = frappe._dict(CONFIGURED, session_hours_field=fieldname)
+				self.assertIsNone(self.fields(settings)["session_hours_field"])
+
+	def test_each_rule_is_one_of_its_options(self):
+		for setting, options in (
+			("group_resolution", ("Programme", "Course", "Both")),
+			("leave_counts_as", ("Absent", "Excused")),
+		):
+			for option in options:
+				with self.subTest(setting=setting, option=option):
+					settings = frappe._dict(CONFIGURED, **{setting: option})
+					self.assertEqual(self.fields(settings)[setting], option)
+
+	def test_an_unknown_rule_is_todays(self):
+		"""Saved before the field existed, or edited to something it does not offer."""
+		for stored in (None, "", "programme", "Everything"):
+			with self.subTest(stored=stored):
+				settings = frappe._dict(CONFIGURED, group_resolution=stored, leave_counts_as=stored)
+				fields = self.fields(settings)
+				self.assertEqual(fields["group_resolution"], "Programme")
+				self.assertEqual(fields["leave_counts_as"], "Absent")

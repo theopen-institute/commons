@@ -9,25 +9,26 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 #### Commons frontend (`/commons`)
 
 - **Staff web app**: a Vue SPA with a configurable sidebar, a workspace switcher, a user menu, notifications and a To Do panel.
-- **Commons Workspaces**: named sections of the navigation (title, icon, logo, order, grouped rows), each made of shipped pages or self-service records. A page belongs to one workspace only.
+- **Commons Workspaces**: named sections of the navigation (title, icon, logo, order, grouped rows), each made of shipped pages, self-service records, or links to any address on the site or beyond. A page belongs to one workspace only.
+- **Landing page**: `/commons` opens the page Commons Settings names, or the first row each person may use.
 - **Search**: Ctrl/⌘K searches the app's pages and the desk's doctypes together, and the desk's Awesome Bar finds the app's pages. Both offer only what the user may open.
-- **Announcements** page (a placeholder for now).
+- **Announcements** page (a placeholder for now, offered only where a workspace includes it).
 
 #### Self service
 
 - **Self Service Records**: a site declares which doctypes people can view as their own records (such as their Employee record), and which fields they may propose changes to.
-- **Record Change Requests**: the owner proposes a correction and the responsible team approves or rejects it. The change is written under the approver's own permissions, and a field that changed in the meantime is refused.
-- **Account statement** (`/commons/account`): what a person owes the organisation and what it owes them, from the general ledger, with loans shown separately, a PDF per account, and a `party_statement` Jinja helper for print formats. Any Party Type whose record links to a User can be a statement party.
+- **Record Change Requests**: the owner proposes a correction and the responsible team approves or rejects it. The change is written under the approver's own permissions, and a field that changed in the meantime is refused. Without a Workflow, Commons Settings names the outcome that applies the change and whether reviewers may decide their own requests.
+- **Account statement** (`/commons/account`): what a person owes the organisation and what it owes them, from the general ledger, with loans shown separately, a PDF per account, and a `party_statement` Jinja helper for print formats. Any Party Type whose record links to a User can be a statement party, and each Party Type can name its statement Print Format.
 
 #### Requests and approvals
 
 - **Leave** (needs `hrms`): your own leave applications, and an approvals queue.
-- **Expense claims** (needs `hrms`): your own claims, and an approvals queue.
-- **Procurement Requests** (needs `erpnext`): raise and track purchase requests, approve them through the site's own Frappe Workflow, and carry approved lines onto Material Requests. The app ships no workflow, states or approver rules.
+- **Expense claims** (needs `hrms`): your own claims, and an approvals queue. Whether a claim naming no approver may be decided by any approver is a setting.
+- **Procurement Requests** (needs `erpnext`): raise and track purchase requests, approve them through the site's own Frappe Workflow, and carry approved lines onto Material Requests. The app ships no workflow, states or approver rules; the approvals queue is grouped by whichever field Commons Settings names.
 
 #### Banking and accounting (needs `erpnext`)
 
-- **Bank Reconciliation** (`/commons/banking`): import a bank statement, match lines to vouchers, create draft vouchers or loan repayments from a line, and submit and reconcile in one step.
+- **Bank Reconciliation** (`/commons/banking`): import a bank statement, match lines to vouchers, create draft vouchers or loan repayments from a line, and submit and reconcile in one step. **Bank Reconciliation Settings** hold the loan-matching weights and the repayment type.
 - **Open Receivables / Open Payables** reports: what was open on a date and is still open today, as an account → party → voucher tree.
 - **Payment Ledger Audit** report: where the payment ledger and the GL disagree (including refunds that Payment Reconciliation counts twice), with repairs.
 - **Loan Date Audit** report (needs `lending`): lending GL entries that are not on their voucher's date, checks that the Loan vouchers on their own dates setting is in place, and repairs.
@@ -38,12 +39,12 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 
 #### Document capture
 
-- **Captured Documents** (`/commons/capture`): scans come in by upload or email. Claude reads them, but only when someone presses Read, in a background job. The prompts follow the company's country and currency and the Bikram Sambat setting, and Claude Settings' **Additional Instructions** add a site's own conventions.
+- **Captured Documents** (`/commons/capture`): scans come in by upload or email. Claude reads them, but only when someone presses Read, in a background job. The prompts follow the company's country and currency and the Bikram Sambat setting, and Claude Settings' **Additional Instructions** and tax-term names add a site's own conventions. **Document Capture Settings** choose which kinds are captured, who sees each, a supervisor role, and extra legal-suffix words for matching suppliers.
 - Drafts a **Purchase Invoice** from a supplier invoice (visible to the accounts team) or an **Expense Claim** from receipts (visible to the sender), with the scan attached.
 
 #### Education (needs `education`)
 
-- **Attendance register** (`/commons/attendance`): mark student attendance for your student groups, within your User Permissions. **Attendance Register Settings** names any fields the site has added for a Late mark (and what it earns), session types and details, and retired terms.
+- **Attendance register** (`/commons/attendance`): mark student attendance for your student groups, within your User Permissions. **Attendance Register Settings** names any fields the site has added for a Late mark (and what it earns), session types, details and hours, and retired terms, and say how student groups are found and whether Leave counts as absent or excused.
 
 #### Email
 

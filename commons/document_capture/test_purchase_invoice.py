@@ -20,15 +20,20 @@ from unittest.mock import patch
 import frappe
 
 from commons.document_capture import purchase_invoice as capture
+from commons.document_capture import settings as capture_settings
 
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
+# Site-less: Document Capture Settings reads as its defaults, no extra words.
+_no_settings = patch.object(capture_settings, "_settings", return_value=None)
 
 
 def setUpModule():
 	_logger.start()
+	_no_settings.start()
 
 
 def tearDownModule():
+	_no_settings.stop()
 	_logger.stop()
 
 
@@ -182,6 +187,41 @@ class TestSimilarity(TestCase):
 	def test_nothing_is_like_nothing(self):
 		self.assertEqual(capture.similarity(None, "Nettel"), 0.0)
 		self.assertEqual(capture.similarity("Pvt Ltd", "Pvt Ltd"), 0.0)
+
+
+class TestLegalWords(TestCase):
+	"""The legal forms of several countries, and a site's own on top."""
+
+	def test_other_countries_suffixes_are_ignored(self):
+		for a, b in (
+			("Mueller Logistik GmbH", "MUELLER LOGISTIK"),
+			("Acme Pty Ltd", "Acme"),
+			("Nordic Paper Oy", "Nordic Paper AB"),
+			("Van Dijk B.V.", "Van Dijk BV"),
+			("Rossi S.r.l.", "Rossi SRL"),
+		):
+			with self.subTest(a=a, b=b):
+				self.assertGreaterEqual(capture.similarity(a, b), capture.SUPPLIER_CHOSEN)
+
+	def test_m_s_and_p_ltd_are_still_ignored(self):
+		self.assertGreaterEqual(
+			capture.similarity("M/S Nettel Communications P. Ltd", "Nettel Communications Pvt Ltd"),
+			capture.SUPPLIER_CHOSEN,
+		)
+
+	def test_a_sites_own_words_count_for_names(self):
+		settings = frappe._dict(capture_settings.DEFAULTS, supplier_legal_words="Kft\nZrt.\n")
+		suppliers = [row(name="Duna Print Kft", supplier_name="Duna Print Kft", tax_id=None)]
+		with patch.object(capture.frappe, "get_list", return_value=suppliers):
+			before = capture._match_suppliers({"name": "Duna Print Zrt", "tax_id": None})
+			with patch.object(capture_settings, "_settings", return_value=settings):
+				self.assertEqual(capture._name_words() - capture.LEGAL_WORDS, {"kft", "zrt"})
+				after = capture._match_suppliers({"name": "Duna Print Zrt", "tax_id": None})
+		self.assertFalse(before and before[0]["strong"])
+		self.assertTrue(after[0]["strong"])
+
+	def test_by_default_there_are_none(self):
+		self.assertEqual(capture._name_words(), capture.LEGAL_WORDS)
 
 
 class TestWhichSupplier(TestCase):

@@ -172,7 +172,7 @@ Student, Supplier, Employee), a new Print Format with:
 
 | Field | Value |
 |---|---|
-| Name | `<Party Type> Account Statement`, e.g. `Customer Account Statement` |
+| Name | any, named on the Party Type's **Statement Print Format**; or `<Party Type> Account Statement`, e.g. `Customer Account Statement` |
 | DocType | the party type, e.g. `Customer` |
 | Standard | No |
 | Custom Format | ticked |
@@ -183,8 +183,9 @@ Student, Supplier, Employee), a new Print Format with:
 {{ render_web_template("Account Statement", doc) }}
 ```
 
-The name has to be exactly that: `commons.statement.print_format_name` spells
-it, and `download_statement` looks it up by it. Where it is missing (or
+Any name will do if the Party Type names the format in its **Statement Print
+Format** field; otherwise the download looks for exactly
+`<Party Type> Account Statement`. Where neither is there (or it is
 disabled) the download is refused with a message naming it, rather than printed
 without it — Frappe would otherwise fall back to "Standard" and print the whole
 party record. The four formats are one line each and never need changing;
@@ -328,8 +329,12 @@ real record and nothing on screen showed it.
 
 **The arithmetic is in `src/data/attendanceRegister.ts`**, which is pure and
 tested (`yarn test`). What a late arrival is worth is a site's setting
-(Attendance Register Settings, *Late Arrival Credit*), handed to `buildRegister` once, and
-the blocks and footings are all built from it. That matters because the
+(Attendance Register Settings, *Late Arrival Credit*), and so is what Education's
+`Leave` status counts as (*Leave Counts As*); both are handed to `buildRegister`
+once, and the blocks and footings are all built from them. Leave as *Absent*
+earns nothing and still counts among the hours possible; as *Excused* it is
+left out of that student's total both ways, and a footing whose possible hours
+differ from the scheduled ones says "of" what under the figure. That matters because the
 version this replaced said it in a template and got the group totals wrong in a
 way nobody could see: it footed the *first* group's hours under every group on
 the page.
@@ -345,9 +350,19 @@ is that a role grants nothing until a User Permission narrows it. A single
 So the page reads through `/api/v2/document/<doctype>` and writes through
 `frappe.client` (`insert`, `insert_many`, `set_value`, `delete`), exactly as the
 section below describes for everything else. The cost is four chained rounds of
-reads instead of one call — a course reaches its groups only through
-`Program Course`, sessions are read for the groups that came back, marks for the
-sessions that came back. That is what correctness costs here, and it is the same
+reads instead of one call — a course reaches its groups (through
+`Program Course`, through a course-based group's own `course`, or both, as
+*Find Student Groups By* says), sessions are read for the groups that came back,
+marks for the sessions that came back.
+
+Every list is read to its end. `document_list` and `frappe.client.get_list`
+default to twenty rows and have no "all", so `fetchRows` in
+`src/data/attendance.ts` pages through each (`start`/`limit` on the document
+API, `limit_start`/`limit_page_length` on `get_list`) 500 rows at a time with
+`pageThrough`. A list that reaches the safety ceiling of 20,000 rows stops and
+the page shows a warning naming it, rather than drawing a register that is
+quietly missing its end. Fixed caps per list used to cut lists short without a
+word. That is what correctness costs here, and it is the same
 bargain the rest of this app makes.
 
 Two of Frappe's shapes are used rather than one, and the split is not arbitrary:
@@ -377,11 +392,21 @@ is a field the site adds itself and names in **Attendance Register Settings**:
 | Session Type Field    | `Course Schedule`, text       | groups the sessions and foots each kind apart       | one block, one total |
 | Session Details Field | `Course Schedule`, text       | a line under the date, edited with the session      | not shown            |
 | Inactive Term Field   | `Academic Term`, a Check      | drops ticked terms from the picker                  | every term offered   |
+| Session Hours Field   | `Course Schedule`, Float/Int  | a session's hours where above 0, over its times     | hours from the times |
+
+And two rules, each a choice whose default is what the register did before it
+was one:
+
+| Setting               | Options                                    | Default     |
+| --------------------- | ------------------------------------------ | ----------- |
+| Find Student Groups By | Programme (via `Program Course`), Course (course-based groups' `course`), Both | Programme |
+| Leave Counts As       | Absent, Excused                            | Absent      |
 
 The page asks `commons.attendance_register.register.register_fields` for them,
 which sends a name only if the doctype's meta has a field of that name and a
 usable type, so a typo in the settings switches a feature off rather than
-breaking every read. A session type is free text on purpose — the vocabulary is
+breaking every read, and sends each rule's default when the settings were never
+saved or hold something it does not offer. A session type is free text on purpose — the vocabulary is
 the school's, the dialog offers whatever is already in use, and a fifth kind of
 session is somebody typing it once rather than a deploy.
 

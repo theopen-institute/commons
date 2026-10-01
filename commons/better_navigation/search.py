@@ -156,6 +156,10 @@ def _rows() -> list[dict]:
 	seen: set[str] = set()
 	for workspace in workspaces.workspaces():
 		for item in workspace["items"]:
+			# A link row goes somewhere this app knows nothing about -- often the
+			# desk, whose own bar already finds it -- so it is not offered here.
+			if item["kind"] == "link":
+				continue
 			row = _page_row(item) if item["kind"] == "page" else _record_row(item)
 			if not row or row["path"] in seen:
 				continue

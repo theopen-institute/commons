@@ -197,11 +197,11 @@
   },
   {
    "allow_on_submit": 1,
+   "description": "A reviewer's note on the request: why it was sent back, turned down or changed, or anything else the requester should know.",
    "fieldname": "rejection_reason",
    "fieldtype": "Small Text",
-   "label": "Reason for Rejection",
-   "no_copy": 1,
-   "permlevel": 1
+   "label": "Review Note",
+   "no_copy": 1
   },
   {
    "fieldname": "column_break_status",
@@ -254,7 +254,7 @@
    "link_fieldname": "procurement_request"
   }
  ],
- "modified": "2026-10-01 14:00:00.000000",
+ "modified": "2026-10-01 19:00:00.000000",
  "modified_by": "pgraif@gmail.com",
  "module": "Requests",
  "name": "Procurement Request",

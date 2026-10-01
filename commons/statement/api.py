@@ -30,7 +30,7 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
-from commons.statement import ledger, loans, parties, print_format_name
+from commons.statement import ledger, loans, parties, statement_print_format
 
 
 @frappe.whitelist()
@@ -198,8 +198,9 @@ def download_statement(party_type: str, party: str) -> None:
 	Template.
 
 	The print format is a site's to add by hand (`frontend/README.md` has the
-	line), so it may not be there -- and it is refused rather than printed
-	without it. `frappe.get_print` given a print format that does not exist
+	line), named on the party type or by convention
+	(`commons.statement.statement_print_format`), so it may not be there -- and
+	it is refused rather than printed without it. `frappe.get_print` given a print format that does not exist
 	falls back to "Standard" without a word, and "Standard" draws every field
 	of the party document; with print permissions set aside above, that would
 	hand a student their whole Student record, or an employee their Employee
@@ -207,11 +208,11 @@ def download_statement(party_type: str, party: str) -> None:
 	"""
 	resolved = parties.named(party_type, party)
 
-	name = print_format_name(resolved.party_type)
-	if not frappe.db.exists("Print Format", {"name": name, "doc_type": resolved.party_type, "disabled": 0}):
+	name, wanted = statement_print_format(resolved.party_type)
+	if not name:
 		frappe.throw(
 			_("Statements cannot be downloaded yet: the print format {0} has not been set up.").format(
-				frappe.bold(name)
+				frappe.bold(wanted)
 			),
 			frappe.DoesNotExistError,
 		)

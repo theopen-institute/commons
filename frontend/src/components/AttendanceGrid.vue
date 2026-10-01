@@ -21,6 +21,10 @@
   classroom, so stray taps changed real records without anyone noticing. A
   click here can open a dialog, and that is all it can do. The totals are
   worked out in `attendanceRegister.ts`, so this component does no arithmetic.
+
+  On a site that counts leave as excused, a student excused from some of a
+  block's hours has a second line in its footing, "of" the hours they could
+  have earned, since the scheduled column is no longer their total.
 -->
 
 <template>
@@ -156,8 +160,22 @@
 							v-for="student in group.students"
 							:key="student.student"
 							class="border-b border-l border-outline-gray-2 bg-surface-gray-1 px-1 py-1.5 text-center tabular-nums"
+							:title="
+								footingTitle(
+									block.credited,
+									block.possible,
+									block.scheduled,
+									student
+								)
+							"
 						>
 							{{ formatHours(block.credited[student.student] ?? 0) }}
+							<div
+								v-if="excusedFrom(block.possible, block.scheduled, student)"
+								class="text-p-xs font-normal text-ink-gray-5"
+							>
+								of {{ formatHours(block.possible[student.student] ?? 0) }}
+							</div>
 						</td>
 					</tr>
 				</tbody>
@@ -177,8 +195,17 @@
 						v-for="student in group.students"
 						:key="student.student"
 						class="border-l border-outline-gray-2 bg-surface-gray-2 px-1 py-2 text-center font-semibold tabular-nums"
+						:title="
+							footingTitle(group.credited, group.possible, group.scheduled, student)
+						"
 					>
 						{{ formatHours(group.credited[student.student] ?? 0) }}
+						<div
+							v-if="excusedFrom(group.possible, group.scheduled, student)"
+							class="text-p-xs font-normal text-ink-gray-5"
+						>
+							of {{ formatHours(group.possible[student.student] ?? 0) }}
+						</div>
 					</td>
 				</tr>
 			</tfoot>
@@ -220,6 +247,35 @@ const grouped = computed(() => Boolean(attendanceFields.value.session_type_field
  *  which the grid draws as blank and which is not the same as absent. */
 function markOf(session: Session, student: string): Mark {
 	return session.marks[student]?.mark ?? ''
+}
+
+/**
+ * Whether a student was excused some of a footing's hours — the only case in
+ * which the hours they could have earned differ from the hours timetabled, and
+ * so the only case in which the footing says "of" what. Never on a site that
+ * reads leave as absent.
+ */
+function excusedFrom(
+	possible: Record<string, number>,
+	scheduled: number,
+	student: GroupStudent
+): boolean {
+	return (possible[student.student] ?? scheduled) !== scheduled
+}
+
+function footingTitle(
+	credited: Record<string, number>,
+	possible: Record<string, number>,
+	scheduled: number,
+	student: GroupStudent
+): string {
+	const earned = formatHours(credited[student.student] ?? 0)
+	if (!excusedFrom(possible, scheduled, student)) {
+		return `${student.student_name} · ${earned} of ${formatHours(scheduled)} hours`
+	}
+	return `${student.student_name} · ${earned} of ${formatHours(
+		possible[student.student] ?? 0
+	)} hours, excused from ${formatHours(scheduled - (possible[student.student] ?? 0))}`
 }
 
 function glyph(mark: Mark): string {

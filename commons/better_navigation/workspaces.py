@@ -47,6 +47,11 @@ from commons.self_service import registry
 WORKSPACE = "Commons Workspace"
 ITEM = "Commons Workspace Item"
 
+# A row that is neither a shipped page nor a self-service record: an address the
+# site chose, opened outside the Commons pages. See `_entry`.
+LINK = "Link"
+LINK_ICON = "lucide-external-link"
+
 # The workspace a site gets before it has said otherwise: the sidebar this app
 # shipped when there was only one of these and it was a constant in the
 # frontend. It has no name of its own -- it is called whatever the site calls
@@ -126,7 +131,17 @@ def _configured() -> list[dict]:
 	items = frappe.get_all(
 		ITEM,
 		filters={"parent": ["in", [row.name for row in rows]], "parenttype": WORKSPACE},
-		fields=["parent", "item_type", "page", "self_service_record", "item_group", "label", "icon", "idx"],
+		fields=[
+			"parent",
+			"item_type",
+			"page",
+			"self_service_record",
+			"url",
+			"item_group",
+			"label",
+			"icon",
+			"idx",
+		],
 		order_by="parent asc, idx asc",
 		parent_doctype=WORKSPACE,
 	)
@@ -164,6 +179,15 @@ def _entry(row) -> dict | None:
 		if not key or not page_list.available(key):
 			return None
 		return _item("page", key, group, label=row.label or None, icon=row.icon or None)
+
+	# A link is configuration through and through: the site says where it goes,
+	# what it is called and what it wears, and nothing about it is this app's.
+	# It opens outside the Commons pages, so it belongs to no workspace's "you
+	# are here" and is never where `/commons` lands.
+	if row.item_type == LINK:
+		if not row.url:
+			return None
+		return _item("link", row.url, group, label=row.label or row.url, icon=row.icon or LINK_ICON)
 
 	# The link is a `Self Service Record`, whose docname *is* the doctype it
 	# governs (`autoname: field:document_type`), which is also how the registry
@@ -215,8 +239,12 @@ def _default() -> dict:
 	A site that installs this app and never opens `Commons Workspace` sees no
 	change at all -- which is the only honest default for a feature that is
 	about renaming things.
+
+	Announcements is not in it. The page has nothing behind it yet, and the
+	sidebar nobody curated should not open on an empty page; a site that wants
+	it puts it in a workspace.
 	"""
-	items = [_item("page", PAGES["Announcements"], None)]
+	items = []
 	for doctype in registry.registered():
 		policy = registry.policy(doctype)
 		items.append(
@@ -292,6 +320,11 @@ def claimed_elsewhere(workspace: str | None) -> dict[tuple[str, str], str]:
 	)
 	taken: dict[tuple[str, str], str] = {}
 	for row in rows:
+		# A link opens somewhere outside the Commons pages, so it is never the
+		# page a workspace has to be able to say you are in; any number of
+		# workspaces may carry the same one.
+		if row.item_type == LINK:
+			continue
 		target = row.page if row.item_type == "Page" else row.self_service_record
 		if target:
 			taken[(row.item_type, target)] = row.parent

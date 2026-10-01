@@ -69,8 +69,13 @@ def company_currency(company: str) -> str | None:
 	return frappe.get_cached_value("Company", company, "default_currency")
 
 
+# The Custom Field on Party Type naming a statement print format
+# (`commons/fixtures/custom_field_erpnext.json`).
+PRINT_FORMAT_FIELD = "statement_print_format"
+
+
 def print_format_name(party_type: str) -> str:
-	"""What the statement print format for one party doctype is called.
+	"""What the statement print format for one party doctype is called by convention.
 
 	A print format is attached to exactly one doctype, so there is one of these
 	per party type -- four of them where a site has all four. They are four
@@ -78,8 +83,41 @@ def print_format_name(party_type: str) -> str:
 	site's Account Statement Web Template, whose Context Prep fetches the
 	statement and whose layout is where the printed statement actually lives.
 
-	A site adds them by hand, under this name (`frontend/README.md`), and
-	`api.download_statement` asks for one by it -- refusing the download where
-	it is missing rather than printing without it.
+	A site adds them by hand (`frontend/README.md`). Under this name they need
+	no setting; under any other, the party type's Statement Print Format names
+	them (`statement_print_format`).
 	"""
 	return f"{party_type} Account Statement"
+
+
+def configured_print_format(party_type: str) -> str | None:
+	"""The print format the party type's Statement Print Format field names, if any.
+
+	None where it is blank, and also where the field is not there yet -- this
+	app's code lands before the migrate that adds it, and reading a column that
+	does not exist would fail the download rather than fall back.
+	"""
+	if not frappe.get_meta("Party Type").has_field(PRINT_FORMAT_FIELD):
+		return None
+	return (frappe.db.get_value("Party Type", party_type, PRINT_FORMAT_FIELD) or "").strip() or None
+
+
+def statement_print_format(party_type: str) -> tuple[str | None, str]:
+	"""The print format a statement for this party doctype is printed with, and the one to name if none.
+
+	The one the party type names first, then the one named by convention, each
+	only if it is an enabled print format for that doctype. A format named on
+	the wrong doctype, or disabled, does not count -- what is printed has to be
+	a statement of this party, and `frappe.get_print` given anything else falls
+	back to "Standard", which prints the whole party record.
+
+	Returns `(found, wanted)`: `found` is None when neither will do, and
+	`wanted` is the name the refusal should give -- the configured one where
+	there is one, since that is what somebody set and must now fix.
+	"""
+	configured = configured_print_format(party_type)
+	conventional = print_format_name(party_type)
+	for name in dict.fromkeys(filter(None, (configured, conventional))):
+		if frappe.db.exists("Print Format", {"name": name, "doc_type": party_type, "disabled": 0}):
+			return name, name
+	return None, configured or conventional

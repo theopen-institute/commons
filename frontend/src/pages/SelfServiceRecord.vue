@@ -71,7 +71,7 @@
 			<p class="mt-1 text-p-sm text-ink-gray-5">
 				{{
 					can.record_access === 'forbidden'
-						? "Your account isn't permitted to open them. If you should be able to see yours, ask a System Manager to review the permissions."
+						? "Your account isn't permitted to open them. If you should be able to see yours, ask your system administrator to review the permissions."
 						: can.empty_notice || 'There is nothing of this kind against your name.'
 				}}
 			</p>
@@ -107,7 +107,9 @@
 					v-for="record in records"
 					:key="record.name"
 					:class="
-						can.singular ? '' : 'overflow-hidden rounded-4 border border-outline-gray-1'
+						can.singular
+							? ''
+							: 'overflow-hidden rounded-4 border border-outline-gray-1'
 					"
 				>
 					<!-- The card's own header, on a band rather than under a rule: it names
@@ -136,7 +138,9 @@
 							theme="red"
 							size="sm"
 							:icon-left="removalPending(record) ? 'lucide-clock' : 'lucide-trash-2'"
-							:label="removalPending(record) ? 'Removal requested' : 'Propose removal'"
+							:label="
+								removalPending(record) ? 'Removal requested' : 'Propose removal'
+							"
 							:disabled="removalPending(record)"
 							:loading="deleting === record.name"
 							@click="proposeRemoval(record)"
@@ -252,11 +256,9 @@ const historyChanges = useMyChanges(
 	() => doctype.value,
 	true,
 	// Dormant until asked for: nobody opens a profile to read history.
-	() => changesTab.value === 'history',
+	() => changesTab.value === 'history'
 )
-const changes = computed(() =>
-	changesTab.value === 'history' ? historyChanges : pendingChanges,
-)
+const changes = computed(() => (changesTab.value === 'history' ? historyChanges : pendingChanges))
 
 const can = source.can
 const records = source.records
@@ -312,14 +314,11 @@ function pendingFor(record: Record<string, any>) {
  */
 function removalPending(record: Record<string, any>): boolean {
 	return (pendingChanges.data ?? []).some(
-		(row) =>
-			row.open && row.request_type === 'Delete' && row.reference_name === record.name,
+		(row) => row.open && row.request_type === 'Delete' && row.reference_name === record.name
 	)
 }
 
-const pendingCount = computed(
-	() => (pendingChanges.data ?? []).filter((row) => row.open).length,
-)
+const pendingCount = computed(() => (pendingChanges.data ?? []).filter((row) => row.open).length)
 
 function proposeRemoval(record: Record<string, any>) {
 	const label = titleOf(record)

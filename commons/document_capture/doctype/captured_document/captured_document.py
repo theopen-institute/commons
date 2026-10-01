@@ -80,6 +80,7 @@ class CapturedDocument(Document):
 			capture.queue_email_sorting(self.name)
 
 	def validate(self):
+		self._validate_kind()
 		before = self.get_doc_before_save()
 		if not before:
 			return
@@ -100,3 +101,18 @@ class CapturedDocument(Document):
 			self.model = None
 			self.read_at = None
 			self.error = None
+
+	def _validate_kind(self):
+		"""The kind is one this site captures, when it is chosen: on a new
+		capture, or a change of kind. The Select offers every kind; Document
+		Capture Settings says which are switched on. An email's capture is
+		left alone until `capture.sort_email` has given it the account's kind,
+		which refuses a disabled one there."""
+		if self.status == "Received":
+			return
+		if not self.is_new() and not self.has_value_changed("document_type"):
+			return
+		from commons.document_capture import capture
+
+		if self.document_type not in capture.enabled_kinds():
+			frappe.throw(_("This site does not capture scans as {0}.").format(_(self.document_type)))

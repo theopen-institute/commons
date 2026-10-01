@@ -17,16 +17,29 @@ from unittest.mock import MagicMock, patch
 import frappe
 
 from commons.document_capture import capture, expense_claim
+from commons.document_capture import settings as capture_settings
 
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
+# Site-less: Document Capture Settings reads as a site without the doctype,
+# which is its defaults. `with_settings` changes them for one test.
+_no_settings = patch.object(capture_settings, "_settings", return_value=None)
 
 
 def setUpModule():
 	_logger.start()
+	_no_settings.start()
 
 
 def tearDownModule():
+	_no_settings.stop()
 	_logger.stop()
+
+
+def with_settings(**changes):
+	"""Document Capture Settings as the defaults with `changes`."""
+	return patch.object(
+		capture_settings, "_settings", return_value=frappe._dict({**capture_settings.DEFAULTS, **changes})
+	)
 
 
 def _raise(message, exc=ValueError, **kwargs):
@@ -367,22 +380,196 @@ class TestTheDoctypeDoesNotThreadBySubject(TestCase):
 
 
 class TestWhoSeesWhich(TestCase):
-	def check(self, doc, sees_invoices):
+	"""Each kind's visibility, from Document Capture Settings. The defaults are
+	the rule as it was hard-coded: invoices the accounts team's, receipts their
+	sender's alone."""
+
+	def check(self, doc, may_create, roles=(), user="b@example.com"):
 		with (
-			patch.object(capture, "_unrestricted", return_value=False),
-			patch.object(capture, "_sees_invoices", return_value=sees_invoices),
+			patch.object(capture.frappe, "get_roles", return_value=list(roles)),
+			patch.object(capture.apps, "has_doctype", return_value=True),
+			patch.object(capture.frappe, "has_permission", return_value=may_create),
 		):
-			return capture.has_permission(doc, "read", "b@example.com")
+			return capture.has_permission(doc, "read", user)
+
+	def conditions(self, may_create, roles=()):
+		db = SimpleNamespace(escape=lambda value: f"'{value}'")
+		with (
+			patch.object(capture.frappe, "get_roles", return_value=list(roles)),
+			patch.object(capture.frappe, "db", db, create=True),
+			patch.object(capture.apps, "has_doctype", return_value=True),
+			patch.object(
+				capture.frappe, "has_permission", lambda doctype, ptype, user: doctype in may_create
+			),
+		):
+			return capture.permission_query_conditions("b@example.com")
+
+	invoice = frappe._dict(owner="a@example.com", document_type="Purchase Invoice")
+	receipt = frappe._dict(owner="a@example.com", document_type="Expense Claim")
 
 	def test_an_invoice_capture_is_the_accounts_teams(self):
-		invoice = frappe._dict(owner="a@example.com", document_type="Purchase Invoice")
-		self.assertIs(self.check(invoice, True), True)
-		self.assertIs(self.check(invoice, False), False)
+		self.assertIs(self.check(self.invoice, True), True)
+		self.assertIs(self.check(self.invoice, False), False)
 
 	def test_a_receipt_is_its_senders_alone(self):
-		receipt = frappe._dict(owner="a@example.com", document_type="Expense Claim")
-		self.assertIs(self.check(receipt, True), False)
-		self.assertIs(self.check(frappe._dict(receipt, owner="b@example.com"), False), True)
+		self.assertIs(self.check(self.receipt, True), False)
+		self.assertIs(self.check(frappe._dict(self.receipt, owner="b@example.com"), False), True)
+
+	def test_the_list_says_the_same_by_default(self):
+		own = "`tabCaptured Document`.`owner` = 'b@example.com'"
+		self.assertEqual(
+			self.conditions({"Purchase Invoice", "Expense Claim"}),
+			f"({own} or `tabCaptured Document`.`document_type` in ('Purchase Invoice'))",
+		)
+		self.assertEqual(self.conditions(set()), f"({own})")
+
+	def test_invoices_can_be_their_senders_alone(self):
+		with with_settings(purchase_invoice_visibility=capture_settings.SENDER_ONLY):
+			self.assertIs(self.check(self.invoice, True), False)
+			self.assertEqual(
+				self.conditions({"Purchase Invoice"}), "(`tabCaptured Document`.`owner` = 'b@example.com')"
+			)
+
+	def test_receipts_can_be_shared_with_whoever_may_claim(self):
+		with with_settings(expense_claim_visibility=capture_settings.ANYONE):
+			self.assertIs(self.check(self.receipt, True), True)
+			self.assertIs(self.check(self.receipt, False), False)
+			self.assertIn(
+				"in ('Purchase Invoice', 'Expense Claim')",
+				self.conditions({"Purchase Invoice", "Expense Claim"}),
+			)
+
+	def test_an_unknown_kind_is_its_senders_alone(self):
+		other = frappe._dict(owner="a@example.com", document_type="Sales Invoice")
+		self.assertIs(self.check(other, True), False)
+
+
+class TestTheSupervisorRole(TestCase):
+	receipt = frappe._dict(owner="a@example.com", document_type="Expense Claim")
+
+	def sees_everything(self, roles, user="b@example.com"):
+		with (
+			patch.object(capture.frappe, "get_roles", return_value=list(roles)),
+			patch.object(capture.frappe, "has_permission", return_value=False),
+		):
+			return capture.has_permission(self.receipt, "read", user) and (
+				capture.permission_query_conditions(user) == ""
+			)
+
+	def test_system_manager_by_default(self):
+		self.assertTrue(self.sees_everything(["System Manager"]))
+		self.assertFalse(self.sees_everything(["Accounts Manager"]))
+
+	def test_the_site_chooses_the_role(self):
+		with with_settings(supervisor_role="Accounts Manager"):
+			self.assertTrue(self.sees_everything(["Accounts Manager"]))
+			self.assertFalse(self.sees_everything(["System Manager"]))
+
+	def test_none_leaves_only_administrator(self):
+		with with_settings(supervisor_role=""):
+			self.assertFalse(self.sees_everything(["System Manager"]))
+			self.assertTrue(self.sees_everything([], user="Administrator"))
+
+
+@patch.object(capture.frappe, "throw", _raise)
+class TestADisabledKind(TestCase):
+	"""Switched off in Document Capture Settings: not offered, not uploaded,
+	not read, and not taken off an email."""
+
+	def setUp(self):
+		for kind in (capture.purchase_invoice, capture.expense_claim):
+			self.enterContext(patch.object(kind, "available", return_value=True))
+			self.enterContext(patch.object(kind, "can_capture", return_value=True))
+
+	def test_both_are_on_by_default(self):
+		self.assertEqual(capture.enabled_kinds(), ["Purchase Invoice", "Expense Claim"])
+		self.assertEqual(capture.context()["kinds"], ["Purchase Invoice", "Expense Claim"])
+
+	def test_it_is_not_offered(self):
+		with with_settings(enable_expense_claims=0):
+			self.assertEqual(capture.context()["kinds"], ["Purchase Invoice"])
+			self.assertTrue(capture.can_capture())
+		with with_settings(enable_expense_claims=0, enable_purchase_invoices=0):
+			self.assertEqual(capture.context()["kinds"], [])
+			self.assertFalse(capture.can_capture())
+			self.assertFalse(capture.available())
+
+	def test_an_upload_of_it_is_refused(self):
+		with (
+			with_settings(enable_purchase_invoices=0),
+			patch.object(capture.frappe, "form_dict", frappe._dict(doctype="Purchase Invoice"), create=True),
+			patch.object(capture.frappe, "get_doc") as made,
+		):
+			with self.assertRaisesRegex(ValueError, "does not capture scans as Purchase Invoice"):
+				capture.upload()
+		made.assert_not_called()
+
+	def test_reading_as_it_is_refused(self):
+		stored = FakeCapture()
+		with (
+			with_settings(enable_expense_claims=0),
+			patch.object(capture.frappe, "get_doc", return_value=stored),
+			patch.object(capture, "_queue") as queued,
+		):
+			with self.assertRaisesRegex(ValueError, "does not capture"):
+				capture.read("CAP-1", document_type="Expense Claim")
+		queued.assert_not_called()
+
+	def test_an_email_for_it_is_discarded_with_the_reason(self):
+		stored = FakeCapture(status="Received", scan=None, email_account="Receipts", source="Email")
+		communication = frappe._dict(name="COMM-1", subject="Lunch", content="")
+		db = SimpleNamespace(get_value=lambda doctype, name, field: "Expense Claim")
+		with (
+			with_settings(enable_expense_claims=0),
+			patch.object(capture.frappe, "get_doc", return_value=stored),
+			patch.object(capture.frappe, "get_all", return_value=[communication]),
+			patch.object(capture.frappe, "db", db, create=True),
+			patch.object(capture, "_email_scans") as scans,
+			patch.object(capture, "_attach") as attached,
+		):
+			capture.sort_email("CAP-1")
+		self.assertEqual((stored.status, stored.document_type), ("Discarded", "Expense Claim"))
+		self.assertIn("does not capture scans as Expense Claim", stored.error)
+		scans.assert_not_called()
+		attached.assert_not_called()
+
+	def test_an_account_naming_no_kind_falls_back_to_the_first_and_only_that(self):
+		db = SimpleNamespace(get_value=lambda doctype, name, field: None)
+		with patch.object(capture.frappe, "db", db, create=True):
+			self.assertEqual(capture._account_kind("Bills"), capture.DEFAULT_KIND)
+			with with_settings(enable_purchase_invoices=0):
+				# Not rerouted to receipts, which would change who sees it.
+				self.assertEqual(capture._account_kind("Bills"), "Purchase Invoice")
+
+	def test_an_email_account_for_it_is_refused(self):
+		account = frappe._dict(append_to="Captured Document", capture_document_type="Expense Claim")
+		capture.validate_email_account(account)
+		with with_settings(enable_expense_claims=0):
+			with self.assertRaisesRegex(ValueError, "does not capture"):
+				capture.validate_email_account(account)
+			capture.validate_email_account(frappe._dict(account, append_to="Communication"))
+
+
+class TestTheSettingsDoctype(TestCase):
+	def test_its_defaults_are_the_codes(self):
+		"""What answers before migrate is what the form opens with after it."""
+		import os
+
+		path = os.path.join(
+			os.path.dirname(capture.__file__),
+			"doctype",
+			"document_capture_settings",
+			"document_capture_settings.json",
+		)
+		with open(path) as file:
+			fields = {field["fieldname"]: field for field in json.load(file)["fields"]}
+		for fieldname, default in capture_settings.DEFAULTS.items():
+			with self.subTest(fieldname=fieldname):
+				stored = fields[fieldname].get("default", "")
+				self.assertEqual(stored, str(default))
+		for kind in capture.KINDS.values():
+			self.assertEqual(fields[kind.ENABLE_FIELD]["fieldtype"], "Check")
+			self.assertIn(capture_settings.ANYONE, fields[kind.VISIBILITY_FIELD]["options"].split("\n"))
 
 
 @patch.object(capture.frappe, "throw", _raise)

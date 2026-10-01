@@ -26,6 +26,25 @@ import { to_gregorian } from '@bikram/bikram_sambat.js'
  *   where they differ.
  */
 
+/** Every kind of scan the page has a dialog for, in the server's order
+ *  (`capture.KINDS`). Which of them a person is offered is the server's
+ *  answer, `offeredKinds`. */
+export const CAPTURE_KINDS = ['Purchase Invoice', 'Expense Claim'] as const
+
+export type CaptureKind = (typeof CAPTURE_KINDS)[number]
+
+/**
+ * The kinds the page offers: those `capture.context` answers with, which are
+ * the ones this site has switched on in Document Capture Settings, can read,
+ * and this person may draft. Any the page has no dialog for are left out
+ * rather than offered with nothing to open, and the server's order is kept.
+ */
+export function offeredKinds(fromServer: readonly string[] | null | undefined): CaptureKind[] {
+  return (fromServer ?? []).filter((kind): kind is CaptureKind =>
+    (CAPTURE_KINDS as readonly string[]).includes(kind),
+  )
+}
+
 export interface ScannedDate {
   printed: string
   year: number
@@ -92,7 +111,7 @@ export interface CompanyRow {
 /** The `Captured Document` a reading is of, as the dialogs show it. */
 export interface CaptureInfo {
   name: string
-  document_type: 'Purchase Invoice' | 'Expense Claim'
+  document_type: CaptureKind
   /** The stored scan's URL, private, readable by whoever may read the capture. */
   scan: string | null
   file_name: string

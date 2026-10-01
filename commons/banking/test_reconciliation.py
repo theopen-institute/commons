@@ -20,6 +20,7 @@ from unittest.mock import patch
 import frappe
 
 from commons.banking import reconciliation
+from commons.banking.doctype.bank_reconciliation_settings import bank_reconciliation_settings as settings
 
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
 
@@ -222,6 +223,89 @@ class TestBookingRepaymentsLocksTheLine(TestCase):
 		):
 			reconciliation.create_loan_repayments("BT-1", [{"loan": "LOAN-A", "amount": 100}])
 		self.assertEqual(fetched[0], ("Bank Transaction", {"for_update": True}))
+
+
+class TestTheSettingsAndTheirDefaults(TestCase):
+	"""Bank Reconciliation Settings, read the way the page and the booking read it.
+
+	The defaults are the values the page was first tuned with, and a site that
+	never opens the form, or has not yet migrated the doctype in, must keep them.
+	"""
+
+	def stored(self, values):
+		return patch.object(settings, "_settings", return_value=values)
+
+	def test_before_migrate_everything_is_the_default(self):
+		with self.stored(None):
+			self.assertEqual(settings.loan_matching(), settings.LOAN_MATCHING_DEFAULTS)
+			self.assertEqual(settings.default_repayment_type(), "Normal Repayment")
+
+	def test_the_defaults_are_the_original_tuning(self):
+		self.assertEqual(
+			settings.LOAN_MATCHING_DEFAULTS,
+			{
+				"party_match_score": 8,
+				"repeated_identifier_score": 6,
+				"single_identifier_score": 2,
+				"name_in_description_score": 5,
+				"exact_payoff_score": 2,
+				"usual_amount_score": 1,
+				"min_identifier_digits": 6,
+				"min_name_length": 5,
+			},
+		)
+
+	def test_stored_values_win_and_missing_ones_default(self):
+		with self.stored(
+			frappe._dict(party_match_score=3, single_identifier_score=0, min_identifier_digits=0)
+		):
+			values = settings.loan_matching()
+		self.assertEqual(values["party_match_score"], 3)
+		self.assertEqual(values["single_identifier_score"], 0)
+		self.assertEqual(values["min_identifier_digits"], 1)
+		self.assertEqual(values["name_in_description_score"], 5)
+
+	def test_a_blank_repayment_type_is_the_default(self):
+		with self.stored(frappe._dict(default_repayment_type="  ")):
+			self.assertEqual(settings.default_repayment_type(), "Normal Repayment")
+		with self.stored(frappe._dict(default_repayment_type="Pre Payment")):
+			self.assertEqual(settings.default_repayment_type(), "Pre Payment")
+
+	def test_the_page_must_reconcile_to_read_them(self):
+		with (
+			patch.object(reconciliation, "can_reconcile", return_value=False),
+			patch.object(reconciliation.frappe, "throw", side_effect=_raise),
+			patch.object(settings, "_settings", side_effect=AssertionError("read")),
+			self.assertRaisesRegex(ValueError, "not allowed"),
+		):
+			reconciliation.loan_matching_settings()
+
+	def test_the_repayment_is_booked_with_the_settings_type(self):
+		made = []
+		transaction = SimpleNamespace(
+			name="BT-1",
+			bank_account="Checking",
+			date=datetime.date(2026, 7, 10),
+			check_permission=lambda perm: None,
+		)
+
+		def get_doc(doctype, name=None, **kwargs):
+			if isinstance(doctype, dict):
+				made.append(doctype)
+				raise ValueError("made")
+			return transaction
+
+		with (
+			patch.object(reconciliation.frappe, "get_doc", side_effect=get_doc),
+			patch.object(reconciliation.frappe, "db", SimpleNamespace(get_value=lambda *args: "Bank - EX")),
+			patch.object(
+				reconciliation, "_validated_lines", return_value=[{"loan": "LOAN-A", "amount": 100}]
+			),
+			self.stored(frappe._dict(default_repayment_type="Pre Payment")),
+			self.assertRaises(ValueError),
+		):
+			reconciliation.create_loan_repayments("BT-1", [{"loan": "LOAN-A", "amount": 100}])
+		self.assertEqual(made[0]["repayment_type"], "Pre Payment")
 
 
 class TestWhatAMatchMustLeaveBehind(TestCase):

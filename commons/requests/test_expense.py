@@ -11,7 +11,9 @@ something HRMS does to expense claims and not to leave:
 * preventing self-approval takes away *every* outcome, not just the affirmative
   one, and takes the row out of the queue and the badge along with it;
 * the backstop is a claim naming nobody rather than a role, because the
-  doctype's permission rows cannot tell an approver from an owner;
+  doctype's permission rows cannot tell an approver from an owner -- and only
+  where Commons Settings opens such claims up (`expense_unassigned_open`);
+  otherwise one waits for its approver, as in HRMS;
 * a claim carries money, so the rate it is priced at, the cost centre it is
   charged to and the amount that opens as sanctioned are all settled server-side.
 """
@@ -76,6 +78,11 @@ class TestQueuePredicate(TestCase):
 		)
 		self.db.start()
 		self.addCleanup(self.db.stop)
+		# Opened up, as on the sites that ran this before it was a setting; the
+		# closed case patches over this.
+		self.open = patch.object(api, "_unassigned_open", return_value=True)
+		self.open.start()
+		self.addCleanup(self.open.stop)
 
 	def test_pending_is_undecided_and_draft_not_merely_undecided(self):
 		"""An approval status set from the desk without a submit settles nothing."""
@@ -91,6 +98,16 @@ class TestQueuePredicate(TestCase):
 				["expense_approver", "=", "approver@example.com"],
 				["expense_approver", "is", "not set"],
 			],
+		)
+
+	def test_closed_pending_is_only_the_claims_naming_you(self):
+		"""HRMS's own behaviour: a claim naming nobody waits for its approver."""
+		with patch.object(api, "_unassigned_open", return_value=False):
+			filters, or_filters = api.EXPENSES.queue_predicate(decided=False, admin=False)
+		self.assertIsNone(or_filters)
+		self.assertEqual(
+			filters,
+			{"docstatus": 0, "approval_status": "Draft", "expense_approver": "approver@example.com"},
 		)
 
 	def test_decided_is_submitted_whatever_the_decision_was(self):
@@ -265,10 +282,11 @@ VOCABULARY = [
 class TestPermittedDecisions(TestCase):
 	"""Which outcomes a *row* accepts, which is narrower than who may decide."""
 
-	def decisions(self, row, *, can_submit=True, blocked=False):
+	def decisions(self, row, *, can_submit=True, blocked=False, unassigned_open=True):
 		with (
 			patch.object(api.frappe, "session", SimpleNamespace(user="me@example.com")),
 			patch.object(api.EXPENSES, "self_approval_blocked", return_value=blocked),
+			patch.object(api, "_unassigned_open", return_value=unassigned_open),
 		):
 			return api.EXPENSES.permitted_decisions(row, None, VOCABULARY, False, can_submit)
 
@@ -286,6 +304,9 @@ class TestPermittedDecisions(TestCase):
 	def test_a_claim_naming_nobody_is_the_backstop(self):
 		"""Not a role -- see `may_decide` for why there is no role to name."""
 		self.assertTrue(self.decisions(self.row(None)))
+
+	def test_a_claim_naming_nobody_waits_where_the_site_keeps_them_closed(self):
+		self.assertEqual(self.decisions(self.row(None), unassigned_open=False), [])
 
 	def test_an_already_settled_claim_offers_nothing(self):
 		self.assertEqual(self.decisions(self.row("me@example.com", docstatus=1)), [])
@@ -343,11 +364,12 @@ class TestSelfApprovalBlocked(TestCase):
 class TestMayDecide(TestCase):
 	"""The backstop, which is a claim without an approver rather than a role."""
 
-	def may(self, approver, *, permitted=True):
+	def may(self, approver, *, permitted=True, unassigned_open=True):
 		doc = api.frappe._dict(name="HR-EXP-1", expense_approver=approver)
 		with (
 			patch.object(api.frappe, "session", SimpleNamespace(user="me@example.com")),
 			patch.object(api.frappe, "has_permission", return_value=permitted),
+			patch.object(api, "_unassigned_open", return_value=unassigned_open),
 		):
 			return api.EXPENSES.may_decide(doc)
 
@@ -366,6 +388,9 @@ class TestMayDecide(TestCase):
 
 	def test_a_claim_naming_nobody_is_anybodys_who_may_submit_it(self):
 		self.assertTrue(self.may(None))
+
+	def test_a_claim_naming_nobody_is_nobodys_where_the_site_keeps_them_closed(self):
+		self.assertFalse(self.may(None, unassigned_open=False))
 
 	def test_the_doctype_right_is_still_the_first_question(self):
 		self.assertFalse(self.may("me@example.com", permitted=False))

@@ -344,6 +344,11 @@ doc_events = {
 	"User": {
 		"on_update": "commons.better_navigation.home_page.clear_user_cache",
 	},
+	# An account's scans may only be sorted into a kind this site captures.
+	# See `commons.document_capture.capture.validate_email_account`.
+	"Email Account": {
+		"validate": "commons.document_capture.capture.validate_email_account",
+	},
 	# Every derived field is a Custom Field, from whichever door it came in by.
 	# See `commons.derived_docfields.validation`.
 	"Custom Field": {

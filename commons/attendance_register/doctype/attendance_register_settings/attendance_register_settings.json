@@ -7,11 +7,14 @@
   "marks_section",
   "late_field",
   "late_credit",
+  "leave_counts_as",
   "sessions_section",
   "session_type_field",
   "session_details_field",
+  "session_hours_field",
   "terms_column",
-  "inactive_term_field"
+  "inactive_term_field",
+  "group_resolution"
  ],
  "fields": [
   {
@@ -35,6 +38,14 @@
    "label": "Late Arrival Credit"
   },
   {
+   "default": "Absent",
+   "description": "What Education's <b>Leave</b> status counts as. Absent: the session counts against the student like any absence. Excused: the session is left out of that student's total, both the hours earned and the hours possible.",
+   "fieldname": "leave_counts_as",
+   "fieldtype": "Select",
+   "label": "Leave Counts As",
+   "options": "Absent\nExcused"
+  },
+  {
    "fieldname": "sessions_section",
    "fieldtype": "Section Break",
    "label": "Sessions and Terms"
@@ -52,6 +63,12 @@
    "label": "Session Details Field"
   },
   {
+   "description": "A Float or Int field on <b>Course Schedule</b> holding the hours a session is worth. Where a session has a value above 0, it is used instead of the time between its start and end. Blank: hours come from the times.",
+   "fieldname": "session_hours_field",
+   "fieldtype": "Data",
+   "label": "Session Hours Field"
+  },
+  {
    "fieldname": "terms_column",
    "fieldtype": "Column Break"
   },
@@ -60,11 +77,19 @@
    "fieldname": "inactive_term_field",
    "fieldtype": "Data",
    "label": "Inactive Term Field"
+  },
+  {
+   "default": "Programme",
+   "description": "How a course finds its student groups for a term. Programme: groups whose programme teaches the course (Program Course). Course: course-based groups naming the course themselves. Both: either.",
+   "fieldname": "group_resolution",
+   "fieldtype": "Select",
+   "label": "Find Student Groups By",
+   "options": "Programme\nCourse\nBoth"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-01 15:00:00.000000",
+ "modified": "2026-10-01 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Attendance Register",
  "name": "Attendance Register Settings",

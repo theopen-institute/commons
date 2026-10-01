@@ -33,6 +33,9 @@ NAV_ICONS = (
 	# The fallback the sidebar applies when a record names no icon at all.
 	# Listed so this module stays the full account of what the sidebar can draw.
 	"lucide-file-text",
+	# What a Link row wears when it names no icon of its own.
+	"lucide-external-link",
+	"lucide-link",
 	"lucide-id-card",
 	"lucide-landmark",
 	"lucide-award",

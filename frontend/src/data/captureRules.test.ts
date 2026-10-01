@@ -9,6 +9,7 @@ import {
   isTaxed,
   lineFlags,
   lineProblem,
+  offeredKinds,
   rateFromTotal,
   scanProblems,
   totalMatches,
@@ -481,5 +482,24 @@ describe('a receipt becomes one expense each', () => {
     )
     expect(named.description).toBe('Ride to office (Pathao)')
     expect(already.description).toBe('Lunch at Bhojan Griha')
+  })
+})
+
+describe('offeredKinds', () => {
+  it('offers what the server answers, in its order', () => {
+    expect(offeredKinds(['Expense Claim', 'Purchase Invoice'])).toEqual([
+      'Expense Claim',
+      'Purchase Invoice',
+    ])
+  })
+
+  it('hides a kind the site has switched off, which the server leaves out', () => {
+    expect(offeredKinds(['Purchase Invoice'])).toEqual(['Purchase Invoice'])
+    expect(offeredKinds([])).toEqual([])
+  })
+
+  it('leaves out a kind the page has no dialog for, and an answer not yet in', () => {
+    expect(offeredKinds(['Sales Invoice', 'Expense Claim'])).toEqual(['Expense Claim'])
+    expect(offeredKinds(undefined)).toEqual([])
   })
 })

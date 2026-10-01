@@ -29,6 +29,8 @@ class CommonsSettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		change_request_allow_self_approval: DF.Check
+		change_request_applying_outcome: DF.Data | None
 		enable_bikram_sambat: DF.Check
 		enable_clearing_internal_transfers: DF.Check
 		enable_derived_docfields: DF.Check
@@ -44,6 +46,19 @@ class CommonsSettings(Document):
 		enable_user_menu: DF.Check
 		enable_user_permission_gate: DF.Check
 		enable_visual_email_editor: DF.Check
+		expense_unassigned_open: DF.Check
+		landing_page: DF.Literal[
+			"",
+			"Announcements",
+			"Account Balance",
+			"Leave Request",
+			"Expense Claim",
+			"Procurement",
+			"Attendance",
+			"Bank Reconciliation",
+			"Document Capture",
+		]
+		procurement_group_by: DF.Data | None
 		title: DF.Data | None
 	# end: auto-generated types
 

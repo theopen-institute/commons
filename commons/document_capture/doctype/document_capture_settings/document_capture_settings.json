@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "creation": "2026-10-01 00:00:00",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "engine": "InnoDB",
+ "field_order": [
+  "kinds_section",
+  "enable_purchase_invoices",
+  "column_break_kinds",
+  "enable_expense_claims",
+  "visibility_section",
+  "purchase_invoice_visibility",
+  "column_break_visibility",
+  "expense_claim_visibility",
+  "supervisor_role",
+  "matching_section",
+  "supplier_legal_words"
+ ],
+ "fields": [
+  {
+   "description": "Which kinds of scan this site takes in. A kind switched off is not offered on the capture page, its uploads are refused, and an email sent to an account that captures it is discarded with a note saying why. Captures already made are kept.",
+   "fieldname": "kinds_section",
+   "fieldtype": "Section Break",
+   "label": "What This Site Captures"
+  },
+  {
+   "default": "1",
+   "description": "A supplier's invoice, drafted as a Purchase Invoice.",
+   "fieldname": "enable_purchase_invoices",
+   "fieldtype": "Check",
+   "label": "Purchase Invoices"
+  },
+  {
+   "fieldname": "column_break_kinds",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "An employee's receipts, drafted as their own Expense Claim.",
+   "fieldname": "enable_expense_claims",
+   "fieldtype": "Check",
+   "label": "Expense Claims"
+  },
+  {
+   "description": "Who sees a capture besides whoever uploaded or emailed it. These narrow the role permissions on Captured Document, and never widen them.",
+   "fieldname": "visibility_section",
+   "fieldtype": "Section Break",
+   "label": "Who Sees Which"
+  },
+  {
+   "default": "Anyone who may create the drafted document",
+   "description": "Anyone who may create a Purchase Invoice, as everyone on a shared accounts inbox would; or the sender alone.",
+   "fieldname": "purchase_invoice_visibility",
+   "fieldtype": "Select",
+   "label": "Purchase Invoice Captures",
+   "options": "Anyone who may create the drafted document\nSender only"
+  },
+  {
+   "fieldname": "column_break_visibility",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Sender only",
+   "description": "A receipt can only be claimed by its sender, so others seeing it is for oversight only.",
+   "fieldname": "expense_claim_visibility",
+   "fieldtype": "Select",
+   "label": "Expense Claim Captures",
+   "options": "Anyone who may create the drafted document\nSender only"
+  },
+  {
+   "default": "System Manager",
+   "description": "Holders of this role see every capture, of every kind. Administrator always does. Leave it empty for nobody else.",
+   "fieldname": "supervisor_role",
+   "fieldtype": "Link",
+   "label": "Supervisor Role",
+   "options": "Role"
+  },
+  {
+   "fieldname": "matching_section",
+   "fieldtype": "Section Break",
+   "label": "Matching Names"
+  },
+  {
+   "description": "Words that say what sort of company a name belongs to rather than which one, ignored when a scanned supplier or buyer is matched to this site's suppliers and companies. One per line, without punctuation. Added to the app's own list, which already has pvt, ltd, llc, inc, co, gmbh, sa, bv, pty, plc, ag, srl, oy, ab and as, among others.",
+   "fieldname": "supplier_legal_words",
+   "fieldtype": "Small Text",
+   "label": "Extra Legal Words"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Document Capture",
+ "name": "Document Capture Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 0,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

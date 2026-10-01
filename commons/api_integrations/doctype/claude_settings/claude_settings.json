@@ -7,7 +7,11 @@
  "field_order": [
   "api_key",
   "model",
-  "additional_instructions"
+  "additional_instructions",
+  "tax_section",
+  "tax_id_name",
+  "column_break_tax",
+  "withholding_tax_name"
  ],
  "fields": [
   {
@@ -29,12 +33,34 @@
    "fieldname": "additional_instructions",
    "fieldtype": "Small Text",
    "label": "Additional Instructions"
+  },
+  {
+   "description": "What this site's documents call the tax registration number and the tax a buyer withholds from a payment. Leave them empty to use the terms of the company's country where the app knows them (Nepal, India), and plain \"tax registration number\" and \"withholding tax\" elsewhere.",
+   "fieldname": "tax_section",
+   "fieldtype": "Section Break",
+   "label": "Tax Terms"
+  },
+  {
+   "description": "For example \"VAT number\", \"ABN\" or \"USt-IdNr.\".",
+   "fieldname": "tax_id_name",
+   "fieldtype": "Data",
+   "label": "Tax ID Name"
+  },
+  {
+   "fieldname": "column_break_tax",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "For example \"TDS\" or \"WHT\".",
+   "fieldname": "withholding_tax_name",
+   "fieldtype": "Data",
+   "label": "Withholding Tax Name"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-01 00:00:00.000000",
+ "modified": "2026-10-01 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "API Integrations",
  "name": "Claude Settings",

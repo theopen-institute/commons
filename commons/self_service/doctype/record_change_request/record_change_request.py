@@ -22,10 +22,17 @@ responsible team's write, made in their session, and an approver without the
 right to make it is refused rather than quietly granted it by proxy.
 
 Approval is the submission, as it is for `Procurement Request`: every state
-before a decision is docstatus 0, `Rejected` and `Withdrawn` included, and only
-`Approved` reaches docstatus 1. That is what lets the apply hang off `on_submit`
-rather than off the name of a state, so a site that renames its workflow states
-keeps working.
+before a decision is docstatus 0, a refusal or a withdrawal included, and only
+the applying outcome reaches docstatus 1. That is what lets the apply hang off
+`on_submit` rather than off the name of a state. With a Workflow, the applying
+outcome is whichever state the site gives docstatus 1; without one it is the
+Status option Commons Settings names (`change_request_applying_outcome`,
+"Approved" unless a site says otherwise) -- see `applying_outcome`.
+
+Without a Workflow, Commons Settings also says whether a reviewer may decide a
+request they raised themselves (`change_request_allow_self_approval`, yes
+unless a site says otherwise) -- see `before_submit`. With one, the Workflow's
+own transitions say it.
 
 The `current_value` on each row is captured, never typed, and captured once:
 when the row first reaches the request. It is what the requester was looking at
@@ -46,13 +53,95 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, flt, get_datetime, get_timedelta, getdate
 
+from commons.commons_core import workflow as wf
+from commons.commons_core.settings import _settings
 from commons.self_service import registry
 
+DOCTYPE = "Record Change Request"
+SETTINGS = "Commons Settings"
+
 # The state a request starts in, and the only one a decision moves it out of.
-# Also the value `on_submit` overwrites when a site runs no Workflow at all, so
-# an approved request never reads as still pending.
+# `on_submit` overwrites it with the applying outcome when a site runs no
+# Workflow at all, so an applied request never reads as still pending.
 PENDING = "Pending"
-APPROVED = "Approved"
+
+# The Commons Settings fields that decide a request on a site with no Workflow,
+# and what each reads as where a site has never stored it.
+APPLYING_OUTCOME_SETTING = "change_request_applying_outcome"
+DEFAULT_APPLYING_OUTCOME = "Approved"
+SELF_APPROVAL_SETTING = "change_request_allow_self_approval"
+
+
+def status_options() -> list[str]:
+	"""The `status` field's own options, as the site has customised them."""
+	field = frappe.get_meta(DOCTYPE).get_field("status")
+	return [option.strip() for option in (field.options or "").split("\n") if option.strip()]
+
+
+def applying_outcome(strict: bool = True) -> str | None:
+	"""The status that submits a request -- and so applies it -- on a site with no Workflow.
+
+	Commons Settings names it; a site that never stored the setting reads the
+	field's default. It has to be one of the doctype's Status options, and one
+	that is not the state a request starts in: anything else would mean no
+	decision ever applies a request, or every one does. `strict` refuses such a
+	setting with an error naming it, which is what deciding a request needs;
+	without it the answer is None, which is what drawing a page needs -- a
+	misconfiguration should stop the write, not the reviewer reading the queue.
+	"""
+	stored = (_settings() or {}).get(APPLYING_OUTCOME_SETTING)
+	outcome = (DEFAULT_APPLYING_OUTCOME if stored is None else stored).strip()
+	options = status_options()
+	if outcome and outcome in options and outcome != PENDING:
+		return outcome
+	if not strict:
+		return None
+	frappe.throw(
+		_(
+			"Commons Settings names {0} as the outcome that applies a Record Change Request, "
+			"but it is not one of the request's Status options ({1}). Set it to one of them."
+		).format(frappe.bold(outcome or _("nothing")), ", ".join(o for o in options if o != PENDING)),
+		frappe.ValidationError,
+		title=_("Change requests are misconfigured"),
+	)
+
+
+def self_approval_allowed() -> bool:
+	"""Whether a reviewer may decide a request they raised, on a site with no Workflow.
+
+	Yes where the site has never stored the setting, which is its default and
+	what this app always did. Asked of `tabSingles` rather than of the cached
+	document, because a Check the document never had loads as 0 -- which here
+	would read as "no".
+	"""
+	stored = stored_setting(SELF_APPROVAL_SETTING)
+	return True if stored is None else bool(cint(stored))
+
+
+def stored_setting(fieldname: str) -> str | None:
+	"""A Commons Settings value as `tabSingles` holds it, or None where it holds no row.
+
+	A query of its own because `frappe.db.get_value` does not read `Singles` as
+	a table: it treats it as a doctype and orders by a column it does not have.
+	"""
+	singles = frappe.qb.DocType("Singles")
+	rows = (
+		frappe.qb.from_(singles)
+		.select(singles.value)
+		.where((singles.doctype == SETTINGS) & (singles.field == fieldname))
+		.limit(1)
+		.run()
+	)
+	return (rows[0][0] or "") if rows else None
+
+
+def requester_of(doc) -> str | None:
+	"""Who raised a request: `requested_by`, which the doctype fills with the session user.
+
+	`owner` only where that is blank -- a request raised on somebody's behalf
+	names them in `requested_by`, and it is theirs, not the typist's.
+	"""
+	return doc.get("requested_by") or doc.get("owner")
 
 
 def normalized(value) -> str | None:
@@ -479,6 +568,21 @@ class RecordChangeRequest(Document):
 			else _("Nothing is being changed. Edit at least one field before sending this.")
 		)
 
+	def before_submit(self) -> None:
+		"""Refuse a reviewer applying their own request, where the site says so.
+
+		Only without a Workflow: with one, each transition's own self-approval
+		setting is the answer, and Frappe applies it. Here rather than in the
+		endpoint, so a submit from the desk is held to the same rule.
+		"""
+		if wf.active_workflow(DOCTYPE) or self_approval_allowed():
+			return
+		if requester_of(self) == frappe.session.user:
+			frappe.throw(
+				_("You cannot decide a change request you raised yourself."),
+				frappe.PermissionError,
+			)
+
 	def on_submit(self) -> None:
 		"""Approval: do the thing the request asked for.
 
@@ -497,12 +601,13 @@ class RecordChangeRequest(Document):
 			self.apply_to_record()
 
 		# Who settled it, and -- for a site running no Workflow, where submitting
-		# *is* approving -- a status that says so. `db_set` because the document
-		# has already been written by the time `on_submit` runs; a second `save()`
-		# here would recurse through submit.
+		# *is* applying -- a status that says so: the applying outcome the site
+		# names, not one spelled here. `db_set` because the document has already
+		# been written by the time `on_submit` runs; a second `save()` here would
+		# recurse through submit.
 		self.db_set("reviewed_by", frappe.session.user, update_modified=False)
 		if self.status == PENDING:
-			self.db_set("status", APPROVED, update_modified=False)
+			self.db_set("status", applying_outcome(), update_modified=False)
 
 	def insert_record(self) -> None:
 		"""Create the record this request asked for, owned by whoever asked.

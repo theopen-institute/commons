@@ -10,16 +10,15 @@
  *
  * ## How a deposit is matched to a loan
  *
- * The statements this was written for rarely say who paid. A QR payment reads
- * `FPQR-446377887-5650-24:…` and carries no name at all; a transfer sometimes
- * names the sender (`FT/09711000594/Kiran Adhikari/9814347967/…`) and sometimes
- * only an account or phone number. The desk tool offers nothing for any of
- * them, so the bookkeeper remembers who pays from which account.
+ * Bank statements often do not say who paid. A QR or wallet payment may carry
+ * only the bank's own reference; a transfer may name the sender, or only an
+ * account or phone number. The desk tool offers nothing for any of them, so
+ * the bookkeeper is left to remember who pays from which account.
  *
  * This remembers it instead. Each reconciled repayment is a statement line
- * joined to a loan, so the identifiers on those lines (long numbers, mostly
- * account and phone numbers) are evidence about which loan a new line belongs
- * to. Evidence, in order of weight:
+ * joined to a loan, so the identifiers on those lines (long runs of digits,
+ * mostly account and phone numbers) are evidence about which loan a new line
+ * belongs to. The kinds of evidence, each adding its weight to a loan's score:
  *
  * 1. the party on the transaction is the borrower (somebody said so);
  * 2. an identifier on this line appeared on two or more earlier repayments of
@@ -33,14 +32,14 @@
  *
  * The first three are strong: a suggestion resting on one of them may be put
  * into the draft for the bookkeeper to confirm. The fourth is only listed. The
- * fifth is only a tie-breaker, because half the borrowers pay 5,000.
+ * fifth is only a tie-breaker, because many borrowers pay the same round
+ * amounts.
  *
- * How well that works, replayed over one lender's 124 reconciled loan
- * repayments with each line judged only on what came before it: 30 strong
- * suggestions, of which 24 named the right loan, 5 the right borrower's other
- * loan, and 1 the wrong borrower (a clearing account seen twice). 5 weak ones,
- * all the right borrower. 89 lines got nothing, almost all QR payments that name
- * nobody, and those are left to the search.
+ * The weights, and how long a run of digits or a one-word name must be, are a
+ * site's to tune in Bank Reconciliation Settings: what pays off depends on
+ * what its bank writes in a description and on how its borrowers pay. They
+ * reach the page as `LoanMatchingRules`, and `DEFAULT_LOAN_MATCHING` is what
+ * answers when they do not.
  */
 
 /** A statement line, as the page reads it. */
@@ -166,6 +165,57 @@ export function outstandingPrincipal(loan: LoanRow): number {
   return money(Math.max(0, base + adjustments - (loan.total_principal_paid || 0)))
 }
 
+/**
+ * How loan suggestions are scored: Bank Reconciliation Settings' fields, by
+ * their fieldnames, as `commons.banking.reconciliation.loan_matching_settings`
+ * answers them. A weight of 0 leaves that kind of evidence out.
+ */
+export interface LoanMatchingRules {
+  /** The party on the line is the borrower. Strong. */
+  party_match_score: number
+  /** An identifier was on two or more earlier repayments of this loan alone. Strong. */
+  repeated_identifier_score: number
+  /** An identifier was on one earlier repayment of this loan alone. Weak. */
+  single_identifier_score: number
+  /** The borrower's whole name is in the description. Strong. */
+  name_in_description_score: number
+  /** Tie-breaker: the deposit pays the loan off exactly. */
+  exact_payoff_score: number
+  /** Tie-breaker: the deposit is an amount paid on this loan before. */
+  usual_amount_score: number
+  /** How many digits in a row make an identifier. */
+  min_identifier_digits: number
+  /** How long a one-word borrower name must be to be looked for. */
+  min_name_length: number
+}
+
+/** The settings' own defaults, for a page that has not heard otherwise. */
+export const DEFAULT_LOAN_MATCHING: LoanMatchingRules = {
+  party_match_score: 8,
+  repeated_identifier_score: 6,
+  single_identifier_score: 2,
+  name_in_description_score: 5,
+  exact_payoff_score: 2,
+  usual_amount_score: 1,
+  min_identifier_digits: 6,
+  min_name_length: 5,
+}
+
+/** Whatever of `given` is a usable number, and the defaults for the rest. A
+ *  missing or broken answer from the server leaves the page on the defaults
+ *  rather than scoring every loan NaN. */
+export function loanMatchingRules(
+  given?: Partial<Record<keyof LoanMatchingRules, unknown>> | null,
+): LoanMatchingRules {
+  const rules = { ...DEFAULT_LOAN_MATCHING }
+  for (const key of Object.keys(rules) as (keyof LoanMatchingRules)[]) {
+    const value = given?.[key]
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) rules[key] = Math.floor(value)
+  }
+  rules.min_identifier_digits = Math.max(1, rules.min_identifier_digits)
+  return rules
+}
+
 /** Lower case and letters and digits only, so that `Maya Sharma Loan/Example` and
  *  `maya sharma` meet. */
 function normalise(text: string | null | undefined): string {
@@ -173,23 +223,33 @@ function normalise(text: string | null | undefined): string {
 }
 
 /**
- * The identifiers on a statement line: runs of six or more digits.
+ * The identifiers on a statement line: runs of `minDigits` or more digits, six
+ * unless Bank Reconciliation Settings says otherwise.
  *
  * Account numbers, phone numbers and wallet ids are what repeat from one of a
  * borrower's payments to the next. So do some numbers that identify nothing,
  * such as the bank's own branch codes. Those turn up on the lines of many
  * loans, and `suggestLoans` discards them for that reason.
  */
-export function identifiers(description: string | null | undefined): string[] {
-  return [...new Set((description ?? '').match(/\d{6,}/g) ?? [])]
+export function identifiers(
+  description: string | null | undefined,
+  minDigits: number = DEFAULT_LOAN_MATCHING.min_identifier_digits,
+): string[] {
+  const pattern = new RegExp(`\\d{${Math.max(1, Math.floor(minDigits) || 1)},}`, 'g')
+  return [...new Set((description ?? '').match(pattern) ?? [])]
 }
 
 /** Whether a borrower's name is in a description. Every part of it, not just
- *  the surname: `Rai` is on half the statements in the country. */
-export function nameAppears(name: string | null | undefined, description: string | null | undefined) {
+ *  the surname, which a common one would match on many lines. A name of one
+ *  word is looked for only if it is at least `minSingleWord` letters long. */
+export function nameAppears(
+  name: string | null | undefined,
+  description: string | null | undefined,
+  minSingleWord: number = DEFAULT_LOAN_MATCHING.min_name_length,
+) {
   const parts = normalise(name).trim().split(' ').filter((part) => part.length >= 2)
   if (!parts.length) return false
-  if (parts.length === 1 && parts[0].length < 5) return false
+  if (parts.length === 1 && parts[0].length < minSingleWord) return false
   const text = normalise(description)
   return parts.every((part) => text.includes(` ${part} `))
 }
@@ -200,13 +260,19 @@ export function nameAppears(name: string | null | undefined, description: string
  * Only loans with something left to repay, and only loans some evidence points
  * at. A loan that nothing points at is still offered, through the search
  * beside the suggestions, but it is not guessed at.
+ *
+ * Scored by `rules`, the defaults where it says nothing. A kind of evidence
+ * weighted 0 neither scores nor makes a suggestion strong.
  */
 export function suggestLoans(
   transaction: TransactionRow,
   loans: LoanRow[],
   borrowerNames: Record<string, string>,
   history: RepaymentHistory[],
+  rules?: Partial<LoanMatchingRules> | null,
 ): Suggestion[] {
+  const weights = loanMatchingRules(rules)
+  const ids = (description: string | null) => identifiers(description, weights.min_identifier_digits)
   const amount = money(transaction.unallocated_amount)
   if (amount <= 0 || transaction.deposit <= 0) return []
 
@@ -219,13 +285,13 @@ export function suggestLoans(
   for (const row of history) {
     if (!usualAmounts.has(row.loan)) usualAmounts.set(row.loan, new Set())
     usualAmounts.get(row.loan)!.add(money(row.amount))
-    for (const id of identifiers(row.description)) {
+    for (const id of ids(row.description)) {
       if (!seenWith.has(id)) seenWith.set(id, new Map())
       const loansForId = seenWith.get(id)!
       loansForId.set(row.loan, (loansForId.get(row.loan) ?? 0) + 1)
     }
   }
-  const lineIds = identifiers(transaction.description)
+  const lineIds = ids(transaction.description)
 
   const suggestions: Suggestion[] = []
   for (const loan of loans) {
@@ -238,9 +304,10 @@ export function suggestLoans(
     if (
       transaction.party &&
       transaction.party_type === loan.applicant_type &&
-      transaction.party === loan.applicant
+      transaction.party === loan.applicant &&
+      weights.party_match_score > 0
     ) {
-      score += 8
+      score += weights.party_match_score
       strong = true
       reasons.push('Borrower is the party on this line')
     }
@@ -249,17 +316,23 @@ export function suggestLoans(
       const loansForId = seenWith.get(id)
       return loansForId?.size === 1 && loansForId.has(loan.name)
     })
-    if (matchedIds.length) {
-      const times = Math.max(...matchedIds.map((id) => seenWith.get(id)!.get(loan.name)!))
-      score += times > 1 ? 6 : 2
+    const times = matchedIds.length
+      ? Math.max(...matchedIds.map((id) => seenWith.get(id)!.get(loan.name)!))
+      : 0
+    const idWeight = times > 1 ? weights.repeated_identifier_score : weights.single_identifier_score
+    if (times && idWeight > 0) {
+      score += idWeight
       strong ||= times > 1
       reasons.push(
         `${matchedIds[0]} was on ${times === 1 ? 'an earlier repayment' : `${times} earlier repayments`}`,
       )
     }
 
-    if (nameAppears(borrowerNames[loan.applicant], transaction.description)) {
-      score += 5
+    if (
+      weights.name_in_description_score > 0 &&
+      nameAppears(borrowerNames[loan.applicant], transaction.description, weights.min_name_length)
+    ) {
+      score += weights.name_in_description_score
       strong = true
       reasons.push('Borrower named in the description')
     }
@@ -268,10 +341,12 @@ export function suggestLoans(
     // some other evidence.
     let tieBreak = 0
     if (money(outstanding) === amount) {
-      tieBreak += 2
-      reasons.push('Pays the loan off exactly')
-    } else if (usualAmounts.get(loan.name)?.has(amount)) {
-      tieBreak += 1
+      if (weights.exact_payoff_score > 0) {
+        tieBreak += weights.exact_payoff_score
+        reasons.push('Pays the loan off exactly')
+      }
+    } else if (weights.usual_amount_score > 0 && usualAmounts.get(loan.name)?.has(amount)) {
+      tieBreak += weights.usual_amount_score
       reasons.push('Same amount as earlier repayments')
     }
 
@@ -279,9 +354,9 @@ export function suggestLoans(
   }
 
   // A borrower with two open loans is found twice by the same evidence, and
-  // the loan they are paying is nearly always the one they paid last. On
-  // one lender's history a third of the strong suggestions found the
-  // right borrower and then ranked their other loan first.
+  // the loan they are paying is usually the one they paid last. Without
+  // this the right borrower is found and then their other loan can be
+  // ranked first.
   const applicantOf = new Map(loans.map((loan) => [loan.name, loan.applicant]))
   const byBorrower = new Map<string, Suggestion[]>()
   for (const suggestion of suggestions) {

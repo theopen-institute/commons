@@ -22,6 +22,9 @@ export interface ProcurementPermissions {
   /** Whether this site makes a request name its approver: the field's `reqd`,
    *  as the site has customised it. */
   approver_required: boolean
+  /** Whether this site makes a request name its department: the field's
+   *  `reqd`, as the site has customised it. */
+  department_required: boolean
   /** How many rows a queue returns. The badge counts to the same ceiling. */
   page_length: number
 }
@@ -86,6 +89,7 @@ const NO_PERMISSIONS: ProcurementPermissions = {
   pending_workflow_actions: 0,
   approver_query: '',
   approver_required: false,
+  department_required: false,
   page_length: 0,
 }
 
@@ -180,15 +184,21 @@ export function useMyProcurementRequests() {
 }
 
 /**
- * One department's share of an approval queue, with what its requests would
- * cost together.
+ * One group of an approval queue, with what its requests would cost together.
  *
- * Built by the server — see `group_by_department` — so the total is arrived at
- * in one place by one rule.
+ * Grouped by the field the site names in Commons Settings (`procurement_group_by`,
+ * department by default) — or not at all, in which case the queue is one group
+ * with an empty `key` and no heading. Built by the server — see
+ * `group_requests` — so the total is arrived at in one place by one rule.
  */
-export interface DepartmentRequestGroup {
+export interface ProcurementRequestGroup {
   key: string
-  department: string | null
+  /** The grouping field's value for these requests; null when they have none,
+   *  and always null when the queue is not grouped. */
+  value: string | null
+  /** What the heading says: the value, as a person reads it. Null when the
+   *  queue is not grouped or the requests have no value. */
+  label: string | null
   /** Request names, in queue order. The rows themselves are in `requests`. */
   requests: string[]
   /** What the group's requests would cost together. Null unless they share one
@@ -200,7 +210,11 @@ export interface DepartmentRequestGroup {
 export interface ProcurementQueue {
   requests: ProcurementRequestRow[]
   actions: Record<string, AvailableWorkflowAction[]>
-  groups: DepartmentRequestGroup[]
+  groups: ProcurementRequestGroup[]
+  /** The field the queue is grouped by, or null for one flat list. */
+  group_by: string | null
+  /** That field's label, for the heading of requests that leave it blank. */
+  group_by_label: string | null
 }
 
 export function useProcurementWorkflowQueue(

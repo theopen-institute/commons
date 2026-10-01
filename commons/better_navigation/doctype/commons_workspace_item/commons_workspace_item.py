@@ -20,13 +20,24 @@ class CommonsWorkspaceItem(Document):
 
 		icon: DF.Data | None
 		item_group: DF.Data | None
-		item_type: DF.Literal["Page", "Self Service Record"]
+		item_type: DF.Literal["Page", "Self Service Record", "Link"]
 		label: DF.Data | None
-		page: DF.Literal["", "Announcements", "Leave Request", "Expense Claim", "Procurement"]
+		page: DF.Literal[
+			"",
+			"Announcements",
+			"Account Balance",
+			"Leave Request",
+			"Expense Claim",
+			"Procurement",
+			"Attendance",
+			"Bank Reconciliation",
+			"Document Capture",
+		]
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
 		self_service_record: DF.Link | None
+		url: DF.Data | None
 	# end: auto-generated types
 
 	pass

@@ -8,6 +8,15 @@
   "general_tab",
   "title",
   "enable_bikram_sambat",
+  "landing_page",
+  "requests_tab",
+  "expenses_section",
+  "expense_unassigned_open",
+  "change_requests_section",
+  "change_request_applying_outcome",
+  "change_request_allow_self_approval",
+  "procurement_section",
+  "procurement_group_by",
   "navigation_tab",
   "navigation_section",
   "enable_navigation_rail",
@@ -51,6 +60,62 @@
    "fieldname": "enable_bikram_sambat",
    "fieldtype": "Check",
    "label": "Enable Bikram Sambat Calendar"
+  },
+  {
+   "description": "Where <b>/commons</b> opens. Left blank, it opens the first page in the person's sidebar that they may use.",
+   "fieldname": "landing_page",
+   "fieldtype": "Select",
+   "label": "Landing Page",
+   "options": "\nAnnouncements\nAccount Balance\nLeave Request\nExpense Claim\nProcurement\nAttendance\nBank Reconciliation\nDocument Capture"
+  },
+  {
+   "fieldname": "requests_tab",
+   "fieldtype": "Tab Break",
+   "label": "Requests"
+  },
+  {
+   "fieldname": "expenses_section",
+   "fieldtype": "Section Break",
+   "label": "Expense Claims"
+  },
+  {
+   "default": "0",
+   "description": "Without a Workflow, an expense claim that names no approver can be decided by anyone who may submit Expense Claims, who is then recorded as its approver. Unticked, such a claim waits until someone names an approver, as in HRMS.",
+   "fieldname": "expense_unassigned_open",
+   "fieldtype": "Check",
+   "label": "Let Any Approver Decide Unassigned Claims"
+  },
+  {
+   "description": "How a Record Change Request is decided on a site that runs no Workflow for it. With a Workflow, the Workflow decides all of this.",
+   "fieldname": "change_requests_section",
+   "fieldtype": "Section Break",
+   "label": "Record Change Requests"
+  },
+  {
+   "default": "Approved",
+   "description": "The status, one of the doctype's own Status options, that writes the proposed values to the record.",
+   "fieldname": "change_request_applying_outcome",
+   "fieldtype": "Data",
+   "label": "Outcome That Applies the Change"
+  },
+  {
+   "default": "1",
+   "description": "Unticked, a reviewer cannot decide a request they raised themselves.",
+   "fieldname": "change_request_allow_self_approval",
+   "fieldtype": "Check",
+   "label": "Allow Deciding Your Own Request"
+  },
+  {
+   "fieldname": "procurement_section",
+   "fieldtype": "Section Break",
+   "label": "Procurement Requests"
+  },
+  {
+   "default": "department",
+   "description": "A Link or Data field of <b>Procurement Request</b> the approvals queue is grouped by, each group with its estimated total. Blank: one list.",
+   "fieldname": "procurement_group_by",
+   "fieldtype": "Data",
+   "label": "Group Approvals By"
   },
   {
    "fieldname": "navigation_tab",
@@ -199,7 +264,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-01 12:00:00.000000",
+ "modified": "2026-10-01 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

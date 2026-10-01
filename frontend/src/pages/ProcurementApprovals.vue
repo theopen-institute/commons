@@ -75,12 +75,14 @@
 					</p>
 				</div>
 
-				<!-- Grouped by department, each with what its requests would cost together. -->
+				<!-- Grouped by the field the site chose (department by default), each
+				     with what its requests would cost together. An ungrouped queue
+				     is one group with no heading of its own. -->
 				<ul v-else class="space-y-8">
-					<li v-for="group in departmentGroups" :key="group.key">
+					<li v-for="group in requestGroups" :key="group.key">
 						<div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-							<h2 class="text-base-medium text-ink-gray-8">
-								{{ group.department || 'No department' }}
+							<h2 v-if="isGrouped" class="text-base-medium text-ink-gray-8">
+								{{ group.label || `No ${groupByLabel.toLowerCase()}` }}
 							</h2>
 							<span class="text-p-sm text-ink-gray-5">
 								{{ group.requests.length }}
@@ -154,8 +156,8 @@
 								<Alert
 									v-if="request.rejection_reason"
 									class="mt-3"
-									theme="red"
-									title="Turned down"
+									theme="gray"
+									title="Review note"
 									:description="request.rejection_reason"
 								/>
 
@@ -217,7 +219,7 @@ import {
 	requestLabel,
 	useProcurementRequestLines,
 	useProcurementWorkflowQueue,
-	type DepartmentRequestGroup,
+	type ProcurementRequestGroup,
 	type ProcurementRequestRow,
 } from '@/data/requests/procurement'
 import { useReviewTarget } from '@/data/requests/review'
@@ -241,10 +243,11 @@ const hasWorkflowAccess = computed(
 
 const requests = useProcurementWorkflowQueue(() => tab.value === 'decided')
 const requestRows = computed(() => requests.data?.requests ?? [])
-// Grouped by the server, which also prices each group against the allocation
-// printed over it. `requestRows` stays the flat list the line fetch and the
-// empty state are asking about.
-const departmentGroups = computed(() => requests.data?.groups ?? [])
+// Grouped by the server, which also prices each group. `requestRows` stays the
+// flat list the line fetch and the empty state are asking about.
+const requestGroups = computed(() => requests.data?.groups ?? [])
+const isGrouped = computed(() => Boolean(requests.data?.group_by))
+const groupByLabel = computed(() => requests.data?.group_by_label || 'value')
 
 // A group carries request names, not rows: the page holds one list of requests
 // and the grouping points into it.
@@ -252,7 +255,7 @@ const rowsByName = computed(
 	() => new Map(requestRows.value.map((request) => [request.name, request]))
 )
 
-function groupRequests(group: DepartmentRequestGroup) {
+function groupRequests(group: ProcurementRequestGroup) {
 	return group.requests
 		.map((name) => rowsByName.value.get(name))
 		.filter((request): request is ProcurementRequestRow => Boolean(request))

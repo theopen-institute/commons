@@ -97,6 +97,8 @@ def with_documents(
 	"""
 	absent = set(absent)
 	test.enterContext(patch.object(claude, "available", return_value=claude_key))
+	# Document Capture Settings, unsaved: every kind on, as on a site that never opened them.
+	test.enterContext(patch("commons.document_capture.settings._settings", return_value=None))
 	test.enterContext(patch.object(workspaces.settings, "title", return_value=app_title))
 
 	# The doctype existence checks in front of the queries. Patched as a whole
@@ -181,7 +183,6 @@ class TestDefaultWorkspace(TestCase):
 		self.assertEqual(
 			[(row["kind"], row["key"], row["group"]) for row in rows],
 			[
-				("page", "announcements", None),
 				("record", "Employee", "Profile"),
 				("record", "Bank Account", "Profile"),
 				("page", "statement", "Profile"),
@@ -212,7 +213,7 @@ class TestDefaultWorkspace(TestCase):
 			rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["announcements", "statement", "leave", "expense", "procurement", "attendance", "reconciliation"],
+			["statement", "leave", "expense", "procurement", "attendance", "reconciliation"],
 		)
 
 
@@ -242,7 +243,7 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["announcements", "Employee", "statement", "procurement", "attendance", "reconciliation"],
+			["Employee", "statement", "procurement", "attendance", "reconciliation"],
 		)
 
 	def test_a_configured_row_naming_one_is_dropped(self):
@@ -283,7 +284,6 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		self.assertEqual(
 			[row["key"] for row in rows],
 			[
-				"announcements",
 				"Employee",
 				"statement",
 				"leave",
@@ -311,17 +311,15 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 			self, [], [], absent=("GL Entry", "Bank Transaction"), apps=("frappe", "hrms", "commons")
 		)
 		rows = workspaces.workspaces()[0]["items"]
-		self.assertEqual(
-			[row["key"] for row in rows], ["announcements", "Employee", "leave", "expense", "attendance"]
-		)
+		self.assertEqual([row["key"] for row in rows], ["Employee", "leave", "expense", "attendance"])
 
 	def test_a_site_with_neither_keeps_the_pages_that_need_neither(self):
-		"""Bare Frappe: announcements and whatever self-service is configured."""
+		"""Bare Frappe: whatever self-service is configured."""
 		with_documents(
 			self, [], [], absent=(*self.ABSENT, "GL Entry", "Bank Transaction"), apps=("frappe", "commons")
 		)
 		rows = workspaces.workspaces()[0]["items"]
-		self.assertEqual([row["key"] for row in rows], ["announcements", "Employee", "attendance"])
+		self.assertEqual([row["key"] for row in rows], ["Employee", "attendance"])
 
 
 class TestTheStatementPage(TestCase):
@@ -561,6 +559,7 @@ class TestAccess(TestCase):
 		self.with_permissions(refused=("Student Attendance",))
 		self.enterContext(patch.object(api, "title", return_value="Commons"))
 		self.enterContext(patch.object(api, "feature_enabled", return_value=False))
+		self.enterContext(patch.object(api, "_settings", return_value=None))
 		shell = api.get_shell()
 		self.assertEqual(shell["access"], pages.access())
 		self.assertFalse(shell["access"]["attendance"])
@@ -578,6 +577,7 @@ class TestShellFeatures(TestCase):
 		with_documents(self, [], [])
 		self.enterContext(patch.object(api, "title", return_value="Commons"))
 		self.enterContext(patch.object(api.pages, "access", return_value={}))
+		self.enterContext(patch.object(api, "_settings", return_value=None))
 
 	def shell(self, switched_on=()):
 		with patch.object(api, "feature_enabled", side_effect=lambda field: field in switched_on) as asked:
@@ -592,6 +592,49 @@ class TestShellFeatures(TestCase):
 		answer, asked = self.shell(switched_on=(api.ENABLE_BIKRAM_SAMBAT,))
 		self.assertTrue(answer["features"]["bikram_sambat"])
 		asked.assert_called_with(api.ENABLE_BIKRAM_SAMBAT)
+
+
+class TestLandingPage(TestCase):
+	"""Where `/commons` opens, when Commons Settings says."""
+
+	def landing(self, stored, available=True):
+		settings = None if stored is None else {"landing_page": stored}
+		with (
+			patch.object(api, "_settings", return_value=settings),
+			patch.object(api.pages, "available", return_value=available),
+		):
+			return api.landing_page()
+
+	def test_a_named_page_is_sent_as_its_key(self):
+		self.assertEqual(self.landing("Account Balance"), "statement")
+
+	def test_unset_leaves_it_to_the_first_row(self):
+		self.assertIsNone(self.landing(""))
+		self.assertIsNone(self.landing(None))
+
+	def test_a_page_this_site_does_not_have_is_not_sent(self):
+		self.assertIsNone(self.landing("Leave Request", available=False))
+
+	def test_the_settings_offer_exactly_the_pages_a_workspace_may_name(self):
+		import json
+		from pathlib import Path
+
+		root = Path(api.__file__).resolve().parents[1]
+		settings = json.loads(
+			(root / "commons_core/doctype/commons_settings/commons_settings.json").read_text()
+		)
+		item = json.loads(
+			(
+				root / "better_navigation/doctype/commons_workspace_item/commons_workspace_item.json"
+			).read_text()
+		)
+
+		def options(doc, fieldname):
+			field = next(f for f in doc["fields"] if f["fieldname"] == fieldname)
+			return [option for option in field["options"].split("\n") if option]
+
+		self.assertEqual(options(settings, "landing_page"), list(pages.PAGES))
+		self.assertEqual(options(item, "page"), list(pages.PAGES))
 
 
 class TestConfiguredWorkspaces(TestCase):

@@ -1,10 +1,13 @@
 import { computed, ref, type Ref } from 'vue'
 import { upload, useCall } from 'frappe-ui'
 import {
+  DEFAULT_LOAN_MATCHING,
   OPEN_LOAN_STATUSES,
+  loanMatchingRules,
   money,
   type Candidate,
   type BookEntry,
+  type LoanMatchingRules,
   type LoanRow,
   type RepaymentHistory,
   type RepaymentRow,
@@ -654,9 +657,11 @@ export interface LoanBook {
   /** Repayments already on the books that no statement line accounts for
    *  yet, posted to this bank. */
   uncleared: RepaymentRow[]
+  /** How suggestions are scored, from Bank Reconciliation Settings. */
+  rules: LoanMatchingRules
 }
 
-const EMPTY_BOOK: LoanBook = { loans: [], names: {}, history: [], uncleared: [] }
+const EMPTY_BOOK: LoanBook = { loans: [], names: {}, history: [], uncleared: [], rules: DEFAULT_LOAN_MATCHING }
 
 /**
  * Everything the loan tab needs for one bank account, in three rounds.
@@ -681,6 +686,11 @@ export function useLoanBook() {
     ReturnType<typeof useCall<Record<string, string>, { doctype: string; names: string }>>
   >()
 
+  const matching = useCall<LoanMatchingRules, Record<string, never>>({
+    url: `${COMMONS}.loan_matching_settings`,
+    immediate: false,
+  })
+
   const book = ref<LoanBook>(EMPTY_BOOK) as Ref<LoanBook>
   const loading = ref(false)
   const error = ref<Error | null>(null)
@@ -693,7 +703,7 @@ export function useLoanBook() {
     loading.value = true
     error.value = null
     try {
-      const [loanRows, open] = await Promise.all([
+      const [loanRows, open, rules] = await Promise.all([
         fetchRows(loans, {
           fields: JSON.stringify([
             'name',
@@ -738,6 +748,9 @@ export function useLoanBook() {
           order_by: 'value_date asc',
           limit: PAGE.repayments,
         }),
+        // The site's tuning. Not worth failing the tab over: without it the
+        // suggestions are scored by the defaults, which are also the settings'.
+        matching.submit({}).then(loanMatchingRules, () => loanMatchingRules(null)),
       ])
 
       const loanNames = loanRows.map((row) => row.name)
@@ -791,6 +804,7 @@ export function useLoanBook() {
           description: descriptionOf.get(lineOf.get(row.name) ?? '') ?? null,
         })),
         uncleared: open,
+        rules,
       }
     } catch (problem) {
       error.value = problem as Error

@@ -53,11 +53,22 @@ queued again, the older job finds it has been superseded and does nothing.
 
 Who sees which
 --------------
-Purchase invoice captures belong to the accounts team. Anybody who may create a
-Purchase Invoice sees all of them, as everyone on a shared accounts inbox would.
-Expense receipts are their sender's alone. `has_permission` and
-`permission_query_conditions` narrow the role permissions to that. They can
-only deny, and System Manager is left alone.
+Each kind's rule is Document Capture Settings' (`settings.visibility`): either
+anybody who may create the kind's document sees every capture of it, as
+everyone on a shared accounts inbox would, or only its sender does. By
+default a purchase invoice capture is the accounts team's and an expense
+receipt its sender's alone, as they were before the rule was the site's.
+`has_permission` and `permission_query_conditions` narrow the role permissions
+to that. They can only deny, and the settings' supervisor role (System Manager
+by default) and Administrator are left alone.
+
+Which kinds
+-----------
+`KINDS` is the one list of them; everything else, the page included (through
+`context`), is derived from it. A kind the site has switched off in Document
+Capture Settings is not offered, its uploads and reads are refused, and an
+email to an account that captures it is discarded with the reason
+(`sort_email`). Captures already made of it stay visible by the rule above.
 """
 
 import json
@@ -70,15 +81,20 @@ from commons.api_integrations.claude import client as claude
 from commons.api_integrations.claude import documents
 from commons.commons_core import apps
 from commons.document_capture import expense_claim, purchase_invoice
+from commons.document_capture import settings as capture_settings
 
 CAPTURED_DOCUMENT = "Captured Document"
 
-# What each kind of capture becomes, and the module that reads it. Each has
-# `available`, `can_capture`, `read_scan` and `reading`; see `purchase_invoice`.
+# What each kind of capture becomes, and the module that reads it: the one list
+# of kinds. Each has `available`, `can_capture`, `read_scan` and `reading`, and
+# its switches in Document Capture Settings, `ENABLE_FIELD` and
+# `VISIBILITY_FIELD`; see `purchase_invoice`. The first is what an email
+# becomes when its account does not say (`_account_kind`).
 KINDS = {
 	purchase_invoice.PURCHASE_INVOICE: purchase_invoice,
 	expense_claim.EXPENSE_CLAIM: expense_claim,
 }
+DEFAULT_KIND = next(iter(KINDS))
 
 # Reads per person per hour. A person working through a pile of scans needs
 # one a minute at most, and a read costs a few cents.
@@ -117,25 +133,45 @@ def _kind(document_type: str | None):
 	return kind
 
 
+def enabled_kinds() -> list[str]:
+	"""The kinds this site captures, by Document Capture Settings."""
+	return [name for name, kind in KINDS.items() if capture_settings.enabled(kind)]
+
+
+def _offered(kind) -> bool:
+	"""Whether this site can read `kind` and captures it: set up, and switched
+	on. The app and the key are asked first, so a site without them never
+	reads the settings."""
+	return kind.available() and capture_settings.enabled(kind)
+
+
 def available() -> bool:
 	"""Whether this site can read scans into any kind of draft."""
-	return any(kind.available() for kind in KINDS.values())
+	return any(_offered(kind) for kind in KINDS.values())
 
 
 def can_capture() -> bool:
 	"""Whether this person can use the page: some kind is available here and
 	theirs to draft. Stops at the first, because the shell asks on every load
 	and a receipt's test looks the reader's employee record up."""
-	return any(kind.available() and kind.can_capture() for kind in KINDS.values())
+	return any(_offered(kind) and kind.can_capture() for kind in KINDS.values())
 
 
 def kinds() -> list[str]:
-	"""The kinds of draft this person may capture, on this site."""
-	return [name for name, kind in KINDS.items() if kind.available() and kind.can_capture()]
+	"""The kinds of draft this person may capture, on this site. What the page
+	offers, through `context`."""
+	return [name for name, kind in KINDS.items() if _offered(kind) and kind.can_capture()]
+
+
+def _require_enabled(kind) -> None:
+	if not capture_settings.enabled(kind):
+		frappe.throw(_("This site does not capture scans as {0}.").format(_(kind_label(kind))))
 
 
 def _require_reading(kind) -> None:
-	"""For a read, which is billed: the kind is set up here and theirs to make."""
+	"""For a read, which is billed: the kind is captured here, set up, and
+	theirs to make."""
+	_require_enabled(kind)
 	if not kind.available():
 		frappe.throw(_("Reading scans into a {0} is not set up on this site.").format(_(kind_label(kind))))
 	if not kind.can_capture():
@@ -234,10 +270,20 @@ def sort_email(name: str) -> None:
 		order_by="creation asc",
 		limit=1,
 	)
-	values = {
-		"document_type": _account_kind(capture.email_account),
-		"status": "Unread",
-	}
+	document_type = _account_kind(capture.email_account)
+	values = {"document_type": document_type, "status": "Unread"}
+	if not capture_settings.enabled(_kind(document_type)):
+		# Refused: the scans stay on the email, and nothing is copied for a
+		# kind nobody here will draft.
+		capture.db_set(
+			{
+				"document_type": document_type,
+				"status": "Discarded",
+				"communication": communication[0].name if communication else None,
+				"error": _("This site does not capture scans as {0}.").format(_(document_type)),
+			}
+		)
+		return
 	if not communication:
 		capture.db_set({**values, "error": _("The email this came from was not found.")})
 		return
@@ -271,9 +317,26 @@ def sort_email(name: str) -> None:
 
 
 def _account_kind(email_account: str | None) -> str:
-	"""What the account's captures become, from its `capture_document_type`."""
+	"""What the account's captures become, from its `capture_document_type`,
+	and `DEFAULT_KIND` where it names none of `KINDS`. Not another enabled kind
+	in its place: receipts read as invoices would be the accounts team's to see.
+	"""
 	kind = email_account and frappe.db.get_value("Email Account", email_account, "capture_document_type")
-	return kind if kind in KINDS else purchase_invoice.PURCHASE_INVOICE
+	return kind if kind in KINDS else DEFAULT_KIND
+
+
+def validate_email_account(doc, method=None) -> None:
+	"""An Email Account's `capture_document_type` is a kind this site captures.
+
+	The field's options are every kind; this narrows them to the enabled ones,
+	for an account that appends to Captured Document. For a `doc_events`
+	`validate` hook on Email Account.
+	"""
+	kind = doc.get("capture_document_type")
+	if not kind or doc.get("append_to") != CAPTURED_DOCUMENT:
+		return
+	if kind not in enabled_kinds():
+		frappe.throw(_("This site does not capture scans as {0}.").format(_(kind)))
 
 
 def _email_scans(communication) -> list:
@@ -638,26 +701,38 @@ def _attach(file_name: str, doctype: str, name: str, field: str | None = None):
 
 
 def _unrestricted(user: str) -> bool:
-	return user == "Administrator" or "System Manager" in frappe.get_roles(user)
+	"""Administrator, or a holder of the settings' supervisor role."""
+	if user == "Administrator":
+		return True
+	role = capture_settings.supervisor_role()
+	return bool(role) and role in frappe.get_roles(user)
 
 
-def _sees_invoices(user: str) -> bool:
-	return apps.has_doctype(purchase_invoice.PURCHASE_INVOICE) and bool(
-		frappe.has_permission(purchase_invoice.PURCHASE_INVOICE, "create", user=user)
-	)
+def _sees_all_of(name: str, user: str) -> bool:
+	"""Whether `user` sees every capture of the kind `name`, not only their own:
+	the kind is shared with whoever may create its document, and they may."""
+	kind = KINDS.get(name)
+	if not kind or capture_settings.visibility(kind) != capture_settings.ANYONE:
+		return False
+	return apps.has_doctype(name) and bool(frappe.has_permission(name, "create", user=user))
+
+
+def _shared_kinds(user: str) -> list[str]:
+	"""The kinds whose every capture `user` sees."""
+	return [name for name in KINDS if _sees_all_of(name, user)]
 
 
 def has_permission(doc, ptype=None, user=None):
 	"""Deny what the role permissions grant beyond the rule in the module
-	docstring: purchase invoice captures to whoever may make a Purchase
-	Invoice, and everything else to its owner.
+	docstring: a capture to its owner, and to whoever may create its kind's
+	document where the kind is shared that way.
 
 	True where it has no objection, never None: Frappe 16 reads None from a
 	controller hook as a refusal. True grants nothing the roles do not."""
 	user = user or frappe.session.user
 	if _unrestricted(user) or doc.owner == user:
 		return True
-	return doc.document_type == purchase_invoice.PURCHASE_INVOICE and _sees_invoices(user)
+	return _sees_all_of(doc.document_type, user)
 
 
 def permission_query_conditions(user=None) -> str:
@@ -665,7 +740,8 @@ def permission_query_conditions(user=None) -> str:
 	if _unrestricted(user):
 		return ""
 	own = f"`tab{CAPTURED_DOCUMENT}`.`owner` = {frappe.db.escape(user)}"
-	if _sees_invoices(user):
-		invoices = frappe.db.escape(purchase_invoice.PURCHASE_INVOICE)
-		return f"({own} or `tab{CAPTURED_DOCUMENT}`.`document_type` = {invoices})"
+	shared = _shared_kinds(user)
+	if shared:
+		names = ", ".join(frappe.db.escape(name) for name in shared)
+		return f"({own} or `tab{CAPTURED_DOCUMENT}`.`document_type` in ({names}))"
 	return f"({own})"

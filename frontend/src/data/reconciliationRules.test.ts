@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_LOAN_MATCHING,
   checkSplit,
   identifiers,
   meaningfulReference,
@@ -10,6 +11,7 @@ import {
   proposedReference,
   repaymentCandidates,
   likelyPairs,
+  loanMatchingRules,
   daysBetween,
   suggestLoans,
   type Candidate,
@@ -23,8 +25,9 @@ import {
  * looks exactly like a right one, and a bookkeeper working down forty lines
  * accepts what it offers.
  *
- * The descriptions are shaped like the real ones on one lender's
- * statements: named transfers, and QR payments that name nobody.
+ * The descriptions are shaped like the ones bank statements commonly carry:
+ * transfers that name the sender or an account number, and QR or wallet
+ * payments that name nobody.
  */
 
 function transaction(overrides: Partial<TransactionRow> = {}): TransactionRow {
@@ -109,6 +112,11 @@ describe('identifiers', () => {
   it('ignores short numbers', () => {
     expect(identifiers('CIPS/OI ARR6/ref 2026')).toEqual([])
   })
+
+  it('takes the shortest identifier from the settings', () => {
+    expect(identifiers('ref 2026 / 12345678', 4)).toEqual(['2026', '12345678'])
+    expect(identifiers('ref 2026 / 12345678', 9)).toEqual([])
+  })
 })
 
 describe('nameAppears', () => {
@@ -126,6 +134,11 @@ describe('nameAppears', () => {
 
   it('refuses a single short name, which would match anywhere', () => {
     expect(nameAppears('Rai', 'Rai')).toBe(false)
+  })
+
+  it('takes the shortest single-word name from the settings', () => {
+    expect(nameAppears('Rai', 'from Rai', 3)).toBe(true)
+    expect(nameAppears('Sharma', 'from Sharma', 7)).toBe(false)
   })
 })
 
@@ -203,8 +216,8 @@ describe('suggestLoans', () => {
   })
 
   it('never suggests on the amount alone', () => {
-    // Half the borrowers pay 5,000. A QR payment with no name is left to
-    // the bookkeeper rather than guessed at.
+    // Many borrowers pay the same round amount. A QR payment with no name
+    // is left to the bookkeeper rather than guessed at.
     const history: RepaymentHistory[] = [{ loan: 'LOAN-KIRAN', amount: 5000, description: null }]
     expect(
       suggestLoans(
@@ -433,3 +446,49 @@ describe('likelyPairs', () => {
   })
 })
 
+describe('loanMatchingRules', () => {
+  it('is today’s tuning when the settings say nothing', () => {
+    expect(loanMatchingRules(null)).toEqual(DEFAULT_LOAN_MATCHING)
+    expect(DEFAULT_LOAN_MATCHING).toEqual({
+      party_match_score: 8,
+      repeated_identifier_score: 6,
+      single_identifier_score: 2,
+      name_in_description_score: 5,
+      exact_payoff_score: 2,
+      usual_amount_score: 1,
+      min_identifier_digits: 6,
+      min_name_length: 5,
+    })
+  })
+
+  it('keeps what is a usable number and defaults the rest', () => {
+    const rules = loanMatchingRules({ party_match_score: 3, name_in_description_score: 'x', min_identifier_digits: 0 })
+    expect(rules.party_match_score).toBe(3)
+    expect(rules.name_in_description_score).toBe(5)
+    expect(rules.min_identifier_digits).toBe(1)
+  })
+})
+
+describe('suggestLoans with tuned rules', () => {
+  const history: RepaymentHistory[] = [{ loan: 'LOAN-KIRAN', amount: 10000, description: 'FON:IBFT:451883554' }]
+  const line = transaction({ description: 'FON:IBFT:451883554' })
+
+  it('scores by the weights it is given', () => {
+    const [found] = suggestLoans(line, [KIRAN], NAMES, history, { single_identifier_score: 7 })
+    expect(found.score).toBe(7)
+    expect(found.strong).toBe(false)
+  })
+
+  it('leaves out evidence weighted 0, strength and all', () => {
+    const named = transaction({ party_type: 'Student', party: 'maya@example.org', description: 'Maya Sharma' })
+    expect(suggestLoans(named, [MAYA], NAMES, [], { party_match_score: 0, name_in_description_score: 0 })).toEqual([])
+    expect(suggestLoans(line, [KIRAN], NAMES, history, { single_identifier_score: 0 })).toEqual([])
+  })
+
+  it('reads identifiers at the length it is given', () => {
+    const short: RepaymentHistory[] = [{ loan: 'LOAN-KIRAN', amount: 1, description: 'ref 4518' }]
+    const deposit = transaction({ description: 'ref 4518' })
+    expect(suggestLoans(deposit, [KIRAN], NAMES, short)).toEqual([])
+    expect(suggestLoans(deposit, [KIRAN], NAMES, short, { min_identifier_digits: 4 })[0].loan).toBe('LOAN-KIRAN')
+  })
+})

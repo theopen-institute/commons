@@ -199,7 +199,9 @@ class TestReadingUsesTheSitesLocale(TestCase):
 
 
 class TestForCompany(TestCase):
-	def locale_of(self, company=None, default="Example Org (Nepal)", companies=(), bs=True, extra=""):
+	def locale_of(
+		self, company=None, default="Example Org (Nepal)", companies=(), bs=True, extra="", terms=None
+	):
 		values = {
 			"Example Org (Nepal)": {"country": "Nepal", "default_currency": "NPR"},
 			"Example Org (USA)": {"country": "United States", "default_currency": "USD"},
@@ -215,6 +217,11 @@ class TestForCompany(TestCase):
 			patch.object(locale.frappe, "get_all", return_value=list(companies)),
 			patch("commons.commons_core.settings.feature_enabled", return_value=bs),
 			patch.object(locale.client, "additional_instructions", return_value=extra),
+			patch.object(
+				locale.client,
+				"tax_terms",
+				return_value=terms or {"tax_id_name": "", "withholding_tax_name": ""},
+			),
 		):
 			return locale.for_company(company)
 
@@ -240,6 +247,56 @@ class TestForCompany(TestCase):
 	def test_nothing_in_particular_when_there_is_no_telling(self):
 		found = self.locale_of(default=None, companies=["A", "B"], bs=False)
 		self.assertEqual(found, locale.Locale())
+
+	def test_the_sites_tax_terms_come_from_claude_settings(self):
+		found = self.locale_of(terms={"tax_id_name": "ABN", "withholding_tax_name": "PAYG"})
+		self.assertEqual((found.tax_id_name, found.withholding_tax_name), ("ABN", "PAYG"))
+
+
+class TestTheSitesTaxTerms(TestCase):
+	"""Claude Settings' Tax ID Name and Withholding Tax Name, over `TAX_TERMS`."""
+
+	def test_they_name_the_terms_where_the_country_has_none(self):
+		where = locale.Locale(country="Australia", tax_id_name="ABN", withholding_tax_name="PAYG withholding")
+		self.assertEqual(locale.tax_id_name(where), "ABN (or other tax registration number)")
+		self.assertEqual(locale.withholding_name(where), "withholding tax (PAYG withholding)")
+		invoice = purchase_invoice.instructions(where)
+		self.assertIn("tax_id is the ABN (or other tax registration number)", invoice)
+		party = purchase_invoice.schema(where)["properties"]["supplier"]["properties"]["tax_id"]
+		self.assertIn("ABN", party["description"])
+
+	def test_they_win_over_the_countrys(self):
+		where = locale.Locale(country="Nepal", tax_id_name="  VAT number ", withholding_tax_name="")
+		self.assertEqual(locale.tax_id_name(where), "VAT number (or other tax registration number)")
+		# Only the one set is replaced; Nepal's withholding tax stays TDS.
+		self.assertEqual(locale.withholding_name(where), "withholding tax (TDS)")
+
+	def test_unset_they_change_nothing(self):
+		self.assertEqual(locale.tax_id_name(USA), "tax registration number")
+		self.assertEqual(locale.tax_id_name(NEPAL), "PAN or VAT number (or other tax registration number)")
+
+	def test_claude_settings_has_the_fields(self):
+		import json
+		import os
+
+		from commons.api_integrations.doctype import claude_settings
+
+		path = os.path.join(os.path.dirname(claude_settings.__file__), "claude_settings.json")
+		with open(path) as file:
+			fields = {field["fieldname"]: field["fieldtype"] for field in json.load(file)["fields"]}
+		self.assertEqual((fields["tax_id_name"], fields["withholding_tax_name"]), ("Data", "Data"))
+
+	def test_the_client_reads_them_trimmed(self):
+		document = SimpleNamespace(
+			model="",
+			get_password=lambda *args, **kwargs: "",
+			get=lambda field: {"tax_id_name": " ABN ", "withholding_tax_name": None}.get(field),
+		)
+		with (
+			patch.object(locale.client.frappe, "db", SimpleNamespace(exists=lambda *args, **kwargs: True)),
+			patch.object(locale.client.frappe, "get_cached_doc", return_value=document),
+		):
+			self.assertEqual(locale.client.tax_terms(), {"tax_id_name": "ABN", "withholding_tax_name": ""})
 
 
 class TestANewSupplier(TestCase):

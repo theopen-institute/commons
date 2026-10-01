@@ -13,7 +13,9 @@
 	<RequestReviewDialog
 		v-model:open="open"
 		:title="request ? requestLabel(request) : 'Procurement request'"
-		:message="request ? `${request.name} · Requested ${formatDate(request.transaction_date)}` : ''"
+		:message="
+			request ? `${request.name} · Requested ${formatDate(request.transaction_date)}` : ''
+		"
 		:buttons="reviewButtons"
 		:running="workflow.running.value"
 		:error="attempted ? workflow.call.error?.message : null"
@@ -27,10 +29,16 @@
 					<div v-if="request.department">{{ request.department }}</div>
 				</div>
 				<div class="text-right">
-					<Badge :theme="procurementStatus(request, procurementWorkflow).theme" variant="subtle">
+					<Badge
+						:theme="procurementStatus(request, procurementWorkflow).theme"
+						variant="subtle"
+					>
 						{{ procurementStatus(request, procurementWorkflow).label }}
 					</Badge>
-					<div v-if="request.total_estimated_cost" class="mt-1 text-base-medium text-ink-gray-8">
+					<div
+						v-if="request.total_estimated_cost"
+						class="mt-1 text-base-medium text-ink-gray-8"
+					>
 						{{ formatCurrency(request.total_estimated_cost, request.currency) }}
 					</div>
 				</div>
@@ -62,8 +70,8 @@
 
 			<Alert
 				v-if="request.rejection_reason"
-				theme="red"
-				title="Turned down"
+				theme="gray"
+				title="Review note"
 				:description="request.rejection_reason"
 			/>
 		</template>
@@ -125,7 +133,7 @@ const workflow = useWorkflowAction({ settled: () => emit('settled') })
 const attempted = ref(false)
 watch(
 	() => [open.value, props.request?.name],
-	() => (attempted.value = false),
+	() => (attempted.value = false)
 )
 
 // Keyed by the action's own name, not the button's label. They are the same
@@ -136,7 +144,7 @@ const reviewButtons = computed(() =>
 		label: button.label,
 		theme: button.theme,
 		variant: button.variant,
-	})),
+	}))
 )
 
 function choose(key: string, close: () => void) {

@@ -79,6 +79,15 @@
 						<div v-if="isChanged(student.student)" class="text-p-xs text-ink-gray-5">
 							Was {{ MARK_LABELS[storedMark(student.student)].toLowerCase() }}
 						</div>
+						<!-- Leave is read here, not offered: it is marked in the desk. On a
+						     site that counts it as excused, say so, since no button below is
+						     lit for it. -->
+						<div
+							v-else-if="storedMark(student.student) === 'Excused'"
+							class="text-p-xs text-ink-gray-5"
+						>
+							On leave · excused from this session's hours
+						</div>
 					</div>
 
 					<div

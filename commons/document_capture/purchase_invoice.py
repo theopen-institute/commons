@@ -77,6 +77,7 @@ from frappe.utils import flt, today
 from commons.api_integrations.claude import client as claude
 from commons.api_integrations.claude import documents, jobs, locale
 from commons.commons_core import apps
+from commons.document_capture import settings as capture_settings
 
 PURCHASE_INVOICE = "Purchase Invoice"
 SUPPLIER = "Supplier"
@@ -106,12 +107,58 @@ COMPANY_CHOSEN = 0.6
 SAME_SUPPLIER_LINE = 0.5
 ANY_LINE = 0.7
 
+# This kind's switches in Document Capture Settings (`commons.document_capture.settings`).
+ENABLE_FIELD = "enable_purchase_invoices"
+VISIBILITY_FIELD = "purchase_invoice_visibility"
+
 # Words that say what sort of company a name belongs to rather than which one.
 # "Vianet Communications Pvt.Ltd" and "VIANET COMMUNICATIONS PVT. LTD." are the
-# same supplier however the suffix is spelled.
+# same supplier however the suffix is spelled. The common legal forms of several
+# countries; a site adds its own in Document Capture Settings, and those apply
+# to the names only (`_name_words`). "p", "m" and "s" stay for "P. Ltd" and
+# "M/S" (Messrs): without "p", "Nepal P. Ltd" is no longer the "Nepal Pvt Ltd"
+# already on the site (`test_a_letter_out_is_still_the_same_supplier`).
 LEGAL_WORDS = frozenset(
-	{"pvt", "private", "ltd", "limited", "p", "co", "company", "inc", "llc", "llp", "the", "and", "m", "s"}
+	{
+		# English-speaking and South Asian
+		"pvt",
+		"private",
+		"ltd",
+		"limited",
+		"p",
+		"co",
+		"company",
+		"corp",
+		"corporation",
+		"inc",
+		"incorporated",
+		"llc",
+		"llp",
+		"plc",
+		"pty",
+		"pte",
+		"the",
+		"and",
+		"m",
+		"s",
+		# Continental European and Nordic
+		"gmbh",
+		"ag",
+		"sa",
+		"sarl",
+		"srl",
+		"spa",
+		"bv",
+		"nv",
+		"oy",
+		"ab",
+		"as",
+	}
 )
+
+
+# "b.v.", "s.r.l.", "s.a.": two or more single letters, each followed by a dot.
+DOTTED_INITIALS = re.compile(r"\b(?:[a-z]\.){2,}")
 
 
 def available() -> bool:
@@ -342,9 +389,10 @@ def _match_company(buyer: dict, companies: list[dict]) -> dict:
 				return {"name": company.name, "reason": _("The tax number the invoice is billed to")}
 
 	billed_to = buyer.get("name") or ""
+	ignore = _name_words()
 	scored = sorted(
 		(
-			(similarity(billed_to, company.company_name or company.name), company.name)
+			(similarity(billed_to, company.company_name or company.name, ignore), company.name)
 			for company in companies
 		),
 		reverse=True,
@@ -379,6 +427,7 @@ def _match_suppliers(supplier: dict) -> list[dict]:
 		return []
 
 	found = []
+	ignore = _name_words()
 	for row in frappe.get_list(
 		SUPPLIER,
 		fields=["name", "supplier_name", "tax_id"],
@@ -388,7 +437,7 @@ def _match_suppliers(supplier: dict) -> list[dict]:
 		if tax_id and _digits(row.tax_id) == tax_id:
 			found.append((1.0, row, _("Same tax number, {0}").format(row.tax_id)))
 			continue
-		score = similarity(name, row.supplier_name or row.name)
+		score = similarity(name, row.supplier_name or row.name, ignore)
 		if score >= 0.95:
 			found.append((score, row, _("Same name")))
 		elif score >= SUPPLIER_OFFERED:
@@ -412,18 +461,28 @@ def _digits(value: str | None) -> str:
 	return re.sub(r"[^0-9A-Za-z]", "", value or "").upper()
 
 
-def _words(value: str | None) -> list[str]:
+def _words(value: str | None, ignore: frozenset[str] = LEGAL_WORDS) -> list[str]:
 	"""The words that say what a name or a line is.
 
-	Bare numbers are left out along with the legal words: on these invoices they
-	are mostly fiscal years, and "Statutory Audit 2081/82" is booked where
-	"Statutory Audit 2080/81" was.
+	Bare numbers are left out along with the legal words (`ignore`): on these
+	invoices they are mostly fiscal years, and "Statutory Audit 2081/82" is
+	booked where "Statutory Audit 2080/81" was.
+
+	Initials run together with dots are one word, so "B.V." and "S.r.l." are
+	the legal words "bv" and "srl" rather than letters.
 	"""
-	words = re.sub(r"[^0-9a-z]+", " ", (value or "").lower()).split()
-	return [word for word in words if word not in LEGAL_WORDS and not word.isdigit()]
+	text = DOTTED_INITIALS.sub(lambda match: match.group(0).replace(".", ""), (value or "").lower())
+	words = re.sub(r"[^0-9a-z]+", " ", text).split()
+	return [word for word in words if word not in ignore and not word.isdigit()]
 
 
-def similarity(a: str | None, b: str | None) -> float:
+def _name_words() -> frozenset[str]:
+	"""The words ignored in a supplier's or company's name: the app's own and
+	the site's (`settings.legal_words`). Asked once per match, not per name."""
+	return LEGAL_WORDS | capture_settings.legal_words()
+
+
+def similarity(a: str | None, b: str | None, ignore: frozenset[str] = LEGAL_WORDS) -> float:
 	"""How alike two names or descriptions are, from 0 to 1.
 
 	Compared without case, punctuation or legal suffixes, as the average of two
@@ -433,12 +492,15 @@ def similarity(a: str | None, b: str | None) -> float:
 	"Vianet Communications" and "Worldlink Communications" are alike character
 	for character and are different suppliers.
 
+	`ignore` is the legal words, `LEGAL_WORDS` unless a name is being matched
+	with the site's own as well (`_name_words`).
+
 	One more case lifts the score to 0.8: every word of the shorter name is in
 	the longer one, as with "Vianet" against "Vianet Communications". That is
 	below `SUPPLIER_CHOSEN`, because it is a reason to offer a supplier, not to
 	choose it.
 	"""
-	left, right = _words(a), _words(b)
+	left, right = _words(a, ignore), _words(b, ignore)
 	if not left or not right:
 		return 0.0
 	characters = SequenceMatcher(None, " ".join(left), " ".join(right)).ratio()

@@ -141,7 +141,7 @@ class Leave(approvals.RequestType):
 
 	def permlevel_message(self) -> str:
 		return frappe._(
-			"You are not permitted to decide leave applications. The Leave Approver role grants this."
+			"You are not permitted to decide leave applications. Ask your system administrator for access."
 		)
 
 	def not_yours_message(self, doc) -> str:

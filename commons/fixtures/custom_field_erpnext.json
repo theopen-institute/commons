@@ -45,5 +45,18 @@
   "no_copy": 1,
   "print_hide": 1,
   "search_index": 1
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Party Type-statement_print_format",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Party Type",
+  "fieldname": "statement_print_format",
+  "label": "Statement Print Format",
+  "fieldtype": "Link",
+  "options": "Print Format",
+  "insert_after": "account_type",
+  "description": "The Print Format a statement for a party of this type is downloaded with, from the statement page. It must be an enabled Print Format for this doctype. Left blank, the statement uses the one named <b>{Party Type} Account Statement</b> (for example <code>Customer Account Statement</code>), and refuses the download when neither exists."
  }
 ]

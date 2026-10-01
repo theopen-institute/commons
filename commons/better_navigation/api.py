@@ -32,7 +32,7 @@ of them.
 import frappe
 
 from commons.better_navigation import pages, workspaces
-from commons.commons_core.settings import ENABLE_BIKRAM_SAMBAT, feature_enabled, title
+from commons.commons_core.settings import ENABLE_BIKRAM_SAMBAT, _settings, feature_enabled, title
 
 
 @frappe.whitelist()
@@ -43,4 +43,16 @@ def get_shell() -> dict:
 		"workspaces": workspaces.workspaces(),
 		"access": pages.access(),
 		"features": {"bikram_sambat": feature_enabled(ENABLE_BIKRAM_SAMBAT)},
+		"landing": landing_page(),
 	}
+
+
+def landing_page() -> str | None:
+	"""The page key `/commons` opens on, if Commons Settings names one this site has.
+
+	None leaves it to the frontend's own rule, the first row the reader may open
+	(`landingRoute` in `frontend/src/data/shell.ts`) -- which is also what
+	happens when the named page is one this reader is not offered.
+	"""
+	key = pages.PAGES.get((_settings() or {}).get("landing_page") or "")
+	return key if key and pages.available(key) else None

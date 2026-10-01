@@ -17,9 +17,10 @@ takes them from a `Locale`, built by `for_company` from this site's data:
   app's own rules, for whatever this site's documents do that no app could
   know.
 
-The tax terms are named only where they are derived from the country
-(`TAX_TERMS`); anywhere else the prompt says "tax registration number" and
-"withholding tax", which read correctly anywhere.
+The tax terms are Claude Settings' Tax ID Name and Withholding Tax Name where
+the site has set them, and otherwise derived from the country (`TAX_TERMS`),
+which knows only a few; anywhere else the prompt says "tax registration
+number" and "withholding tax", which read correctly anywhere.
 
 Every function that writes prompt text is pure: it takes a `Locale` and returns
 a string or a schema, so the prompts are tested without a site.
@@ -41,7 +42,8 @@ NEPAL = "Nepal"
 
 # What a country calls its tax registration number and the tax a buyer
 # withholds from a payment, where that is well known. Only these are named in a
-# prompt, and only for a company in that country.
+# prompt, and only for a company in that country, unless Claude Settings names
+# the site's own (`tax_id_name`, `withholding_tax_name`), which win.
 TAX_TERMS = {
 	NEPAL: {"tax_id": "PAN or VAT number", "withholding": "TDS"},
 	"India": {"tax_id": "GSTIN or PAN", "withholding": "TDS"},
@@ -59,13 +61,16 @@ class Locale:
 	"""What a prompt is told about where its documents come from.
 
 	The defaults describe nothing in particular: no country, no currency, the
-	Gregorian calendar only, and no instructions of the site's own.
+	Gregorian calendar only, and no instructions or tax terms of the site's own.
 	"""
 
 	country: str | None = None
 	currency: str | None = None
 	bikram_sambat: bool = False
 	additional_instructions: str = ""
+	# Claude Settings' names for the tax terms, over the country's.
+	tax_id_name: str = ""
+	withholding_tax_name: str = ""
 
 	@property
 	def calendars(self) -> list[str]:
@@ -73,7 +78,14 @@ class Locale:
 
 	@property
 	def tax_terms(self) -> dict:
-		return TAX_TERMS.get(self.country or "", {})
+		"""The country's terms from `TAX_TERMS`, each replaced by the site's own
+		where Claude Settings names one."""
+		terms = dict(TAX_TERMS.get(self.country or "", {}))
+		if self.tax_id_name.strip():
+			terms["tax_id"] = self.tax_id_name.strip()
+		if self.withholding_tax_name.strip():
+			terms["withholding"] = self.withholding_tax_name.strip()
+		return terms
 
 
 def for_company(company: str | None = None) -> Locale:
@@ -95,6 +107,7 @@ def for_company(company: str | None = None) -> Locale:
 		currency=values.get("default_currency") or None,
 		bikram_sambat=settings.feature_enabled(settings.ENABLE_BIKRAM_SAMBAT),
 		additional_instructions=client.additional_instructions(),
+		**client.tax_terms(),
 	)
 
 
@@ -211,15 +224,16 @@ def currency_rule(locale: Locale, document: str) -> str:
 
 
 def tax_id_name(locale: Locale) -> str:
-	"""What a party's tax number is called: the country's term, where there is
-	one in `TAX_TERMS`, and "tax registration number" either way."""
+	"""What a party's tax number is called: the site's or the country's term,
+	where there is one (`Locale.tax_terms`), and "tax registration number"
+	either way."""
 	known = locale.tax_terms.get("tax_id")
 	return f"{known} (or other tax registration number)" if known else "tax registration number"
 
 
 def withholding_name(locale: Locale) -> str:
-	"""The tax a buyer withholds from what it pays, by the country's name for
-	it where there is one."""
+	"""The tax a buyer withholds from what it pays, by the site's or the
+	country's name for it where there is one."""
 	known = locale.tax_terms.get("withholding")
 	return f"withholding tax ({known})" if known else "withholding tax"
 

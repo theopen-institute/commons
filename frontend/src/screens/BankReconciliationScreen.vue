@@ -547,12 +547,12 @@ const visible = computed(() => {
  *  or the loan book. The list shows the first and the dialog all of them. */
 const suggestions = computed<Record<string, Suggestion[]>>(() => {
 	if (!reconciliationCan.value.repayLoans) return {}
-	const { loans, names, history } = loanBook.book.value
+	const { loans, names, history, rules } = loanBook.book.value
 	if (!loans.length) return {}
 	const out: Record<string, Suggestion[]> = {}
 	for (const row of transactions.rows.value) {
 		if (row.deposit > 0 && row.unallocated_amount > 0.005) {
-			out[row.name] = suggestLoans(row, loans, names, history)
+			out[row.name] = suggestLoans(row, loans, names, history, rules)
 		}
 	}
 	return out

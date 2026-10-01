@@ -194,8 +194,8 @@ const DEFAULT_TITLE = 'Commons'
 
 /** One sidebar row as the server sends it. */
 interface ShellItem {
-  kind: 'page' | 'record'
-  /** A `PageKey`, or the doctype a self-service row opens. */
+  kind: 'page' | 'record' | 'link'
+  /** A `PageKey`, the doctype a self-service row opens, or a link's address. */
   key: string
   /** The self-service page's address. Null on a shipped page. */
   slug: string | null
@@ -226,6 +226,9 @@ interface ShellData {
    *  through `data/features.ts`, which also answers on a desk page. Optional
    *  for the same reason as `access`. */
   features?: { bikram_sambat?: boolean }
+  /** The page Commons Settings opens `/commons` on, when it names one this
+   *  site has. Null leaves it to `landingRoute`'s own rule. */
+  landing?: PageKey | null
 }
 
 declare global {
@@ -263,6 +266,9 @@ export interface NavEntry {
   icon: string
   group: string | null
   to: RouteLocationRaw
+  /** A link row's address, opened outside the Commons pages; null on every
+   *  other row. Such a row has no `to` worth routing to. */
+  href: string | null
   /** The self-service slug this row opens, or null. */
   slug: string | null
   /** The request section behind the row, or null. Carries the approvals tab and
@@ -311,7 +317,27 @@ function entryFor(item: ShellItem): NavEntry | null {
       icon: item.icon ?? DEFAULT_RECORD_ICON,
       group: item.group,
       to: `/profile/${item.slug}`,
+      href: null,
       slug: item.slug,
+      section: null,
+      routeName: null,
+      visible: () => true,
+      resolved: () => true,
+    }
+  }
+
+  if (item.kind === 'link') {
+    // Configuration through and through: the site chose the address, the
+    // label and the mark. Offered to everyone who has the workspace, because
+    // whatever is at the other end checks its own permissions.
+    return {
+      id: `link:${item.key}`,
+      label: item.label ?? item.key,
+      icon: item.icon ?? 'lucide-external-link',
+      group: item.group,
+      to: '',
+      href: item.key,
+      slug: null,
       section: null,
       routeName: null,
       visible: () => true,
@@ -329,6 +355,7 @@ function entryFor(item: ShellItem): NavEntry | null {
     icon: item.icon ?? page.icon,
     group: item.group,
     to: page.to,
+    href: null,
     slug: null,
     section: page.section,
     routeName: page.routeName,
@@ -386,7 +413,8 @@ export function isResolved(workspace: Workspace): boolean {
 
 /** Where the switcher lands: the first row of this workspace the user has. */
 export function homeOf(workspace: Workspace): RouteLocationRaw | null {
-  return visibleEntries(workspace)[0]?.to ?? null
+  // A link leaves the Commons pages, so it is never where a workspace opens.
+  return visibleEntries(workspace).find((entry) => !entry.href)?.to ?? null
 }
 
 /** The workspaces this user can actually open. */
@@ -397,14 +425,22 @@ export const availableWorkspaces = computed(() => workspaces.value.filter(isAvai
 export const shellResolved = computed(() => shellLoaded.value && workspaces.value.every(isResolved))
 
 /**
- * Where `/requests` and the desk's apps-screen tile land.
+ * Where `/commons`, `/requests` and the desk's apps-screen tile land.
  *
- * Null until the answers are in, so nothing redirects early. A page belongs to
- * one workspace, so "the first row of the first workspace this user has" is the
- * whole of the rule.
+ * Null until the answers are in, so nothing redirects early. The page Commons
+ * Settings names, where this reader has it; otherwise, since a page belongs to
+ * one workspace, the first row of the first workspace they have.
  */
 export const landingRoute = computed<RouteLocationRaw | null>(() => {
   if (!shellResolved.value) return null
+  // The page Commons Settings names, when this reader has it somewhere.
+  const named = shell.value.landing
+  if (named) {
+    for (const workspace of availableWorkspaces.value) {
+      const entry = visibleEntries(workspace).find((row) => row.id === `page:${named}`)
+      if (entry) return entry.to
+    }
+  }
   for (const workspace of availableWorkspaces.value) {
     const home = homeOf(workspace)
     if (home) return home
@@ -440,6 +476,7 @@ export function workspaceFor(route: RouteLocationNormalizedLoaded): Workspace {
  * approvals tab, and every self-service row resolves to one named route, so all
  * of them would light up whenever any one was open. */
 export function isCurrentEntry(entry: NavEntry, route: RouteLocationNormalizedLoaded): boolean {
+  if (entry.href) return false
   if (entry.slug) return route.params.slug === entry.slug
   if (entry.section) {
     return route.name === entry.section.mineRoute || route.name === entry.section.approvalsRoute

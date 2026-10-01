@@ -14,8 +14,12 @@ import {
   scheduleFieldList,
   scheduleRow,
   sessionFields,
+  pageThrough,
+  resolveGroups,
   sessionHours,
+  statedHours,
   toMark,
+  type GroupResolution,
   type GroupRow,
   type Mark,
   type MarkRow,
@@ -55,6 +59,9 @@ const REGISTER: RegisterFields = {
   session_type_field: 'custom_session_type',
   session_details_field: 'custom_session_details',
   inactive_term_field: 'custom_inactive',
+  session_hours_field: null,
+  group_resolution: 'Programme',
+  leave_counts_as: 'Absent',
 }
 
 function student(name: string, group = 'Group A'): StudentRow {
@@ -346,7 +353,7 @@ describe('what a student earns', () => {
       mark('two', 'cal', 'Present'),
     ],
   }
-  const register = buildRegister(rows, REGISTER.late_credit)
+  const register = buildRegister(rows, REGISTER)
   const block = register.groups[0].blocks[0]
 
   it('foots the block to what was timetabled', () => {
@@ -363,9 +370,9 @@ describe('what a student earns', () => {
   })
 
   it('takes that share from the setting, not from this file', () => {
-    expect(buildRegister(rows, 1).groups[0].blocks[0].credited.bob).toBe(5)
-    expect(buildRegister(rows, 0).groups[0].blocks[0].credited.bob).toBe(3)
-    expect(buildRegister(rows, 0.25).groups[0].blocks[0].credited.bob).toBe(3.5)
+    expect(buildRegister(rows, { ...REGISTER, late_credit: 1 }).groups[0].blocks[0].credited.bob).toBe(5)
+    expect(buildRegister(rows, { ...REGISTER, late_credit: 0 }).groups[0].blocks[0].credited.bob).toBe(3)
+    expect(buildRegister(rows, { ...REGISTER, late_credit: 0.25 }).groups[0].blocks[0].credited.bob).toBe(3.5)
   })
 
   it('credits none of it for being absent', () => {
@@ -414,7 +421,7 @@ describe('how a group is drawn', () => {
         mark('u', 'ann', 'Present'),
       ],
     },
-    REGISTER.late_credit,
+    REGISTER,
   )
   const group = register.groups[0]
 
@@ -455,7 +462,7 @@ describe('how a group is drawn', () => {
         schedules: [],
         marks: [],
       },
-      REGISTER.late_credit,
+      REGISTER,
     )
     expect(bare.groups[0].title).toBe('Group A')
   })
@@ -481,7 +488,7 @@ describe('two groups on the same course', () => {
       schedules: [schedule('one', '09:00:00', '11:00:00')],
       marks: [mark('one', 'ann', 'Present')],
     },
-    REGISTER.late_credit,
+    REGISTER,
   )
 
   it('gives each group only its own students', () => {
@@ -528,7 +535,7 @@ describe('a site that keeps no session type', () => {
       ],
       marks: [],
     },
-    NO_FIELDS.late_credit,
+    NO_FIELDS,
   )
 
   it('puts every session in one block', () => {
@@ -540,5 +547,303 @@ describe('a site that keeps no session type', () => {
       'b',
     ])
     expect(register.groups[0].scheduled).toBe(3)
+  })
+})
+
+describe('the rules a site chooses', () => {
+  it("defaults to the register's behaviour before they were settings", () => {
+    expect(registerFields({})).toMatchObject({
+      group_resolution: 'Programme',
+      leave_counts_as: 'Absent',
+      session_hours_field: null,
+    })
+  })
+
+  it('keeps an option it offers and drops one it does not', () => {
+    expect(registerFields({ group_resolution: 'Both' }).group_resolution).toBe(
+      'Both',
+    )
+    expect(
+      registerFields({ group_resolution: 'Everything' as GroupResolution })
+        .group_resolution,
+    ).toBe('Programme')
+    expect(registerFields({ leave_counts_as: 'Excused' }).leave_counts_as).toBe(
+      'Excused',
+    )
+  })
+})
+
+describe('what leave counts as', () => {
+  const leave: MarkRow = {
+    name: 'ATT-two-ann',
+    course_schedule: 'two',
+    student: 'ann',
+    status: 'Leave',
+    late: 0,
+  }
+  const rows = {
+    groups: [GROUP_A],
+    students: [student('ann'), student('bob')],
+    schedules: [
+      schedule('one', '09:00:00', '11:00:00'),
+      schedule('two', '09:00:00', '12:00:00'),
+    ],
+    marks: [
+      mark('one', 'ann', 'Present'),
+      leave,
+      mark('one', 'bob', 'Present'),
+      mark('two', 'bob', 'Absent'),
+    ],
+  }
+
+  it('reads leave as absent by default, as the register always did', () => {
+    expect(toMark('Leave', 0, 'Absent')).toBe('Absent')
+    const block = buildRegister(rows, REGISTER).groups[0].blocks[0]
+    expect(block.sessions[1].marks.ann.mark).toBe('Absent')
+    expect(block.credited.ann).toBe(2)
+    expect(block.possible.ann).toBe(5)
+  })
+
+  it('reads leave as excused where the site says so', () => {
+    expect(toMark('Leave', 0, 'Excused')).toBe('Excused')
+    // Only leave: an absence is still an absence.
+    expect(toMark('Absent', 0, 'Excused')).toBe('Absent')
+  })
+
+  // Ann was excused the 3h session: it is out of her total both ways, so she
+  // has 2 of a possible 2. Bob, absent from it, still has 2 of 5.
+  it('leaves an excused session out of earned and possible hours alike', () => {
+    const group = buildRegister(rows, { ...REGISTER, leave_counts_as: 'Excused' })
+      .groups[0]
+    const block = group.blocks[0]
+    expect(block.sessions[1].marks.ann.mark).toBe('Excused')
+    expect(block.scheduled).toBe(5)
+    expect(block.credited.ann).toBe(2)
+    expect(block.possible.ann).toBe(2)
+    expect(block.credited.bob).toBe(2)
+    expect(block.possible.bob).toBe(5)
+    expect(group.possible).toEqual({ ann: 2, bob: 5 })
+    expect(group.credited).toEqual({ ann: 2, bob: 2 })
+  })
+
+  it('counts an unmarked session as possible', () => {
+    const block = buildRegister(
+      { ...rows, students: [...rows.students, student('cal')] },
+      { ...REGISTER, leave_counts_as: 'Excused' },
+    ).groups[0].blocks[0]
+    expect(block.possible.cal).toBe(5)
+  })
+
+  it('writes excused back as leave, should it ever be written', () => {
+    expect(markFields('Excused', REGISTER)).toEqual({
+      status: 'Leave',
+      custom_late: 0,
+    })
+  })
+
+  it('is not offered as a mark to make', () => {
+    expect(marksOffered({ ...REGISTER, leave_counts_as: 'Excused' })).not.toContain(
+      'Excused',
+    )
+  })
+})
+
+describe("a session's own hours", () => {
+  const HOURS: RegisterFields = { ...REGISTER, session_hours_field: 'custom_hours' }
+
+  it('reads the hours field only where the site names one', () => {
+    expect(scheduleFieldList(HOURS)).toContain('custom_hours')
+    expect(scheduleFieldList(REGISTER)).not.toContain('custom_hours')
+  })
+
+  it('overrides the times where the field has a value', () => {
+    const row = {
+      name: 'a',
+      student_group: 'Group A',
+      from_time: '9:00:00',
+      to_time: '10:00:00',
+      custom_hours: 1.5,
+    }
+    const register = buildRegister(
+      {
+        groups: [GROUP_A],
+        students: [student('ann')],
+        schedules: [
+          scheduleRow(row, HOURS),
+          scheduleRow({ ...row, name: 'b', custom_hours: 0 }, HOURS),
+          scheduleRow({ ...row, name: 'c' }, REGISTER),
+        ],
+        marks: [mark('a', 'ann', 'Present')],
+      },
+      HOURS,
+    )
+    const sessions = register.groups[0].blocks[0].sessions
+    // 1.5 stated; 0 is a number field nobody filled in, so the times decide;
+    // and on a site with no hours field the value is never read.
+    expect(sessions.map((session) => session.hours)).toEqual([1.5, 1, 1])
+    expect(register.groups[0].scheduled).toBe(3.5)
+    expect(register.groups[0].credited.ann).toBe(1.5)
+  })
+
+  it('takes only a positive number as set', () => {
+    expect(statedHours(2)).toBe(2)
+    expect(statedHours('2.5')).toBe(2.5)
+    expect(statedHours(0)).toBeNull()
+    expect(statedHours(-1)).toBeNull()
+    expect(statedHours(null)).toBeNull()
+    expect(statedHours('')).toBeNull()
+    expect(statedHours('two')).toBeNull()
+    expect(sessionHours('09:00:00', '10:00:00', 4)).toBe(4)
+  })
+})
+
+describe('reading a list to its end', () => {
+  /** A list of `total` rows, served a page at a time, with each request kept. */
+  function server(total: number) {
+    const asked: [number, number][] = []
+    const rows = Array.from({ length: total }, (_, index) => index)
+    return {
+      asked,
+      fetchPage: async (start: number, length: number) => {
+        asked.push([start, length])
+        return rows.slice(start, start + length)
+      },
+    }
+  }
+
+  it('pages through until a page comes back short', async () => {
+    const list = server(1234)
+    const result = await pageThrough(list.fetchPage, 500)
+    expect(result.rows).toHaveLength(1234)
+    expect(result.rows.at(-1)).toBe(1233)
+    expect(result.complete).toBe(true)
+    expect(list.asked).toEqual([
+      [0, 500],
+      [500, 500],
+      [1000, 500],
+    ])
+  })
+
+  it('asks once more when the last page is exactly full', async () => {
+    const list = server(1000)
+    const result = await pageThrough(list.fetchPage, 500)
+    expect(result).toMatchObject({ complete: true })
+    expect(result.rows).toHaveLength(1000)
+    expect(list.asked).toHaveLength(3)
+  })
+
+  it('reads an empty list in one request', async () => {
+    const list = server(0)
+    expect(await pageThrough(list.fetchPage, 500)).toEqual({
+      rows: [],
+      complete: true,
+    })
+    expect(list.asked).toHaveLength(1)
+  })
+
+  it('says so when it stops at the ceiling', async () => {
+    const list = server(30)
+    const result = await pageThrough(list.fetchPage, 10, 25)
+    expect(result.rows).toHaveLength(25)
+    expect(result.complete).toBe(false)
+    expect(list.asked).toEqual([
+      [0, 10],
+      [10, 10],
+      [20, 5],
+      [25, 1],
+    ])
+  })
+
+  it('is complete when the list is exactly the ceiling', async () => {
+    const result = await pageThrough(server(25).fetchPage, 10, 25)
+    expect(result).toMatchObject({ complete: true })
+    expect(result.rows).toHaveLength(25)
+  })
+
+  it('passes a refusal straight through', async () => {
+    await expect(
+      pageThrough(async () => {
+        throw new Error('Not permitted')
+      }),
+    ).rejects.toThrow('Not permitted')
+  })
+})
+
+describe('which groups take a course', () => {
+  // W&R teaches the course; Group C is course-based and names it itself; Group
+  // A is both on the programme and course-based.
+  const BY_PROGRAMME: GroupRow[] = [
+    { ...GROUP_A },
+    { name: 'Group B', student_group_name: null, program: 'W&R', disabled: 0 },
+  ]
+  const BY_COURSE: GroupRow[] = [
+    { name: 'Group C', student_group_name: null, program: null, disabled: 0 },
+    { ...GROUP_A },
+  ]
+
+  function reads(programmes: string[] = ['W&R', 'W&R']) {
+    const asked: unknown[][][] = []
+    const programmesAsked: string[] = []
+    return {
+      asked,
+      programmesAsked,
+      reads: {
+        programmes: async (course: string) => {
+          programmesAsked.push(course)
+          return programmes
+        },
+        groups: async (filters: unknown[][]) => {
+          asked.push(filters)
+          const course = filters.find((filter) => filter[0] === 'course')
+          return course ? BY_COURSE : BY_PROGRAMME
+        },
+      },
+    }
+  }
+
+  const names = (rows: GroupRow[]) => rows.map((row) => row.name)
+
+  it("by programme, as the register always did", async () => {
+    const read = reads()
+    const groups = await resolveGroups('Programme', 'T1', 'CEM', read.reads)
+    expect(names(groups)).toEqual(['Group A', 'Group B'])
+    expect(read.programmesAsked).toEqual(['CEM'])
+    expect(read.asked).toEqual([
+      [
+        ['academic_term', '=', 'T1'],
+        ['program', 'in', ['W&R']],
+      ],
+    ])
+  })
+
+  it('by programme finds nothing where no programme teaches it', async () => {
+    const read = reads([])
+    expect(await resolveGroups('Programme', 'T1', 'CEM', read.reads)).toEqual([])
+    expect(read.asked).toEqual([])
+  })
+
+  it("by course, through course-based groups' own field", async () => {
+    const read = reads()
+    const groups = await resolveGroups('Course', 'T1', 'CEM', read.reads)
+    expect(names(groups)).toEqual(['Group A', 'Group C'])
+    expect(read.programmesAsked).toEqual([])
+    expect(read.asked).toEqual([
+      [
+        ['academic_term', '=', 'T1'],
+        ['course', '=', 'CEM'],
+      ],
+    ])
+  })
+
+  it('both ways, each group once and in order', async () => {
+    const read = reads()
+    const groups = await resolveGroups('Both', 'T1', 'CEM', read.reads)
+    expect(names(groups)).toEqual(['Group A', 'Group B', 'Group C'])
+    expect(read.asked).toHaveLength(2)
+  })
+
+  it('both ways still finds course-based groups with no programme', async () => {
+    const groups = await resolveGroups('Both', 'T1', 'CEM', reads([]).reads)
+    expect(names(groups)).toEqual(['Group A', 'Group C'])
   })
 })

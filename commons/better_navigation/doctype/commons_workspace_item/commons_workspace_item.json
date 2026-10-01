@@ -9,6 +9,7 @@
   "item_type",
   "page",
   "self_service_record",
+  "url",
   "column_break_item",
   "item_group",
   "label",
@@ -23,7 +24,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Type",
-   "options": "Page\nSelf Service Record",
+   "options": "Page\nSelf Service Record\nLink",
    "reqd": 1
   },
   {
@@ -47,6 +48,16 @@
    "options": "Self Service Record"
   },
   {
+   "columns": 2,
+   "depends_on": "eval:doc.item_type == 'Link'",
+   "description": "Where the row goes: a path on this site, such as <b>/app/todo</b>, or a full web address. It opens outside the Commons pages, so a site can put anything it has in a workspace without code.",
+   "fieldname": "url",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Address",
+   "mandatory_depends_on": "eval:doc.item_type == 'Link'"
+  },
+  {
    "fieldname": "column_break_item",
    "fieldtype": "Column Break"
   },
@@ -64,7 +75,8 @@
    "fieldname": "label",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Label"
+   "label": "Label",
+   "mandatory_depends_on": "eval:doc.item_type == 'Link'"
   },
   {
    "description": "Lucide name. Left blank, a page keeps its own mark and a record type keeps the icon on its Self Service Record.",
@@ -76,7 +88,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-23 12:00:00.000000",
+ "modified": "2026-10-01 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "name": "Commons Workspace Item",

@@ -19,9 +19,10 @@ to be wrong in an interesting way.
 import logging
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from commons.self_service import api, registry
+from commons.self_service.doctype.record_change_request import record_change_request as rcr
 from commons.self_service.doctype.record_change_request.record_change_request import normalized
 
 # `frappe._` reaches for the translation cache and, failing that, for a log file
@@ -40,6 +41,27 @@ def tearDownModule():
 
 def status_field(options="\nPending\nApproved\nRejected\nWithdrawn", default="Pending"):
 	return SimpleNamespace(options=options, default=default)
+
+
+def with_settings(test, **values):
+	"""Commons Settings as a site has stored it: only the fields named are there.
+
+	Both ways it is read -- the cached document, and `tabSingles` for the Check
+	whose absence has to be told apart from a 0.
+	"""
+	test.enterContext(patch.object(rcr, "_settings", return_value=dict(values)))
+
+	def stored(fieldname):
+		value = values.get(fieldname)
+		return None if value is None else str(value)
+
+	test.enterContext(patch.object(rcr, "stored_setting", side_effect=stored))
+
+
+def with_status(test, **kwargs):
+	"""The `status` field, as the doctype's meta has it."""
+	meta = SimpleNamespace(get_field=lambda _: status_field(**kwargs))
+	test.enterContext(patch.object(api.frappe, "get_meta", return_value=meta))
 
 
 def workflow(states, transitions, state_field="status"):
@@ -232,18 +254,31 @@ class TestQueueFilters(TestCase):
 class TestDecisionVocabulary(TestCase):
 	"""Which outcomes exist, and how each one reads."""
 
-	def test_without_a_workflow_they_are_the_status_options_less_the_initial_one(self):
-		meta = SimpleNamespace(get_field=lambda _: status_field())
-		with patch.object(api.frappe, "get_meta", return_value=meta):
-			offered = api.decision_vocabulary(None)
-		self.assertEqual([row["value"] for row in offered], ["Approved", "Rejected", "Withdrawn"])
+	def setUp(self):
+		with_settings(self)
 
-	def test_the_affirmative_outcome_is_the_only_one_not_confirmed(self):
-		"""Read off the style, so a workflow that renames approval still gets one solid button."""
-		meta = SimpleNamespace(get_field=lambda _: status_field())
-		with patch.object(api.frappe, "get_meta", return_value=meta):
-			confirm = {row["value"]: row["confirm"] for row in api.decision_vocabulary(None)}
-		self.assertEqual(confirm, {"Approved": False, "Rejected": True, "Withdrawn": True})
+	def test_without_a_workflow_they_are_the_status_options_less_the_initial_one(self):
+		"""Less `Withdrawn` too: taking a request back is its requester's, not a reviewer's."""
+		with_status(self)
+		offered = api.decision_vocabulary(None)
+		self.assertEqual([row["value"] for row in offered], ["Approved", "Rejected"])
+
+	def test_the_applying_outcome_is_the_only_one_not_confirmed(self):
+		with_status(self)
+		confirm = {row["value"]: row["confirm"] for row in api.decision_vocabulary(None)}
+		self.assertEqual(confirm, {"Approved": False, "Rejected": True})
+
+	def test_the_applying_outcome_is_the_sites_not_the_styles(self):
+		"""A site's own vocabulary, which no default style colours."""
+		with_status(self, options="\nPending\nAccepted\nDeclined")
+		with_settings(self, change_request_applying_outcome="Accepted")
+		confirm = {row["value"]: row["confirm"] for row in api.decision_vocabulary(None)}
+		self.assertEqual(confirm, {"Accepted": False, "Declined": True})
+
+	def test_a_setting_naming_no_option_confirms_everything_rather_than_breaking_the_page(self):
+		with_status(self)
+		with_settings(self, change_request_applying_outcome="Done")
+		self.assertTrue(all(row["confirm"] for row in api.decision_vocabulary(None)))
 
 	def test_with_a_workflow_the_outcomes_are_its_actions(self):
 		"""And the styling is the site's -- an action reads as the state it leads to."""
@@ -276,6 +311,126 @@ class TestDecisionVocabulary(TestCase):
 		)
 		with patch.object(api.wf, "state_styles", return_value={"Approved": "Success"}):
 			self.assertEqual([row["value"] for row in api.decision_vocabulary(active)], ["Approve"])
+
+
+class TestApplyingOutcome(TestCase):
+	"""The Status option that submits a request, on a site with no Workflow."""
+
+	def setUp(self):
+		with_status(self)
+
+	def test_a_site_that_never_stored_it_applies_on_approved(self):
+		with_settings(self)
+		self.assertEqual(rcr.applying_outcome(), "Approved")
+
+	def test_it_is_the_one_the_site_names(self):
+		with_settings(self, change_request_applying_outcome="Rejected")
+		self.assertEqual(rcr.applying_outcome(), "Rejected")
+
+	def test_one_that_is_not_a_status_option_is_refused_by_name(self):
+		with_settings(self, change_request_applying_outcome="Done")
+		with patch.object(rcr.frappe, "throw", side_effect=ValueError) as throw:
+			with self.assertRaises(ValueError):
+				rcr.applying_outcome()
+		self.assertIn("Done", throw.call_args.args[0])
+		self.assertIsNone(rcr.applying_outcome(strict=False))
+
+	def test_the_state_a_request_starts_in_applies_nothing(self):
+		with_settings(self, change_request_applying_outcome="Pending")
+		self.assertIsNone(rcr.applying_outcome(strict=False))
+
+
+class TestSelfApproval(TestCase):
+	"""Whether a reviewer may decide a request they raised, without a Workflow."""
+
+	def test_a_site_that_never_stored_it_allows_it(self):
+		with_settings(self)
+		self.assertTrue(rcr.self_approval_allowed())
+
+	def test_a_site_that_unticked_it_does_not(self):
+		with_settings(self, change_request_allow_self_approval=0)
+		self.assertFalse(rcr.self_approval_allowed())
+
+	def test_the_requester_is_requested_by_not_whoever_typed_it(self):
+		self.assertEqual(
+			rcr.requester_of({"requested_by": "emp@example.com", "owner": "hr@example.com"}),
+			"emp@example.com",
+		)
+		self.assertEqual(rcr.requester_of({"owner": "hr@example.com"}), "hr@example.com")
+
+
+class TestDecideWithoutAWorkflow(TestCase):
+	"""`decide_change`'s no-workflow path: the site's applying outcome, and its self-approval rule."""
+
+	def setUp(self):
+		with_status(self, options="\nPending\nAccepted\nDeclined")
+		self.enterContext(patch.object(api, "change_workflow", return_value=None))
+		self.enterContext(patch.object(api.frappe, "session", SimpleNamespace(user="me@example.com")))
+		self.doc = MagicMock(status="Pending", requested_by="someone@example.com")
+		self.doc.get = lambda field, default=None: getattr(self.doc, field, default)
+		self.enterContext(patch.object(api.frappe, "get_doc", return_value=self.doc))
+
+	def test_the_applying_outcome_submits(self):
+		with_settings(self, change_request_applying_outcome="Accepted")
+		api.decide_change("CHG-1", "Accepted")
+		self.doc.save.assert_called_once()
+		self.doc.submit.assert_called_once()
+
+	def test_any_other_outcome_is_saved_and_not_submitted(self):
+		with_settings(self, change_request_applying_outcome="Accepted")
+		api.decide_change("CHG-1", "Declined")
+		self.assertEqual(self.doc.status, "Declined")
+		self.doc.submit.assert_not_called()
+
+	def test_a_misconfigured_outcome_is_refused_before_anything_is_written(self):
+		with_settings(self, change_request_applying_outcome="Approved")
+		with patch.object(api.frappe, "throw", side_effect=ValueError):
+			with self.assertRaises(ValueError):
+				api.decide_change("CHG-1", "Declined")
+		self.doc.save.assert_not_called()
+
+	def test_your_own_request_is_refused_where_the_site_says_so(self):
+		with_settings(self, change_request_applying_outcome="Accepted", change_request_allow_self_approval=0)
+		self.doc.requested_by = "me@example.com"
+		with patch.object(api.frappe, "throw", side_effect=ValueError):
+			with self.assertRaises(ValueError):
+				api.decide_change("CHG-1", "Declined")
+		self.doc.save.assert_not_called()
+
+	def test_your_own_request_is_yours_to_decide_by_default(self):
+		with_settings(self)
+		with_status(self)
+		self.doc.requested_by = "me@example.com"
+		api.decide_change("CHG-1", "Approved")
+		self.doc.submit.assert_called_once()
+
+	def test_a_withdrawal_is_not_a_reviewers_decision(self):
+		with_settings(self)
+		with_status(self)
+		with patch.object(api.frappe, "throw", side_effect=ValueError):
+			with self.assertRaises(ValueError):
+				api.decide_change("CHG-1", "Withdrawn")
+
+
+class TestOwnRequestsOfferNothing(TestCase):
+	"""The queue draws no buttons on a request its reviewer may not decide."""
+
+	def actions(self, **settings):
+		with_settings(self, **settings)
+		with_status(self)
+		row = api.frappe._dict(name="CHG-1", status="Pending", docstatus=0, requested_by="me@example.com")
+		with (
+			patch.object(api.frappe, "session", SimpleNamespace(user="me@example.com")),
+			patch.object(api, "_may_review", return_value=True),
+			patch.object(api, "get_change_rows_for", return_value={}),
+		):
+			return api._decorate([row], None)[0].actions
+
+	def test_by_default_they_are_offered(self):
+		self.assertEqual(self.actions(), ["Approved", "Rejected"])
+
+	def test_not_where_the_site_forbids_deciding_your_own(self):
+		self.assertEqual(self.actions(change_request_allow_self_approval=0), [])
 
 
 class TestRecordAccess(TestCase):

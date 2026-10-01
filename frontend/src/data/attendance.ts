@@ -6,7 +6,9 @@ import {
   markFieldList,
   markFields,
   markRow,
+  pageThrough,
   registerFields,
+  resolveGroups,
   scheduleFieldList,
   scheduleRow,
   type ApiRow,
@@ -14,6 +16,7 @@ import {
   type GroupRow,
   type Mark,
   type MarkRow,
+  type Paged,
   type Register,
   type RegisterFields,
   type ScheduleRow,
@@ -63,30 +66,23 @@ const DOCUMENT = '/api/v2/document'
 const CLIENT = '/api/v2/method/frappe.client'
 
 /**
- * How many rows a list may return.
+ * How many rows a list returns: all of them.
  *
  * `document_list` defaults to 20 and there is no "all" — `limit: 0` asks for
- * nought, not everything — so every read below says how many it will take. The
- * numbers are an order of magnitude above anything a school produces: a term
- * has tens of sessions, not hundreds, and a group has tens of students.
+ * nought, not everything. Every read used to name a cap instead (500 students,
+ * 1,000 sessions, 5,000 marks), and a list past its cap was cut short with
+ * nothing on the page to say so. Now every read is paged through to the end by
+ * `fetchRows` (see `pageThrough`), a page at a time, and a list that reaches
+ * the safety ceiling is reported in `incomplete` for the page to warn about.
+ * The page parameters are filled in there, so the reads below name none.
  */
-const PAGE = {
-  terms: 200,
-  courses: 200,
-  programs: 200,
-  groups: 200,
-  students: 500,
-  sessions: 1000,
-  marks: 5000,
-  sessionTypes: 200,
-}
-
 interface ListParams {
   fields: string
   filters?: string
   order_by?: string
   group_by?: string
-  limit: number
+  start?: number
+  limit?: number
 }
 
 /** A list off the REST document API, permissions applied. */
@@ -103,7 +99,8 @@ interface ChildListParams {
   fields: string
   filters?: string
   order_by?: string
-  limit_page_length: number
+  limit_start?: number
+  limit_page_length?: number
 }
 
 /** A child table's rows. See the module comment for why this is not the
@@ -124,6 +121,7 @@ export {
   fromTimeInput,
   markChanges,
   marksOffered,
+  MAX_ROWS,
   sessionFields,
   sessionTypeLabel,
   toTimeInput,
@@ -229,6 +227,31 @@ export function useAttendancePickers() {
   })
 
   const fieldsError = ref<Error | null>(null)
+  const readError = ref<Error | null>(null)
+  const termRows = ref<TermRow[]>([])
+  const courseRows = ref<CourseRow[]>([])
+  const typeRows = ref<ApiRow[]>([])
+  const listsLoaded = ref(false)
+  /** The pickers' lists that reached the safety ceiling. */
+  const incomplete = ref<string[]>([])
+
+  /** One picker's list, read through to the end, into its ref. A refusal is
+   *  kept to show, and leaves the list empty rather than stopping the others. */
+  async function readInto<Row>(
+    target: Ref<Row[]>,
+    label: string,
+    reading: Promise<Paged<Row>>,
+  ) {
+    try {
+      const { rows, complete } = await reading
+      target.value = rows
+      if (!complete) incomplete.value = [...incomplete.value, label]
+    } catch (problem) {
+      if (problem instanceof Cancelled) return
+      target.value = []
+      readError.value ??= problem as Error
+    }
+  }
 
   async function load() {
     let fields: RegisterFields
@@ -239,41 +262,54 @@ export function useAttendancePickers() {
       fieldsError.value = problem as Error
       return
     }
+    readError.value = null
+    incomplete.value = []
     const typeField = fields.session_type_field
     await Promise.all([
       // The inactive-term field, where the site has one, is how it retires a
       // term that was run once and is not run again. Retired terms are dropped
       // rather than shown greyed: the picker is for choosing. Nothing stops an
       // old register being read, because the address carries the term.
-      terms.submit({
-        fields: JSON.stringify(['name', 'term_start_date', 'term_end_date']),
-        ...(fields.inactive_term_field
-          ? { filters: JSON.stringify([[fields.inactive_term_field, '=', 0]]) }
-          : {}),
-        order_by: 'term_start_date desc',
-        limit: PAGE.terms,
-      }),
-      courses.submit({
-        fields: JSON.stringify([
-          'name',
-          'course_name',
-          'abbreviation',
-          'default_instructor',
-        ]),
-        order_by: 'name asc',
-        limit: PAGE.courses,
-      }),
+      readInto(
+        termRows,
+        'terms',
+        fetchRows(terms, 'document', {
+          fields: JSON.stringify(['name', 'term_start_date', 'term_end_date']),
+          ...(fields.inactive_term_field
+            ? {
+                filters: JSON.stringify([[fields.inactive_term_field, '=', 0]]),
+              }
+            : {}),
+          order_by: 'term_start_date desc, name asc',
+        }),
+      ),
+      readInto(
+        courseRows,
+        'courses',
+        fetchRows(courses, 'document', {
+          fields: JSON.stringify([
+            'name',
+            'course_name',
+            'abbreviation',
+            'default_instructor',
+          ]),
+          order_by: 'name asc',
+        }),
+      ),
       // The kinds of session this school actually runs, read off what has been
       // scheduled rather than declared anywhere — the type is free text on
       // purpose. `group_by` is how the document API says DISTINCT. Not asked
       // at all on a site that keeps no type.
       typeField
-        ? sessionTypes.submit({
-            fields: JSON.stringify([typeField]),
-            group_by: typeField,
-            order_by: `${typeField} asc`,
-            limit: PAGE.sessionTypes,
-          })
+        ? readInto(
+            typeRows,
+            'session types',
+            fetchRows(sessionTypes, 'document', {
+              fields: JSON.stringify([typeField]),
+              group_by: typeField,
+              order_by: `${typeField} asc`,
+            }),
+          )
         : null,
       // Where the page opens when the address names no term. A reader without
       // permission on `Education Settings` gets a refusal here and the first
@@ -284,24 +320,24 @@ export function useAttendancePickers() {
         field: 'current_academic_term',
       }),
     ])
+    listsLoaded.value = true
   }
 
   return {
     load,
-    terms: computed(() => terms.data ?? []),
-    courses: computed(() => courses.data ?? []),
+    terms: computed(() => termRows.value),
+    courses: computed(() => courseRows.value),
     sessionTypes: computed(() => {
       const typeField = attendanceFields.value.session_type_field
       if (!typeField) return []
-      return (sessionTypes.data ?? [])
+      return typeRows.value
         .map((row) => String(row[typeField] ?? '').trim())
         .filter(Boolean)
     }),
     currentTerm: computed(() => currentTerm.data ?? null),
-    loaded: computed(() => terms.isFinished && courses.isFinished),
-    error: computed(
-      () => fieldsError.value ?? terms.error ?? courses.error ?? null,
-    ),
+    loaded: computed(() => listsLoaded.value),
+    incomplete: computed(() => incomplete.value),
+    error: computed(() => fieldsError.value ?? readError.value ?? null),
   }
 }
 
@@ -334,9 +370,11 @@ const NO_ROWS: RegisterRows = {
  * One term of one course, in four rounds of reads.
  *
  * They are chained because each genuinely depends on the last: a course reaches
- * its groups only through `Program Course`, sessions are read for the groups
- * that came back, and marks for the sessions that came back. Students and
- * sessions do not depend on each other and go together.
+ * its groups (through `Program Course`, its own `course` field or both — see
+ * `GroupResolution`), sessions are read for the groups that came back, and
+ * marks for the sessions that came back. Students and sessions do not depend on
+ * each other and go together. Each round may be several requests: every list is
+ * read to its end (see `fetchRows`).
  *
  * A custom endpoint would make this one round trip and has to be refused: see
  * the module comment.
@@ -350,8 +388,11 @@ export function useAttendanceRegister() {
 
   const rows = ref<RegisterRows>(NO_ROWS) as Ref<RegisterRows>
   const register = computed<Register>(() =>
-    buildRegister(rows.value, attendanceFields.value.late_credit),
+    buildRegister(rows.value, attendanceFields.value),
   )
+  /** The lists this register's read stopped short of, at the safety ceiling.
+   *  Empty for any register a school produces; the page warns when it is not. */
+  const incomplete = ref<string[]>([])
   const loading = ref(false)
   const loaded = ref(false)
   const error = ref<Error | null>(null)
@@ -372,6 +413,7 @@ export function useAttendanceRegister() {
     const ticket = ++sequence
     if (!term || !course) {
       rows.value = NO_ROWS
+      incomplete.value = []
       loaded.value = false
       loading.value = false
       return
@@ -380,9 +422,11 @@ export function useAttendanceRegister() {
     error.value = null
     const current = () => ticket === sequence
     try {
-      const next = await read(term, course, current)
+      const short: string[] = []
+      const next = await read(term, course, current, short)
       if (!current()) return
       rows.value = next
+      incomplete.value = short
       loaded.value = true
     } catch (problem) {
       // Superseded or cancelled: not this read's failure to report, and the
@@ -390,6 +434,7 @@ export function useAttendanceRegister() {
       if (!current() || problem instanceof Cancelled) return
       error.value = problem as Error
       rows.value = NO_ROWS
+      incomplete.value = []
       loaded.value = true
     } finally {
       if (current()) loading.value = false
@@ -400,52 +445,73 @@ export function useAttendanceRegister() {
    * `current` is asked after every round. A read that has been superseded
    * stops there rather than sending its next round, which would go out on the
    * same shared call as the newer read's and abort that one in turn.
+   *
+   * `short` collects the lists that reached the safety ceiling.
    */
   async function read(
     term: string,
     course: string,
     current: () => boolean,
+    short: string[],
   ): Promise<RegisterRows> {
     const stillCurrent = () => {
       if (!current()) throw new Cancelled()
+    }
+    const all = async <Row>(label: string, reading: Promise<Paged<Row>>) => {
+      const { rows, complete } = await reading
+      if (!complete) short.push(label)
+      return rows
     }
 
     const fields = await loadAttendanceFields()
     stillCurrent()
 
-    // Which programmes teach this course. The join Education actually models: a
-    // `Student Group` names a programme and a term, and a `Program Course` row
-    // is what says the course is taught on that programme. A group's own
-    // `course` field is only ever set for a course-based group, and the schools
-    // this was written for run batch- and activity-based ones.
-    const programRows = await fetchRows(programs, {
-      doctype: 'Program Course',
-      parent: 'Program',
-      fields: JSON.stringify(['parent']),
-      filters: JSON.stringify([['course', '=', course]]),
-      limit_page_length: PAGE.programs,
-    })
-    stillCurrent()
-    const programNames = [...new Set(programRows.map((row) => row.parent))]
-    if (!programNames.length) return NO_ROWS
-
+    // How this course reaches its groups is the site's setting (Attendance
+    // Register Settings, *Find Student Groups By*): through the programmes a
+    // `Program Course` row puts it on, through course-based groups' own
+    // `course`, or both. See `GroupResolution`.
+    //
     // Disabled groups are left in deliberately. This page is as much the record
     // of a term that has finished as it is the place to add to one that has
     // not, and a group is usually disabled precisely because its term is over.
-    const groupRows = await fetchRows(groups, {
-      fields: JSON.stringify([
-        'name',
-        'student_group_name',
-        'program',
-        'disabled',
-      ]),
-      filters: JSON.stringify([
-        ['academic_term', '=', term],
-        ['program', 'in', programNames],
-      ]),
-      order_by: 'name asc',
-      limit: PAGE.groups,
-    })
+    const groupRows = await resolveGroups(
+      fields.group_resolution,
+      term,
+      course,
+      {
+        programmes: async (taught) => {
+          const found = await all(
+            'programmes',
+            fetchRows(programs, 'client', {
+              doctype: 'Program Course',
+              parent: 'Program',
+              fields: JSON.stringify(['parent']),
+              filters: JSON.stringify([['course', '=', taught]]),
+              order_by: 'parent asc',
+            }),
+          )
+          stillCurrent()
+          return found.map((row) => row.parent)
+        },
+        groups: async (filters) => {
+          const found = await all(
+            'student groups',
+            fetchRows(groups, 'document', {
+              fields: JSON.stringify([
+                'name',
+                'student_group_name',
+                'program',
+                'disabled',
+              ]),
+              filters: JSON.stringify(filters),
+              order_by: 'name asc',
+            }),
+          )
+          stillCurrent()
+          return found
+        },
+      },
+    )
     stillCurrent()
     const groupNames = groupRows.map((row) => row.name)
     if (!groupNames.length) return NO_ROWS
@@ -456,7 +522,7 @@ export function useAttendanceRegister() {
       // them. Inactive members are dropped — a student who has left the group
       // is not absent from its sessions, and a column of blanks reads as though
       // they were.
-      fetchRows(students, {
+      all('students', fetchRows(students, 'client', {
         doctype: 'Student Group Student',
         parent: 'Student Group',
         fields: JSON.stringify(['parent', 'student', 'student_name']),
@@ -464,18 +530,16 @@ export function useAttendanceRegister() {
           ['parent', 'in', groupNames],
           ['active', '=', 1],
         ]),
-        order_by: 'student_name asc',
-        limit_page_length: PAGE.students,
-      }),
-      fetchRows(schedules, {
+        order_by: 'student_name asc, name asc',
+      })),
+      all('sessions', fetchRows(schedules, 'document', {
         fields: JSON.stringify(scheduleFieldList(fields)),
         filters: JSON.stringify([
           ['student_group', 'in', groupNames],
           ['course', '=', course],
         ]),
-        order_by: 'schedule_date asc, from_time asc',
-        limit: PAGE.sessions,
-      }),
+        order_by: 'schedule_date asc, from_time asc, name asc',
+      })),
     ])
     stillCurrent()
 
@@ -483,14 +547,14 @@ export function useAttendanceRegister() {
     // Cancelled marks are dropped: an amended `Student Attendance` leaves the
     // cancelled original behind, carrying the same student and session.
     const markRows = sessionNames.length
-      ? await fetchRows(marks, {
+      ? await all('marks', fetchRows(marks, 'document', {
           fields: JSON.stringify(markFieldList(fields)),
           filters: JSON.stringify([
             ['course_schedule', 'in', sessionNames],
             ['docstatus', '!=', 2],
           ]),
-          limit: PAGE.marks,
-        })
+          order_by: 'name asc',
+        }))
       : []
     stillCurrent()
 
@@ -502,11 +566,24 @@ export function useAttendanceRegister() {
     }
   }
 
-  return { load, register, loading, loaded, error }
+  return {
+    load,
+    register,
+    loading,
+    loaded,
+    error,
+    incomplete: computed(() => incomplete.value),
+  }
 }
 
 /**
- * Run one of the reads above, and throw rather than return nothing.
+ * Run one of the reads above to its last row, and throw rather than return
+ * nothing.
+ *
+ * Paged with `pageThrough`: the document API takes `start` and `limit`,
+ * `frappe.client.get_list` takes `limit_start` and `limit_page_length`, and
+ * `style` says which. Every read that pages has an `order_by` ending in a
+ * unique column, so a row cannot shift between two pages.
  *
  * `useCall.submit` resolves null on failure and leaves the reason on the call.
  * A chain of reads has to stop at the first refusal rather than carry on with
@@ -518,14 +595,22 @@ async function fetchRows<Row, Params extends object>(
     error: Error | null
     aborted: boolean
   },
+  style: 'document' | 'client',
   params: Params,
-): Promise<Row[]> {
-  const rows = await call.submit(params)
-  // An aborted request is one somebody called off — a newer read, or the page
-  // going away — and not a refusal to put in front of the reader.
-  if (call.aborted || call.error?.name === 'AbortError') throw new Cancelled()
-  if (rows === null) throw call.error ?? new Error('That could not be loaded.')
-  return rows
+): Promise<Paged<Row>> {
+  return pageThrough(async (start, length) => {
+    const rows = await call.submit({
+      ...params,
+      ...(style === 'document'
+        ? { start, limit: length }
+        : { limit_start: start, limit_page_length: length }),
+    })
+    // An aborted request is one somebody called off — a newer read, or the page
+    // going away — and not a refusal to put in front of the reader.
+    if (call.aborted || call.error?.name === 'AbortError') throw new Cancelled()
+    if (rows === null) throw call.error ?? new Error('That could not be loaded.')
+    return rows
+  })
 }
 
 /** A read that was called off rather than refused. Never shown. */
@@ -617,6 +702,7 @@ export const MARK_GLYPHS: Record<Mark, string> = {
   Present: 'lucide-check',
   Late: 'lucide-clock',
   Absent: 'lucide-x',
+  Excused: 'lucide-minus',
   '': '',
 }
 
@@ -624,6 +710,7 @@ export const MARK_COLOURS: Record<Mark, string> = {
   Present: 'bg-surface-green-2 text-ink-green-3',
   Late: 'bg-surface-amber-2 text-ink-amber-3',
   Absent: 'bg-surface-red-2 text-ink-red-3',
+  Excused: 'bg-surface-gray-2 text-ink-gray-6',
   '': 'bg-surface-white',
 }
 
@@ -631,6 +718,7 @@ export const MARK_LABELS: Record<Mark, string> = {
   Present: 'Present',
   Late: 'Late',
   Absent: 'Absent',
+  Excused: 'On leave (excused)',
   '': 'Not marked',
 }
 

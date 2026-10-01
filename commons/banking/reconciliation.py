@@ -34,6 +34,7 @@ import frappe
 from frappe import _
 from frappe.utils import flt, get_datetime, getdate
 
+from commons.banking.doctype.bank_reconciliation_settings import bank_reconciliation_settings as settings
 from commons.commons_core import apps
 
 BANK_TRANSACTION = "Bank Transaction"
@@ -87,8 +88,9 @@ def create_loan_repayments(
 
 	`repayments` is `[{"loan": ..., "amount": ...}]`. There is more than one
 	when a borrower pays two loans with one transfer, or somebody pays for a
-	sibling. Each becomes a submitted `Normal Repayment` dated (`value_date`)
-	when the money arrived, and is then matched to the deposit.
+	sibling. Each becomes a submitted repayment of the type Bank Reconciliation
+	Settings names (`Normal Repayment` unless a site says otherwise), dated
+	(`value_date`) when the money arrived, and is then matched to the deposit.
 
 	The permission checks are the documents' own. Inserting and submitting a
 	repayment checks `create` and `submit` on `Loan Repayment`, and
@@ -107,6 +109,7 @@ def create_loan_repayments(
 
 	gl_account = frappe.db.get_value(BANK_ACCOUNT, transaction.bank_account, "account")
 	reference = (reference_number or "").strip()[:REFERENCE_LENGTH]
+	repayment_type = settings.default_repayment_type()
 
 	created = []
 	for line in lines:
@@ -117,7 +120,7 @@ def create_loan_repayments(
 			{
 				"doctype": LOAN_REPAYMENT,
 				"against_loan": line["loan"],
-				"repayment_type": "Normal Repayment",
+				"repayment_type": repayment_type,
 				"amount_paid": line["amount"],
 				# Both dates are the day the money arrived. Lending's `validate`
 				# replaces `posting_date` with the current time on every save;
@@ -292,6 +295,21 @@ def accounting_dimensions(company: str) -> list[dict]:
 		}
 		for row in rows
 	]
+
+
+@frappe.whitelist()
+def loan_matching_settings() -> dict[str, int]:
+	"""The weights and thresholds the page's loan suggestions are scored with.
+
+	Bank Reconciliation Settings is readable only by System Managers, and the
+	bookkeeper the suggestions are for is usually an Accounts User, so the page
+	reads it here. Tuning, not data: the same answer for everybody who may use
+	the page. Read with the fallbacks `loan_matching` explains, so a site
+	between deploy and migrate gets the defaults rather than an error.
+	"""
+	if not can_reconcile():
+		frappe.throw(_("You are not allowed to reconcile bank transactions."), frappe.PermissionError)
+	return settings.loan_matching()
 
 
 # The most names one `applicant_titles` request reads, which is the page's own

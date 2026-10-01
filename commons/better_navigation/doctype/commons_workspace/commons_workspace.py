@@ -76,6 +76,29 @@ class CommonsWorkspace(Document):
 		)
 		frappe.throw(_("Row {0}: {1}").format(row, message) if row else message)
 
+	def validate_link(self, row) -> None:
+		"""A Link row names a label and an address the sidebar can open.
+
+		A path on this site or an http(s) address, and nothing else: the row is
+		drawn as a link every reader of the workspace may press, so a
+		`javascript:` address is one click from running in their session. Not
+		checked against the other workspaces -- see `workspaces.claimed_elsewhere`.
+		"""
+		from frappe.utils import validate_url
+
+		url = (row.url or "").strip()
+		if not url or not row.label:
+			frappe.throw(_("Row {0}: a link needs a label and an address.").format(row.idx))
+		on_this_site = url.startswith("/") and not url.startswith("//")
+		if not on_this_site and not validate_url(url, valid_schemes=("http", "https")):
+			frappe.throw(
+				_(
+					"Row {0}: the address must be a path on this site, starting with /, or a web address starting with http:// or https://."
+				).format(row.idx)
+			)
+		row.url = url
+		self.validate_icon(row.icon, row.idx)
+
 	def validate_rows(self) -> None:
 		"""Every row names something real, once, and nowhere else.
 
@@ -88,6 +111,9 @@ class CommonsWorkspace(Document):
 		seen: dict[tuple[str, str], int] = {}
 
 		for row in self.items:
+			if row.item_type == workspaces.LINK:
+				self.validate_link(row)
+				continue
 			target = row.page if row.item_type == "Page" else row.self_service_record
 			if not target:
 				# `mandatory_depends_on` catches this on the form; a row built by

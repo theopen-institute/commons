@@ -38,15 +38,22 @@ them would be stating it where changing it does not change what the server does.
 
 Outcomes come from the active Frappe Workflow where a site runs one -- states,
 styling and transitions all the site's -- and otherwise off the `status` field's
-own options. Neither path has a state name or a role name behind it here.
+own options, with Commons Settings naming the one that applies a request and
+saying whether a reviewer may decide their own (see `record_change_request`).
+Neither path has a role name behind it here.
 """
 
 import frappe
 
 from commons.commons_core import workflow as wf
 from commons.self_service import registry
-
-DOCTYPE = "Record Change Request"
+from commons.self_service.doctype.record_change_request.record_change_request import (
+	DOCTYPE,
+	applying_outcome,
+	requester_of,
+	self_approval_allowed,
+	status_options,
+)
 
 # How many rows a queue returns. The badge counts to the same ceiling, so it
 # never promises more than the page will show.
@@ -84,9 +91,10 @@ LIST_FIELDS = [
 	"modified",
 ]
 
-# How an outcome reads when no Workflow is styling it. The names are Frappe's own
-# Workflow State styles, so a badge or a button is coloured from one vocabulary
-# whether a workflow is running or not.
+# How an outcome reads when no Workflow is styling it -- its colour and nothing
+# else: which outcome applies a request is Commons Settings' to say, not a
+# style's. The names are Frappe's own Workflow State styles, so a badge or a
+# button is coloured from one vocabulary whether a workflow is running or not.
 DEFAULT_DECISION_STYLES = {
 	"Approved": "Success",
 	"Rejected": "Danger",
@@ -94,10 +102,16 @@ DEFAULT_DECISION_STYLES = {
 	"Reversed": "Inverse",
 }
 
-# Which outcome is the affirmative one, and so the only one a page may apply
-# without asking twice. Read off the style rather than the name, so a workflow
-# that calls its approval something else still gets one solid button.
+# Under a Workflow, which outcome is the affirmative one, and so the only one a
+# page may apply without asking twice. Read off the style rather than the name,
+# so a workflow that calls its approval something else still gets one solid
+# button. Without a Workflow the affirmative one is the applying outcome.
 AFFIRMATIVE_STYLE = "Success"
+
+# Status options that are the requester's own to choose, not a reviewer's: a
+# withdrawal is somebody taking their own request back, so it is never offered
+# as a decision on someone else's.
+REQUESTER_OUTCOMES = ("Withdrawn",)
 
 
 def change_workflow():
@@ -187,32 +201,39 @@ def decision_vocabulary(workflow) -> list[dict]:
 
 	With a workflow the outcomes are its actions and the styling is the site's: an
 	action reads as the Workflow State it leads to. Without one they are the
-	`status` field's options less the state a request starts in, styled by
+	`status` field's options less the state a request starts in and less the
+	requester's own (`REQUESTER_OUTCOMES`), coloured by
 	`DEFAULT_DECISION_STYLES`.
 
 	`confirm` travels with the outcome rather than being inferred from its colour
 	by whoever draws the button. Whether an irreversible choice deserves a second
 	look is policy, and a site that adds an outcome should not have to know that a
-	page somewhere decides that by reading a CSS variant.
+	page somewhere decides that by reading a CSS variant. Without a workflow the
+	one outcome that needs no second look is the applying one -- and where the
+	setting naming it is wrong, none is, and deciding says why.
 	"""
 	if workflow:
 		styles = wf.state_styles(workflow)
 		return [
-			_decision(row["action"], styles.get(row["next_state"]))
+			_decision(row["action"], style, affirmative=style == AFFIRMATIVE_STYLE)
 			for row in wf.unique_actions(workflow.transitions)
+			for style in [styles.get(row["next_state"])]
 		]
 
-	field = frappe.get_meta(DOCTYPE).get_field("status")
-	options = [option.strip() for option in (field.options or "").split("\n") if option.strip()]
 	state = initial_state(None)
-	return [_decision(option, DEFAULT_DECISION_STYLES.get(option)) for option in options if option != state]
+	applying = applying_outcome(strict=False)
+	return [
+		_decision(option, DEFAULT_DECISION_STYLES.get(option), affirmative=option == applying)
+		for option in status_options()
+		if option != state and option not in REQUESTER_OUTCOMES
+	]
 
 
-def _decision(value: str, style: str | None) -> dict:
+def _decision(value: str, style: str | None, *, affirmative: bool) -> dict:
 	return {
 		"value": value,
 		"style": style,
-		"confirm": style != AFFIRMATIVE_STYLE,
+		"confirm": not affirmative,
 	}
 
 
@@ -400,15 +421,18 @@ def _decorate(requests: list, workflow, moves: dict | None = None) -> list:
 		moves = wf.permitted_transitions(DOCTYPE, names, workflow) if workflow else {}
 	can_submit = _may_review()
 	state = initial_state(workflow)
+	own_allowed = workflow or self_approval_allowed()
 
 	for request in requests:
 		if workflow:
 			request.actions = [action["action"] for action in moves.get(request.name) or []]
 		else:
-			# No workflow: any outcome, but only on a request still awaiting one
-			# and only for someone who could submit it.
+			# No workflow: any outcome, but only on a request still awaiting one,
+			# only for someone who could submit it, and -- where the site says
+			# so -- not on one they raised themselves.
 			offered = [row["value"] for row in decision_vocabulary(None)]
-			request.actions = offered if can_submit and request.status == state else []
+			theirs = own_allowed or requester_of(request) != frappe.session.user
+			request.actions = offered if can_submit and theirs and request.status == state else []
 		request.can_decide = bool(request.actions)
 		# Whether this request is still awaiting a decision. Server-owned because
 		# `docstatus` cannot answer it -- a rejected or withdrawn request stays at
@@ -679,9 +703,11 @@ def decide_change(name: str, decision: str, note: str | None = None) -> dict:
 
 	With a Workflow that is `apply_workflow`, so the transition's own conditions,
 	permitted roles and next state decide what happens and what is written.
-	Without one, the outcome is written to `status` and -- when it is the one that
-	carries the request to docstatus 1 -- submitted, which is what applies the
-	change to the referenced record.
+	Without one, the outcome is written to `status` and -- when it is the
+	applying outcome Commons Settings names -- submitted, which is what applies
+	the change to the referenced record. A setting naming no Status option is
+	refused before anything is written. So, where the site says reviewers may
+	not, is a reviewer deciding a request they raised.
 
 	The note is written before the decision rather than after, so a rejection and
 	its reason land in the same transaction. A note saved separately is a note
@@ -728,6 +754,12 @@ def decide_change(name: str, decision: str, note: str | None = None) -> dict:
 		}
 
 	doc.check_permission("submit")
+	applying = applying_outcome()
+	if not self_approval_allowed() and requester_of(doc) == frappe.session.user:
+		frappe.throw(
+			frappe._("You cannot decide a change request you raised yourself."),
+			frappe.PermissionError,
+		)
 	if doc.status != initial_state(None):
 		frappe.throw(
 			frappe._("{0} has already been settled as {1}.").format(name, doc.status),
@@ -738,12 +770,9 @@ def decide_change(name: str, decision: str, note: str | None = None) -> dict:
 	doc.save()
 
 	# Approval is the submission -- it is what applies the change to the record.
-	# Which outcome that is comes from the styling, not from its name, so a site
-	# that renamed it still submits.
-	affirmative = {
-		option["value"] for option in decision_vocabulary(None) if option["style"] == AFFIRMATIVE_STYLE
-	}
-	if decision in affirmative:
+	# Which outcome that is is the site's setting, checked above against the
+	# Status options, so a site that renamed it still submits.
+	if decision == applying:
 		doc.submit()
 
 	return {"name": doc.name, "status": doc.status, "docstatus": doc.docstatus}

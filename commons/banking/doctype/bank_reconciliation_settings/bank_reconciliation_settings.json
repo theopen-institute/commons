@@ -1,0 +1,132 @@
+{
+ "actions": [],
+ "creation": "2026-10-01 20:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "loan_matching_section",
+  "party_match_score",
+  "repeated_identifier_score",
+  "single_identifier_score",
+  "name_in_description_score",
+  "matching_column",
+  "exact_payoff_score",
+  "usual_amount_score",
+  "min_identifier_digits",
+  "min_name_length",
+  "loan_repayments_section",
+  "default_repayment_type"
+ ],
+ "fields": [
+  {
+   "description": "How the loan tab of <b>/commons/banking</b> guesses which loan a deposit repays. Each kind of evidence adds its weight to a loan's score, and loans are offered best first. A suggestion resting on the party, a repeated identifier or the borrower's name is put into the draft for the bookkeeper to confirm; one resting only on a single earlier identifier is listed, not put in. A weight of 0 leaves that evidence out.",
+   "fieldname": "loan_matching_section",
+   "fieldtype": "Section Break",
+   "label": "Loan Matching"
+  },
+  {
+   "default": "8",
+   "description": "The party on the statement line is the loan's borrower. Strong evidence.",
+   "fieldname": "party_match_score",
+   "fieldtype": "Int",
+   "label": "Party Match Weight",
+   "non_negative": 1
+  },
+  {
+   "default": "6",
+   "description": "An identifier on the line (a long run of digits: an account, phone or wallet number) was on two or more earlier repayments of this loan and of no other. Strong evidence.",
+   "fieldname": "repeated_identifier_score",
+   "fieldtype": "Int",
+   "label": "Repeated Identifier Weight",
+   "non_negative": 1
+  },
+  {
+   "default": "2",
+   "description": "An identifier on the line was on one earlier repayment of this loan and of no other. Weak evidence: banks put their own clearing accounts and transaction numbers in descriptions too.",
+   "fieldname": "single_identifier_score",
+   "fieldtype": "Int",
+   "label": "Single Identifier Weight",
+   "non_negative": 1
+  },
+  {
+   "default": "5",
+   "description": "Every part of the borrower's name is in the line's description. Strong evidence.",
+   "fieldname": "name_in_description_score",
+   "fieldtype": "Int",
+   "label": "Name in Description Weight",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "matching_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "2",
+   "description": "Tie-breaker only: the deposit pays the loan's outstanding principal off exactly. Never enough on its own to suggest a loan.",
+   "fieldname": "exact_payoff_score",
+   "fieldtype": "Int",
+   "label": "Exact Payoff Tie-Break",
+   "non_negative": 1
+  },
+  {
+   "default": "1",
+   "description": "Tie-breaker only: the deposit is an amount the borrower has paid on this loan before. Never enough on its own to suggest a loan.",
+   "fieldname": "usual_amount_score",
+   "fieldtype": "Int",
+   "label": "Usual Amount Tie-Break",
+   "non_negative": 1
+  },
+  {
+   "default": "6",
+   "description": "How many digits in a row count as an identifier. Shorter runs (dates, amounts, branch codes) are ignored.",
+   "fieldname": "min_identifier_digits",
+   "fieldtype": "Int",
+   "label": "Minimum Identifier Digits",
+   "non_negative": 1
+  },
+  {
+   "default": "5",
+   "description": "A borrower known by a single word is looked for in descriptions only if the word is at least this long, so that a short common name does not match every line.",
+   "fieldname": "min_name_length",
+   "fieldtype": "Int",
+   "label": "Minimum Single-Word Name Length",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "loan_repayments_section",
+   "fieldtype": "Section Break",
+   "label": "Loan Repayments"
+  },
+  {
+   "default": "Normal Repayment",
+   "description": "The <b>Repayment Type</b> of a Loan Repayment the page books from a deposit. One of Lending's own types.",
+   "fieldname": "default_repayment_type",
+   "fieldtype": "Autocomplete",
+   "label": "Repayment Type",
+   "reqd": 1
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-01 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Banking",
+ "name": "Bank Reconciliation Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

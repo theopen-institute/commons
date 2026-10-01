@@ -29,11 +29,18 @@ is genuinely not leave's:
 import frappe
 from frappe.utils import flt
 
-from commons.api import session_employee
+from commons.api import session_employee, session_employee_filters
+from commons.commons_core.settings import feature_enabled
 from commons.requests import approvals
 from commons.requests.approvers import default_expense_approver
 
 EXPENSE_CLAIM = "Expense Claim"
+
+# The Commons Settings switch that lets a claim naming no approver be decided by
+# anyone who may submit claims. Off by default, which is HRMS's own behaviour:
+# such a claim waits until somebody names its approver. Sites that ran this app
+# before it was a setting have it on -- see `procurement_handover`.
+UNASSIGNED_OPEN = "expense_unassigned_open"
 EXPENSE_CLAIM_DETAIL = "Expense Claim Detail"
 
 # What one expense on a claim may set. `sanctioned_amount` is deliberately
@@ -126,21 +133,26 @@ class Expenses(approvals.RequestType):
 		another name.
 
 		So the backstop is narrowed to the case it was written for, in
-		`row_is_theirs`: a claim with no approver on it. A site that wants a
+		`row_is_theirs`: a claim with no approver on it, and only where Commons
+		Settings opens those up (`expense_unassigned_open`). A site that wants a
 		wider one says so with a Workflow, whose transitions are honoured here
 		in full -- including a condition naming a role that may act on anything.
 		"""
 		return set()
 
 	def row_is_theirs(self, row, admin: bool) -> bool:
-		"""This claim's own approver, or a claim that names nobody.
+		"""This claim's own approver -- or, where the site opens them up, a claim that names nobody.
 
-		A claim nobody was named on would otherwise be stuck: nobody's to
-		decide, and so waiting for ever. `decide` writes the decider onto it as
-		it settles -- see `before_decision`.
+		Off, which is HRMS's own behaviour, a claim nobody was named on is
+		nobody's to decide: it waits until someone names its approver. On
+		(`expense_unassigned_open`), it is anyone's who may submit claims, and
+		`decide` writes the decider onto it as it settles -- see
+		`before_decision`.
 		"""
 		approver = row.get(self.approver_field)
-		return not approver or approver == frappe.session.user
+		if not approver:
+			return _unassigned_open()
+		return approver == frappe.session.user
 
 	def queue_predicate(self, decided: bool, admin: bool) -> tuple[dict, list | None]:
 		"""Which claims are this user's to look at, deciding or decided.
@@ -150,8 +162,10 @@ class Expenses(approvals.RequestType):
 		without submitting would show up in the queue with buttons on it and be
 		missing from the badge beside it.
 
-		The `or_filters` are the backstop `row_is_theirs` describes: a claim
-		naming nobody is waiting on whoever can pick it up. History needs none,
+		The `or_filters` are the backstop `row_is_theirs` describes, where the
+		site opens unassigned claims up: a claim naming nobody is waiting on
+		whoever can pick it up. Where it does not, the queue is the claims that
+		name this user and nothing else. History needs neither,
 		because a claim that named nobody has the decider written onto it as it
 		is settled -- so by the time it is history it names someone, and that
 		someone is them.
@@ -175,6 +189,9 @@ class Expenses(approvals.RequestType):
 			if mine:
 				filters["employee"] = ["!=", mine]
 
+		if not _unassigned_open():
+			filters[self.approver_field] = frappe.session.user
+			return filters, None
 		return filters, [
 			[self.approver_field, "=", frappe.session.user],
 			[self.approver_field, "is", "not set"],
@@ -207,8 +224,10 @@ class Expenses(approvals.RequestType):
 	def before_decision(self, doc) -> None:
 		"""A claim nobody was named on is settled by whoever picked it up.
 
-		The record should say so -- otherwise it goes missing from the history
-		of the one person who decided it the moment they do.
+		Only reachable where the site opens unassigned claims up --
+		`row_is_theirs` refuses them otherwise, before this runs. The record
+		should say so -- otherwise it goes missing from the history of the one
+		person who decided it the moment they do.
 		"""
 		if not doc.get(self.approver_field):
 			doc.set(self.approver_field, frappe.session.user)
@@ -231,7 +250,7 @@ class Expenses(approvals.RequestType):
 
 	def permlevel_message(self) -> str:
 		return frappe._(
-			"You are not permitted to decide expense claims. The Expense Approver role grants this."
+			"You are not permitted to decide expense claims. Ask your system administrator for access."
 		)
 
 	def not_yours_message(self, doc) -> str:
@@ -243,6 +262,11 @@ class Expenses(approvals.RequestType):
 EXPENSES = Expenses()
 
 
+def _unassigned_open() -> bool:
+	"""Whether a claim naming no approver is anyone's to decide -- see `UNASSIGNED_OPEN`."""
+	return feature_enabled(UNASSIGNED_OPEN)
+
+
 def _session_employee_name() -> str | None:
 	"""The employee record behind this session, as the queue needs to exclude it.
 
@@ -250,9 +274,11 @@ def _session_employee_name() -> str | None:
 	returns is the caller's own employee id and nothing else -- the same bounded
 	disclosure `session_employee_access` makes -- whereas the permission-checked
 	read answers `None` for a user whose `Employee` access is gated, which here
-	would quietly put their own claims back into their own queue.
+	would quietly put their own claims back into their own queue. The row it
+	looks for is `session_employee_filters`', so this and `session_employee`
+	agree on which record is the caller's.
 	"""
-	return frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
+	return frappe.db.get_value("Employee", session_employee_filters(), "name")
 
 
 @frappe.whitelist()

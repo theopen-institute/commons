@@ -25,6 +25,7 @@ from unittest.mock import patch
 import frappe
 from pypika import Table
 
+import commons.statement
 from commons.statement import api, ledger, loans, parties
 from commons.statement.parties import Party, party_condition
 
@@ -449,6 +450,8 @@ class TestDownloadingWithoutThePrintFormat(TestCase):
 	"""`api.download_statement` where the site has not set the print format up.
 
 	The print formats are added by hand now, so a site without one is ordinary.
+	One is found by the name its party type's Statement Print Format gives, or
+	failing that by the `{Party Type} Account Statement` convention.
 	`frappe.get_print` given a missing print format falls back to "Standard",
 	which prints every field of the party document -- and the download sets
 	print permissions aside -- so a missing format has to be a refusal, never a
@@ -468,6 +471,21 @@ class TestDownloadingWithoutThePrintFormat(TestCase):
 			)
 		)
 		self.printed = self.enterContext(patch.object(api.frappe, "get_print", return_value=b"%PDF"))
+		self.configure(None)
+
+	def configure(self, name):
+		"""Stand in for the party type's Statement Print Format field."""
+		self.enterContext(patch.object(commons.statement, "configured_print_format", return_value=name))
+
+	def download(self):
+		response = SimpleNamespace()
+		with (
+			patch.object(api.frappe, "local", SimpleNamespace(response=response)),
+			patch.object(api.frappe, "flags", frappe._dict()),
+			patch.object(api, "_filename", return_value="Me statement"),
+		):
+			api.download_statement("Student", "me@example.com")
+		return response
 
 	def site_with(self, *formats):
 		"""Stand in for the Print Format table: `formats` are (name, doc_type, disabled) rows."""
@@ -511,6 +529,32 @@ class TestDownloadingWithoutThePrintFormat(TestCase):
 			self.printed.call_args.args[:3], ("Student", "me@example.com", "Student Account Statement")
 		)
 		self.assertEqual(response.type, "pdf")
+
+	def test_the_party_types_own_print_format_is_printed_when_set(self):
+		self.configure("Student Ledger")
+		self.site_with(("Student Ledger", "Student", 0), ("Student Account Statement", "Student", 0))
+		self.download()
+		self.assertEqual(self.printed.call_args.args[:3], ("Student", "me@example.com", "Student Ledger"))
+
+	def test_the_convention_stands_in_for_a_configured_format_that_will_not_do(self):
+		"""Disabled, or for another doctype: not a statement of this party."""
+		for row in (("Student Ledger", "Student", 1), ("Student Ledger", "Customer", 0)):
+			with self.subTest(row=row):
+				self.printed.reset_mock()
+				self.configure("Student Ledger")
+				self.site_with(row, ("Student Account Statement", "Student", 0))
+				self.download()
+				self.assertEqual(self.printed.call_args.args[2], "Student Account Statement")
+
+	def test_neither_is_refused_naming_the_configured_one(self):
+		self.configure("Student Ledger")
+		self.site_with(("Student Ledger", "Customer", 0))
+		messages = []
+		with patch.object(api.frappe, "bold", side_effect=lambda text: messages.append(text) or text):
+			with self.assertRaises(frappe.DoesNotExistError):
+				api.download_statement("Student", "me@example.com")
+		self.assertEqual(messages, ["Student Ledger"])
+		self.printed.assert_not_called()
 
 	def test_print_permissions_are_put_back_as_they_were_found(self):
 		"""Not to False. A caller that had set the flag itself -- a batch print,

@@ -103,12 +103,15 @@ class ProcurementRequest(Document):
 	def reset_row_fields_beyond_reach(self) -> None:
 		"""On a new request, clear row fields its author may not write.
 
-		`item_code` and `verified_rate` are permlevel 1, the buyers' to set. Core
-		resets such a field when someone without that permlevel writes it -- on
-		the parent always, but on child rows only once the parent exists
+		Whichever row fields the site puts above permlevel 0. None ships there:
+		a site that has its buyers verify rates puts `verified_rate` at permlevel
+		1 with a Property Setter (sites that ran the release where it shipped so
+		keep it that way -- see `procurement_handover`). Core resets such a field
+		when someone without that permlevel writes it -- on the parent always,
+		but on child rows only once the parent exists
 		(`Document.validate_higher_perm_levels`). A requester's own verified rate
-		on a new request's rows would otherwise stand, understating the estimate
-		the approver is shown.
+		on a new request's rows would otherwise stand there, understating the
+		estimate the approver is shown.
 		"""
 		if not self.is_new() or self.flags.ignore_permissions or frappe.session.user == "Administrator":
 			return

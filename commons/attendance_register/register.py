@@ -58,6 +58,7 @@ REGISTER_FIELDS = {
 	"session_type_field": ("session_type_field", COURSE_SCHEDULE, TEXT_FIELDTYPES),
 	"session_details_field": ("session_details_field", COURSE_SCHEDULE, TEXT_FIELDTYPES),
 	"inactive_term_field": ("inactive_term_field", ACADEMIC_TERM, frozenset(("Check",))),
+	"session_hours_field": ("session_hours_field", COURSE_SCHEDULE, frozenset(("Float", "Int"))),
 }
 
 LATE_CREDIT = "late_credit"
@@ -66,6 +67,24 @@ LATE_CREDIT = "late_credit"
 # own default, which counts it as fully present. Nothing about lateness is this
 # app's rule to invent.
 DEFAULT_LATE_CREDIT = 1.0
+
+# The register's two choices of rule, each with the options the settings offer
+# and the answer a site gets that never chose: the register's behaviour before
+# either was a setting.
+#
+# `group_resolution` is how a course finds its student groups. Education models
+# two ways for a group to take a course: through its programme (a group names a
+# programme and a term, and `Program Course` says the course is on it), or
+# directly (a course-based group's own `course`). Which a school uses is how it
+# runs its groups, so it is the site's to say.
+#
+# `leave_counts_as` is what Education's `Leave` status is worth. Absent counts
+# the session against the student like any other absence; Excused leaves it out
+# of that student's total altogether, earned hours and possible hours alike.
+CHOICES = {
+	"group_resolution": (("Programme", "Course", "Both"), "Programme"),
+	"leave_counts_as": (("Absent", "Excused"), "Absent"),
+}
 
 
 def _settings():
@@ -126,7 +145,10 @@ def register_fields() -> dict:
 	Settings; this
 	is how the page learns which. Every key is a fieldname or None, and None is
 	the page doing without: no Late mark, no grouping by type, no details line,
-	every term in the picker.
+	every term in the picker, and hours read off each session's times.
+
+	Two rules ride along with the fields, `group_resolution` and
+	`leave_counts_as`, each one of its options; see `CHOICES`.
 
 	A name is only sent if the doctype's meta has a field of that name and of a
 	type the page can use. The page puts these names into the filters and the
@@ -141,7 +163,21 @@ def register_fields() -> dict:
 	settings = _settings()
 	fields = {key: valid_field(settings, *spec) for key, spec in REGISTER_FIELDS.items()}
 	fields["late_credit"] = late_credit(settings)
+	for setting, (options, default) in CHOICES.items():
+		fields[setting] = choice(settings, setting, options, default)
 	return fields
+
+
+def choice(settings, setting: str, options: tuple, default: str) -> str:
+	"""A Select setting's value, or its default if unsaved or not one of its options.
+
+	Unsaved is the common case rather than an edge: a Select added to a Single
+	that was saved before it existed reads as nothing until somebody saves the
+	form again, and nothing must mean what the register did before there was a
+	choice.
+	"""
+	stored = ((settings.get(setting) if settings else None) or "").strip()
+	return stored if stored in options else default
 
 
 def valid_field(settings, setting: str, doctype: str, fieldtypes: frozenset) -> str | None:

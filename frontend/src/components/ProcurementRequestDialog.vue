@@ -12,7 +12,7 @@
 					v-model="form.department"
 					doctype="Department"
 					label="Department"
-					required
+					:required="procurementCan.department_required"
 				/>
 			</div>
 

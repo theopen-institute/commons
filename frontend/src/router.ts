@@ -14,14 +14,16 @@ declare module 'vue-router' {
 
 const routes: RouteRecordRaw[] = [
   {
-    // Bare /commons lands on announcements: the one page every user of this
-    // app can open, so it needs no permission answer to redirect on.
+    // Bare /commons lands where Commons Settings says, or on the first row this
+    // reader may open -- a permission answer away, so a component redirects
+    // rather than a route. The same one `/requests` uses; see `landingRoute`.
     path: '/',
-    redirect: { name: 'Announcements' },
+    name: 'Home',
+    component: () => import('@/pages/RequestsHome.vue'),
   },
   {
     // Above the sections, and ungated: every user of this app sees the same
-    // announcements. It is also where the desk icon lands.
+    // announcements.
     path: '/announcements',
     name: 'Announcements',
     component: () => import('@/pages/Announcements.vue'),

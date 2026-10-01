@@ -34,6 +34,21 @@ What happens, per site
 * **Procurement Request's department and approver** were mandatory and now are
   not. A site that has requests, or a Workflow for them, keeps them mandatory
   through a Property Setter each.
+* **Buyers verifying rates**: `Procurement Request Item.verified_rate` and
+  `Procurement Request.rejection_reason` (now labelled Review Note) shipped at
+  permlevel 1 and now ship at 0. A site whose stored fields are still at 1
+  keeps them there through a `permlevel` Property Setter each -- and so keeps
+  whatever its permlevel-1 rights said about who may write them.
+* **Unassigned expense claims**: deciding a claim that names no approver, by
+  anyone who may submit claims, became Commons Settings'
+  `expense_unassigned_open`, off by default as in HRMS. A site with HRMS that
+  ran this app before the setting existed, and has never stored it, gets it on.
+* **The other new request settings** -- the change request outcome that
+  applies a change, whether a reviewer may decide their own, and what the
+  procurement queue is grouped by -- are stored at their defaults wherever a
+  site has never stored them. A Single loads a field it has no row for as
+  blank, or 0, so the form would otherwise show them unset, and the next save
+  of it for any other reason would write that over what the site was doing.
 
 Why `before_migrate`: the same reason as `community_handover` -- after the
 files are gone and before the doctype sync (which would write the shrunk
@@ -53,6 +68,13 @@ BUDGET_FIELD = "Material Request-department"
 REQUEST = "Procurement Request"
 MANDATORY = ("department", "approver")
 
+# Shipped at permlevel 1, now at 0: (doctype, fieldname).
+RAISED_FIELDS = (("Procurement Request Item", "verified_rate"), (REQUEST, "rejection_reason"))
+
+SETTINGS = "Commons Settings"
+EXPENSE_CLAIM = "Expense Claim"
+UNASSIGNED_OPEN = "expense_unassigned_open"
+
 # Whose shipped permissions shrank to System Manager in that release.
 PERMISSIONS = ("Procurement Request", "Record Change Request", "Self Service Record", "Captured Document")
 
@@ -60,6 +82,9 @@ PERMISSIONS = ("Procurement Request", "Record Change Request", "Self Service Rec
 def run() -> None:
 	keep_permissions()
 	keep_mandatory_fields()
+	keep_raised_permlevels()
+	keep_unassigned_expense_claims_open()
+	store_setting_defaults()
 	hand_over_budgets()
 
 
@@ -106,6 +131,101 @@ def keep_mandatory_fields() -> None:
 			is_system_generated=False,
 		)
 		print(f"Procurement handover: {REQUEST}.{fieldname} stays mandatory on this site.")
+
+
+def keep_raised_permlevels() -> None:
+	"""Fields that shipped at permlevel 1 stay there where the site ran them so.
+
+	The same shape as `keep_mandatory_fields`: the stored DocField still at 1
+	means the sync that lowers it has not run, and a Property Setter already
+	there is the site's own say, left alone.
+	"""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	for doctype, fieldname in RAISED_FIELDS:
+		if not frappe.db.exists("DocType", {"name": doctype, "custom": 0}):
+			continue
+		if frappe.db.get_value("DocField", {"parent": doctype, "fieldname": fieldname}, "permlevel") != 1:
+			continue
+		if frappe.db.exists(
+			"Property Setter", {"doc_type": doctype, "field_name": fieldname, "property": "permlevel"}
+		):
+			continue
+		make_property_setter(
+			doctype,
+			fieldname,
+			"permlevel",
+			"1",
+			"Int",
+			validate_fields_for_doctype=False,
+			is_system_generated=False,
+		)
+		print(f"Procurement handover: {doctype}.{fieldname} stays at permlevel 1 on this site.")
+
+
+def setting_stored(fieldname: str) -> bool:
+	"""Whether `tabSingles` has a row for this Commons Settings field, whatever its value.
+
+	A query of its own because neither `frappe.db.exists` nor `get_value` reads
+	`Singles` as a table: both treat it as a doctype and order by a column it
+	does not have.
+	"""
+	singles = frappe.qb.DocType("Singles")
+	return bool(
+		frappe.qb.from_(singles)
+		.select(singles.field)
+		.where((singles.doctype == SETTINGS) & (singles.field == fieldname))
+		.limit(1)
+		.run()
+	)
+
+
+def keep_unassigned_expense_claims_open() -> None:
+	"""A claim naming no approver stays anyone's to decide where it always was.
+
+	Only where HRMS's Expense Claim is here, and only while the setting has
+	never been stored: once a site has ticked or unticked it, that is its
+	answer. And only on a site that ran this app before the setting existed --
+	the setting's DocField not synced yet, or claims already raised. A new site
+	that merely migrates again has neither, and keeps HRMS's default.
+	"""
+	if not frappe.db.exists("DocType", EXPENSE_CLAIM) or not frappe.db.exists("DocType", SETTINGS):
+		return
+	if setting_stored(UNASSIGNED_OPEN):
+		return
+	synced = frappe.db.exists("DocField", {"parent": SETTINGS, "fieldname": UNASSIGNED_OPEN})
+	if synced and not frappe.db.count(EXPENSE_CLAIM):
+		return
+	frappe.db.set_single_value(SETTINGS, UNASSIGNED_OPEN, 1, update_modified=False)
+	print("Procurement handover: expense claims naming no approver stay open to any approver on this site.")
+
+
+def store_setting_defaults() -> None:
+	"""Each new request setting at its default, wherever a site has never stored it.
+
+	The defaults are the ones the readers fall back to, named where they are
+	read, so this cannot store something other than what the site was already
+	getting.
+	"""
+	from commons.requests.procurement import DEFAULT_GROUP_BY, GROUP_BY_SETTING
+	from commons.self_service.doctype.record_change_request.record_change_request import (
+		APPLYING_OUTCOME_SETTING,
+		DEFAULT_APPLYING_OUTCOME,
+		SELF_APPROVAL_SETTING,
+	)
+
+	if not frappe.db.exists("DocType", SETTINGS):
+		return
+	defaults = {
+		APPLYING_OUTCOME_SETTING: DEFAULT_APPLYING_OUTCOME,
+		SELF_APPROVAL_SETTING: 1,
+		GROUP_BY_SETTING: DEFAULT_GROUP_BY,
+	}
+	missing = {field: value for field, value in defaults.items() if not setting_stored(field)}
+	if not missing:
+		return
+	frappe.db.set_single_value(SETTINGS, missing, update_modified=False)
+	print(f"Procurement handover: stored the defaults of {', '.join(sorted(missing))} in {SETTINGS}.")
 
 
 def hand_over_budgets() -> None:

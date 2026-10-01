@@ -452,8 +452,14 @@ class TestProcurementRequest(ProcurementTestCase):
 		self.assertEqual([row.qty for row in request.items], [3, 2])
 
 	def test_a_requester_cannot_set_the_verified_rate(self):
-		"""Permlevel 1: a cheap verified rate understated the estimate at approval,
-		and carried over onto the Material Request."""
+		"""Where the site has buyers verify rates: a cheap verified rate understated
+		the estimate at approval, and carried over onto the Material Request.
+
+		Ships at permlevel 0, so only a site that raised it (by Property Setter,
+		as `procurement_handover` does for the sites that ran it at 1) is asked.
+		"""
+		if not frappe.get_meta("Procurement Request Item").get_field("verified_rate").permlevel:
+			self.skipTest("verified_rate is at permlevel 0 on this site")
 		frappe.set_user(self.requester)
 		request = self.make_request(
 			[{"item_name": "Laptop", "qty": 1, "uom": "Nos", "estimated_rate": 900, "verified_rate": 0.01}]

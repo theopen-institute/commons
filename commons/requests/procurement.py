@@ -8,18 +8,21 @@ always been a Workflow from the start. What it shares with leave and expenses
 is `approvals.RequestType` -- reading the active Workflow, naming the state
 column, counting a badge, and vetting the parent names behind a child-table
 read. What it does not share is the queue itself: a procurement queue is
-grouped by department, each group with its estimated total, so
+grouped by the field Commons Settings names (department unless a site says
+otherwise, or nothing at all), each group with its estimated total, so
 `get_procurement_workflow_queue` answers a shape of its own rather than the
 flat list the other two return.
 """
 
 import frappe
+from frappe.model import no_value_fields, table_fields
 from frappe.utils import flt
 
 from commons.api import session_employee
 from commons.commons_core import workflow as wf
 from commons.commons_core.doc_perms import roles_with_permission
-from commons.requests import approvals, approvers
+from commons.commons_core.settings import _settings
+from commons.requests import approvals
 from commons.requests.doctype.procurement_request.procurement_request import (
 	DOCTYPE as PROCUREMENT_REQUEST,
 )
@@ -28,6 +31,14 @@ from commons.requests.doctype.procurement_request.procurement_request import (
 )
 from commons.requests.procurement_workflow import APPROVER_FIELD
 from commons.requests.procurement_workflow import approver_roles as _approver_roles
+
+DEPARTMENT_FIELD = "department"
+
+# The Commons Settings field naming what the approvals queue is grouped by, and
+# what it reads as on a site that has never stored it -- which is what the queue
+# was grouped by before it was a setting.
+GROUP_BY_SETTING = "procurement_group_by"
+DEFAULT_GROUP_BY = DEPARTMENT_FIELD
 
 
 class Procurement(approvals.RequestType):
@@ -128,14 +139,29 @@ def get_procurement_permissions() -> dict:
 		"pending_workflow_actions": pending,
 		"approver_query": PROCUREMENT.approver_query,
 		"approver_required": _approver_required(),
+		"department_required": _department_required(),
 		"page_length": PROCUREMENT.page_length,
 	}
 
 
-def _approver_required() -> bool:
-	"""Whether this site makes a request name its approver -- the field's own `reqd`, as customised."""
-	field = frappe.get_meta(PROCUREMENT_REQUEST).get_field(APPROVER_FIELD)
+def _field_required(fieldname: str) -> bool:
+	"""Whether this site makes a request fill `fieldname` -- the field's own `reqd`, as customised.
+
+	Read off the meta, so a Property Setter is what it says, and the form draws
+	the field as mandatory exactly when the save would insist on it.
+	"""
+	field = frappe.get_meta(PROCUREMENT_REQUEST).get_field(fieldname)
 	return bool(field and field.reqd)
+
+
+def _approver_required() -> bool:
+	"""Whether this site makes a request name its approver."""
+	return _field_required(APPROVER_FIELD)
+
+
+def _department_required() -> bool:
+	"""Whether this site makes a request name its department."""
+	return _field_required(DEPARTMENT_FIELD)
 
 
 def _unavailable_permissions() -> dict:
@@ -154,6 +180,7 @@ def _unavailable_permissions() -> dict:
 		"pending_workflow_actions": 0,
 		"approver_query": PROCUREMENT.approver_query,
 		"approver_required": False,
+		"department_required": False,
 		"page_length": PROCUREMENT.page_length,
 	}
 
@@ -169,8 +196,8 @@ def get_procurement_request_defaults() -> dict:
 	visit to the section.
 
 	No approver. Who decides a request is the site's Workflow, and a default
-	here would be this app's guess at it; the picker offers the requester's own
-	expense approvers first (`get_procurement_approvers`).
+	here would be this app's guess at it; the picker offers everyone who could
+	decide one, by name (`get_procurement_approvers`).
 
 	Gated on `create` for the same reason `get_procurement_approvers` is: someone
 	who cannot raise a request has no blank form to fill, and each of these
@@ -191,7 +218,9 @@ def get_procurement_request_defaults() -> dict:
 		"company": company,
 		"currency": (frappe.db.get_value("Company", company, "default_currency") if company else None),
 		"department": employee.department if employee else None,
-		"uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
+		# The site's own default unit, or none: a unit this app named would be a
+		# guess that need not even exist as a UOM there.
+		"uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or None,
 	}
 
 
@@ -265,8 +294,9 @@ def _preserve_non_frontend_line_fields(items: list[dict], request=None) -> None:
 
 	`item_code` and `verified_rate` are not on the form, so a save from it says
 	nothing about them: whatever a row already holds is kept, and a new row
-	starts without them. Who may set them is the desk's, through their
-	permlevel.
+	starts without them. Who may set them is the desk's, through whatever
+	permlevel the site gives them -- `verified_rate` ships at 0, and a site
+	that has its buyers verify rates raises it.
 	"""
 	stored = {row.name: row for row in request.items} if request else {}
 	for row in items:
@@ -363,6 +393,11 @@ def get_procurement_workflow_queue(decided: int = 0) -> dict:
 def _procurement_workflow_queue(decided: bool) -> dict:
 	workflow = PROCUREMENT.workflow()
 	state_field = PROCUREMENT.state_field(workflow)
+	group_field = group_by_field()
+	grouping = {
+		"group_by": group_field.fieldname if group_field else None,
+		"group_by_label": frappe._(group_field.label) if group_field else None,
+	}
 
 	# Pending: the first page of what this user may actually move, found before
 	# the page is cut -- see `wf.first_actionable`, and `PROCUREMENT.actionable`,
@@ -371,11 +406,11 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 	names = list(available) if not decided else approvals.completed_by_session(PROCUREMENT_REQUEST)
 
 	if not names:
-		return {"requests": [], "actions": {}, "groups": []}
+		return {"requests": [], "actions": {}, "groups": [], **grouping}
 	requests = frappe.get_list(
 		PROCUREMENT_REQUEST,
 		filters={"name": ["in", names]},
-		fields=_list_fields(state_field),
+		fields=_list_fields(state_field, *([group_field.fieldname] if group_field else [])),
 		order_by="modified desc",
 		limit_page_length=PROCUREMENT.page_length,
 	)
@@ -389,36 +424,70 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 	return {
 		"requests": requests,
 		"actions": available,
-		"groups": group_by_department(requests),
+		"groups": group_requests(requests, group_field),
+		**grouping,
 	}
 
 
-def group_by_department(requests: list[dict]) -> list[dict]:
-	"""The queue by department, each group with its estimated total.
+def group_by_field():
+	"""The Procurement Request field the approvals queue is grouped by, or None for one list.
+
+	Commons Settings names it (`procurement_group_by`). A site that has never
+	stored the setting reads the default, department, which is what the queue
+	was always grouped by; one that cleared it gets a single flat list. So does
+	a name the doctype does not have, or one that holds no value to group by --
+	a section break, a table -- rather than an error on a page that has nothing
+	to do with the mistake.
+	"""
+	stored = (_settings() or {}).get(GROUP_BY_SETTING)
+	fieldname = (DEFAULT_GROUP_BY if stored is None else stored).strip()
+	if not fieldname:
+		return None
+	field = frappe.get_meta(PROCUREMENT_REQUEST).get_field(fieldname)
+	if not field or field.fieldtype in no_value_fields or field.fieldtype in table_fields:
+		return None
+	return field
+
+
+def group_requests(requests: list[dict], field=None) -> list[dict]:
+	"""The queue by `field`, each group with its estimated total.
 
 	Grouped here rather than in the page because `estimate` is money, and
 	should be arrived at in one place by one rule.
 
-	Departments are ordered by name rather than by recency, so acting on a request
-	-- which reloads the queue -- does not shuffle the groups around the approver
-	working through them. Requests keep the query's order within a group, and a
-	group without a department sorts last.
+	Without a field the queue is one group, keyed `""`, whose `value` and
+	`label` are both None -- the page draws it with no heading. With one, each
+	group carries the field's `value` and the `label` a person reads for it:
+	the linked record's title where its doctype shows titles in links, the
+	value itself otherwise.
+
+	Groups are ordered by label rather than by recency, so acting on a request
+	-- which reloads the queue -- does not shuffle them around the approver
+	working through them. Requests keep the query's order within a group, and
+	the group of requests with no value sorts last.
 	"""
+	fieldname = field.fieldname if field else None
 	groups: dict[str, dict] = {}
 	for request in requests:
-		department = request.get("department") or None
-		key = department or ""
+		value = (request.get(fieldname) or None) if fieldname else None
+		key = "" if value is None else str(value)
 		group = groups.get(key)
 		if group:
 			group["requests"].append(request.name)
 		else:
 			groups[key] = {
 				"key": key,
-				"department": department,
+				"value": value,
+				"label": None,
 				"requests": [request.name],
 				"currency": request.get("currency"),
 				"estimate": None,
 			}
+
+	titles = _link_titles(field, [group["value"] for group in groups.values() if group["value"]])
+	for group in groups.values():
+		if group["value"] is not None:
+			group["label"] = titles.get(group["value"]) or str(group["value"])
 
 	by_name = {request.name: request for request in requests}
 	for group in groups.values():
@@ -431,7 +500,30 @@ def group_by_department(requests: list[dict]) -> list[dict]:
 
 	return sorted(
 		groups.values(),
-		key=lambda group: (group["department"] is None, group["department"] or ""),
+		key=lambda group: (group["value"] is None, (group["label"] or "").lower()),
+	)
+
+
+def _link_titles(field, values: list) -> dict:
+	"""What each linked record is called, where its doctype shows titles in links.
+
+	Empty for anything that is not such a Link -- the value is then its own
+	label. One read for the page, through `get_all` because the names are
+	already on rows `get_list` let this user read, and a title is what the desk
+	shows beside the same link anyway.
+	"""
+	if not field or field.fieldtype != "Link" or not field.options or not values:
+		return {}
+	meta = frappe.get_meta(field.options)
+	if not (meta.show_title_field_in_link and meta.title_field and meta.title_field != "name"):
+		return {}
+	return dict(
+		frappe.get_all(
+			field.options,
+			filters={"name": ["in", sorted(set(values))]},
+			fields=["name", meta.title_field],
+			as_list=True,
+		)
 	)
 
 
@@ -538,11 +630,14 @@ def get_procurement_approvers(
 	"""Link-field query: users who could actually decide a request.
 
 	Candidates are everyone holding a role with submit on the doctype. Anyone
-	else is a dead end — named as approver, then unable to act — and HRMS's own
-	approver query is no use here, because it reads the employee and department
-	approver fields that most sites never fill in. Those preferences are not
-	ignored, just demoted to a sort order: the requester's expense approver and
-	their department's come first when they are in the set at all.
+	else is a dead end — named as approver, then unable to act. They are sorted
+	by name and nothing else: who should decide a particular request is the
+	site's Workflow's to say, not a preference this app borrows from another
+	doctype's approver fields. A site that wants a different set, or order,
+	points `approver_query` at a query of its own.
+
+	`filters` is accepted because a link query is always called with it, and
+	read for nothing: the candidates do not depend on who is asking.
 
 	Gated on `create` over `Procurement Request`, because the query builder below
 	asks no permission of its own: it joins `User` to `Has Role` directly and so
@@ -564,8 +659,8 @@ def get_procurement_approvers(
 	has_role = frappe.qb.DocType("Has Role")
 	like = f"%{txt or ''}%"
 
-	# `list`, not the query's own tuple: the preference sort below is applied
-	# in Python, where the department walk already lives.
+	# `list`, not the query's own tuple: sorted in Python, by full name falling
+	# back to the login, case-blind -- what the picker shows is the full name.
 	candidates = list(
 		frappe.qb.from_(user)
 		.join(has_role)
@@ -582,12 +677,7 @@ def get_procurement_approvers(
 		.run()
 	)
 
-	employee = filters.get("employee") if filters else None
-	if not employee:
-		session = session_employee(["name"])
-		employee = session.name if session else None
-	preferred = _preferred_approvers(employee)
-	candidates.sort(key=lambda row: (row[0] not in preferred, (row[1] or row[0]).lower()))
+	candidates.sort(key=lambda row: ((row[1] or row[0]).lower(), row[0]))
 
 	start, page_len = frappe.utils.cint(start), frappe.utils.cint(page_len)
 	return candidates[start : start + page_len]
@@ -596,48 +686,3 @@ def get_procurement_approvers(
 def _roles_that_may_approve() -> set[str]:
 	"""Roles whose Frappe DocPerm allows submitting this doctype."""
 	return roles_with_permission(PROCUREMENT_REQUEST, submit=1)
-
-
-def _preferred_approvers(employee: str | None) -> set[str]:
-	"""Who this employee's expenses already go to, and their department's.
-
-	A sort order and nothing more, so all of it is skipped on a site without
-	HRMS: `Employee.expense_approver` and the `Department.expense_approvers`
-	table are both HRMS's, and neither exists to read there. The candidate set
-	is unchanged -- it comes from the doctype's own submit permission -- and the
-	picker simply falls back to sorting by name.
-	"""
-	if not employee or not approvers.installed():
-		return set()
-
-	record = frappe.db.get_value("Employee", employee, ["department", "expense_approver"], as_dict=True)
-	if not record:
-		return set()
-
-	preferred = {record.expense_approver} - {None}
-	if not record.department:
-		return preferred
-
-	bounds = frappe.db.get_value("Department", record.department, ["lft", "rgt"], as_dict=True)
-	if not bounds:
-		return preferred
-
-	# Up the tree, not just the immediate department: the nearest level that
-	# names anyone is the one that should get the request.
-	department = frappe.qb.DocType("Department")
-	ancestors = (
-		frappe.qb.from_(department)
-		.select(department.name)
-		.where((department.lft <= bounds.lft) & (department.rgt >= bounds.rgt) & (department.disabled == 0))
-	).run(pluck=True)
-
-	if ancestors:
-		preferred |= set(
-			frappe.get_all(
-				"Department Approver",
-				filters={"parent": ["in", ancestors], "parentfield": "expense_approvers"},
-				pluck="approver",
-			)
-		)
-
-	return preferred

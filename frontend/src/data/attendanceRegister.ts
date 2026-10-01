@@ -28,17 +28,23 @@
 /**
  * What a cell can say.
  *
- * Four words rather than `Student Attendance`'s two fields. `Late` is stored as
+ * Words rather than `Student Attendance`'s two fields. `Late` is stored as
  * present with a flag, because a late arrival *was* there and every report that
  * counts attendance should keep counting them; the empty string is no record at
- * all, which is what an untouched cell means and what clears one.
+ * all, which is what an untouched cell means and what clears one. `Excused` is
+ * Education's `Leave` on a site that counts leave as excused (see
+ * `LeaveCountsAs`); it is read, never offered.
  */
-export type Mark = 'Present' | 'Late' | 'Absent' | ''
+export type Mark = 'Present' | 'Late' | 'Absent' | 'Excused' | ''
 
 export const PRESENT = 'Present'
 export const LATE = 'Late'
 export const ABSENT = 'Absent'
+export const EXCUSED = 'Excused'
 export const UNMARKED = ''
+
+/** Education's third status, which this register reads but does not offer. */
+export const LEAVE = 'Leave'
 
 /** The marks a session's details offer, in the order they are drawn, on a site
  *  that records lateness. See `marksOffered` for one that does not. */
@@ -63,6 +69,10 @@ export const MARKS: Mark[] = [PRESENT, LATE, ABSENT, UNMARKED]
  * The register this page was written for keeps them as `custom_late`,
  * `custom_session_type`, `custom_session_details` and `custom_inactive`, and
  * those names used to be written into this file. They were one school's.
+ *
+ * Two rules come with them, each a choice the settings offer and each
+ * defaulting to what the register did before it was a choice:
+ * `group_resolution` and `leave_counts_as`.
  */
 export interface RegisterFields {
   /** A Check on `Student Attendance`: present, but late. */
@@ -75,7 +85,46 @@ export interface RegisterFields {
   session_details_field: string | null
   /** A Check on `Academic Term` retiring a term from the picker. */
   inactive_term_field: string | null
+  /** A Float or Int on `Course Schedule`: the hours a session is worth, where
+   *  set, instead of the time between its start and end. */
+  session_hours_field: string | null
+  /** How a course reaches its student groups. See `GroupResolution`. */
+  group_resolution: GroupResolution
+  /** What Education's `Leave` is worth. See `LeaveCountsAs`. */
+  leave_counts_as: LeaveCountsAs
 }
+
+/**
+ * How a course finds its student groups for a term.
+ *
+ * Education models two ways for a group to take a course. `Programme`: a
+ * `Student Group` names a programme and a term, and a `Program Course` row says
+ * the course is taught on that programme — which is how batch- and
+ * activity-based groups take a course, and what this register always did.
+ * `Course`: a course-based group names the course itself, in its own `course`
+ * field. `Both` takes the groups either way finds. Which one is right is how a
+ * school runs its groups, so it is the site's setting.
+ */
+export type GroupResolution = 'Programme' | 'Course' | 'Both'
+export const GROUP_RESOLUTIONS: GroupResolution[] = [
+  'Programme',
+  'Course',
+  'Both',
+]
+
+/**
+ * What a `Leave` mark counts as.
+ *
+ * `Absent`: a session the student missed like any other, so it earns nothing
+ * and still counts among the hours they could have had. `Excused`: the session
+ * is left out of that student's total altogether — neither earned nor possible —
+ * so a fortnight's sick leave does not read as a fortnight's truancy.
+ */
+export type LeaveCountsAs = 'Absent' | 'Excused'
+export const LEAVE_RULES: LeaveCountsAs[] = ['Absent', 'Excused']
+
+/** What `buildRegister` needs of the settings: the two rules that price a mark. */
+export type RegisterRules = Pick<RegisterFields, 'late_credit' | 'leave_counts_as'>
 
 /** A site that has named nothing. A late arrival is worth a full session there,
  *  the setting's own default — though without a late field there are none. */
@@ -85,6 +134,9 @@ export const NO_FIELDS: RegisterFields = {
   session_type_field: null,
   session_details_field: null,
   inactive_term_field: null,
+  session_hours_field: null,
+  group_resolution: 'Programme',
+  leave_counts_as: 'Absent',
 }
 
 /** What a fieldname can look like. The server has already checked each against
@@ -96,6 +148,15 @@ function fieldname(value: unknown): string | null {
   return typeof value === 'string' && FIELDNAME.test(value.trim())
     ? value.trim()
     : null
+}
+
+/** One of a rule's options, or its default for anything else. */
+function option<Option extends string>(
+  value: unknown,
+  options: Option[],
+  fallback: Option,
+): Option {
+  return options.includes(value as Option) ? (value as Option) : fallback
 }
 
 /**
@@ -117,6 +178,17 @@ export function registerFields(
     session_type_field: fieldname(raw?.session_type_field),
     session_details_field: fieldname(raw?.session_details_field),
     inactive_term_field: fieldname(raw?.inactive_term_field),
+    session_hours_field: fieldname(raw?.session_hours_field),
+    group_resolution: option(
+      raw?.group_resolution,
+      GROUP_RESOLUTIONS,
+      NO_FIELDS.group_resolution,
+    ),
+    leave_counts_as: option(
+      raw?.leave_counts_as,
+      LEAVE_RULES,
+      NO_FIELDS.leave_counts_as,
+    ),
   }
 }
 
@@ -171,7 +243,8 @@ export function markChanges(
  * `Student Attendance` has no such concept — so it is the site's setting, and
  * every figure on the page comes through here. Absent and unmarked both earn
  * nothing and stay distinguishable everywhere else: a student nobody has marked
- * is not a student who was away.
+ * is not a student who was away. Excused earns nothing either, and is taken out
+ * of the hours possible too — see `counts`.
  */
 export function credit(mark: Mark, lateCredit: number): number {
   if (mark === PRESENT) return 1
@@ -179,15 +252,28 @@ export function credit(mark: Mark, lateCredit: number): number {
   return 0
 }
 
+/** Whether a mark's session counts among the hours a student could have had.
+ *  Every mark but Excused, unmarked included: a session nobody has marked yet
+ *  is still one the student was timetabled for. */
+export function counts(mark: Mark): boolean {
+  return mark !== EXCUSED
+}
+
 /**
  * Two stored fields as the one word the page uses.
  *
- * `Leave` is Education's third status and this register does not offer it, so
- * it reads as absent rather than as a fourth thing the grid would have to draw
- * and the footings would have to price. A mark made in the desk stays legible
+ * `Leave` is Education's third status and this register does not offer it. By
+ * default it reads as absent, which is what the register always did; on a site
+ * that counts leave as excused it reads as `Excused`, which the grid draws and
+ * the footings leave out. Either way a mark made in the desk stays legible
  * here; it just cannot be made from here.
  */
-export function toMark(status: string | null, late: number | null): Mark {
+export function toMark(
+  status: string | null,
+  late: number | null,
+  leave: LeaveCountsAs = NO_FIELDS.leave_counts_as,
+): Mark {
+  if (status === LEAVE && leave === EXCUSED) return EXCUSED
   if (status !== PRESENT) return ABSENT
   return late ? LATE : PRESENT
 }
@@ -202,7 +288,7 @@ export function markFields(
   mark: Mark,
   fields: RegisterFields,
 ): Record<string, string | 0 | 1> {
-  const status = mark === ABSENT ? ABSENT : PRESENT
+  const status = mark === ABSENT ? ABSENT : mark === EXCUSED ? LEAVE : PRESENT
   return fields.late_field
     ? { status, [fields.late_field]: mark === LATE ? 1 : 0 }
     : { status }
@@ -256,11 +342,32 @@ function round(value: number): number {
  * against a row that predates the check — but a negative session would subtract
  * itself from a term total, which is a figure somebody would act on.
  */
-export function sessionHours(from: string | null, to: string | null): number {
+export function sessionHours(
+  from: string | null,
+  to: string | null,
+  stated: number | null = null,
+): number {
+  if (stated !== null) return round(stated)
   const start = hoursInto(from)
   const end = hoursInto(to)
   if (start === null || end === null) return 0
   return round(Math.max(end - start, 0))
+}
+
+/**
+ * A session's own hours, from the site's hours field, or null to work them out
+ * from its times.
+ *
+ * Only a positive number counts as set. A Float or Int field reads as 0 on every
+ * session nobody filled in — Frappe stores no "blank" for a number — so taking
+ * 0 at its word would make every such session worth nothing the day the setting
+ * is named. A session really worth no hours is one whose times say so.
+ */
+export function statedHours(value: unknown): number | null {
+  const hours = typeof value === 'string' && value.trim() ? Number(value) : value
+  return typeof hours === 'number' && Number.isFinite(hours) && hours > 0
+    ? hours
+    : null
 }
 
 /** An hours figure with the trailing zeroes off: `2.5`, `3`, `0`. Totals are
@@ -312,6 +419,9 @@ export interface ScheduleRow {
   to_time: string | null
   session_type: string | null
   session_details: string | null
+  /** The hours the site's hours field gives the session, or null where it has
+   *  none (or no such field) and the times decide. See `statedHours`. */
+  stated_hours?: number | null
 }
 
 /** A `Student Attendance`, the same way. See `markRow`. */
@@ -341,9 +451,11 @@ export function scheduleFieldList(fields: RegisterFields): string[] {
     'schedule_date',
     'from_time',
     'to_time',
-    ...[fields.session_type_field, fields.session_details_field].filter(
-      (name): name is string => Boolean(name),
-    ),
+    ...[
+      fields.session_type_field,
+      fields.session_details_field,
+      fields.session_hours_field,
+    ].filter((name): name is string => Boolean(name)),
   ]
 }
 
@@ -372,6 +484,9 @@ export function scheduleRow(row: ApiRow, fields: RegisterFields): ScheduleRow {
       : null,
     session_details: fields.session_details_field
       ? text(row[fields.session_details_field])
+      : null,
+    stated_hours: fields.session_hours_field
+      ? statedHours(row[fields.session_hours_field])
       : null,
   }
 }
@@ -436,6 +551,10 @@ export interface Block {
   /** Hours earned, per student. Less than `scheduled` for anybody who missed a
    *  session or arrived late at one. */
   credited: Record<string, number>
+  /** Hours each student could have earned: `scheduled`, less any session they
+   *  were excused. The same as `scheduled` for everybody on a site that reads
+   *  leave as absent. */
+  possible: Record<string, number>
 }
 
 export interface GroupStudent {
@@ -451,6 +570,7 @@ export interface GroupRegister {
   blocks: Block[]
   scheduled: number
   credited: Record<string, number>
+  possible: Record<string, number>
 }
 
 export interface Register {
@@ -485,6 +605,9 @@ export function courseChip(course: CourseRow): string {
  * students and its own sessions — which is the bug this shape exists to make
  * impossible, because the register this replaced totalled the *first* group's
  * hours under every group on the page.
+ *
+ * `rules` are the two settings that price a mark: what a late arrival earns and
+ * what leave counts as.
  */
 export function buildRegister(
   rows: {
@@ -493,8 +616,9 @@ export function buildRegister(
     schedules: ScheduleRow[]
     marks: MarkRow[]
   },
-  lateCredit: number,
+  rules: RegisterRules,
 ): Register {
+  const lateCredit = rules.late_credit
   const byGroup = new Map<string, GroupStudent[]>()
   for (const row of rows.students) {
     const list = byGroup.get(row.parent) ?? []
@@ -508,7 +632,10 @@ export function buildRegister(
   const bySession = new Map<string, Record<string, SessionMark>>()
   for (const row of rows.marks) {
     const marks = bySession.get(row.course_schedule) ?? {}
-    marks[row.student] = { name: row.name, mark: toMark(row.status, row.late) }
+    marks[row.student] = {
+      name: row.name,
+      mark: toMark(row.status, row.late, rules.leave_counts_as),
+    }
     bySession.set(row.course_schedule, marks)
   }
 
@@ -518,7 +645,7 @@ export function buildRegister(
     schedule_date: row.schedule_date,
     from_time: row.from_time,
     to_time: row.to_time,
-    hours: sessionHours(row.from_time, row.to_time),
+    hours: sessionHours(row.from_time, row.to_time, row.stated_hours ?? null),
     session_type: row.session_type || null,
     session_details: row.session_details || null,
     marks: bySession.get(row.name) ?? {},
@@ -559,18 +686,28 @@ function buildGroup(
     scheduled: round(
       blocks.reduce((total, block) => total + block.scheduled, 0),
     ),
-    credited: Object.fromEntries(
-      students.map((student) => [
-        student.student,
-        round(
-          blocks.reduce(
-            (total, block) => total + (block.credited[student.student] ?? 0),
-            0,
-          ),
-        ),
-      ]),
-    ),
+    credited: sumBlocks(blocks, students, 'credited'),
+    possible: sumBlocks(blocks, students, 'possible'),
   }
+}
+
+/** Each student's figure, added up across the blocks. */
+function sumBlocks(
+  blocks: Block[],
+  students: GroupStudent[],
+  key: 'credited' | 'possible',
+): Record<string, number> {
+  return Object.fromEntries(
+    students.map((student) => [
+      student.student,
+      round(
+        blocks.reduce(
+          (total, block) => total + (block[key][student.student] ?? 0),
+          0,
+        ),
+      ),
+    ]),
+  )
 }
 
 /**
@@ -597,7 +734,8 @@ function sessionTypes(sessions: Session[]): (string | null)[] {
  *
  * `scheduled` is what was timetabled and `credited` is what each student earned
  * of it — the same figure only for somebody who was at all of it on time, which
- * is the comparison the block exists to make.
+ * is the comparison the block exists to make. `possible` is what each student
+ * could have earned: `scheduled` less what they were excused.
  */
 function buildBlock(
   sessionType: string | null,
@@ -628,5 +766,109 @@ function buildBlock(
         ),
       ]),
     ),
+    possible: Object.fromEntries(
+      students.map((student) => [
+        student.student,
+        round(
+          sessions.reduce(
+            (total, session) =>
+              counts(session.marks[student.student]?.mark ?? UNMARKED)
+                ? total + session.hours
+                : total,
+            0,
+          ),
+        ),
+      ]),
+    ),
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reading every row                                                           */
+/* -------------------------------------------------------------------------- */
+
+/** Rows asked for per request. Big enough that a term's register is a handful
+ *  of requests, small enough that no one response is a burden. */
+export const PAGE_SIZE = 500
+
+/** The most rows one list is read to. Not a limit any school's register should
+ *  meet — it is there so that a runaway list stops rather than paging for ever,
+ *  and a list that reaches it says so on the page (`complete: false`). */
+export const MAX_ROWS = 20000
+
+/** A list read through, and whether it is all of it. */
+export interface Paged<Row> {
+  rows: Row[]
+  complete: boolean
+}
+
+/**
+ * Every row of a list, one page at a time.
+ *
+ * `document_list` and `frappe.client.get_list` both default to twenty rows and
+ * have no "all", and a single fixed limit silently drops whatever is past it —
+ * a register with the last week of term missing looks exactly like one where
+ * nothing was timetabled. So a list is read until a page comes back short.
+ *
+ * At `maxRows` it stops and asks for one row more: none, and the list really
+ * was that long; one, and it was cut short, which is `complete: false` for the
+ * page to warn about rather than to hide.
+ */
+export async function pageThrough<Row>(
+  fetchPage: (start: number, length: number) => Promise<Row[]>,
+  pageSize = PAGE_SIZE,
+  maxRows = MAX_ROWS,
+): Promise<Paged<Row>> {
+  const rows: Row[] = []
+  for (;;) {
+    const length = Math.min(pageSize, maxRows - rows.length)
+    const page = await fetchPage(rows.length, length)
+    rows.push(...page)
+    if (page.length < length) return { rows, complete: true }
+    if (rows.length >= maxRows) {
+      const beyond = await fetchPage(rows.length, 1)
+      return { rows, complete: beyond.length === 0 }
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Which groups take a course                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** The two reads that find a course's groups, supplied by `attendance.ts`. */
+export interface GroupReads {
+  /** The programmes a `Program Course` row puts the course on. */
+  programmes: (course: string) => Promise<string[]>
+  /** The term's groups matching extra filters. */
+  groups: (filters: unknown[][]) => Promise<GroupRow[]>
+}
+
+/**
+ * The student groups that take a course in a term, found the way the site says.
+ *
+ * See `GroupResolution`. With `Both`, a group either way finds is listed once.
+ * Sorted by name, as the single read always was.
+ */
+export async function resolveGroups(
+  resolution: GroupResolution,
+  term: string,
+  course: string,
+  reads: GroupReads,
+): Promise<GroupRow[]> {
+  const termFilter = ['academic_term', '=', term]
+  const found: GroupRow[][] = []
+  if (resolution === 'Programme' || resolution === 'Both') {
+    const programmes = [...new Set(await reads.programmes(course))]
+    if (programmes.length)
+      found.push(await reads.groups([termFilter, ['program', 'in', programmes]]))
+  }
+  if (resolution === 'Course' || resolution === 'Both') {
+    found.push(await reads.groups([termFilter, ['course', '=', course]]))
+  }
+  const byName = new Map<string, GroupRow>()
+  for (const row of found.flat()) if (!byName.has(row.name)) byName.set(row.name, row)
+  return [...byName.values()].sort((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+  )
 }
