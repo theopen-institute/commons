@@ -58,5 +58,18 @@
   "options": "Print Format",
   "insert_after": "account_type",
   "description": "The Print Format a statement for a party of this type is downloaded with, from the statement page. It must be an enabled Print Format for this doctype. Left blank, the statement uses the one named <b>{Party Type} Account Statement</b> (for example <code>Customer Account Statement</code>), and refuses the download when neither exists."
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "Account-internal_account",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "Account",
+  "fieldname": "internal_account",
+  "label": "Internal Account",
+  "fieldtype": "Check",
+  "default": "0",
+  "insert_after": "balance_must_be",
+  "description": "Records money moving between this organisation's own departments rather than with anyone outside it. Profit and Loss can leave it out, and every account under it, with Hide Internal Accounts, when Commons Settings offers that filter."
  }
 ]

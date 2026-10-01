@@ -498,6 +498,9 @@ ignore_links_on_delete = ["Record Change Request"]
 before_request = [
 	"commons.better_navigation.home_page.set_home_page_flag",
 	"commons.derived_docfields.install",
+	# ERPNext's financial reports, before any of them is first run in the process.
+	# See `commons.banking.financial_statements`.
+	"commons.banking.financial_statements.install",
 ]
 # after_request = ["commons.utils.after_request"]
 
@@ -507,8 +510,9 @@ on_login = ["commons.better_navigation.home_page.set_home_page_on_login"]
 
 # Job Events
 # ----------
-# The workers run queries too, so they get the same engine the web does.
-before_job = ["commons.derived_docfields.install"]
+# The workers run queries too, so they get the same engine the web does; and
+# prepared reports run there, so they get the same financial statements.
+before_job = ["commons.derived_docfields.install", "commons.banking.financial_statements.install"]
 # after_job = ["commons.utils.after_job"]
 
 # after_file_upload = ["commons.utils.after_file_upload"]

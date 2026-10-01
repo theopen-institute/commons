@@ -112,5 +112,6 @@ class TestOverrideEnabled(TestCase):
 				"visual_email_editor": False,
 				"pseudo_islands": False,
 				"desk_todos": False,
+				"hide_internal_accounts": False,
 			},
 		)

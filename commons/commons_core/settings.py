@@ -122,6 +122,14 @@ ENABLE_CLEAR_INTERNAL_TRANSFERS = "enable_clearing_internal_transfers"
 # their own dates. Server-side only too.
 ENABLE_LOAN_OWN_DATES = "enable_loan_vouchers_on_own_dates"
 
+# Financial reports: what ERPNext's reports read back out of the books.
+# `commons.banking.financial_statements`, which cuts ERPNext's report columns
+# inside each fiscal year. Server-side only.
+ENABLE_FISCAL_YEAR_COLUMNS = "enable_fiscal_year_columns"
+# `commons.banking.financial_statements` again, and the report filter
+# `commons/public/js/hide_internal_accounts.js` adds
+ENABLE_HIDING_INTERNAL_ACCOUNTS = "enable_hiding_internal_accounts"
+
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.
 DESK_FEATURES = {
@@ -135,6 +143,7 @@ DESK_FEATURES = {
 	"visual_email_editor": ENABLE_VISUAL_EMAIL_EDITOR,
 	"pseudo_islands": ENABLE_PSEUDO_ISLANDS,
 	"desk_todos": ENABLE_DESK_TODOS,
+	"hide_internal_accounts": ENABLE_HIDING_INTERNAL_ACCOUNTS,
 }
 
 

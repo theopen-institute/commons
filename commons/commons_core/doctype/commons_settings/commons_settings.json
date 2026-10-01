@@ -39,7 +39,10 @@
   "enable_party_on_payable_payment_lines",
   "enable_payroll_lines_per_employee",
   "enable_clearing_internal_transfers",
-  "enable_loan_vouchers_on_own_dates"
+  "enable_loan_vouchers_on_own_dates",
+  "reports_section",
+  "enable_fiscal_year_columns",
+  "enable_hiding_internal_accounts"
  ],
  "fields": [
   {
@@ -259,12 +262,32 @@
    "fieldname": "enable_loan_vouchers_on_own_dates",
    "fieldtype": "Check",
    "label": "Enable Loan Vouchers on Their Own Dates"
+  },
+  {
+   "description": "How ERPNext's financial reports read the books back out. Neither changes what is in them.",
+   "fieldname": "reports_section",
+   "fieldtype": "Section Break",
+   "label": "Financial Reports"
+  },
+  {
+   "default": "0",
+   "description": "Gives a financial report filtered by Fiscal Year one column per fiscal year, from that year's own start date to its own end date and headed with its name. Without it ERPNext steps twelve calendar months from the first year's start and never asks where each year ends, so years that do not end on a month's last day, such as Bikram Sambat years, come out a day off, with an extra one-day column at the end that repeats the one before it. Monthly, quarterly and half-yearly columns also stay inside their year, and a stub of less than a week at a year's end joins the column before it. Reaches Profit and Loss, the Balance Sheet, Cash Flow and every other report that lays periods out as columns; a Date Range filter keeps ERPNext's own columns, as do years that do not follow one another day after day. Suspect this first if a report's columns are not the ones ERPNext would draw.",
+   "fieldname": "enable_fiscal_year_columns",
+   "fieldtype": "Check",
+   "label": "Enable Fiscal Year Columns"
+  },
+  {
+   "default": "0",
+   "description": "Adds a Hide Internal Accounts filter to Profit and Loss and the Gross and Net Profit Report. Ticked, it leaves out each Account with <b>Internal Account</b> ticked, and every account under one that is a group, before anything is added up, so the totals and net profit are those of what is left. Net profit only stays the same when the internal income and expense net to nothing. Nothing is hidden until the filter is ticked on the report itself, and Report Templates are not reached. Suspect this first if those reports' totals differ from the General Ledger's.",
+   "fieldname": "enable_hiding_internal_accounts",
+   "fieldtype": "Check",
+   "label": "Enable Hiding Internal Accounts"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-01 18:00:00.000000",
+ "modified": "2026-10-01 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

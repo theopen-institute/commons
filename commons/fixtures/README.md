@@ -16,7 +16,7 @@ rewritten.
 | File | What it holds |
 | --- | --- |
 | `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, one on Email Account, and two on Web Template |
-| `custom_field_erpnext.json` | The three fields the requests section adds to ERPNext's doctypes, and the statement's one on Party Type |
+| `custom_field_erpnext.json` | The three fields the requests section adds to ERPNext's doctypes, the statement's one on Party Type, and the financial reports' one on Account |
 | `property_setter.json` | Which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification, and the fieldtypes a Web Template's inputs may have |
 
 All of the Custom Fields are schema: code dereferences every one of them, and
@@ -211,6 +211,15 @@ doctype, and the download is refused when none does — Frappe would otherwise
 fall back to "Standard" and print the whole party record. On Party Type because
 that is the one record per party doctype, and ERPNext's, so the field is here
 and not in `custom_field.json`.
+
+**`Account.internal_account`** — which accounts record money moving between the
+organisation's own departments. Read by `commons.banking.financial_statements`,
+which leaves each such account, and everything under it, out of Profit and Loss
+and the Gross and Net Profit Report when their Hide Internal Accounts filter is
+ticked. That filter is only offered with "Enable Hiding Internal Accounts" ticked
+in Commons Settings, so without it the field is inert. Which accounts are
+internal is the site's to say, so the field is a fact about the account and not
+a list in the settings.
 
 ## Property Setters (`property_setter.json`)
 
