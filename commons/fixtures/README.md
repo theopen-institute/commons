@@ -184,13 +184,13 @@ one school's attendance register stores its answers in: `Course
 Schedule.custom_session_type` and `.custom_session_details`, `Student
 Attendance.custom_late` and `Academic Term.custom_inactive`. They were that
 school's vocabulary rather than the register's, so the file is gone, and the
-register reads whichever fields a site names in Attendance Register Settings (see
+register reads whichever fields a site names on the Attendance tab of Commons Settings (see
 `commons.attendance_register.register.register_fields`).
 
 Removing a fixture file deletes nothing: fixture sync only imports, and no
 cleanup looks for a record a file used to hold. So a site that had the four
-keeps them as its own Custom Fields, with their columns and rows, named in its
-Attendance Register Settings. Nothing
+keeps them as its own Custom Fields, with their columns and rows, named on its
+Commons Settings Attendance tab. Nothing
 ties them to this app afterwards either. Their `module` is empty, so
 `remove_app`, which deletes every record that links to one of the app's
 `Module Def`s, passes over them, and so does an export filtered by module. They

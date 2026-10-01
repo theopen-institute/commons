@@ -44,7 +44,7 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 
 #### Education (needs `education`)
 
-- **Attendance register** (`/commons/attendance`): mark student attendance for your student groups, within your User Permissions. **Attendance Register Settings** names any fields the site has added for a Late mark (and what it earns), session types, details and hours, and retired terms, and say how student groups are found and whether Leave counts as absent or excused.
+- **Attendance register** (`/commons/attendance`): mark student attendance for your student groups, within your User Permissions. The **Attendance** tab of Commons Settings names any fields the site has added for a Late mark (and what it earns), session types, details and hours, and retired terms, and says how student groups are found and whether Leave counts as absent or excused.
 
 #### Email
 

@@ -95,7 +95,13 @@ after_migrate = [
 # -- and `Module Def` records are only written at install. Without one, migrate
 # cannot import a doctype that names the module, so this has to run before the
 # doctype sync, not after it.
-before_migrate = ["commons.commons_core.install.sync_module_defs"]
+before_migrate = [
+	# TEMPORARY: Attendance Register Settings became the Attendance tab of
+	# Commons Settings; its values move before the orphan cleanup deletes it.
+	# Remove once every site has migrated. See its docstring.
+	"commons.commons_core.attendance_handover.run",
+	"commons.commons_core.install.sync_module_defs",
+]
 
 # The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
 # Manage Dock on a developer-mode site and press Export to App, and it is written to

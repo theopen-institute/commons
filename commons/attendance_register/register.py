@@ -7,12 +7,13 @@ them again before the desk's Awesome Bar offers the same page. And which of the
 site's own fields the register stores what Education has no field for:
 `register_fields`, which is the page's to call.
 
-A module of its own, with its own settings (`Attendance Register Settings`),
-because the register is not part of what Commons is: it is a page for a site
-that teaches, and it lives in this app only because this app's frontend draws
-it. It used to sit in a package called `education_extensions`, named after a
-module one site keeps its Custom DocTypes in, which is that site's own custom
-module now.
+Its settings are the Attendance tab of `Commons Settings`, each field named
+with an `attendance_` prefix so it reads as the register's beside the rest. They
+were a Single of their own for a while, `Attendance Register Settings`; one
+settings form for the app's pages turned out easier to find than two. The code
+used to sit in a package called `education_extensions`, named after a module
+one site keeps its Custom DocTypes in, which is that site's own custom module
+now.
 
 There was a good deal more here. An earlier version of the register assembled
 the whole page on the server: it resolved a term and a course into student
@@ -39,8 +40,10 @@ import frappe
 from frappe.utils import flt
 
 from commons.commons_core import apps
+from commons.commons_core.settings import _settings
 
-SETTINGS = "Attendance Register Settings"
+# What every one of the register's fields in Commons Settings starts with.
+PREFIX = "attendance_"
 
 COURSE_SCHEDULE = "Course Schedule"
 STUDENT_ATTENDANCE = "Student Attendance"
@@ -51,17 +54,18 @@ ACADEMIC_TERM = "Academic Term"
 # value is markup and would be shown as its tags.
 TEXT_FIELDTYPES = frozenset(("Data", "Select", "Link", "Autocomplete", "Small Text", "Text", "Long Text"))
 
-# Each register field: the settings field that names it, the doctype it must be
-# on, and the fieldtypes it may have. The keys are what the page is sent.
+# Each register field: the doctype it must be on and the fieldtypes it may
+# have. The keys are what the page is sent; the setting that names each is the
+# key with `PREFIX` in front.
 REGISTER_FIELDS = {
-	"late_field": ("late_field", STUDENT_ATTENDANCE, frozenset(("Check",))),
-	"session_type_field": ("session_type_field", COURSE_SCHEDULE, TEXT_FIELDTYPES),
-	"session_details_field": ("session_details_field", COURSE_SCHEDULE, TEXT_FIELDTYPES),
-	"inactive_term_field": ("inactive_term_field", ACADEMIC_TERM, frozenset(("Check",))),
-	"session_hours_field": ("session_hours_field", COURSE_SCHEDULE, frozenset(("Float", "Int"))),
+	"late_field": (STUDENT_ATTENDANCE, frozenset(("Check",))),
+	"session_type_field": (COURSE_SCHEDULE, TEXT_FIELDTYPES),
+	"session_details_field": (COURSE_SCHEDULE, TEXT_FIELDTYPES),
+	"inactive_term_field": (ACADEMIC_TERM, frozenset(("Check",))),
+	"session_hours_field": (COURSE_SCHEDULE, frozenset(("Float", "Int"))),
 }
 
-LATE_CREDIT = "late_credit"
+LATE_CREDIT = PREFIX + "late_credit"
 
 # What a late arrival earns where the setting has never been saved: the field's
 # own default, which counts it as fully present. Nothing about lateness is this
@@ -85,21 +89,6 @@ CHOICES = {
 	"group_resolution": (("Programme", "Course", "Both"), "Programme"),
 	"leave_counts_as": (("Absent", "Excused"), "Absent"),
 }
-
-
-def _settings():
-	"""The cached settings document, or None between this app landing and its migrate.
-
-	The same guard as `commons.commons_core.settings._settings`: a Single whose
-	doctype is not there yet raises `ImportError`, and that is an answer here
-	rather than a fault -- unless the doctype is there, which makes it one.
-	"""
-	try:
-		return frappe.get_cached_doc(SETTINGS)
-	except (ImportError, frappe.DoesNotExistError):
-		if frappe.db.exists("DocType", SETTINGS):
-			raise
-		return None
 
 
 def available() -> bool:
@@ -141,9 +130,8 @@ def register_fields() -> dict:
 
 	Education has nowhere to say that a session was a seminar, what it covered,
 	that a student came late, or that a term is not run any more. A school that
-	wants any of them adds a Custom Field and names it in Attendance Register
-	Settings; this
-	is how the page learns which. Every key is a fieldname or None, and None is
+	wants any of them adds a Custom Field and names it on the Attendance tab of
+	Commons Settings; this is how the page learns which. Every key is a fieldname or None, and None is
 	the page doing without: no Late mark, no grouping by type, no details line,
 	every term in the picker, and hours read off each session's times.
 
@@ -161,10 +149,10 @@ def register_fields() -> dict:
 	says to anybody who can open it, and nothing about any row.
 	"""
 	settings = _settings()
-	fields = {key: valid_field(settings, *spec) for key, spec in REGISTER_FIELDS.items()}
+	fields = {key: valid_field(settings, PREFIX + key, *spec) for key, spec in REGISTER_FIELDS.items()}
 	fields["late_credit"] = late_credit(settings)
-	for setting, (options, default) in CHOICES.items():
-		fields[setting] = choice(settings, setting, options, default)
+	for key, (options, default) in CHOICES.items():
+		fields[key] = choice(settings, PREFIX + key, options, default)
 	return fields
 
 

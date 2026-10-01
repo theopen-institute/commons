@@ -29,6 +29,14 @@ class CommonsSettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		attendance_group_resolution: DF.Literal["Programme", "Course", "Both"]
+		attendance_inactive_term_field: DF.Data | None
+		attendance_late_credit: DF.Float
+		attendance_late_field: DF.Data | None
+		attendance_leave_counts_as: DF.Literal["Absent", "Excused"]
+		attendance_session_details_field: DF.Data | None
+		attendance_session_hours_field: DF.Data | None
+		attendance_session_type_field: DF.Data | None
 		change_request_allow_self_approval: DF.Check
 		change_request_applying_outcome: DF.Data | None
 		enable_bikram_sambat: DF.Check

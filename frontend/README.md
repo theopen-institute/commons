@@ -329,7 +329,7 @@ real record and nothing on screen showed it.
 
 **The arithmetic is in `src/data/attendanceRegister.ts`**, which is pure and
 tested (`yarn test`). What a late arrival is worth is a site's setting
-(Attendance Register Settings, *Late Arrival Credit*), and so is what Education's
+(Commons Settings, Attendance tab, *Late Arrival Credit*), and so is what Education's
 `Leave` status counts as (*Leave Counts As*); both are handed to `buildRegister`
 once, and the blocks and footings are all built from them. Leave as *Absent*
 earns nothing and still counts among the hours possible; as *Excused* it is
@@ -383,7 +383,7 @@ so a row that is there is a register that exists.
 
 The section is absent without the education module — `Course Schedule` and
 `Student Attendance` are what it is made of. Everything else is optional, and
-is a field the site adds itself and names in **Attendance Register Settings**:
+is a field the site adds itself and names on the **Attendance** tab of Commons Settings:
 
 | Setting               | A field on                    | What the register does with it                      | Left blank           |
 | --------------------- | ----------------------------- | --------------------------------------------------- | -------------------- |
@@ -414,7 +414,7 @@ The register this page was first written for keeps them as
 `custom_late` (worth half a session), `custom_session_type`,
 `custom_session_details` and `custom_inactive`. This app shipped those four as
 fixtures until it stopped hardwiring one school's fields; they are that site's
-own Custom Fields now, named in its Attendance Register Settings.
+own Custom Fields now, named on its Commons Settings Attendance tab.
 
 A `Course` wants a `default_instructor` and a default classroom: `Course
 Schedule` requires both and the site fetches them from there, and this page

@@ -144,8 +144,8 @@ const fieldsCall = useCall<Partial<RegisterFields>>({
 })
 
 /**
- * The site's fields for what Education does not record, as Attendance Register Settings
- * names them. Until they are in, the register reads as a site that named none
+ * The site's fields for what Education does not record, as the Attendance
+ * tab of Commons Settings names them. Until they are in, the register reads as a site that named none
  * — but nothing reads or writes before they are: every read below waits on
  * `loadAttendanceFields`, since a register read without the late field would
  * show every late arrival as on time, and a mark saved from it would clear the
