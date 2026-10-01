@@ -20,7 +20,7 @@ import { procurementCan, procurementPermissionsLoaded } from './procurement'
  * The three sit beside each other in `data/requests/` for the same reason they
  * sit in one Python module: they are one thing three times over. Leave and
  * expenses are literally built from one factory (`section.ts`); procurement
- * keeps its own module because its queue is grouped by the budget it spends.
+ * keeps its own module because its queue is grouped by department.
  */
 export type RequestSectionKey = 'leave' | 'expense' | 'procurement'
 

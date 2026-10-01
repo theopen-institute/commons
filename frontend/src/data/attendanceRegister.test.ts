@@ -1,16 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildRegister,
-  CREDIT,
+  credit,
   formatHours,
   formatTime,
   markChanges,
+  markFieldList,
   markFields,
+  markRow,
+  marksOffered,
+  NO_FIELDS,
+  registerFields,
+  scheduleFieldList,
+  scheduleRow,
+  sessionFields,
   sessionHours,
   toMark,
   type GroupRow,
   type Mark,
   type MarkRow,
+  type RegisterFields,
   type ScheduleRow,
   type StudentRow,
 } from './attendanceRegister'
@@ -32,10 +41,21 @@ import {
  * * a footing that is the sum of a different set of sessions from the ones
  *   drawn above it, which is what the register this replaced actually did: it
  *   totalled the *first* group's hours under every group on the page;
- * * `Present` plus `custom_late` read as anything but `Late`, in either
+ * * `Present` plus the late flag read as anything but `Late`, in either
  *   direction, which silently rewrites a term of marks the first time one is
- *   saved.
+ *   saved;
+ * * a field the site has not named being read, written or offered anyway,
+ *   which on a site without it fails every read the page makes.
  */
+
+/** The register this page was written for: its four fields, and late worth half. */
+const REGISTER: RegisterFields = {
+  late_field: 'custom_late',
+  late_credit: 0.5,
+  session_type_field: 'custom_session_type',
+  session_details_field: 'custom_session_details',
+  inactive_term_field: 'custom_inactive',
+}
 
 function student(name: string, group = 'Group A'): StudentRow {
   return { parent: group, student: name, student_name: name.toUpperCase() }
@@ -54,8 +74,8 @@ function schedule(
     schedule_date: '2025-09-01',
     from_time: from,
     to_time: to,
-    custom_session_type: type,
-    custom_session_details: null,
+    session_type: type,
+    session_details: null,
   }
 }
 
@@ -64,7 +84,8 @@ function mark(session: string, who: string, value: Mark): MarkRow {
     name: `ATT-${session}-${who}`,
     course_schedule: session,
     student: who,
-    ...markFields(value),
+    status: value === 'Absent' ? 'Absent' : 'Present',
+    late: value === 'Late' ? 1 : 0,
   }
 }
 
@@ -97,32 +118,158 @@ describe('what a mark means', () => {
   })
 
   it('writes late back as present with the flag', () => {
-    expect(markFields('Late')).toEqual({ status: 'Present', custom_late: 1 })
+    expect(markFields('Late', REGISTER)).toEqual({
+      status: 'Present',
+      custom_late: 1,
+    })
   })
 
   // Explicitly off, not merely absent: a student marked late and then corrected
   // to present has a row with the flag already set, and an update that left the
   // field out would leave them late for ever.
   it('writes present back with the flag off', () => {
-    expect(markFields('Present')).toEqual({ status: 'Present', custom_late: 0 })
+    expect(markFields('Present', REGISTER)).toEqual({
+      status: 'Present',
+      custom_late: 0,
+    })
   })
 
   it('survives the round trip for every mark', () => {
     for (const value of ['Present', 'Late', 'Absent'] as Mark[]) {
-      const fields = markFields(value)
-      expect(toMark(fields.status, fields.custom_late)).toBe(value)
+      const fields = markFields(value, REGISTER)
+      expect(toMark(String(fields.status), Number(fields.custom_late))).toBe(
+        value,
+      )
     }
+  })
+
+  it('writes the flag under whatever the site calls it', () => {
+    expect(
+      markFields('Late', { ...REGISTER, late_field: 'arrived_late' }),
+    ).toEqual({
+      status: 'Present',
+      arrived_late: 1,
+    })
+  })
+
+  // A site with no late field: naming one would refuse every save.
+  it('writes only the status where there is no late field', () => {
+    expect(markFields('Present', NO_FIELDS)).toEqual({ status: 'Present' })
+    expect(markFields('Absent', NO_FIELDS)).toEqual({ status: 'Absent' })
+  })
+
+  it('offers late only where there is a field to keep it in', () => {
+    expect(marksOffered(REGISTER)).toEqual(['Present', 'Late', 'Absent', ''])
+    expect(marksOffered(NO_FIELDS)).toEqual(['Present', 'Absent', ''])
   })
 })
 
-describe('what saving a session\'s marks writes', () => {
+describe("which of the site's fields are used", () => {
+  it('reads nothing the site has not named', () => {
+    expect(scheduleFieldList(NO_FIELDS)).toEqual([
+      'name',
+      'student_group',
+      'schedule_date',
+      'from_time',
+      'to_time',
+    ])
+    expect(markFieldList(NO_FIELDS)).toEqual([
+      'name',
+      'course_schedule',
+      'student',
+      'status',
+    ])
+  })
+
+  it('reads what it has named', () => {
+    expect(scheduleFieldList(REGISTER)).toContain('custom_session_type')
+    expect(scheduleFieldList(REGISTER)).toContain('custom_session_details')
+    expect(markFieldList(REGISTER)).toContain('custom_late')
+  })
+
+  it("brings a row under the register's own names", () => {
+    const row = {
+      name: 'CS-1',
+      student_group: 'Group A',
+      schedule_date: '2025-09-01',
+      from_time: '9:00:00',
+      to_time: '11:00:00',
+      custom_session_type: 'Seminar',
+      custom_session_details: 'Week one',
+    }
+    expect(scheduleRow(row, REGISTER)).toMatchObject({
+      session_type: 'Seminar',
+      session_details: 'Week one',
+    })
+    // The same row on a site that names neither: the values are not read even
+    // if they happen to be there.
+    expect(scheduleRow(row, NO_FIELDS)).toMatchObject({
+      session_type: null,
+      session_details: null,
+    })
+  })
+
+  it('reads nobody as late without a late field', () => {
+    const row = {
+      name: 'SA-1',
+      course_schedule: 'CS-1',
+      student: 'ann',
+      status: 'Present',
+      custom_late: 1,
+    }
+    expect(markRow(row, REGISTER).late).toBe(1)
+    expect(markRow(row, NO_FIELDS).late).toBe(0)
+  })
+
+  it("writes a session's type and details only into fields the site has", () => {
+    const values = { session_type: 'Seminar', session_details: '' }
+    expect(sessionFields(REGISTER, values)).toEqual({
+      custom_session_type: 'Seminar',
+      custom_session_details: null,
+    })
+    expect(sessionFields(NO_FIELDS, values)).toEqual({})
+  })
+
+  it('treats a missing answer as a site that named nothing', () => {
+    expect(registerFields(null)).toEqual(NO_FIELDS)
+    expect(registerFields({})).toEqual(NO_FIELDS)
+  })
+
+  it('holds the late credit between none and all of a session', () => {
+    expect(registerFields({ late_credit: 0.5 }).late_credit).toBe(0.5)
+    expect(registerFields({ late_credit: 0 }).late_credit).toBe(0)
+    expect(registerFields({ late_credit: 2 }).late_credit).toBe(1)
+    expect(registerFields({ late_credit: -1 }).late_credit).toBe(0)
+    expect(registerFields({ late_credit: Number.NaN }).late_credit).toBe(1)
+  })
+
+  // The names go into filters and field lists. The server has checked them
+  // against the meta; this is only so that nothing else ever gets that far.
+  it('drops anything that is not a fieldname', () => {
+    expect(
+      registerFields({
+        ...REGISTER,
+        late_field: 'custom_late; drop',
+        session_type_field: '',
+      }).late_field,
+    ).toBeNull()
+    expect(
+      registerFields({ ...REGISTER, inactive_term_field: ' custom_inactive ' })
+        .inactive_term_field,
+    ).toBe('custom_inactive')
+  })
+})
+
+describe("what saving a session's marks writes", () => {
   const stored = {
     asmita: { name: 'SA-1', mark: 'Present' as Mark },
     bikash: { name: 'SA-2', mark: 'Absent' as Mark },
   }
 
   it('writes nothing for a draft that matches what is stored', () => {
-    expect(markChanges(stored, { asmita: 'Present', bikash: 'Absent', chandra: '' })).toEqual({
+    expect(
+      markChanges(stored, { asmita: 'Present', bikash: 'Absent', chandra: '' }),
+    ).toEqual({
       insert: [],
       update: [],
       remove: [],
@@ -130,7 +277,9 @@ describe('what saving a session\'s marks writes', () => {
   })
 
   it('creates, changes and clears only what moved', () => {
-    expect(markChanges(stored, { asmita: 'Late', bikash: '', chandra: 'Present' })).toEqual({
+    expect(
+      markChanges(stored, { asmita: 'Late', bikash: '', chandra: 'Present' }),
+    ).toEqual({
       insert: [{ student: 'chandra', mark: 'Present' }],
       update: [{ name: 'SA-1', mark: 'Late' }],
       remove: ['SA-2'],
@@ -138,7 +287,11 @@ describe('what saving a session\'s marks writes', () => {
   })
 
   it('leaves alone a student the draft does not mention', () => {
-    expect(markChanges(stored, {})).toEqual({ insert: [], update: [], remove: [] })
+    expect(markChanges(stored, {})).toEqual({
+      insert: [],
+      update: [],
+      remove: [],
+    })
   })
 })
 
@@ -177,10 +330,13 @@ describe('how long a session is', () => {
 })
 
 describe('what a student earns', () => {
-  const register = buildRegister({
+  const rows = {
     groups: [GROUP_A],
     students: [student('ann'), student('bob'), student('cal'), student('dee')],
-    schedules: [schedule('one', '09:00:00', '11:00:00'), schedule('two', '09:00:00', '12:00:00')],
+    schedules: [
+      schedule('one', '09:00:00', '11:00:00'),
+      schedule('two', '09:00:00', '12:00:00'),
+    ],
     marks: [
       mark('one', 'ann', 'Present'),
       mark('one', 'bob', 'Late'),
@@ -189,7 +345,8 @@ describe('what a student earns', () => {
       mark('two', 'bob', 'Present'),
       mark('two', 'cal', 'Present'),
     ],
-  })
+  }
+  const register = buildRegister(rows, REGISTER.late_credit)
   const block = register.groups[0].blocks[0]
 
   it('foots the block to what was timetabled', () => {
@@ -200,8 +357,15 @@ describe('what a student earns', () => {
     expect(block.credited.ann).toBe(5)
   })
 
-  it('credits half a session for being late', () => {
+  it("credits a late arrival with the site's share of the session", () => {
+    // Half of the 2h session, on the register's own rule.
     expect(block.credited.bob).toBe(4)
+  })
+
+  it('takes that share from the setting, not from this file', () => {
+    expect(buildRegister(rows, 1).groups[0].blocks[0].credited.bob).toBe(5)
+    expect(buildRegister(rows, 0).groups[0].blocks[0].credited.bob).toBe(3)
+    expect(buildRegister(rows, 0.25).groups[0].blocks[0].credited.bob).toBe(3.5)
   })
 
   it('credits none of it for being absent', () => {
@@ -215,11 +379,16 @@ describe('what a student earns', () => {
     expect(block.credited.dee).toBe(0)
     expect(block.sessions[0].marks.dee).toBeUndefined()
     expect(block.sessions[0].marks.cal.mark).toBe('Absent')
-    expect(CREDIT['']).toBe(CREDIT.Absent)
+    expect(credit('', 0.5)).toBe(credit('Absent', 0.5))
   })
 
   it('foots every student in the group, so a column is never missing', () => {
-    expect(Object.keys(block.credited).sort()).toEqual(['ann', 'bob', 'cal', 'dee'])
+    expect(Object.keys(block.credited).sort()).toEqual([
+      'ann',
+      'bob',
+      'cal',
+      'dee',
+    ])
   })
 
   it('carries the document id behind each mark, which a change is addressed to', () => {
@@ -228,22 +397,25 @@ describe('what a student earns', () => {
 })
 
 describe('how a group is drawn', () => {
-  const register = buildRegister({
-    groups: [GROUP_A],
-    students: [student('ann'), student('bob')],
-    schedules: [
-      schedule('w', '09:00:00', '11:00:00', 'Workshop'),
-      schedule('s', '09:00:00', '12:00:00', 'Seminar'),
-      schedule('u', '09:00:00', '10:00:00', null),
-    ],
-    marks: [
-      mark('w', 'ann', 'Present'),
-      mark('w', 'bob', 'Absent'),
-      mark('s', 'ann', 'Late'),
-      mark('s', 'bob', 'Present'),
-      mark('u', 'ann', 'Present'),
-    ],
-  })
+  const register = buildRegister(
+    {
+      groups: [GROUP_A],
+      students: [student('ann'), student('bob')],
+      schedules: [
+        schedule('w', '09:00:00', '11:00:00', 'Workshop'),
+        schedule('s', '09:00:00', '12:00:00', 'Seminar'),
+        schedule('u', '09:00:00', '10:00:00', null),
+      ],
+      marks: [
+        mark('w', 'ann', 'Present'),
+        mark('w', 'bob', 'Absent'),
+        mark('s', 'ann', 'Late'),
+        mark('s', 'bob', 'Present'),
+        mark('u', 'ann', 'Present'),
+      ],
+    },
+    REGISTER.late_credit,
+  )
   const group = register.groups[0]
 
   it('orders blocks alphabetically with the untyped one last', () => {
@@ -255,11 +427,9 @@ describe('how a group is drawn', () => {
   })
 
   it('puts only its own sessions in each block', () => {
-    expect(group.blocks.map((block) => block.sessions.map((s) => s.name))).toEqual([
-      ['s'],
-      ['w'],
-      ['u'],
-    ])
+    expect(
+      group.blocks.map((block) => block.sessions.map((s) => s.name)),
+    ).toEqual([['s'], ['w'], ['u']])
   })
 
   it('foots the group to the sum of its blocks', () => {
@@ -278,12 +448,15 @@ describe('how a group is drawn', () => {
 
   it('titles a group by its own name, falling back to its id', () => {
     expect(group.title).toBe('Semester 1')
-    const bare = buildRegister({
-      groups: [{ ...GROUP_A, student_group_name: null }],
-      students: [],
-      schedules: [],
-      marks: [],
-    })
+    const bare = buildRegister(
+      {
+        groups: [{ ...GROUP_A, student_group_name: null }],
+        students: [],
+        schedules: [],
+        marks: [],
+      },
+      REGISTER.late_credit,
+    )
     expect(bare.groups[0].title).toBe('Group A')
   })
 })
@@ -293,12 +466,23 @@ describe('two groups on the same course', () => {
   // programme and the same course, so a register that filtered its sessions
   // anywhere but per group would hand Group B a session it never had — and foot
   // its hours accordingly.
-  const register = buildRegister({
-    groups: [GROUP_A, { name: 'Group B', student_group_name: null, program: 'W&R', disabled: 0 }],
-    students: [student('ann'), student('bob', 'Group B')],
-    schedules: [schedule('one', '09:00:00', '11:00:00')],
-    marks: [mark('one', 'ann', 'Present')],
-  })
+  const register = buildRegister(
+    {
+      groups: [
+        GROUP_A,
+        {
+          name: 'Group B',
+          student_group_name: null,
+          program: 'W&R',
+          disabled: 0,
+        },
+      ],
+      students: [student('ann'), student('bob', 'Group B')],
+      schedules: [schedule('one', '09:00:00', '11:00:00')],
+      marks: [mark('one', 'ann', 'Present')],
+    },
+    REGISTER.late_credit,
+  )
 
   it('gives each group only its own students', () => {
     expect(register.groups[0].students.map((s) => s.student)).toEqual(['ann'])
@@ -310,5 +494,51 @@ describe('two groups on the same course', () => {
     expect(register.groups[1].blocks).toEqual([])
     expect(register.groups[1].scheduled).toBe(0)
     expect(register.groups[1].credited.bob).toBe(0)
+  })
+})
+
+describe('a site that keeps no session type', () => {
+  // Every session reads as untyped, so they are one block and one footing: the
+  // page draws that block without a heading.
+  const register = buildRegister(
+    {
+      groups: [GROUP_A],
+      students: [student('ann')],
+      schedules: [
+        scheduleRow(
+          {
+            name: 'a',
+            student_group: 'Group A',
+            from_time: '9:00:00',
+            to_time: '10:00:00',
+            custom_session_type: 'Seminar',
+          },
+          NO_FIELDS,
+        ),
+        scheduleRow(
+          {
+            name: 'b',
+            student_group: 'Group A',
+            from_time: '9:00:00',
+            to_time: '11:00:00',
+            custom_session_type: 'Workshop',
+          },
+          NO_FIELDS,
+        ),
+      ],
+      marks: [],
+    },
+    NO_FIELDS.late_credit,
+  )
+
+  it('puts every session in one block', () => {
+    expect(
+      register.groups[0].blocks.map((block) => block.session_type),
+    ).toEqual([null])
+    expect(register.groups[0].blocks[0].sessions.map((s) => s.name)).toEqual([
+      'a',
+      'b',
+    ])
+    expect(register.groups[0].scheduled).toBe(3)
   })
 })

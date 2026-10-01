@@ -6,7 +6,7 @@ referenced to its own entry is not offered, so not flagged; and an entry that
 pays out more than it charges is flagged but refused, because marking it would
 hide a real payment.
 
-Against register.localhost, in a rolled-back transaction, every flagged line
+Against a real site, in a rolled-back transaction, every flagged line
 was on Payment Reconciliation's payment side, the fix removed exactly those,
 and the invoice side, the GL and the payment ledger did not change.
 """
@@ -25,7 +25,7 @@ def line(idx, paying, voucher="JV-1", reference_type="", party="E1"):
 		posting_date="2024-07-30",
 		row_name=f"{voucher}-{idx}",
 		idx=idx,
-		account="TDS 11211",
+		account="TDS Payable",
 		party_type="Employee",
 		party=party,
 		paying=paying,

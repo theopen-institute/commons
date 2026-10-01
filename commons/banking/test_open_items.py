@@ -3,9 +3,9 @@ ledger row counts. Site-less.
 
 That the outstanding of every voucher agrees with ERPNext's Accounts
 Receivable and Accounts Payable (run with a report date far in the future) was
-checked against register.localhost on 2026-09-29: every company, both reports,
+checked against a real site on 2026-09-29: every company, both reports,
 no voucher different. So was the date: at 2025-06-30 Accounts Payable found 97
-payables open for Kula; this report 95, the two others having been paid since.
+payables open for one company; this report 95, the two others having been paid since.
 """
 
 from datetime import date

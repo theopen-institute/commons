@@ -21,8 +21,7 @@ class TestProcurementHelpers(TestCase):
 		self.frappe.get_cached_value.return_value = "Nos"
 
 	def test_committed_quantity_is_converted_to_current_request_uom(self):
-		# What has been ordered is the budget's answer (`budget.ordered_stock_qty`);
-		# converting it back into the request's unit is this helper's.
+		# What has been ordered is `ordered_stock_qty`'s answer; converting it back into the request's unit is this helper's.
 		self.enterContext(patch.object(procurement, "ordered_stock_qty", return_value={"ROW": 24}))
 		row = SimpleNamespace(name="ROW", item_code="ITEM", uom="Box")
 		with patch(

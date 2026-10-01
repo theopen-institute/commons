@@ -1,14 +1,14 @@
 """The reconciliation page's two navigation answers, and the refusals its one
 write makes before it writes anything.
 
-Site-less, like `education_extensions.test_attendance`. What is pinned here is
+Site-less, like `better_navigation.test_attendance`. What is pinned here is
 the part that fails quietly: a split of a deposit that the server accepts and
 ERPNext then rejects halfway through (after the repayments were submitted), or a
 loan from another company booked against this bank's statement.
 
 What a repayment actually posts, and that the match lands, is lending's and
-ERPNext's to get right. It was checked by hand against register.localhost's
-data (see `reconciliation.py`), and is not restated with mocks here.
+ERPNext's to get right. It was checked by hand against a site's real data
+(see `reconciliation.py`), and is not restated with mocks here.
 """
 
 import datetime
@@ -81,7 +81,7 @@ def line(**overrides):
 		"deposit": 5000,
 		"withdrawal": 0,
 		"unallocated_amount": 5000,
-		"company": "Open Institute (Nepal)",
+		"company": "Example Company",
 		"currency": "NPR",
 	}
 	values.update(overrides)
@@ -93,9 +93,9 @@ class TestTheSplitIsCheckedFirst(TestCase):
 
 	def setUp(self):
 		companies = {
-			"LOAN-A": "Open Institute (Nepal)",
-			"LOAN-B": "Open Institute (Nepal)",
-			"LOAN-KC": "Kula",
+			"LOAN-A": "Example Company",
+			"LOAN-B": "Example Company",
+			"LOAN-KC": "Other Company",
 		}
 		db = SimpleNamespace(get_value=lambda doctype, name, field: companies.get(name))
 		self.enterContext(patch.object(reconciliation.frappe, "db", db))
@@ -141,7 +141,7 @@ class TestTheSplitIsCheckedFirst(TestCase):
 		self.refused(line(docstatus=0), [{"loan": "LOAN-A", "amount": 5000}], "submitted")
 
 	def test_another_companys_loan_is_refused(self):
-		self.refused(line(), [{"loan": "LOAN-KC", "amount": 5000}], "belongs to Kula")
+		self.refused(line(), [{"loan": "LOAN-KC", "amount": 5000}], "belongs to Other Company")
 
 	def test_a_loan_that_does_not_exist_is_refused(self):
 		self.refused(line(), [{"loan": "LOAN-GONE", "amount": 5000}], "does not exist")
@@ -232,12 +232,12 @@ class TestWhatAMatchMustLeaveBehind(TestCase):
 		self.enterContext(patch.object(reconciliation, "flt", side_effect=_flt))
 
 	def test_a_repayment_lending_redated_is_refused(self):
-		"""Server scripts off: lending dates it the day it was booked, silently."""
+		"""Nothing keeps the date: lending dates it the day it was booked, silently."""
 		transaction = SimpleNamespace(date=datetime.date(2026, 9, 1))
 		booked_today = SimpleNamespace(name="LR-1", posting_date=datetime.datetime(2026, 9, 26, 10, 0))
 		with self.assertRaises(ValueError) as refusal:
 			reconciliation._require_statement_date(booked_today, transaction)
-		self.assertIn("server scripts", str(refusal.exception))
+		self.assertIn("Enable Loan Vouchers on Their Own Dates", str(refusal.exception))
 
 	def test_a_repayment_on_the_statement_date_passes(self):
 		transaction = SimpleNamespace(date=datetime.date(2026, 9, 1))
@@ -309,4 +309,38 @@ class TestWhoMayReadTheDimensions(TestCase):
 			patch.object(reconciliation.frappe, "throw", side_effect=ValueError),
 		):
 			with self.assertRaises(ValueError):
-				reconciliation.accounting_dimensions("Open Institute (Nepal)")
+				reconciliation.accounting_dimensions("Example Company")
+
+
+class TestApplicantTitles(TestCase):
+	"""`applicant_titles` reads a borrower's name by its doctype's title field."""
+
+	def titles(self, title_field="donor_name", readable=True, rows=()):
+		meta = SimpleNamespace(get_title_field=lambda: title_field)
+		with (
+			patch.object(reconciliation.apps, "has_doctype", return_value=True),
+			patch.object(reconciliation.frappe, "has_permission", return_value=readable),
+			patch.object(reconciliation.frappe, "get_meta", return_value=meta),
+			patch.object(reconciliation.frappe, "get_list", return_value=list(rows)) as read,
+		):
+			return reconciliation.applicant_titles("Donor", '["DON-1", "DON-2"]'), read
+
+	def test_by_the_title_field_from_meta(self):
+		found, read = self.titles(
+			rows=[
+				frappe._dict(name="DON-1", donor_name="A Donor"),
+				frappe._dict(name="DON-2", donor_name=None),
+			]
+		)
+		self.assertEqual(found, {"DON-1": "A Donor"})
+		self.assertEqual(read.call_args.kwargs["fields"], ["name", "donor_name"])
+
+	def test_a_doctype_the_reader_may_not_read_answers_nothing(self):
+		found, read = self.titles(readable=False)
+		self.assertEqual(found, {})
+		read.assert_not_called()
+
+	def test_no_title_field_answers_nothing(self):
+		found, read = self.titles(title_field="name")
+		self.assertEqual(found, {})
+		read.assert_not_called()

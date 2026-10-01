@@ -15,20 +15,23 @@ Two ways of reading, chosen by what the file is
 part is knowing which column is which, and banks export them every which way:
 one amount column with a sign, one with Dr/Cr beside it, separate debit and
 credit columns, a header on row 7 below the bank's address. So Claude is shown
-the first rows (`SAMPLE_ROWS`) and asked only for the layout (`MAPPING`), and
+the first rows (`SAMPLE_ROWS`) and asked only for the layout (`mapping_schema`), and
 the rows are then read by `apply_mapping`, here, in code. A statement of a
 thousand lines costs one small call, and no figure is ever copied by a model.
 
 **A PDF or an image** has no columns to map, so Claude copies the rows
-themselves (`ROWS`), through `commons.api_integrations.claude.documents.read`,
+themselves (`rows_schema`), through `commons.api_integrations.claude.documents.read`,
 the same call Document Capture reads invoices with. Copying is the one thing
 a model can get subtly wrong, which is why the rows carry the running balance
 where the statement prints one: the browser walks the balances and points at
 any row where they stop adding up.
 
 Dates in both cases come back as printed, with year, month, day and calendar,
-because Nepali statements are sometimes dated in Bikram Sambat. The browser
-converts them with the tables Document Capture uses.
+because where Commons Settings switches Bikram Sambat on, a statement may be
+dated in it. The browser converts them with the tables Document Capture uses.
+Elsewhere the only calendar offered is the Gregorian one. What the prompts say
+about where the statement comes from (the company's country and currency, and
+the site's Additional Instructions) is `commons.api_integrations.claude.locale`.
 
 Why a background job
 --------------------
@@ -59,7 +62,7 @@ import frappe
 from frappe import _
 
 from commons.api_integrations.claude import client as claude
-from commons.api_integrations.claude import documents, jobs
+from commons.api_integrations.claude import documents, jobs, locale
 from commons.commons_core import apps
 
 BANK_TRANSACTION = "Bank Transaction"
@@ -138,21 +141,6 @@ def _object(properties: dict) -> dict:
 STRING = {"type": "string"}
 NUMBER = {"type": "number"}
 INTEGER = {"type": "integer"}
-CALENDAR = {
-	"type": "string",
-	"enum": ["AD", "BS"],
-	"description": "BS for Bikram Sambat dates, AD for Gregorian ones.",
-}
-
-DATE = _object(
-	{
-		"printed": {"type": "string", "description": "The date exactly as printed."},
-		"year": INTEGER,
-		"month": {"type": "integer", "description": "1 to 12."},
-		"day": INTEGER,
-		"calendar": CALENDAR,
-	}
-)
 
 # What a statement says about itself, whichever way it was read.
 HEADER = {
@@ -164,61 +152,71 @@ HEADER = {
 	"notes": {"type": "array", "items": STRING},
 }
 
-ROWS = _object(
-	{
-		**HEADER,
-		"rows": {
-			"type": "array",
-			"items": _object(
-				{
-					"date": DATE,
-					"description": STRING,
-					"reference": _nullable(
-						STRING, "Cheque number or transaction reference, if in its own column."
-					),
-					"withdrawal": {"type": "number", "description": "Money out of the account, or 0."},
-					"deposit": {"type": "number", "description": "Money into the account, or 0."},
-					"balance": _nullable(NUMBER, "The running balance printed on this row, if any."),
-				}
-			),
-		},
-	}
-)
-
 COLUMN = _nullable(INTEGER)
 
-MAPPING = _object(
-	{
-		**HEADER,
-		"first_data_row": {"type": "integer", "description": "Index of the first transaction row."},
-		"date_column": INTEGER,
-		"date_order": {
-			"type": "string",
-			"enum": ["DMY", "MDY", "YMD"],
-			"description": "The order of day, month and year in dates written as text.",
-		},
-		"calendar": CALENDAR,
-		"description_columns": {"type": "array", "items": INTEGER},
-		"reference_column": COLUMN,
-		"withdrawal_column": _nullable(INTEGER, "A column holding only money out."),
-		"deposit_column": _nullable(INTEGER, "A column holding only money in."),
-		"amount_column": _nullable(INTEGER, "A single column holding both, when there is no pair."),
-		"amount_sign": _nullable(
-			{"type": "string", "enum": ["negative_is_withdrawal", "positive_is_withdrawal"]},
-			"How the single amount column says which way the money went, when there is no Dr/Cr column.",
-		),
-		"direction_column": _nullable(
-			INTEGER, "A column saying Dr/Cr or Debit/Credit beside a single amount."
-		),
-		"balance_column": COLUMN,
-	}
-)
 
-COMMON_RULES = """\
+def rows_schema(where: locale.Locale) -> dict:
+	"""A statement's rows copied off a PDF or an image, dated in the calendars
+	`where` allows."""
+	return _object(
+		{
+			**HEADER,
+			"rows": {
+				"type": "array",
+				"items": _object(
+					{
+						"date": locale.date_schema(where),
+						"description": STRING,
+						"reference": _nullable(
+							STRING, "Cheque number or transaction reference, if in its own column."
+						),
+						"withdrawal": {"type": "number", "description": "Money out of the account, or 0."},
+						"deposit": {"type": "number", "description": "Money into the account, or 0."},
+						"balance": _nullable(NUMBER, "The running balance printed on this row, if any."),
+					}
+				),
+			},
+		}
+	)
+
+
+def mapping_schema(where: locale.Locale) -> dict:
+	"""A spreadsheet's layout, with its dates' calendar among those `where` allows."""
+	return _object(
+		{
+			**HEADER,
+			"first_data_row": {"type": "integer", "description": "Index of the first transaction row."},
+			"date_column": INTEGER,
+			"date_order": {
+				"type": "string",
+				"enum": ["DMY", "MDY", "YMD"],
+				"description": "The order of day, month and year in dates written as text.",
+			},
+			"calendar": locale.calendar_schema(where),
+			"description_columns": {"type": "array", "items": INTEGER},
+			"reference_column": COLUMN,
+			"withdrawal_column": _nullable(INTEGER, "A column holding only money out."),
+			"deposit_column": _nullable(INTEGER, "A column holding only money in."),
+			"amount_column": _nullable(INTEGER, "A single column holding both, when there is no pair."),
+			"amount_sign": _nullable(
+				{"type": "string", "enum": ["negative_is_withdrawal", "positive_is_withdrawal"]},
+				"How the single amount column says which way the money went, when there is no Dr/Cr column.",
+			),
+			"direction_column": _nullable(
+				INTEGER, "A column saying Dr/Cr or Debit/Credit beside a single amount."
+			),
+			"balance_column": COLUMN,
+		}
+	)
+
+
+def common_rules(where: locale.Locale) -> str:
+	"""What both readings are told, PDF or spreadsheet."""
+	return f"""\
 Copy, don't compute: every figure must be one printed in the statement. Numbers \
 are plain numbers, without currency symbols or thousands separators; convert \
-Devanagari digits (०१२३४५६७८९) to 0-9; South Asian grouping such as 1,13,000.00 \
-is 113000.
+digits in other scripts, such as Devanagari (०१२३४५६७८९), to 0-9; read the \
+grouping as printed: 1,13,000.00 is 113000, and 1.234,56 is 1234.56.
 
 Direction is from the account holder's point of view. A withdrawal is money out \
 of the account (a debit on the statement: payments, transfers out, fees, \
@@ -226,21 +224,23 @@ cheques paid); a deposit is money in (a credit: receipts, transfers in, \
 interest). Banks print debits and credits from their own ledger, so "Dr" means \
 money out and "Cr" means money in.
 
-Dates: Nepali statements are sometimes dated in Bikram Sambat (B.S. or वि.सं.), \
-whose years currently run from about 2075 to 2090. Mark those "BS" and do not \
-convert them. Gregorian dates are "AD".
+{locale.date_rule(where, "statements")}
 
-currency: NPR for Nepali rupees, INR, USD and so on; null if it cannot be told. \
-If the document is not a bank statement, set is_statement to false. notes: \
-anything a bookkeeper should check, such as pages that seem to be missing, \
-figures you are unsure of, or balances that do not add up; a sentence each, \
-and an empty list if there is nothing to say."""
+{locale.currency_rule(where, "statement")} If the document is not a bank \
+statement, set is_statement to false. notes: anything a bookkeeper should \
+check, such as pages that seem to be missing, figures you are unsure of, or \
+balances that do not add up; a sentence each, and an empty list if there is \
+nothing to say."""
 
-DOCUMENT_INSTRUCTIONS = f"""\
-This is a bank statement for one of our organisation's bank accounts. Copy every \
-transaction row into the schema, in the order printed.
 
-{COMMON_RULES}
+def document_instructions(where: locale.Locale) -> str:
+	"""The prompt for a PDF or an image, whose rows Claude copies."""
+	return locale.finish(
+		f"""\
+This is a bank statement for one of the account holder's bank accounts. Copy \
+every transaction row into the schema, in the order printed.
+
+{common_rules(where)}
 
 - Leave out rows that are not transactions: balance brought forward, page \
 totals, closing balance, headers repeated on each page. Put the brought-forward \
@@ -249,15 +249,21 @@ and closing balances in opening_balance and closing_balance instead.
 cheque or reference number only where the statement prints it in its own \
 column; otherwise null.
 - balance is the running balance printed on the row, if the statement has that \
-column, else null."""
+column, else null.""",
+		where,
+	)
 
-MAPPING_INSTRUCTIONS = f"""\
-These are the first rows of a bank statement exported as a spreadsheet, for one \
-of our organisation's bank accounts. Each line is one row: its index, then its \
-cells separated by " | ", each cell preceded by its column index. Work out the \
-layout so the rest of the rows can be read by a program.
 
-{COMMON_RULES}
+def mapping_instructions(where: locale.Locale) -> str:
+	"""The prompt for a spreadsheet's first rows, whose layout Claude works out."""
+	return locale.finish(
+		f"""\
+These are the first rows of a bank statement exported as a spreadsheet. Each \
+line is one row: its index, then its cells separated by " | ", each cell \
+preceded by its column index. Work out the layout so the rest of the rows can \
+be read by a program.
+
+{common_rules(where)}
 
 - first_data_row is the index of the first transaction, after any letterhead, \
 header row, or balance brought forward.
@@ -267,7 +273,9 @@ the others null.
 - description_columns are the columns whose text together makes the \
 narration, in order.
 - opening_balance, closing_balance and account_number only if they appear in \
-these rows."""
+these rows.""",
+		where,
+	)
 
 
 # --------------------------------------------------------------------------- #
@@ -328,13 +336,16 @@ def read_statement(content: bytes, progress=lambda **changes: None) -> dict:
 	Claude copies a PDF, how many rows it has written so far.
 	"""
 	kind = file_kind(content)
+	# Which account the statement is for is not known until it is read, so
+	# the prompt is written for the reader's default company.
+	where = locale.for_company()
 	if kind == DOCUMENT:
 		progress(status="reading", step="copying")
 		counter = RowCounter(lambda rows: progress(rows=rows))
 		read = documents.read(
 			content,
-			ROWS,
-			DOCUMENT_INSTRUCTIONS,
+			rows_schema(where),
+			document_instructions(where),
 			on_text=counter.feed,
 			timeout=READ_TIMEOUT,
 			max_tokens=MAX_TOKENS,
@@ -348,7 +359,7 @@ def read_statement(content: bytes, progress=lambda **changes: None) -> dict:
 		grid = read_grid(content, kind)
 		if not grid:
 			frappe.throw(_("That spreadsheet has no rows in it."))
-		read = _read_mapping(grid)
+		read = _read_mapping(grid, where)
 		progress(step="rows")
 		read["notes"] = list(read.get("notes") or [])
 		rows = apply_mapping(grid, read, notes=read["notes"])
@@ -478,7 +489,7 @@ def read_grid(content: bytes, kind: str) -> list[list]:
 
 
 def sample(grid: list[list]) -> str:
-	"""The first rows, the way `MAPPING_INSTRUCTIONS` describes them."""
+	"""The first rows, the way `mapping_instructions` describes them."""
 	lines = []
 	for index, row in enumerate(grid[:SAMPLE_ROWS]):
 		cells = [
@@ -500,11 +511,16 @@ def _cell_text(cell) -> str:
 	return str(cell).strip()
 
 
-def _read_mapping(grid: list[list]) -> dict:
+def _read_mapping(grid: list[list], where: locale.Locale) -> dict:
 	response = claude.create_message(
 		max_tokens=4000,
-		output_config={"effort": "medium", "format": {"type": "json_schema", "schema": MAPPING}},
-		messages=[{"role": "user", "content": f"{MAPPING_INSTRUCTIONS}\n\n<rows>\n{sample(grid)}\n</rows>"}],
+		output_config={
+			"effort": "medium",
+			"format": {"type": "json_schema", "schema": mapping_schema(where)},
+		},
+		messages=[
+			{"role": "user", "content": f"{mapping_instructions(where)}\n\n<rows>\n{sample(grid)}\n</rows>"}
+		],
 	)
 	if response.stop_reason == "refusal":
 		claude.fail(_("Claude declined to read this statement."))

@@ -71,7 +71,9 @@ def with_policies(test, *policies):
 	test.enterContext(patch.object(workspaces.registry, "policy", side_effect=lambda key: resolved[key]))
 
 
-def with_documents(test, parents, items, installed=True, absent=(), apps=ALL_APPS, claude_key=False):
+def with_documents(
+	test, parents, items, installed=True, absent=(), apps=ALL_APPS, claude_key=False, app_title="Commons"
+):
 	"""Stand in for the database with a fixed set of workspaces and their rows.
 
 	Three separate facts about the site, because resolving a row now asks three
@@ -89,9 +91,13 @@ def with_documents(test, parents, items, installed=True, absent=(), apps=ALL_APP
 	`claude_key` is whether `Claude Settings` holds a key, which is a fourth
 	fact and not a doctype: document capture needs ERPNext and a key both. Off
 	by default, as it is on a fresh site.
+
+	`app_title` is what `Commons Settings` calls this app, which is also what
+	the default workspace is called.
 	"""
 	absent = set(absent)
 	test.enterContext(patch.object(claude, "available", return_value=claude_key))
+	test.enterContext(patch.object(workspaces.settings, "title", return_value=app_title))
 
 	# The doctype existence checks in front of the queries. Patched as a whole
 	# `frappe.db`, because site-less there is no connection for the proxy to
@@ -161,9 +167,14 @@ class TestDefaultWorkspace(TestCase):
 	def test_is_the_only_workspace(self):
 		found = workspaces.workspaces()
 		self.assertEqual(len(found), 1)
-		self.assertEqual(found[0]["title"], "Staff Member")
+		self.assertEqual(found[0]["title"], "Commons")
 		# Null rather than a name: there is no document behind it.
 		self.assertIsNone(found[0]["name"])
+
+	def test_is_called_what_the_site_calls_this_app(self):
+		"""No organisation's word for its people: the app's own title, set or not."""
+		with_documents(self, [], [], app_title="Field Office")
+		self.assertEqual(workspaces.workspaces()[0]["title"], "Field Office")
 
 	def test_holds_the_sidebar_this_app_shipped(self):
 		rows = workspaces.workspaces()[0]["items"]
@@ -177,7 +188,7 @@ class TestDefaultWorkspace(TestCase):
 				("page", "leave", "Requests"),
 				("page", "expense", "Requests"),
 				("page", "procurement", "Requests"),
-				("page", "attendance", "Teaching"),
+				("page", "attendance", "Education"),
 				("page", "reconciliation", "Accounts"),
 			],
 		)
@@ -384,7 +395,7 @@ class TestTheAttendanceRegisterRow(TestCase):
 		row = next(row for row in rows if row["key"] == "attendance")
 		# After the requests, under its own heading, and unnamed like every
 		# shipped page.
-		self.assertEqual(row["group"], "Teaching")
+		self.assertEqual(row["group"], "Education")
 		self.assertIsNone(row["label"])
 		self.assertIsNone(row["icon"])
 		keys = [row["key"] for row in rows]
@@ -549,6 +560,7 @@ class TestAccess(TestCase):
 		with_documents(self, [], [], claude_key=True)
 		self.with_permissions(refused=("Student Attendance",))
 		self.enterContext(patch.object(api, "title", return_value="Commons"))
+		self.enterContext(patch.object(api, "feature_enabled", return_value=False))
 		shell = api.get_shell()
 		self.assertEqual(shell["access"], pages.access())
 		self.assertFalse(shell["access"]["attendance"])
@@ -556,6 +568,30 @@ class TestAccess(TestCase):
 		# frontend is what leaves it out for this reader.
 		keys = [row["key"] for row in shell["workspaces"][0]["items"]]
 		self.assertIn("attendance", keys)
+
+
+class TestShellFeatures(TestCase):
+	"""The Commons Settings switches the SPA draws differently for."""
+
+	def setUp(self):
+		with_policies(self, policy("Employee", "Profile", "employee"))
+		with_documents(self, [], [])
+		self.enterContext(patch.object(api, "title", return_value="Commons"))
+		self.enterContext(patch.object(api.pages, "access", return_value={}))
+
+	def shell(self, switched_on=()):
+		with patch.object(api, "feature_enabled", side_effect=lambda field: field in switched_on) as asked:
+			answer = api.get_shell()
+		return answer, asked
+
+	def test_bikram_sambat_is_off_unless_the_site_turns_it_on(self):
+		answer, _ = self.shell()
+		self.assertEqual(answer["features"], {"bikram_sambat": False})
+
+	def test_bikram_sambat_follows_the_desk_s_switch(self):
+		answer, asked = self.shell(switched_on=(api.ENABLE_BIKRAM_SAMBAT,))
+		self.assertTrue(answer["features"]["bikram_sambat"])
+		asked.assert_called_with(api.ENABLE_BIKRAM_SAMBAT)
 
 
 class TestConfiguredWorkspaces(TestCase):
@@ -613,7 +649,7 @@ class TestConfiguredWorkspaces(TestCase):
 
 	def test_a_site_whose_workspaces_all_resolve_to_nothing_gets_the_default(self):
 		with_documents(self, [parent("Money")], [item("Money", record="Bank Account")])
-		self.assertEqual(workspaces.workspaces()[0]["title"], workspaces.DEFAULT_TITLE)
+		self.assertEqual(workspaces.workspaces()[0]["title"], "Commons")
 
 	def test_marks_are_the_workspace_s_own_or_nobody_s(self):
 		with_documents(
@@ -734,7 +770,7 @@ class TestBeforeMigrate(TestCase):
 
 	def test_the_sidebar_is_the_default_rather_than_a_failure(self):
 		found = workspaces.workspaces()
-		self.assertEqual([row["title"] for row in found], [workspaces.DEFAULT_TITLE])
+		self.assertEqual([row["title"] for row in found], ["Commons"])
 
 	def test_nothing_is_claimed_by_a_workspace_that_cannot_exist(self):
 		self.assertEqual(workspaces.claimed_elsewhere(None), {})

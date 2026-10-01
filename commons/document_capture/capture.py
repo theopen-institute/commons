@@ -54,7 +54,7 @@ queued again, the older job finds it has been superseded and does nothing.
 Who sees which
 --------------
 Purchase invoice captures belong to the accounts team. Anybody who may create a
-Purchase Invoice sees all of them, as a shared bills@ inbox should be seen.
+Purchase Invoice sees all of them, as everyone on a shared accounts inbox would.
 Expense receipts are their sender's alone. `has_permission` and
 `permission_query_conditions` narrow the role permissions to that. They can
 only deny, and System Manager is left alone.

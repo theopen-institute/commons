@@ -2,8 +2,8 @@
 
 A site that keeps each department's money in one shared bank account moves
 money between departments with a journal entry that credits the bank account
-under one department and debits it under the other (ACC-JV-2026-00182: 20,000
-from Notes from the Field to Fellowship (Tsering), both on Laxmi Bank). Each
+under one department and debits it under the other (say 20,000 from a
+Research department to an Outreach one, both on the same bank account). Each
 department's share of the bank balance changes; the bank balance does not.
 
 Clearance asks when the bank processed what a voucher moved through it, and

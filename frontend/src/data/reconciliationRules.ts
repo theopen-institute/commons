@@ -35,7 +35,7 @@
  * into the draft for the bookkeeper to confirm. The fourth is only listed. The
  * fifth is only a tie-breaker, because half the borrowers pay 5,000.
  *
- * How well that works, replayed over register.localhost's 124 reconciled loan
+ * How well that works, replayed over one lender's 124 reconciled loan
  * repayments with each line judged only on what came before it: 30 strong
  * suggestions, of which 24 named the right loan, 5 the right borrower's other
  * loan, and 1 the wrong borrower (a clearing account seen twice). 5 weak ones,
@@ -166,8 +166,8 @@ export function outstandingPrincipal(loan: LoanRow): number {
   return money(Math.max(0, base + adjustments - (loan.total_principal_paid || 0)))
 }
 
-/** Lower case and letters and digits only, so that `Heema Rai GFL/Open` and
- *  `heema rai` meet. */
+/** Lower case and letters and digits only, so that `Maya Sharma Loan/Example` and
+ *  `maya sharma` meet. */
 function normalise(text: string | null | undefined): string {
   return ` ${(text ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `
 }
@@ -280,7 +280,7 @@ export function suggestLoans(
 
   // A borrower with two open loans is found twice by the same evidence, and
   // the loan they are paying is nearly always the one they paid last. On
-  // register.localhost's history a third of the strong suggestions found the
+  // one lender's history a third of the strong suggestions found the
   // right borrower and then ranked their other loan first.
   const applicantOf = new Map(loans.map((loan) => [loan.name, loan.applicant]))
   const byBorrower = new Map<string, Suggestion[]>()

@@ -4,7 +4,7 @@ Shared tools for Frappe
 
 ### Features
 
-Features marked ⚙ are off until switched on in **Commons Settings**.
+Features marked ⚙ are off until switched on in **Commons Settings**. The app ships no workflows, approval rules or roles beyond System Manager: who may use each doctype is granted in the Role Permission Manager, and processes are the site's own Frappe Workflows.
 
 #### Commons frontend (`/commons`)
 
@@ -17,34 +17,33 @@ Features marked ⚙ are off until switched on in **Commons Settings**.
 
 - **Self Service Records**: a site declares which doctypes people can view as their own records (such as their Employee record), and which fields they may propose changes to.
 - **Record Change Requests**: the owner proposes a correction and the responsible team approves or rejects it. The change is written under the approver's own permissions, and a field that changed in the meantime is refused.
-- **Account statement** (`/commons/account`): what a person owes the organisation and what it owes them, from the general ledger, with loans shown separately, a PDF per account, and a `party_statement` Jinja helper for print formats.
+- **Account statement** (`/commons/account`): what a person owes the organisation and what it owes them, from the general ledger, with loans shown separately, a PDF per account, and a `party_statement` Jinja helper for print formats. Any Party Type whose record links to a User can be a statement party.
 
 #### Requests and approvals
 
 - **Leave** (needs `hrms`): your own leave applications, and an approvals queue.
 - **Expense claims** (needs `hrms`): your own claims, and an approvals queue.
-- **Procurement Requests** (needs `erpnext`): request, approve and track purchases, following the active Frappe Workflow.
-- ⚙ **Department Budgets** (needs `erpnext`): an annual allocation per company, department and fiscal year, checked when a Purchase or Material Issue Material Request is submitted. See [docs/department-budgets.md](docs/department-budgets.md).
+- **Procurement Requests** (needs `erpnext`): raise and track purchase requests, approve them through the site's own Frappe Workflow, and carry approved lines onto Material Requests. The app ships no workflow, states or approver rules.
 
 #### Banking and accounting (needs `erpnext`)
 
 - **Bank Reconciliation** (`/commons/banking`): import a bank statement, match lines to vouchers, create draft vouchers or loan repayments from a line, and submit and reconcile in one step.
 - **Open Receivables / Open Payables** reports: what was open on a date and is still open today, as an account → party → voucher tree.
 - **Payment Ledger Audit** report: where the payment ledger and the GL disagree (including refunds that Payment Reconciliation counts twice), with repairs.
-- **Loan Date Audit** report (needs `lending`): lending GL entries that are not on their voucher's date, checks that the safeguard is in place, and repairs.
+- **Loan Date Audit** report (needs `lending`): lending GL entries that are not on their voucher's date, checks that the Loan vouchers on their own dates setting is in place, and repairs.
 - ⚙ **Clearing internal transfers**: a Journal Entry whose bank and cash lines net to zero is cleared on its own posting date.
 - ⚙ **Party on payable payment lines**: a Payment Entry's party is put on its tax and deduction lines to payable accounts, such as TDS.
-- ⚙ **Payroll lines per employee** (needs `hrms`): a payroll run's accrual journal gets one line per employee, with their department and party.
+- ⚙ **Payroll lines per employee** (needs `hrms`): a payroll run's accrual journal gets one line per employee, with their party, and their department where the company has a Department accounting dimension.
 - ⚙ **Loan vouchers on their own dates** (needs `lending`): Loan Repayment, Write Off and Disbursement post on their own dates, not the date they were saved.
 
 #### Document capture
 
-- **Captured Documents** (`/commons/capture`): scans come in by upload or email. Claude reads them, but only when someone presses Read, in a background job.
+- **Captured Documents** (`/commons/capture`): scans come in by upload or email. Claude reads them, but only when someone presses Read, in a background job. The prompts follow the company's country and currency and the Bikram Sambat setting, and Claude Settings' **Additional Instructions** add a site's own conventions.
 - Drafts a **Purchase Invoice** from a supplier invoice (visible to the accounts team) or an **Expense Claim** from receipts (visible to the sender), with the scan attached.
 
 #### Education (needs `education`)
 
-- **Attendance register** (`/commons/attendance`): mark student attendance for your student groups, within your User Permissions.
+- **Attendance register** (`/commons/attendance`): mark student attendance for your student groups, within your User Permissions. **Attendance Register Settings** names any fields the site has added for a Late mark (and what it earns), session types and details, and retired terms.
 
 #### Email
 
@@ -71,7 +70,7 @@ Features marked ⚙ are off until switched on in **Commons Settings**.
 #### Desk conveniences
 
 - **Hide cancelled documents**: a per-browser toggle in the Display menu that hides cancelled records from every list-type view.
-- ⚙ **Bikram Sambat calendar**: shows Date and Datetime fields in Bikram Sambat as well and adds a BS date picker. Values are still stored in Gregorian.
+- ⚙ **Bikram Sambat calendar**: shows Date and Datetime fields in Bikram Sambat as well and adds a BS date picker, in the desk and in the Commons frontend. Values are still stored in Gregorian.
 - ⚙ **Literal @ in desk URLs**: `/desk/member/name@example.org` instead of `%40`.
 - **Clear site cache** without a terminal.
 
@@ -105,7 +104,7 @@ all — the endpoints behind it refuse and its rows leave the navigation.
 | Section | Needs |
 | --- | --- |
 | Leave, Expense Claims | `hrms` |
-| Procurement, Department Budgets | `erpnext` |
+| Procurement | `erpnext` |
 
 Install either alongside, in any order, and run `bench --site <site> migrate`.
 Self-service, announcements, workspaces and the permission gate need neither.

@@ -6,14 +6,13 @@ after the fact then sits in the books on the wrong day, and the bank balance
 on the day it happened is off by its amount.
 
 - Loan Repayment: `validate` sets `posting_date` to now. The posting date as
-  entered is put back afterwards, as the site scripts "Loan Repayment -
-  Remember Posting Date" and "Keep Posting Date" did.
+  entered is put back afterwards, as a pair of site server scripts would.
 - Loan Repayment, reposted: a backdated repayment makes lending repost every
   repayment after it, and `get_gl_map` dates their GL
   `getdate() if self.flags.from_repost`. `get_gl_dict` is given the
   repayment's own date instead, before ERPNext picks the fiscal year from it.
-  The site script "Loan Repayment Repost - Keep Posting Dates" re-booked them
-  afterwards; this books them right the first time.
+  A site script re-booking them after the repost would fix them afterwards;
+  this books them right the first time.
 - Loan Write Off: `set_missing_values` sets `posting_date` to today. It is set
   to the value date.
 - Loan Disbursement: `set_missing_values` sets `posting_date` to today. It is

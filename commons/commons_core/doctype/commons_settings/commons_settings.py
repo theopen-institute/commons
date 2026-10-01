@@ -31,7 +31,6 @@ class CommonsSettings(Document):
 
 		enable_bikram_sambat: DF.Check
 		enable_clearing_internal_transfers: DF.Check
-		enable_department_budgets: DF.Check
 		enable_derived_docfields: DF.Check
 		enable_desk_todos: DF.Check
 		enable_home_page_priority: DF.Check

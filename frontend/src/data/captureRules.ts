@@ -16,9 +16,11 @@ import { to_gregorian } from '@bikram/bikram_sambat.js'
  * Two things are decided here and nowhere else:
  *
  * * **Dates.** The scan's dates come back as printed, with the calendar they
- *   are in, because Nepali invoices are often dated in Bikram Sambat and a
- *   model asked to convert one would do the arithmetic badly. They are
- *   converted here, with the same tables `BikramDatePicker` draws from.
+ *   are in. Where Commons Settings switches Bikram Sambat on, a scan may be
+ *   dated in it, and a model asked to convert one would do the arithmetic
+ *   badly. They are converted here, with the same tables `BikramDatePicker`
+ *   draws from. Elsewhere the server offers only `AD`, which is checked and
+ *   passed through as it is.
  * * **What counts as not adding up.** The page never corrects a figure. It
  *   compares what the scan says with what the draft will book and says so
  *   where they differ.
@@ -38,7 +40,7 @@ export interface ScannedParty {
 }
 
 /** Each figure as printed, or null where the line does not print it. Never
- *  worked out from the others: see `SCHEMA` on the server. */
+ *  worked out from the others: see `schema` on the server. */
 export interface ScannedLine {
   description: string
   quantity: number | null
@@ -52,7 +54,7 @@ export interface ScannedTax {
   amount: number | null
 }
 
-/** What `commons.document_capture.purchase_invoice.SCHEMA` asks for. */
+/** What `commons.document_capture.purchase_invoice.schema` asks for. */
 export interface ScannedInvoice {
   is_invoice: boolean
   supplier: ScannedParty

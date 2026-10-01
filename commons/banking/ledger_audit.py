@@ -9,10 +9,10 @@ invoice's `outstanding_amount` read. The copy is made at submit and undone at
 cancel by `erpnext.accounts.utils.create_payment_ledger_entry`, and it only
 copies lines on accounts whose Account Type is Receivable or Payable *at that
 moment*. Change an account's type between a voucher's submit and its cancel and
-the two ledgers part: on register.localhost, TDS 11211's type was blank from
-2025-01-28 to 2025-02-01, eight payroll JEs were cancelled in between, and
-their 11211 lines stayed live in the Payment Ledger (and in Accounts Payable)
-with nothing in the GL behind them.
+the two ledgers part: on one site, a TDS account's type was blank for five
+days, eight payroll JEs were cancelled in between, and their lines on that
+account stayed live in the Payment Ledger (and in Accounts Payable) with
+nothing in the GL behind them.
 
 `find_discrepancies` asks the question the copy should always answer yes to.
 For every voucher, account and party, the live Payment Ledger amount (rows with
@@ -26,8 +26,8 @@ payment or journal entry is reconciled after submit,
 rows from the document, split per invoice, and leaves the GL as posted, so the
 GL line still names no invoice. Only the totals per voucher, account and party
 are the same in both ledgers. That rebuild is also a second way for the two to
-part: ACC-JV-2025-00121 was reconciled while 11211's type was blank, and its
-11211 lines were dropped from the payment ledger.
+part: a journal entry reconciled while that account's type was blank had its
+lines on it dropped from the payment ledger.
 
 The repair changes only the Payment Ledger; the GL is the books and nothing
 here writes to it. For each voucher, account and party that disagrees, the
@@ -63,9 +63,28 @@ from commons.commons_core import apps
 # Half a paisa/cent. Anything smaller is float noise in the sums.
 TOLERANCE = 0.005
 
-# Who may run the repair. It writes ledger rows, so it is for the people who
-# may already fix the books by hand.
-REPAIR_ROLES = ("Accounts Manager", "System Manager")
+# Who may run the repairs here and in `loan_dates` and `netted_payments`: they
+# write ledger rows, so they are for the people who may already close the
+# books. Write on Period Closing Voucher, which posts GL itself, is what a
+# stock ERPNext site grants Accounts Manager and System Manager, and nobody
+# else; a site that wants others to repair grants it in Role Permissions.
+REPAIR_DOCTYPE = "Period Closing Voucher"
+
+
+def can_repair() -> bool:
+	"""Whether this user may run the ledger repairs. The reports ask the same
+	question in the browser, with `frappe.model.can_write`."""
+	return bool(frappe.has_permission(REPAIR_DOCTYPE, "write"))
+
+
+def check_can_repair() -> None:
+	"""Refuse, as `frappe.only_for` would, unless `can_repair`."""
+	if not can_repair():
+		frappe.throw(
+			_("Repairing the ledger needs write permission on {0}.").format(_(REPAIR_DOCTYPE)),
+			frappe.PermissionError,
+		)
+
 
 # The most vouchers one bulk request repairs. Each is its own savepoint, so a
 # refusal costs only that voucher; the cap keeps one request short.
@@ -443,7 +462,7 @@ def _public(plan) -> dict:
 def preview_repair(voucher_type: str, voucher_no: str) -> dict:
 	"""What the repair of one voucher would do, for the dialog to show before
 	anything is written."""
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	return _public(_plan(voucher_type, voucher_no))
 
 
@@ -513,14 +532,14 @@ def _repair(voucher_type: str, voucher_no: str) -> dict:
 @frappe.whitelist(methods=["POST"])
 def repair_voucher(voucher_type: str, voucher_no: str) -> dict:
 	"""Make one voucher's payment ledger agree with its GL."""
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	return _repair(voucher_type, voucher_no)
 
 
 @frappe.whitelist(methods=["POST"])
 def repair_vouchers(vouchers: list | str) -> list[dict]:
 	"""`repair_voucher` for several, each alone: a refusal skips only that one."""
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	vouchers = frappe.parse_json(vouchers)
 	if len(vouchers) > MAX_BULK:
 		frappe.throw(_("At most {0} vouchers at a time").format(MAX_BULK))
@@ -541,7 +560,7 @@ def repair_outstanding(voucher_type: str, voucher_no: str) -> dict:
 	"""Recompute an invoice's outstanding amount from the payment ledger."""
 	from erpnext.accounts.utils import update_voucher_outstanding
 
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	if voucher_type not in OUTSTANDING_SOURCES:
 		frappe.throw(_("{0} has no outstanding amount to recompute").format(voucher_type))
 	account_field, party_type, party_field = OUTSTANDING_SOURCES[voucher_type]

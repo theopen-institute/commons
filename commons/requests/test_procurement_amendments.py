@@ -171,7 +171,6 @@ class TestProcurementAmendments(TestCase):
 			patch.object(api.frappe, "get_doc", return_value=doc),
 			patch.object(api.PROCUREMENT, "workflow", return_value=None),
 			patch.object(api, "_can_edit_procurement_request", return_value=True),
-			patch("commons.requests.budget.request_summary", return_value=None),
 		):
 			api._add_procurement_costs([row])
 
@@ -187,8 +186,7 @@ class TestProcurementUnavailable(TestCase):
 	app's -- which is what makes this different from leave and expenses and why
 	`Procurement.requires_apps` names the app rather than a doctype. What is
 	missing is everything a request is *about*: the Company it is raised in, the
-	Items it orders, the Department Budget it is charged to and the Material
-	Request it becomes.
+	Items it orders and the Material Request it becomes.
 
 	The permissions endpoint answers, because every page asks it before drawing
 	anything. Everything else refuses, and says which app is missing rather than

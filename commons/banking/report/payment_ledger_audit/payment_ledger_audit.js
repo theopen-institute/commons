@@ -11,7 +11,9 @@ const OUTSTANDING = "Invoice outstanding vs payment ledger";
 const NETTED = "Reconciliation: refunds counted twice";
 const API = "commons.banking.ledger_audit.";
 const NETTED_API = "commons.banking.netted_payments.";
-const CAN_REPAIR = () => frappe.user.has_role(["Accounts Manager", "System Manager"]);
+// The server's `ledger_audit.can_repair`: write on Period Closing Voucher, which
+// a stock site grants Accounts Manager and System Manager.
+const CAN_REPAIR = () => frappe.model.can_write("Period Closing Voucher");
 
 frappe.query_reports["Payment Ledger Audit"] = {
 	filters: [

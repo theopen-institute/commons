@@ -19,41 +19,15 @@ export interface ProcurementPermissions {
   /** The link query that resolves candidate approvers, named by the server so a
    *  site can point it somewhere else. */
   approver_query: string
+  /** Whether this site makes a request name its approver: the field's `reqd`,
+   *  as the site has customised it. */
+  approver_required: boolean
   /** How many rows a queue returns. The badge counts to the same ceiling. */
   page_length: number
 }
 
-/**
- * A line of the budget readout that is worth saying in words.
- *
- * Written by the server beside the gate that makes it true — see
- * `budget.summary_notices`. `severity` is a cue for how loudly to say it, not a
- * decision of the page's own.
- */
-export interface BudgetNotice {
-  severity: 'warning' | 'info'
-  message: string
-}
-
 /** One row of a procurement request list. */
-export interface DepartmentBudgetSummary {
-  inactive?: boolean
-  missing: boolean
-  /** What the figures mean, in the server's words. */
-  notices?: BudgetNotice[]
-  department: string
-  name?: string
-  fiscal_year?: string
-  currency?: string
-  annual?: number
-  spent?: number
-  committed?: number
-  remaining?: number
-  open_requests?: number
-}
-
 export interface ProcurementRequestRow {
-  budget_summary?: DepartmentBudgetSummary | null
   name: string
   title: string | null
   company: string
@@ -90,7 +64,7 @@ export interface ProcurementRequestItemRow {
   description: string | null
   qty: number
   uom: string
-  /** How much Resources has committed through submitted Material Requests. Counted
+  /** How much procurement has committed through submitted Material Requests. Counted
    *  live by the server — no stored field backs it. */
   committed_qty: number
   /** What is still to be committed: `qty` less `committed_qty`, never negative. */
@@ -111,6 +85,7 @@ const NO_PERMISSIONS: ProcurementPermissions = {
   workflow_access: false,
   pending_workflow_actions: 0,
   approver_query: '',
+  approver_required: false,
   page_length: 0,
 }
 
@@ -127,7 +102,6 @@ export interface ProcurementRequestDefaults {
   company: string | null
   currency: string | null
   department: string | null
-  approver: string | null
   uom: string | null
 }
 
@@ -206,17 +180,15 @@ export function useMyProcurementRequests() {
 }
 
 /**
- * One department's share of an approval queue: the allocation being spent and
- * every request in front of the approver charged to it.
+ * One department's share of an approval queue, with what its requests would
+ * cost together.
  *
- * Built by the server — see `group_by_department`. `estimate` is money weighed
- * against the allocation printed beside it, and two figures read together
- * should not be arrived at in two places by two rules.
+ * Built by the server — see `group_by_department` — so the total is arrived at
+ * in one place by one rule.
  */
 export interface DepartmentRequestGroup {
   key: string
   department: string | null
-  summary: DepartmentBudgetSummary | null
   /** Request names, in queue order. The rows themselves are in `requests`. */
   requests: string[]
   /** What the group's requests would cost together. Null unless they share one

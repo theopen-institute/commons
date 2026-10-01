@@ -17,6 +17,11 @@ that no request section answers (the register, reconciliation, capture), this
 user's answer, from `pages.access`. Asked here because the browser asking it
 meant loading each of those pages' code on every boot to hold the question.
 
+`features` is the site's answer to the few Commons Settings switches the SPA
+draws differently for -- today only Bikram Sambat, which decides whether a date
+picker offers that calendar. The same switch the desk reads from
+`frappe.boot.commons_features`, read here so the two cannot disagree.
+
 Only half of it is this module's. The navigation is; the name is the app's own
 setting and is read from `commons.commons_core.settings`, which owns the
 document behind it. They are answered together here because the page needs both
@@ -27,10 +32,15 @@ of them.
 import frappe
 
 from commons.better_navigation import pages, workspaces
-from commons.commons_core.settings import title
+from commons.commons_core.settings import ENABLE_BIKRAM_SAMBAT, feature_enabled, title
 
 
 @frappe.whitelist()
 def get_shell() -> dict:
 	"""The name and the navigation, together, because they are read together."""
-	return {"title": title(), "workspaces": workspaces.workspaces(), "access": pages.access()}
+	return {
+		"title": title(),
+		"workspaces": workspaces.workspaces(),
+		"access": pages.access(),
+		"features": {"bikram_sambat": feature_enabled(ENABLE_BIKRAM_SAMBAT)},
+	}

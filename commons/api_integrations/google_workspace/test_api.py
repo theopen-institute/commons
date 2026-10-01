@@ -1,4 +1,4 @@
-"""The role check, the field allowlist, and the one endpoint that returns a secret.
+"""The permission check, the field allowlist, and the one endpoint that returns a secret.
 
 Site-less. `users` is the boundary -- what each operation sends is tested in
 `test_users` -- so it is stubbed here and what is checked is what this layer adds:
@@ -13,8 +13,20 @@ import frappe
 
 from commons.api_integrations.google_workspace import api, client
 
-ALLOWED = ["System Manager", "Employee"]
-NOT_ALLOWED = ["Employee"]
+# Whether the session may write Google Workspace Settings.
+ALLOWED = True
+NOT_ALLOWED = False
+
+
+def may_write(allowed):
+	"""`frappe.has_permission`, answering only the one question the gate asks."""
+
+	def has_permission(doctype, ptype="read", *args, **kw):
+		if (doctype, ptype) != (client.SETTINGS, "write"):
+			raise AssertionError(f"asked about {ptype} on {doctype}")
+		return allowed
+
+	return patch.object(api.frappe, "has_permission", has_permission)
 
 
 def throw(message, exc=Exception, **kwargs):
@@ -55,9 +67,9 @@ class Endpoints(TestCase):
 
 class Permitted(TestCase):
 	def roles(self, held):
-		return patch.object(api.frappe, "get_roles", lambda *a, **kw: held)
+		return may_write(held)
 
-	def test_the_role_is_required(self):
+	def test_write_on_the_settings_is_required(self):
 		with (
 			self.roles(NOT_ALLOWED),
 			patch.object(api.frappe, "throw", throw),
@@ -66,7 +78,7 @@ class Permitted(TestCase):
 			with self.assertRaises(Exception):
 				api._permitted()
 
-	def test_the_role_is_enough(self):
+	def test_write_on_the_settings_is_enough(self):
 		with self.roles(ALLOWED):
 			self.assertIsNone(api._permitted())
 
@@ -81,7 +93,7 @@ class Permitted(TestCase):
 		]
 		self.assertEqual(unchecked, [])
 
-	def test_configured_answers_without_a_role(self):
+	def test_configured_answers_without_the_permission(self):
 		"""Otherwise a button exists on every site and explains itself only when pressed."""
 		with self.roles(NOT_ALLOWED), patch.object(api.client, "available", lambda: False):
 			self.assertFalse(api.configured())
@@ -159,7 +171,7 @@ class EnsureUser(TestCase):
 			return create
 
 		with (
-			patch.object(api.frappe, "get_roles", lambda *a, **kw: ALLOWED),
+			may_write(ALLOWED),
 			patch.object(api.frappe, "throw", throw),
 			patch.object(api, "_", _format),
 			patch.object(api.users, "create", create_user),
@@ -199,7 +211,7 @@ class EnsureUser(TestCase):
 
 	def test_a_caller_without_the_role_reaches_nothing(self):
 		with (
-			patch.object(api.frappe, "get_roles", lambda *a, **kw: NOT_ALLOWED),
+			may_write(NOT_ALLOWED),
 			patch.object(api.frappe, "throw", throw),
 			patch.object(api, "_", _format),
 		):
@@ -216,7 +228,7 @@ class UpdateUser(TestCase):
 			return {"id": user_key}
 
 		with (
-			patch.object(api.frappe, "get_roles", lambda *a, **kw: ALLOWED),
+			may_write(ALLOWED),
 			patch.object(api.frappe, "throw", throw),
 			patch.object(api, "_", _format),
 			patch.object(api.users, "update", update_user),
@@ -252,7 +264,7 @@ class UpdateUser(TestCase):
 class SetUserPassword(TestCase):
 	def test_it_returns_what_was_set(self):
 		with (
-			patch.object(api.frappe, "get_roles", lambda *a, **kw: ALLOWED),
+			may_write(ALLOWED),
 			patch.object(api.users, "set_password", lambda key, change_at_next_login=True: "xK4"),
 			patch.object(api, "_refuse_administrators", lambda key: None),
 		):

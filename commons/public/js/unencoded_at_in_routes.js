@@ -1,6 +1,6 @@
 // Keeps "@" literal in the desk address bar, so a document named after an email
-// address reads as /desk/member/samana@theopen.institute rather than
-// /desk/member/samana%40theopen.institute.
+// address reads as /desk/member/name@example.org rather than
+// /desk/member/name%40example.org.
 //
 // The encoding is not required. RFC 3986 lists "@" in `pchar`, the set a path
 // segment is built from, alongside ":" and the sub-delims -- it is reserved only

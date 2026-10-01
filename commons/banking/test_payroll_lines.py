@@ -3,12 +3,12 @@
 What is pinned here is what would do damage quietly if it drifted: the parts
 always add up to HRMS's line, a line whose parts do not is left as HRMS made
 it, only Payable accounts get the employee as party, and the department comes
-from the employee's salary slip.
+from the employee's salary slip, into whichever field the site's Department
+dimension has.
 
-That it gives the journal the "Split payroll accounts by party" server script
-gave, with HRMS's totals, was checked against register.localhost inside a
-rolled-back transaction: HR-PRUN-2026-00022's accrual rebuilt beside
-ACC-JV-2026-00156.
+That it gives the journal a site's own per-party split gave, with HRMS's
+totals, was checked against a site inside a rolled-back transaction: one
+payroll run's accrual rebuilt beside the journal that split had made.
 """
 
 from unittest import TestCase
@@ -85,11 +85,23 @@ class Run(pl.EmployeePayrollLinesMixin, Base):
 		return {"E1": "Fellowship", "E2": "Facultyship"}
 
 
-def post(run, earnings, deductions, dimensions=("department",)):
+DIMENSIONS = "erpnext.accounts.doctype.accounting_dimension.accounting_dimension.get_accounting_dimensions"
+
+
+def dimension(fieldname, document_type="Department"):
+	return frappe._dict(fieldname=fieldname, document_type=document_type)
+
+
+def post(run, earnings, deductions, dimensions=("department",), defined=None):
+	"""`dimensions` are the run's, as HRMS passes them; `defined` the site's
+	Accounting Dimensions, by default one on Department for each of them."""
+	if defined is None:
+		defined = [dimension(f) for f in dimensions]
 	accounts = []
-	run.get_payable_amount_for_earnings_and_deductions(
-		accounts, earnings, deductions, [], "NPR", list(dimensions), 2, 0, True
-	)
+	with patch(DIMENSIONS, return_value=defined):
+		run.get_payable_amount_for_earnings_and_deductions(
+			accounts, earnings, deductions, [], "NPR", list(dimensions), 2, 0, True
+		)
 	return accounts
 
 
@@ -126,6 +138,33 @@ class TestLines(TestCase):
 		run = Run({"earnings": {("Salary", "Main"): {"E1": 100.0}}, "deductions": {}})
 		accounts = post(run, {("Salary", "Main"): 100.0}, {}, dimensions=())
 		self.assertIsNone(accounts[0]["department"])
+
+	def test_the_department_dimension_is_found_by_its_doctype_not_its_name(self, *_):
+		run = Run({"earnings": {("Salary", "Main"): {"E1": 100.0}}, "deductions": {}})
+		accounts = post(
+			run,
+			{("Salary", "Main"): 100.0},
+			{},
+			dimensions=("department", "programme"),
+			defined=[dimension("department", "Branch"), dimension("programme")],
+		)
+		self.assertEqual(accounts[0]["programme"], "Fellowship")
+		self.assertIsNone(accounts[0]["department"])
+
+
+class TestDepartmentDimension(TestCase):
+	def find(self, defined, run_dimensions):
+		with patch(DIMENSIONS, return_value=defined):
+			return pl.department_dimension(run_dimensions)
+
+	def test_found_by_document_type(self):
+		self.assertEqual(self.find([dimension("unit")], ["unit"]), "unit")
+
+	def test_none_without_one(self):
+		self.assertIsNone(self.find([dimension("site", "Branch")], ["site"]))
+
+	def test_none_when_the_run_does_not_carry_it(self):
+		self.assertIsNone(self.find([dimension("unit")], []))
 
 
 class TestOff(TestCase):

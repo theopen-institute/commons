@@ -5,7 +5,7 @@ only cleared when every bank and cash account on it nets to nothing, an entry
 that also pays out of another bank account is not, an entry with no bank line
 at all is not, and one already cleared keeps its date.
 
-The backfill was checked against register.localhost inside a rolled-back
+The backfill was checked against a real site inside a rolled-back
 transaction.
 """
 
@@ -16,7 +16,7 @@ import frappe
 
 from commons.banking import internal_transfers as it
 
-ACCOUNT_TYPES = {"Laxmi": "Bank", "Cash": "Cash", "Prime": "Bank", "Salary": None, "Income": None}
+ACCOUNT_TYPES = {"Bank": "Bank", "Cash": "Cash", "Prime": "Bank", "Salary": None, "Income": None}
 
 
 def line(account, debit=0, credit=0):
@@ -27,11 +27,11 @@ def account_type(doctype, name, field):
 	return ACCOUNT_TYPES.get(name)
 
 
-# ACC-JV-2026-00182: two departments' shares of one bank account, and the
+# Two departments' shares of one bank account, and the
 # internal charge between them.
 DEPARTMENT_MOVE = [
-	line("Laxmi", credit=20000),
-	line("Laxmi", debit=20000),
+	line("Bank", credit=20000),
+	line("Bank", debit=20000),
 	line("Salary", debit=20000),
 	line("Income", credit=20000),
 ]
@@ -43,10 +43,10 @@ class TestMovesNoMoney(TestCase):
 		self.assertTrue(it.moves_no_money(DEPARTMENT_MOVE))
 
 	def test_a_payment_out_of_the_bank(self, _):
-		self.assertFalse(it.moves_no_money([line("Laxmi", credit=500), line("Salary", debit=500)]))
+		self.assertFalse(it.moves_no_money([line("Bank", credit=500), line("Salary", debit=500)]))
 
 	def test_a_transfer_between_two_bank_accounts_moves_money(self, _):
-		self.assertFalse(it.moves_no_money([line("Laxmi", credit=500), line("Prime", debit=500)]))
+		self.assertFalse(it.moves_no_money([line("Bank", credit=500), line("Prime", debit=500)]))
 
 	def test_one_account_nets_to_nothing_but_another_does_not(self, _):
 		lines = [*DEPARTMENT_MOVE, line("Prime", credit=100), line("Salary", debit=100)]
@@ -60,8 +60,8 @@ class TestMovesNoMoney(TestCase):
 		self.assertFalse(it.moves_no_money([line("Salary", debit=1), line("Income", credit=1)]))
 
 	def test_rounding_below_a_paisa_nets_to_nothing(self, _):
-		self.assertTrue(it.moves_no_money([line("Laxmi", debit=100.001), line("Laxmi", credit=100)]))
-		self.assertFalse(it.moves_no_money([line("Laxmi", debit=100.01), line("Laxmi", credit=100)]))
+		self.assertTrue(it.moves_no_money([line("Bank", debit=100.001), line("Bank", credit=100)]))
+		self.assertFalse(it.moves_no_money([line("Bank", debit=100.01), line("Bank", credit=100)]))
 
 
 class FakeEntry(frappe._dict):

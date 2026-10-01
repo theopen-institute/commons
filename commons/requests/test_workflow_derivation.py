@@ -1,11 +1,10 @@
 """What the app reads off the active Workflow, without a running site.
 
-These replaced two constants -- the approver role and the open request states --
-so the first thing each suite pins is that the derivation still answers exactly
-what the constants said, against a chain shaped the way those constants assumed.
-The rest is what the constants could not do: follow whatever an administrator
-actually built -- which, since nothing installs a chain, is every workflow there
-will ever be.
+These replaced a constant approver role, so the first thing pinned is that the
+derivation still answers what the constant said, against a chain shaped the way
+it assumed. The rest is what a constant could not do: follow whatever an
+administrator actually built -- which, since nothing installs a chain, is every
+workflow there will ever be.
 
 The chain below is this suite's own fixture and nothing else's. It is not a
 configuration the app ships or suggests: a site builds its own, and the point of
@@ -23,9 +22,7 @@ NO_WORKFLOW = False
 
 
 # A conventional purchasing chain: the author sends it on, procurement costs it,
-# a named approver decides, and procurement can override. Written out here
-# because the two fallbacks are only defensible if a chain of this ordinary shape
-# still derives exactly what they name.
+# a named approver decides, and procurement can override.
 BY_APPROVER = "doc.approver == frappe.session.user"
 CONVENTIONAL_STATES = [
 	("Draft", 0),
@@ -49,7 +46,7 @@ CONVENTIONAL_TRANSITIONS = [
 
 
 def conventional_workflow():
-	"""A chain of the shape the fallbacks assume, as an object tree."""
+	"""A chain of that ordinary shape, as an object tree."""
 	return workflow(CONVENTIONAL_STATES, CONVENTIONAL_TRANSITIONS)
 
 
@@ -95,61 +92,16 @@ class TestApproverRoles(TestCase):
 		)
 		self.assertEqual(roles, {"Budget Holder"})
 
-	def test_a_workflow_that_names_nobody_falls_back(self):
+	def test_a_workflow_that_names_nobody_is_the_roles_that_approve(self):
+		"""No role name of this app's: whoever may move a request into a submitted state."""
 		roles = wf.approver_roles(
-			workflow([("Review", 0), ("Done", 1)], [("Review", "Done", "Reviewer", None)])
+			workflow(
+				[("Review", 0), ("Done", 1), ("Shelved", 0)],
+				[("Review", "Done", "Reviewer", None), ("Review", "Shelved", "Clerk", None)],
+			)
 		)
-		self.assertEqual(roles, {wf.FALLBACK_APPROVER_ROLE})
+		self.assertEqual(roles, {"Reviewer"})
 
-	def test_no_workflow_is_no_queue_rather_than_the_fallback_role(self):
+	def test_no_workflow_is_no_queue(self):
 		"""Without a workflow there are no transitions to hold, so no page."""
 		self.assertEqual(wf.approver_roles(NO_WORKFLOW), set())
-
-
-class TestOpenRequestStates(TestCase):
-	def test_a_conventional_chain_answers_the_states_the_constant_used_to_name(self):
-		self.assertEqual(wf.open_request_states(conventional_workflow()), ("Pending", "Under Review"))
-
-	def test_the_initial_state_is_the_authors_own_copy_not_an_open_ask(self):
-		states = wf.open_request_states(
-			workflow(
-				[("Draft", 0), ("Sent", 0), ("Done", 1)],
-				[("Draft", "Sent", "Author", None), ("Sent", "Done", "Decider", None)],
-			)
-		)
-		self.assertEqual(states, ("Sent",))
-
-	def test_a_state_reached_by_turning_a_request_down_is_a_decision(self):
-		"""Refusing and approving are the same person's two answers."""
-		states = wf.open_request_states(
-			workflow(
-				[("Draft", 0), ("Review", 0), ("Refused", 0), ("Done", 1)],
-				[
-					("Draft", "Review", "Author", None),
-					("Review", "Done", "Decider", None),
-					("Review", "Refused", "Decider", None),
-				],
-			)
-		)
-		self.assertEqual(states, ("Review",))
-
-	def test_an_added_review_step_is_counted_without_being_named_here(self):
-		states = wf.open_request_states(
-			workflow(
-				[("Draft", 0), ("Costed", 0), ("Review", 0), ("Refused", 0), ("Done", 1)],
-				[
-					("Draft", "Costed", "Author", None),
-					("Costed", "Review", "Buyer", None),
-					("Review", "Done", "Decider", None),
-					("Review", "Refused", "Decider", None),
-				],
-			)
-		)
-		self.assertEqual(states, ("Costed", "Review"))
-
-	def test_no_workflow_falls_back_to_the_named_states(self):
-		self.assertEqual(wf.open_request_states(NO_WORKFLOW), wf.FALLBACK_OPEN_REQUEST_STATES)
-
-	def test_a_workflow_with_nothing_open_answers_so_rather_than_falling_back(self):
-		"""Only the *absence* of a workflow falls back to the named states."""
-		self.assertEqual(wf.open_request_states(workflow([("Done", 1)], [])), ())

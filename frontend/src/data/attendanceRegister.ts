@@ -40,8 +40,91 @@ export const LATE = 'Late'
 export const ABSENT = 'Absent'
 export const UNMARKED = ''
 
-/** The marks a session's details offer, in the order they are drawn. */
+/** The marks a session's details offer, in the order they are drawn, on a site
+ *  that records lateness. See `marksOffered` for one that does not. */
 export const MARKS: Mark[] = [PRESENT, LATE, ABSENT, UNMARKED]
+
+/* -------------------------------------------------------------------------- */
+/* The site's own fields                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Which of the site's fields the register stores what Education cannot, and
+ * what a late arrival is worth.
+ *
+ * Education has nowhere to say what kind of session a class was, what it
+ * covered, that a student came late, or that a term is not run any more. A
+ * school that wants any of those adds a field and names it in Commons
+ * Settings; `commons.attendance_register.register.register_fields` sends the
+ * names, having checked each against the doctype. A null is a site that does
+ * without, and the page does too: no Late mark, no blocks by type, no details
+ * line, every term in the picker.
+ *
+ * The register this page was written for keeps them as `custom_late`,
+ * `custom_session_type`, `custom_session_details` and `custom_inactive`, and
+ * those names used to be written into this file. They were one school's.
+ */
+export interface RegisterFields {
+  /** A Check on `Student Attendance`: present, but late. */
+  late_field: string | null
+  /** The share of a session's hours a late arrival earns, 0 to 1. */
+  late_credit: number
+  /** Text on `Course Schedule` naming the kind of session. */
+  session_type_field: string | null
+  /** Text on `Course Schedule` saying what a session covered. */
+  session_details_field: string | null
+  /** A Check on `Academic Term` retiring a term from the picker. */
+  inactive_term_field: string | null
+}
+
+/** A site that has named nothing. A late arrival is worth a full session there,
+ *  the setting's own default — though without a late field there are none. */
+export const NO_FIELDS: RegisterFields = {
+  late_field: null,
+  late_credit: 1,
+  session_type_field: null,
+  session_details_field: null,
+  inactive_term_field: null,
+}
+
+/** What a fieldname can look like. The server has already checked each against
+ *  the doctype's meta; this is only so that nothing else is ever put into a
+ *  filter or a field list, whatever arrives. */
+const FIELDNAME = /^[a-z_][a-z0-9_]*$/i
+
+function fieldname(value: unknown): string | null {
+  return typeof value === 'string' && FIELDNAME.test(value.trim())
+    ? value.trim()
+    : null
+}
+
+/**
+ * What the endpoint sent, as the page uses it.
+ *
+ * The credit is held to 0 through 1 here as well as on the server. Above 1 a
+ * late arrival would out-earn being on time, and below 0 it would take hours
+ * off a student, and either one is a figure in a column that somebody acts on.
+ */
+export function registerFields(
+  raw: Partial<RegisterFields> | null | undefined,
+): RegisterFields {
+  const credit = Number(raw?.late_credit ?? NO_FIELDS.late_credit)
+  return {
+    late_field: fieldname(raw?.late_field),
+    late_credit: Number.isFinite(credit)
+      ? Math.min(Math.max(credit, 0), 1)
+      : NO_FIELDS.late_credit,
+    session_type_field: fieldname(raw?.session_type_field),
+    session_details_field: fieldname(raw?.session_details_field),
+    inactive_term_field: fieldname(raw?.inactive_term_field),
+  }
+}
+
+/** The marks a session's details offer on this site. Late only where there is a
+ *  field to keep it in: offered anyway, it would be saved as plain present. */
+export function marksOffered(fields: RegisterFields): Mark[] {
+  return fields.late_field ? MARKS : MARKS.filter((mark) => mark !== LATE)
+}
 
 /** What a session's marks dialog has to write to turn what is stored into what
  *  was chosen. */
@@ -82,19 +165,18 @@ export function markChanges(
 }
 
 /**
- * What a student earns from a session they were at.
+ * What a mark earns of a session's hours.
  *
- * A late arrival earns half of it, which is this school's rule rather than
- * Frappe's: `Student Attendance` has no such concept, the site added
- * `custom_late` to record it, and every figure on the page has to come from one
- * place. Absent and unmarked both earn nothing and stay distinguishable
- * everywhere else — a student nobody has marked is not a student who was away.
+ * What a late arrival earns is the school's rule rather than Frappe's —
+ * `Student Attendance` has no such concept — so it is the site's setting, and
+ * every figure on the page comes through here. Absent and unmarked both earn
+ * nothing and stay distinguishable everywhere else: a student nobody has marked
+ * is not a student who was away.
  */
-export const CREDIT: Record<Mark, number> = {
-  [PRESENT]: 1,
-  [LATE]: 0.5,
-  [ABSENT]: 0,
-  [UNMARKED]: 0,
+export function credit(mark: Mark, lateCredit: number): number {
+  if (mark === PRESENT) return 1
+  if (mark === LATE) return lateCredit
+  return 0
 }
 
 /**
@@ -110,17 +192,20 @@ export function toMark(status: string | null, late: number | null): Mark {
   return late ? LATE : PRESENT
 }
 
-/** The one word back into the two fields, which is the only place it happens.
+/** The one word back into the stored fields, which is the only place it happens.
  *
- *  `custom_late` is written explicitly rather than left out when it is off: a
+ *  The late flag is written explicitly rather than left out when it is off: a
  *  student marked late and then corrected to present has a row with the flag
  *  already set, and an update that omitted the field would leave them late for
- *  ever. */
-export function markFields(mark: Mark): { status: string; custom_late: 0 | 1 } {
-  return {
-    status: mark === ABSENT ? ABSENT : PRESENT,
-    custom_late: mark === LATE ? 1 : 0,
-  }
+ *  ever. A site with no late field has only the status to write. */
+export function markFields(
+  mark: Mark,
+  fields: RegisterFields,
+): Record<string, string | 0 | 1> {
+  const status = mark === ABSENT ? ABSENT : PRESENT
+  return fields.late_field
+    ? { status, [fields.late_field]: mark === LATE ? 1 : 0 }
+    : { status }
 }
 
 /**
@@ -217,23 +302,104 @@ export interface StudentRow {
   student_name: string | null
 }
 
+/** A `Course Schedule`, with the site's own fields under the register's names.
+ *  See `scheduleRow`. */
 export interface ScheduleRow {
   name: string
   student_group: string
   schedule_date: string | null
   from_time: string | null
   to_time: string | null
-  custom_session_type: string | null
-  custom_session_details: string | null
+  session_type: string | null
+  session_details: string | null
 }
 
+/** A `Student Attendance`, the same way. See `markRow`. */
 export interface MarkRow {
   /** The `Student Attendance` id — what a change or a deletion needs. */
   name: string
   course_schedule: string
   student: string
   status: string | null
-  custom_late: 0 | 1 | null
+  late: 0 | 1 | null
+}
+
+/** A row as the document API sent it, keyed by whatever the site's fields are
+ *  called. */
+export type ApiRow = Record<string, unknown>
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null
+}
+
+/** The fields a session is read with: Education's own, and those of the site's
+ *  it has named. */
+export function scheduleFieldList(fields: RegisterFields): string[] {
+  return [
+    'name',
+    'student_group',
+    'schedule_date',
+    'from_time',
+    'to_time',
+    ...[fields.session_type_field, fields.session_details_field].filter(
+      (name): name is string => Boolean(name),
+    ),
+  ]
+}
+
+/** The fields a mark is read with. */
+export function markFieldList(fields: RegisterFields): string[] {
+  return [
+    'name',
+    'course_schedule',
+    'student',
+    'status',
+    ...(fields.late_field ? [fields.late_field] : []),
+  ]
+}
+
+/** A session as it came back, under the names the register uses. A field the
+ *  site has not named reads as nothing, which is one block and no details. */
+export function scheduleRow(row: ApiRow, fields: RegisterFields): ScheduleRow {
+  return {
+    name: String(row.name),
+    student_group: String(row.student_group),
+    schedule_date: text(row.schedule_date),
+    from_time: text(row.from_time),
+    to_time: text(row.to_time),
+    session_type: fields.session_type_field
+      ? text(row[fields.session_type_field])
+      : null,
+    session_details: fields.session_details_field
+      ? text(row[fields.session_details_field])
+      : null,
+  }
+}
+
+/** A mark as it came back. With no late field, nobody is late. */
+export function markRow(row: ApiRow, fields: RegisterFields): MarkRow {
+  return {
+    name: String(row.name),
+    course_schedule: String(row.course_schedule),
+    student: String(row.student),
+    status: text(row.status),
+    late: fields.late_field && row[fields.late_field] ? 1 : 0,
+  }
+}
+
+/** What a session's dialog writes for its type and details: only the fields the
+ *  site has, since naming one it lacks would refuse the whole save. */
+export function sessionFields(
+  fields: RegisterFields,
+  values: { session_type: string; session_details: string },
+): Record<string, string | null> {
+  const written: Record<string, string | null> = {}
+  if (fields.session_type_field)
+    written[fields.session_type_field] = values.session_type || null
+  if (fields.session_details_field) {
+    written[fields.session_details_field] = values.session_details || null
+  }
+  return written
 }
 
 /* -------------------------------------------------------------------------- */
@@ -294,7 +460,9 @@ export interface Register {
 export const EMPTY_REGISTER: Register = { groups: [] }
 
 /** What a block of untyped sessions is called. The field is empty rather than
- *  naming the absence of a type; this is the English for it. */
+ *  naming the absence of a type; this is the English for it. On a site with no
+ *  session type field every session is untyped, and the page draws no block
+ *  headings at all rather than one saying this. */
 export const UNTYPED_SESSION = 'Unspecified'
 
 export function sessionTypeLabel(sessionType: string | null): string {
@@ -318,23 +486,29 @@ export function courseChip(course: CourseRow): string {
  * impossible, because the register this replaced totalled the *first* group's
  * hours under every group on the page.
  */
-export function buildRegister(rows: {
-  groups: GroupRow[]
-  students: StudentRow[]
-  schedules: ScheduleRow[]
-  marks: MarkRow[]
-}): Register {
+export function buildRegister(
+  rows: {
+    groups: GroupRow[]
+    students: StudentRow[]
+    schedules: ScheduleRow[]
+    marks: MarkRow[]
+  },
+  lateCredit: number,
+): Register {
   const byGroup = new Map<string, GroupStudent[]>()
   for (const row of rows.students) {
     const list = byGroup.get(row.parent) ?? []
-    list.push({ student: row.student, student_name: row.student_name || row.student })
+    list.push({
+      student: row.student,
+      student_name: row.student_name || row.student,
+    })
     byGroup.set(row.parent, list)
   }
 
   const bySession = new Map<string, Record<string, SessionMark>>()
   for (const row of rows.marks) {
     const marks = bySession.get(row.course_schedule) ?? {}
-    marks[row.student] = { name: row.name, mark: toMark(row.status, row.custom_late) }
+    marks[row.student] = { name: row.name, mark: toMark(row.status, row.late) }
     bySession.set(row.course_schedule, marks)
   }
 
@@ -345,8 +519,8 @@ export function buildRegister(rows: {
     from_time: row.from_time,
     to_time: row.to_time,
     hours: sessionHours(row.from_time, row.to_time),
-    session_type: row.custom_session_type || null,
-    session_details: row.custom_session_details || null,
+    session_type: row.session_type || null,
+    session_details: row.session_details || null,
     marks: bySession.get(row.name) ?? {},
   }))
 
@@ -356,17 +530,24 @@ export function buildRegister(rows: {
         group,
         byGroup.get(group.name) ?? [],
         sessions.filter((session) => session.group === group.name),
+        lateCredit,
       ),
     ),
   }
 }
 
-function buildGroup(row: GroupRow, students: GroupStudent[], sessions: Session[]): GroupRegister {
+function buildGroup(
+  row: GroupRow,
+  students: GroupStudent[],
+  sessions: Session[],
+  lateCredit: number,
+): GroupRegister {
   const blocks = sessionTypes(sessions).map((sessionType) =>
     buildBlock(
       sessionType,
       sessions.filter((session) => session.session_type === sessionType),
       students,
+      lateCredit,
     ),
   )
   return {
@@ -375,12 +556,17 @@ function buildGroup(row: GroupRow, students: GroupStudent[], sessions: Session[]
     program: row.program,
     students,
     blocks,
-    scheduled: round(blocks.reduce((total, block) => total + block.scheduled, 0)),
+    scheduled: round(
+      blocks.reduce((total, block) => total + block.scheduled, 0),
+    ),
     credited: Object.fromEntries(
       students.map((student) => [
         student.student,
         round(
-          blocks.reduce((total, block) => total + (block.credited[student.student] ?? 0), 0),
+          blocks.reduce(
+            (total, block) => total + (block.credited[student.student] ?? 0),
+            0,
+          ),
         ),
       ]),
     ),
@@ -400,7 +586,9 @@ function buildGroup(row: GroupRow, students: GroupStudent[], sessions: Session[]
  */
 function sessionTypes(sessions: Session[]): (string | null)[] {
   const found = new Set(sessions.map((session) => session.session_type))
-  const typed = [...found].filter((name): name is string => Boolean(name)).sort()
+  const typed = [...found]
+    .filter((name): name is string => Boolean(name))
+    .sort()
   return found.has(null) ? [...typed, null] : typed
 }
 
@@ -415,18 +603,26 @@ function buildBlock(
   sessionType: string | null,
   sessions: Session[],
   students: GroupStudent[],
+  lateCredit: number,
 ): Block {
   return {
     session_type: sessionType,
     sessions,
-    scheduled: round(sessions.reduce((total, session) => total + session.hours, 0)),
+    scheduled: round(
+      sessions.reduce((total, session) => total + session.hours, 0),
+    ),
     credited: Object.fromEntries(
       students.map((student) => [
         student.student,
         round(
           sessions.reduce(
             (total, session) =>
-              total + session.hours * CREDIT[session.marks[student.student]?.mark ?? UNMARKED],
+              total +
+              session.hours *
+                credit(
+                  session.marks[student.student]?.mark ?? UNMARKED,
+                  lateCredit,
+                ),
             0,
           ),
         ),

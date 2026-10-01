@@ -4,9 +4,9 @@ What is pinned here is what would do damage quietly if it drifted: only
 party-less lines on Payable accounts are touched, a line that already names a
 party keeps it, and with the setting off the ledger lines are ERPNext's own.
 
-That it fixes the cancel was checked against register.localhost inside a
+That it fixes the cancel was checked against a real site inside a
 rolled-back transaction: a payment with a TDS deduction, submitted and
-cancelled with the "Set Payable to right accounts" server scripts disabled,
+cancelled with the site's own server scripts for this disabled,
 left no live payment ledger rows, and the ledger preview named the supplier
 on the TDS line.
 """

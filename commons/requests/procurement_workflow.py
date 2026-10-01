@@ -12,27 +12,19 @@ transitions are not here: those are the same questions leave and expenses ask,
 and they are answered once in `commons.commons_core.workflow`. What is here
 is only what is derived from *this* workflow's particular shape.
 
-The two derivations below both fall back to a conventional answer. A site with
-no workflow at all -- which is every site until somebody builds one -- still
-gets something coherent rather than an empty page, and a site whose workflow
-happens to be shaped differently is read, not corrected. The fallbacks are a
-floor, never an override.
+Nothing falls back to a conventional answer, either. A site with no workflow
+has no approvals queue, and one shaped differently is read, not corrected.
 """
 
 from commons.commons_core import workflow as wf
 
-# Spelled out rather than imported from the controller: `budget` reads this
-# module and the controller reads `budget`, so importing it here would close a
-# cycle over a single string.
+# Spelled out rather than imported from the controller, which `procurement`
+# imports alongside this module; one string is not worth the coupling.
 PROCUREMENT_REQUEST = "Procurement Request"
 
 # The field a transition condition names when the workflow routes a request to
 # one *person* rather than to a role. See `approver_roles`.
 APPROVER_FIELD = "approver"
-
-# What the reference chain answers, for a site running without a workflow.
-FALLBACK_APPROVER_ROLE = "Expense Approver"
-FALLBACK_OPEN_REQUEST_STATES = ("Pending", "Under Review")
 
 
 def _states_by_doc_status(workflow, doc_status: int) -> set[str]:
@@ -54,6 +46,10 @@ def approver_roles(workflow=None) -> set[str]:
 	what `commons_core.workflow.names_in_movable_states` is written around. So the people this page is
 	for are exactly the people the workflow decides by name, and asking the
 	condition says so without a role name in this file.
+
+	A workflow that names no approver anywhere is read for the people who
+	approve at all: the roles allowed a transition into a submitted state, which
+	is what approving a request is.
 	"""
 	workflow = workflow if workflow is not None else wf.active_workflow(PROCUREMENT_REQUEST)
 	if not workflow:
@@ -61,39 +57,7 @@ def approver_roles(workflow=None) -> set[str]:
 	roles = {
 		row.allowed for row in workflow.transitions if row.allowed and APPROVER_FIELD in (row.condition or "")
 	}
-	return roles or {FALLBACK_APPROVER_ROLE}
-
-
-def open_request_states(workflow=None) -> tuple[str, ...]:
-	"""Undecided states that are an open ask on a department's budget.
-
-	Not every draft is one. The state a request is created in is its author's
-	private working copy -- nobody has been asked for anything yet -- and a state
-	reached by turning a request down is a decision not to spend, not an
-	outstanding one.
-
-	Both fall out of the workflow's own shape. The initial state is the first
-	row, which is what Frappe assigns a document that arrives without one. A
-	rejection is a draft state you land in from a state that can also approve:
-	the same person, at the same moment, chose between them, so whatever they
-	chose is a decision either way.
-
-	Only the readout's `open_requests` figure depends on this. The approval gate
-	counts submitted requests and consults no state name at all, so a workflow
-	this cannot read leaves the control itself untouched.
-	"""
-	workflow = workflow if workflow is not None else wf.active_workflow(PROCUREMENT_REQUEST)
-	if not workflow or not workflow.states:
-		return FALLBACK_OPEN_REQUEST_STATES
-
-	drafts = _states_by_doc_status(workflow, 0)
+	if roles:
+		return roles
 	submitted = _states_by_doc_status(workflow, 1)
-	deciding = {row.state for row in workflow.transitions if row.next_state in submitted}
-	decided = {
-		row.next_state for row in workflow.transitions if row.state in deciding and row.next_state in drafts
-	}
-	# Empty is a real answer -- a workflow whose every draft state is either the
-	# author's own or the outcome of a decision has no open asks -- so it is
-	# returned as one rather than papered over with the fallback names. Only the
-	# absence of a workflow above falls back.
-	return tuple(sorted(drafts - decided - {workflow.states[0].state}))
+	return {row.allowed for row in workflow.transitions if row.allowed and row.next_state in submitted}

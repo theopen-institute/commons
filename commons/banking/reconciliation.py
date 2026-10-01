@@ -4,13 +4,11 @@ makes in a single step.
 The questions are the same two the attendance register answers: does this site
 have the page at all, and is this reader somebody it is for.
 
-The write is `create_loan_repayments`, and it adds no capability. On this
-site a repayment made the ordinary way is already reconcilable: nothing names an
-account on it, so `LoanRepayment.set_repayment_account` falls back to the Loan
-Product's `payment_account`, which is the GL account of the bank the borrowers
-pay into. The repayment is then matched to the deposit. Every reconciled
-repayment on register.localhost was booked this way, and all of them are
-`Matched` rows.
+The write is `create_loan_repayments`, and it adds no capability. A repayment
+made the ordinary way is already reconcilable: nothing names an account on it,
+so `LoanRepayment.set_repayment_account` falls back to the Loan Product's
+`payment_account`, which is the GL account of the bank the borrowers pay into.
+The repayment is then matched to the deposit, as a `Matched` row.
 
 The endpoint does those same two steps, making the same documents, in one
 request. There are two reasons for that:
@@ -123,10 +121,10 @@ def create_loan_repayments(
 				"amount_paid": line["amount"],
 				# Both dates are the day the money arrived. Lending's `validate`
 				# replaces `posting_date` with the current time on every save;
-				# the site's server scripts "Loan Repayment - Remember Posting
-				# Date" and "... - Keep Posting Date" put it back, so the
-				# ledger entries are dated as sent here. Without them, lending
-				# posts on the day of booking.
+				# Commons Settings' "Enable Loan Vouchers on Their Own Dates"
+				# puts it back, so the ledger entries are dated as sent here.
+				# Without it, lending posts on the day of booking, which
+				# `_require_statement_date` refuses.
 				"posting_date": get_datetime(transaction.date),
 				"value_date": get_datetime(transaction.date),
 				"reference_number": reference or None,
@@ -203,8 +201,8 @@ def submit_and_reconcile(bank_transaction: str, voucher_type: str, voucher: str)
 	accounting for it.
 
 	The voucher is submitted as it stands in the database, not as the page last
-	read it, and goes through its full submit: validation, `submit`
-	permission and the site's server scripts. It is matched as `Matched`, not
+	read it, and goes through its full submit: validation, `submit` permission
+	and any server scripts the site has. It is matched as `Matched`, not
 	`Voucher Created`, because it existed before the statement line was dealt
 	with; ERPNext's `unreconcile_transaction` would otherwise cancel it later.
 	"""
@@ -296,6 +294,40 @@ def accounting_dimensions(company: str) -> list[dict]:
 	]
 
 
+# The most names one `applicant_titles` request reads, which is the page's own
+# cap on loans.
+MAX_TITLES = 2000
+
+
+@frappe.whitelist()
+def applicant_titles(doctype: str, names: list | str) -> dict[str, str]:
+	"""{name: title} for these records of one loan applicant doctype.
+
+	The title is the doctype's own title field, from its meta, so a site that
+	lends to a doctype of its own (Lending's applicant type is a Select a site
+	may extend) gets its borrowers' names without the page knowing the field.
+
+	Read with `get_list`, under the reader's permissions. A doctype this reader
+	may not read, or one with no title field, answers with nothing, and the
+	page names those borrowers by id.
+	"""
+	names = frappe.parse_json(names) if isinstance(names, str) else names
+	if not isinstance(names, list) or len(names) > MAX_TITLES:
+		frappe.throw(_("At most {0} names at a time").format(MAX_TITLES))
+	if not names or not apps.has_doctype(doctype) or not frappe.has_permission(doctype, "read"):
+		return {}
+	title_field = frappe.get_meta(doctype).get_title_field()
+	if title_field == "name":
+		return {}
+	rows = frappe.get_list(
+		doctype,
+		filters={"name": ["in", list(set(names))]},
+		fields=["name", title_field],
+		limit_page_length=len(names),
+	)
+	return {row.name: row.get(title_field) for row in rows if row.get(title_field)}
+
+
 def _validated_lines(transaction, repayments) -> list[dict]:
 	"""The lines, checked against the deposit before anything is written.
 
@@ -362,12 +394,12 @@ def _require_date_kept(repayment, dated) -> None:
 def _require_statement_date(repayment, transaction) -> None:
 	"""Refuse a repayment that lending has dated other than the day the money arrived.
 
-	Lending's `validate` sets `posting_date` to the current time on every save;
-	two of the site's server scripts put the statement's date back. When they do
-	not run -- `server_script_enabled` missing from `common_site_config.json`,
-	which has happened -- the repayment would post to the ledger on the day it was
-	booked, with nothing on screen to say so. Refused instead, which rolls back
-	everything this request has written.
+	Lending's `validate` sets `posting_date` to the current time on every save.
+	Commons Settings' "Enable Loan Vouchers on Their Own Dates" puts the
+	statement's date back, or a site may do it its own way. When nothing does --
+	the setting off, or the site's own way not running -- the repayment would
+	post to the ledger on the day it was booked, with nothing on screen to say
+	so. Refused instead, which rolls back everything this request has written.
 	"""
 	if getdate(repayment.posting_date) != getdate(transaction.date):
 		frappe.throw(_date_moved_message(repayment, transaction.date))
@@ -375,9 +407,8 @@ def _require_statement_date(repayment, transaction) -> None:
 
 def _date_moved_message(repayment, meant) -> str:
 	return _(
-		"Lending dated {0} {1} instead of {2}. The site's server scripts that keep a repayment's "
-		"posting date are not running -- check that server scripts are enabled -- or book it "
-		"from the desk."
+		"Lending dated {0} {1} instead of {2}. Nothing kept the repayment's posting date: turn on "
+		"Enable Loan Vouchers on Their Own Dates in Commons Settings, or book it from the desk."
 	).format(repayment.name or _("the repayment"), getdate(repayment.posting_date), getdate(meant))
 
 

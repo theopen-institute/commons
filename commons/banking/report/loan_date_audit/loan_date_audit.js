@@ -1,5 +1,5 @@
 // Where a lending voucher's GL is not on the voucher's own date, whether the
-// scripts that keep it there are in place, and the repair for repayments. Both
+// setting that keeps it there is on, and the repair for repayments. Both
 // checks run by default and share one list; the Check filter narrows it to one.
 // Every repair opens a dialog that shows what will change and writes only on
 // its button; nothing on the report itself writes.
@@ -9,8 +9,10 @@ const DATES = "GL dates";
 const SAFEGUARDS = "Safeguards";
 const GL_DATE = "GL not on the voucher's date";
 const API = "commons.banking.loan_dates.";
-const CAN_REPAIR = () => frappe.user.has_role(["Accounts Manager", "System Manager"]);
-const STATUS_COLOR = { OK: "green", Missing: "red", Redundant: "orange", "Wrong date": "red" };
+// The server's `ledger_audit.can_repair`: write on Period Closing Voucher, which
+// a stock site grants Accounts Manager and System Manager.
+const CAN_REPAIR = () => frappe.model.can_write("Period Closing Voucher");
+const STATUS_COLOR = { OK: "green", Missing: "red", "Wrong date": "red" };
 
 frappe.query_reports["Loan Date Audit"] = {
 	filters: [
@@ -135,7 +137,7 @@ function review_repayment(report, voucher_no) {
 					: plan.refused
 					? `<div class="alert alert-warning">${esc(plan.refused)}</div>`
 					: `<p class="text-muted small">${__(
-							"Re-booking cancels these entries and books them again from the repayment, on {0}, as the repost script does. Amounts and accounts do not change. A comment is added to the repayment.",
+							"Re-booking cancels these entries and books them again from the repayment, on {0}, as a repost does with Enable Loan Vouchers on Their Own Dates on. Amounts and accounts do not change. A comment is added to the repayment.",
 							[esc(frappe.datetime.str_to_user(plan.date))]
 					  )}</p>`
 			}`);
@@ -147,10 +149,7 @@ function review_repayment(report, voucher_no) {
 function explain(voucher_type, voucher_no, issue) {
 	const why = {
 		"Posting date is not the value date": __(
-			"The repayment's posting date is not the date it is for, so the posting-date scripts were not working when it was saved. Lending books GL from the posting date, and a submitted document's posting date can't be edited, so this needs a person: cancel and amend it with the scripts in place."
-		),
-		"GFL income entry not on the repayment's date": __(
-			"The Good Faith Loan income journal was booked on another day than the repayment. It is its own journal entry: cancel and amend it to the repayment's date."
+			"The repayment's posting date is not the date it is for, so nothing kept the posting date when it was saved. Lending books GL from the posting date, and a submitted document's posting date can't be edited, so this needs a person: cancel and amend it with Enable Loan Vouchers on Their Own Dates on in Commons Settings."
 		),
 	}[issue];
 	frappe.msgprint({

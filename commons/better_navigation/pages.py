@@ -27,9 +27,9 @@ held to the icon palette for exactly that reason.
 
 from collections.abc import Callable
 
+from commons.attendance_register import register as attendance
 from commons.banking import reconciliation
 from commons.document_capture import capture
-from commons.education_extensions import attendance
 from commons.requests.expense import EXPENSES
 from commons.requests.leave import LEAVE
 from commons.requests.procurement import PROCUREMENT

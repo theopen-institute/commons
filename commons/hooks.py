@@ -111,6 +111,10 @@ before_migrate = [
 	# custom module, and its three workspaces leave the sites that never used
 	# them. Remove once every site has migrated. See its docstring.
 	"commons.commons_core.education_handover.run",
+	# TEMPORARY, the same way: Department Budget leaves the app for the sites
+	# that hold budgets, and the doctypes whose shipped permissions shrank to
+	# System Manager keep the ones each site had. See its docstring.
+	"commons.commons_core.procurement_handover.run",
 	"commons.commons_core.install.sync_module_defs",
 ]
 
@@ -327,8 +331,8 @@ has_permission = {
 # A Material Request raised from a Procurement Request is what makes that request
 # "ordered", but nothing is written back to the request when it happens: how much
 # has been ordered is counted live from the submitted Material Requests that point
-# at it. Only the budget needs a hook, and only on submit — usage is summed from
-# submitted requests, so a cancelled one leaves the tally by its docstatus alone.
+# at it. What a hook does check is that those links point at an approved request
+# of the same company -- see `commons.requests.material_request`.
 doc_events = {
 	# Who lands where is cached per user, and both ends of the rule can move it:
 	# a Role's home page or priority, and a User's own list of roles.
@@ -358,9 +362,7 @@ doc_events = {
 		"on_submit": "commons.banking.internal_transfers.clear_on_submit",
 	},
 	"Material Request": {
-		"validate": "commons.requests.budget.validate_material_request",
-		"before_update_after_submit": "commons.requests.budget.protect_submitted_material_request",
-		"on_submit": "commons.requests.budget.charge_material_request",
+		"validate": "commons.requests.material_request.validate_procurement_links",
 	},
 	# The navigation rail's site-level inputs are cached; these are what it reads.
 	# See `commons.better_navigation.navigation_apps._site_inputs`.
@@ -553,9 +555,7 @@ require_type_annotated_api_methods = True
 # ignore_translatable_strings_from = []
 
 
-# Submitted MR rates are immutable even when a price-list update is requested.
 extend_doctype_class = {
-	"Material Request": ["commons.requests.budget.BudgetMaterialRequestMixin"],
 	# A Notification may send an Email Template's content in place of its own
 	# message. See `commons.email_extensions.notification`.
 	"Notification": ["commons.email_extensions.notification.TemplateNotificationMixin"],

@@ -3,12 +3,19 @@ import { useCall } from 'frappe-ui'
 import {
   buildRegister,
   EMPTY_REGISTER,
+  markFieldList,
   markFields,
+  markRow,
+  registerFields,
+  scheduleFieldList,
+  scheduleRow,
+  type ApiRow,
   type CourseRow,
   type GroupRow,
   type Mark,
   type MarkRow,
   type Register,
+  type RegisterFields,
   type ScheduleRow,
   type StudentRow,
   type TermRow,
@@ -20,7 +27,9 @@ import { permissionCall } from './permissions'
  * already ships.
  *
  * This app adds no endpoint of its own for any of it, which is the point rather
- * than a boast. Everything below goes through either the REST document API or
+ * than a boast. (It asks one question of its own, which of the site's fields
+ * to read — see `attendanceFields` — and that answer is fieldnames, not rows.)
+ * Everything below goes through either the REST document API or
  * `frappe.client`, so role permissions, User Permissions and this app's gate in
  * `commons.safer_permissions` all apply to every row read and every row
  * written, without this app restating one of them. That is the same argument
@@ -106,7 +115,7 @@ function childList<Row>() {
   })
 }
 
-export type { Mark, Register }
+export type { Mark, Register, RegisterFields }
 export {
   courseChip,
   EMPTY_REGISTER,
@@ -114,7 +123,8 @@ export {
   formatTime,
   fromTimeInput,
   markChanges,
-  MARKS,
+  marksOffered,
+  sessionFields,
   sessionTypeLabel,
   toTimeInput,
   UNTYPED_SESSION,
@@ -125,6 +135,42 @@ export {
   type Session,
   type TermRow,
 } from './attendanceRegister'
+
+/* -------------------------------------------------------------------------- */
+/* Which of the site's fields                                                  */
+/* -------------------------------------------------------------------------- */
+
+const fieldsCall = useCall<Partial<RegisterFields>>({
+  url: '/api/v2/method/commons.attendance_register.register.register_fields',
+  immediate: false,
+})
+
+/**
+ * The site's fields for what Education does not record, as Attendance Register Settings
+ * names them. Until they are in, the register reads as a site that named none
+ * — but nothing reads or writes before they are: every read below waits on
+ * `loadAttendanceFields`, since a register read without the late field would
+ * show every late arrival as on time, and a mark saved from it would clear the
+ * flag.
+ */
+export const attendanceFields = computed(() => registerFields(fieldsCall.data))
+
+let fieldsLoaded: Promise<RegisterFields> | null = null
+
+/** Ask once per page load; a refusal is asked again next time rather than kept. */
+export function loadAttendanceFields(): Promise<RegisterFields> {
+  fieldsLoaded ??= fieldsCall.submit().then((data) => {
+    if (data === null || fieldsCall.error) {
+      fieldsLoaded = null
+      throw (
+        fieldsCall.error ??
+        new Error("The register's settings could not be loaded.")
+      )
+    }
+    return attendanceFields.value
+  })
+  return fieldsLoaded
+}
 
 /* -------------------------------------------------------------------------- */
 /* Who the register is for                                                     */
@@ -172,44 +218,71 @@ export const attendancePermissionsLoaded = computed(
 export function useAttendancePickers() {
   const terms = documentList<TermRow>('Academic Term')
   const courses = documentList<CourseRow>('Course')
-  const sessionTypes = documentList<{ custom_session_type: string | null }>('Course Schedule')
-  const currentTerm = useCall<string | null, { doctype: string; field: string }>({
+  const sessionTypes = documentList<ApiRow>('Course Schedule')
+  const currentTerm = useCall<
+    string | null,
+    { doctype: string; field: string }
+  >({
     url: `${CLIENT}.get_single_value`,
     params: { doctype: 'Education Settings', field: 'current_academic_term' },
     immediate: false,
   })
 
+  const fieldsError = ref<Error | null>(null)
+
   async function load() {
+    let fields: RegisterFields
+    try {
+      fields = await loadAttendanceFields()
+      fieldsError.value = null
+    } catch (problem) {
+      fieldsError.value = problem as Error
+      return
+    }
+    const typeField = fields.session_type_field
     await Promise.all([
-      // `custom_inactive` is the site's way of retiring a term that was run
-      // once and is not run again. Retired terms are dropped rather than shown
-      // greyed: the picker is for choosing. Nothing stops an old register being
-      // read, because the address carries the term.
+      // The inactive-term field, where the site has one, is how it retires a
+      // term that was run once and is not run again. Retired terms are dropped
+      // rather than shown greyed: the picker is for choosing. Nothing stops an
+      // old register being read, because the address carries the term.
       terms.submit({
         fields: JSON.stringify(['name', 'term_start_date', 'term_end_date']),
-        filters: JSON.stringify([['custom_inactive', '=', 0]]),
+        ...(fields.inactive_term_field
+          ? { filters: JSON.stringify([[fields.inactive_term_field, '=', 0]]) }
+          : {}),
         order_by: 'term_start_date desc',
         limit: PAGE.terms,
       }),
       courses.submit({
-        fields: JSON.stringify(['name', 'course_name', 'abbreviation', 'default_instructor']),
+        fields: JSON.stringify([
+          'name',
+          'course_name',
+          'abbreviation',
+          'default_instructor',
+        ]),
         order_by: 'name asc',
         limit: PAGE.courses,
       }),
       // The kinds of session this school actually runs, read off what has been
-      // scheduled rather than declared anywhere — `custom_session_type` is free
-      // text on purpose. `group_by` is how the document API says DISTINCT.
-      sessionTypes.submit({
-        fields: JSON.stringify(['custom_session_type']),
-        group_by: 'custom_session_type',
-        order_by: 'custom_session_type asc',
-        limit: PAGE.sessionTypes,
-      }),
+      // scheduled rather than declared anywhere — the type is free text on
+      // purpose. `group_by` is how the document API says DISTINCT. Not asked
+      // at all on a site that keeps no type.
+      typeField
+        ? sessionTypes.submit({
+            fields: JSON.stringify([typeField]),
+            group_by: typeField,
+            order_by: `${typeField} asc`,
+            limit: PAGE.sessionTypes,
+          })
+        : null,
       // Where the page opens when the address names no term. A reader without
       // permission on `Education Settings` gets a refusal here and the first
       // term in the list instead, which is why this is not awaited with the
       // others' success.
-      currentTerm.submit({ doctype: 'Education Settings', field: 'current_academic_term' }),
+      currentTerm.submit({
+        doctype: 'Education Settings',
+        field: 'current_academic_term',
+      }),
     ])
   }
 
@@ -217,14 +290,18 @@ export function useAttendancePickers() {
     load,
     terms: computed(() => terms.data ?? []),
     courses: computed(() => courses.data ?? []),
-    sessionTypes: computed(() =>
-      (sessionTypes.data ?? [])
-        .map((row) => (row.custom_session_type ?? '').trim())
-        .filter(Boolean),
-    ),
+    sessionTypes: computed(() => {
+      const typeField = attendanceFields.value.session_type_field
+      if (!typeField) return []
+      return (sessionTypes.data ?? [])
+        .map((row) => String(row[typeField] ?? '').trim())
+        .filter(Boolean)
+    }),
     currentTerm: computed(() => currentTerm.data ?? null),
     loaded: computed(() => terms.isFinished && courses.isFinished),
-    error: computed(() => terms.error ?? courses.error ?? null),
+    error: computed(
+      () => fieldsError.value ?? terms.error ?? courses.error ?? null,
+    ),
   }
 }
 
@@ -246,7 +323,12 @@ export interface RegisterRows {
   marks: MarkRow[]
 }
 
-const NO_ROWS: RegisterRows = { groups: [], students: [], schedules: [], marks: [] }
+const NO_ROWS: RegisterRows = {
+  groups: [],
+  students: [],
+  schedules: [],
+  marks: [],
+}
 
 /**
  * One term of one course, in four rounds of reads.
@@ -263,11 +345,13 @@ export function useAttendanceRegister() {
   const programs = childList<{ parent: string }>()
   const groups = documentList<GroupRow>('Student Group')
   const students = childList<StudentRow>()
-  const schedules = documentList<ScheduleRow>('Course Schedule')
-  const marks = documentList<MarkRow>('Student Attendance')
+  const schedules = documentList<ApiRow>('Course Schedule')
+  const marks = documentList<ApiRow>('Student Attendance')
 
   const rows = ref<RegisterRows>(NO_ROWS) as Ref<RegisterRows>
-  const register = computed<Register>(() => buildRegister(rows.value))
+  const register = computed<Register>(() =>
+    buildRegister(rows.value, attendanceFields.value.late_credit),
+  )
   const loading = ref(false)
   const loaded = ref(false)
   const error = ref<Error | null>(null)
@@ -326,6 +410,9 @@ export function useAttendanceRegister() {
       if (!current()) throw new Cancelled()
     }
 
+    const fields = await loadAttendanceFields()
+    stillCurrent()
+
     // Which programmes teach this course. The join Education actually models: a
     // `Student Group` names a programme and a term, and a `Program Course` row
     // is what says the course is taught on that programme. A group's own
@@ -346,7 +433,12 @@ export function useAttendanceRegister() {
     // of a term that has finished as it is the place to add to one that has
     // not, and a group is usually disabled precisely because its term is over.
     const groupRows = await fetchRows(groups, {
-      fields: JSON.stringify(['name', 'student_group_name', 'program', 'disabled']),
+      fields: JSON.stringify([
+        'name',
+        'student_group_name',
+        'program',
+        'disabled',
+      ]),
       filters: JSON.stringify([
         ['academic_term', '=', term],
         ['program', 'in', programNames],
@@ -376,15 +468,7 @@ export function useAttendanceRegister() {
         limit_page_length: PAGE.students,
       }),
       fetchRows(schedules, {
-        fields: JSON.stringify([
-          'name',
-          'student_group',
-          'schedule_date',
-          'from_time',
-          'to_time',
-          'custom_session_type',
-          'custom_session_details',
-        ]),
+        fields: JSON.stringify(scheduleFieldList(fields)),
         filters: JSON.stringify([
           ['student_group', 'in', groupNames],
           ['course', '=', course],
@@ -400,13 +484,7 @@ export function useAttendanceRegister() {
     // cancelled original behind, carrying the same student and session.
     const markRows = sessionNames.length
       ? await fetchRows(marks, {
-          fields: JSON.stringify([
-            'name',
-            'course_schedule',
-            'student',
-            'status',
-            'custom_late',
-          ]),
+          fields: JSON.stringify(markFieldList(fields)),
           filters: JSON.stringify([
             ['course_schedule', 'in', sessionNames],
             ['docstatus', '!=', 2],
@@ -419,8 +497,8 @@ export function useAttendanceRegister() {
     return {
       groups: groupRows,
       students: studentRows,
-      schedules: scheduleRows,
-      marks: markRows,
+      schedules: scheduleRows.map((row) => scheduleRow(row, fields)),
+      marks: markRows.map((row) => markRow(row, fields)),
     }
   }
 
@@ -513,7 +591,10 @@ export function useDeleteDocument() {
  * not the last one's.
  */
 export async function write<Result, Params extends object>(
-  call: { submit: (params: Params) => Promise<Result | null>; error: Error | null },
+  call: {
+    submit: (params: Params) => Promise<Result | null>
+    error: Error | null
+  },
   params: Params,
 ): Promise<{ ok: boolean; data: Result | null }> {
   const data = await call.submit(params)
@@ -558,12 +639,17 @@ export const COURSE_SCHEDULE = 'Course Schedule'
 
 /** The document a new mark is, ready for `insert`. */
 export function newMark(session: string, student: string, mark: Mark) {
-  return { doctype: STUDENT_ATTENDANCE, course_schedule: session, student, ...markFields(mark) }
+  return {
+    doctype: STUDENT_ATTENDANCE,
+    course_schedule: session,
+    student,
+    ...markFields(mark, attendanceFields.value),
+  }
 }
 
 /** The fields a changed mark sets. */
 export function markValues(mark: Mark) {
-  return markFields(mark)
+  return markFields(mark, attendanceFields.value)
 }
 
 /** Whether the term picker's selection contains a date — what bounds the
@@ -572,7 +658,9 @@ export function termBounds(
   terms: MaybeRefOrGetter<TermRow[]>,
   term: MaybeRefOrGetter<string>,
 ) {
-  const found = computed(() => toValue(terms).find((row) => row.name === toValue(term)))
+  const found = computed(() =>
+    toValue(terms).find((row) => row.name === toValue(term)),
+  )
   return {
     start: computed(() => found.value?.term_start_date ?? null),
     end: computed(() => found.value?.term_end_date ?? null),

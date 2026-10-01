@@ -9,44 +9,35 @@ in another field: `value_date` on a repayment or write-off, and
 `disbursement_date` on a disbursement. That is the business date these checks
 hold the GL to.
 
-Two site Server Scripts keep a repayment's `posting_date` as entered ("Loan
-Repayment - Remember Posting Date" stashes it in Before Validate, "Loan
-Repayment - Keep Posting Date" puts it back in Before Save). That covers
-submit, but not what follows a backdated repayment. Lending then submits a
-Loan Repayment Repost, which cancels and re-books the GL of every repayment
-from that date on, and `LoanRepayment.get_gl_map` dates it
+Lending then makes it worse after a backdated repayment. It submits a Loan
+Repayment Repost, which cancels and re-books the GL of every repayment from
+that date on, and `LoanRepayment.get_gl_map` dates it
 `getdate() if self.flags.from_repost`. So the repost moves repayments that were
-right to the day it ran. On 2026-09-27, LM-REP-0140 was entered for April and
-took LM-REP-0118 and LM-REP-0124 with it. A third script on the repost, After
-Submit, books them again on their own dates.
+right to the day it ran: one repayment entered late for an earlier month takes
+every later one with it.
 
-Commons Settings' "Enable Loan Vouchers on Their Own Dates" does all of that
-in the app, and write-offs and disbursements too (`commons.banking.loan_own_dates`).
-With it on, the scripts are redundant.
+Commons Settings' "Enable Loan Vouchers on Their Own Dates" keeps all three on
+their own dates, reposts included (`commons.banking.loan_own_dates`).
 
 `find_discrepancies` asks whether the books agree with the documents, whatever
-keeps them there. `safeguards` asks whether that is in place. With the setting
-on, it checks that each doctype's class carries its extension. Without it, it
-runs the two repayment scripts on an unsaved document inside a savepoint that
-is rolled back, so it tests what they do rather than what they are called.
+keeps them there, so it also judges anything a site does on its own.
+`safeguards` asks whether the app's setting is on, and whether each doctype's
+class carries its extension.
 
 The repair touches Loan Repayments only. It cancels the repayment's live GL
-and books it again from the document, as the repost script does, and refuses
-when the document's own `posting_date` is not its value date, because lending
-would book it on the wrong day again. Write-offs and disbursements are only
+and books it again from the document, as a repost does with the setting on,
+and refuses when the document's own `posting_date` is not its value date,
+because lending would book it on the wrong day again. Write-offs and disbursements are only
 reported. Their `posting_date` is the day they were saved, so booking them
 again would change nothing.
 """
 
 import frappe
 from frappe import _
-from frappe.utils import flt, get_datetime, getdate, now_datetime
+from frappe.utils import flt, getdate
 
+from commons.banking.ledger_audit import check_can_repair
 from commons.commons_core import apps
-
-# Who may run the repair. It re-books GL, so it is for the people who may
-# already fix the books by hand.
-REPAIR_ROLES = ("Accounts Manager", "System Manager")
 
 # The most repayments one bulk request re-books. Each is its own savepoint.
 MAX_BULK = 200
@@ -60,16 +51,9 @@ VOUCHERS = {
 
 GL_DATE = "GL not on the voucher's date"
 DOC_DATE = "Posting date is not the value date"
-GFL_DATE = "GFL income entry not on the repayment's date"
-
-# What the repost script must do, found in its text. Whitespace is ignored.
-REBOOK_CALLS = ("make_gl_entries(cancel=1)", "make_gl_entries()")
 
 OK = "OK"
 MISSING = "Missing"
-# Server scripts doing what the setting now does: harmless, but a second
-# re-booking of every reposted repayment.
-REDUNDANT = "Redundant"
 
 
 def _gl_dates(voucher_type: str, names: list[str]) -> dict:
@@ -91,31 +75,7 @@ def _gl_dates(voucher_type: str, names: list[str]) -> dict:
 	return out
 
 
-def _gfl_dates(names: list[str]) -> dict:
-	"""{repayment: (journal entry, its date)} for the site's GFL income entries."""
-	if not names or not frappe.get_meta("Loan Repayment").has_field("custom_gfl_income_voucher"):
-		return {}
-	rows = frappe.get_all(
-		"Loan Repayment",
-		filters={"name": ("in", names), "custom_gfl_income_voucher": ("is", "set")},
-		fields=["name", "custom_gfl_income_voucher"],
-	)
-	je_dates = dict(
-		frappe.get_all(
-			"Journal Entry",
-			filters={"name": ("in", [r.custom_gfl_income_voucher for r in rows]), "docstatus": 1},
-			fields=["name", "posting_date"],
-			as_list=True,
-		)
-	)
-	return {
-		r.name: (r.custom_gfl_income_voucher, getdate(je_dates[r.custom_gfl_income_voucher]))
-		for r in rows
-		if r.custom_gfl_income_voucher in je_dates
-	}
-
-
-def issues_for(voucher_type: str, doc, gl: dict, gfl: tuple | None) -> list[tuple[str, str]]:
+def issues_for(voucher_type: str, doc, gl: dict) -> list[tuple[str, str]]:
 	"""The (issue, detail) pairs for one voucher. `gl` is {date: debit}."""
 	date = getdate(doc.date)
 	found = []
@@ -124,8 +84,6 @@ def issues_for(voucher_type: str, doc, gl: dict, gfl: tuple | None) -> list[tupl
 		found.append((GL_DATE, ", ".join(str(d) for d in wrong)))
 	if voucher_type == "Loan Repayment" and getdate(doc.posting_date) != date:
 		found.append((DOC_DATE, str(getdate(doc.posting_date))))
-	if gfl and gfl[1] != date:
-		found.append((GFL_DATE, f"{gfl[0]} on {gfl[1]}"))
 	return found
 
 
@@ -157,10 +115,9 @@ def find_discrepancies(filters) -> list[dict]:
 		)
 		names = [d.name for d in docs]
 		gl = _gl_dates(voucher_type, names)
-		gfl = _gfl_dates(names) if voucher_type == "Loan Repayment" else {}
 		for doc in docs:
 			entries = gl.get(doc.name, {})
-			for issue, detail in issues_for(voucher_type, doc, entries, gfl.get(doc.name)):
+			for issue, detail in issues_for(voucher_type, doc, entries):
 				rows.append(
 					frappe._dict(
 						issue=issue,
@@ -179,70 +136,6 @@ def find_discrepancies(filters) -> list[dict]:
 # Safeguards
 
 
-def _repayment_scripts() -> list[str]:
-	return frappe.get_all(
-		"Server Script",
-		filters={
-			"script_type": "DocType Event",
-			"reference_doctype": "Loan Repayment",
-			"doctype_event": ("in", ["Before Validate", "Before Save"]),
-			"disabled": 0,
-		},
-		pluck="name",
-		order_by="name",
-	)
-
-
-def probe_repayment_date() -> tuple[bool, str]:
-	"""Whether a Loan Repayment keeps the posting date it was given.
-
-	Runs the site's Before Validate scripts, overwrites the date as lending's
-	`validate` does, then runs its Before Save scripts, all on an unsaved
-	document inside a savepoint that is rolled back.
-	"""
-	from frappe.core.doctype.server_script.server_script_utils import run_server_script_for_doc_event
-
-	entered = get_datetime("2001-02-03 04:05:06")
-	doc = frappe.new_doc("Loan Repayment")
-	doc.posting_date = entered
-	frappe.db.savepoint("loan_date_probe")
-	try:
-		run_server_script_for_doc_event(doc, "before_validate")
-		doc.posting_date = now_datetime()
-		run_server_script_for_doc_event(doc, "validate")
-		kept = get_datetime(doc.posting_date) == entered
-		return kept, "" if kept else _("posting date became {0}").format(doc.posting_date)
-	except Exception as e:
-		return False, str(e)
-	finally:
-		frappe.db.rollback(save_point="loan_date_probe")
-		frappe.clear_last_message()
-
-
-def rebooks(script: str) -> bool:
-	"""Whether a repost script's text cancels and re-books GL."""
-	text = "".join((script or "").split())
-	return all(call in text for call in REBOOK_CALLS)
-
-
-def _repost_scripts() -> list[str]:
-	return [
-		s.name
-		for s in frappe.get_all(
-			"Server Script",
-			filters={
-				"script_type": "DocType Event",
-				"reference_doctype": "Loan Repayment Repost",
-				"doctype_event": "After Submit",
-				"disabled": 0,
-			},
-			fields=["name", "script"],
-			order_by="name",
-		)
-		if rebooks(s.script)
-	]
-
-
 def _extended(doctype: str) -> bool:
 	"""Whether this site's class for `doctype` carries the commons extension."""
 	from commons.banking.loan_own_dates import MIXINS
@@ -253,13 +146,11 @@ def _extended(doctype: str) -> bool:
 def safeguards() -> list[dict]:
 	"""What keeps lending's GL on the voucher's date, and whether it is in place.
 
-	With Commons Settings' "Enable Loan Vouchers on Their Own Dates" on, the
-	app does it, and each doctype's class must carry its extension. Without it,
-	repayments may still be kept by the site's own server scripts, which are
-	checked as they always were; write-offs and disbursements have nothing.
+	The app's safeguard is Commons Settings' "Enable Loan Vouchers on Their Own
+	Dates". With it on, each doctype's class must carry its extension. With it
+	off, nothing in the app keeps the dates, and each check says so. A site may
+	keep them some other way; the GL dates check shows whether it does.
 	"""
-	from frappe.utils.safe_exec import is_safe_exec_enabled
-
 	from commons.commons_core.settings import ENABLE_LOAN_OWN_DATES, feature_enabled
 
 	rows = []
@@ -276,72 +167,26 @@ def safeguards() -> list[dict]:
 		("Loan Disbursement", _("Loan Disbursement: GL on the Disbursement Date")),
 	)
 
-	if on:
-		for doctype, check in checks:
-			if not apps.has_doctype(doctype):
-				continue
-			extended = _extended("Loan Repayment" if doctype == "Loan Repayment Repost" else doctype)
-			add(
-				check,
-				extended,
-				_("{0} is on").format(setting)
-				if extended
-				else _(
-					"{0} is on, but the {1} class does not carry the extension. Restart the bench."
-				).format(setting, doctype),
-			)
-		redundant = _repayment_scripts() + _repost_scripts()
-		if redundant:
-			rows.append(
-				frappe._dict(
-					check=_("Server scripts replaced by the setting"),
-					status=REDUNDANT,
-					detail=_("Still enabled, and no longer needed: {0}").format(", ".join(redundant)),
-				)
-			)
-		return rows
-
-	enabled = is_safe_exec_enabled()
-	scripts_wanted = apps.has_doctype("Loan Repayment")
-	if scripts_wanted:
-		add(
-			_("Server scripts can run"),
-			enabled,
-			_("server_script_enabled is set in common_site_config.json")
-			if enabled
-			else _("Set server_script_enabled in common_site_config.json; site_config is not read for it"),
-		)
-
 	for doctype, check in checks:
 		if not apps.has_doctype(doctype):
 			continue
-		if doctype == "Loan Repayment":
-			kept, why = probe_repayment_date() if enabled else (False, _("server scripts cannot run"))
-			scripts = ", ".join(_repayment_scripts()) or _("none enabled")
-			add(
-				check,
-				kept,
-				_("Tested now, rolled back. Scripts: {0}").format(scripts)
-				if kept
-				else _("{0}. Scripts: {1}. Or tick {2}.").format(why, scripts, setting),
-			)
-		elif doctype == "Loan Repayment Repost":
-			found = _repost_scripts()
-			add(
-				check,
-				bool(found) and enabled,
-				", ".join(found)
-				if found
-				else _(
-					"No enabled After Submit script on Loan Repayment Repost calls make_gl_entries(cancel=1) and make_gl_entries(). Or tick {0}."
-				).format(setting),
-			)
-		else:
+		if not on:
 			add(
 				check,
 				False,
-				_("Lending dates a {0}'s GL on the day it is submitted. Tick {1}.").format(doctype, setting),
+				_("Lending dates a {0}'s GL on the day it is saved. Tick {1}.").format(doctype, setting),
 			)
+			continue
+		extended = _extended("Loan Repayment" if doctype == "Loan Repayment Repost" else doctype)
+		add(
+			check,
+			extended,
+			_("{0} is on").format(setting)
+			if extended
+			else _("{0} is on, but the {1} class does not carry the extension. Restart the bench.").format(
+				setting, doctype
+			),
+		)
 	return rows
 
 
@@ -386,7 +231,7 @@ def _plan(voucher_no: str) -> frappe._dict:
 @frappe.whitelist()
 def preview_repair(voucher_no: str) -> dict:
 	"""What re-booking a repayment would do, without doing it."""
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	return _plan(voucher_no)
 
 
@@ -420,14 +265,14 @@ def _repair(voucher_no: str) -> dict:
 @frappe.whitelist(methods=["POST"])
 def repair_repayment(voucher_no: str) -> dict:
 	"""Re-book one repayment's GL on its own date."""
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	return _repair(voucher_no)
 
 
 @frappe.whitelist(methods=["POST"])
 def repair_repayments(vouchers: list | str) -> list[dict]:
 	"""`repair_repayment` for several, each alone: a refusal skips only that one."""
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	vouchers = frappe.parse_json(vouchers)
 	if len(vouchers) > MAX_BULK:
 		frappe.throw(_("At most {0} repayments at a time").format(MAX_BULK))

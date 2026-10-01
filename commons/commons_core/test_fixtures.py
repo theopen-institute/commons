@@ -1,8 +1,7 @@
 """That a fixture for an app the site lacks is skipped, not fatal: bench --site SITE execute commons.commons_core.test_fixtures.run
 
-`commons/fixtures/custom_field_education.json` and `custom_field_erpnext.json`
-name doctypes that only exist where Education and ERPNext are installed. They
-are safe as fixtures because of one behaviour of Frappe's fixture import, set
+`commons/fixtures/custom_field_erpnext.json` names doctypes that only exist
+where ERPNext is installed. It is safe as a fixture because of one behaviour of Frappe's fixture import, set
 out in `commons/fixtures/README.md`: a Custom Field whose doctype is missing
 raises `DoesNotExistError`, which `import_fixtures` catches and skips the file
 for. Were that ever some other exception, it would abort migrate for the whole
@@ -35,7 +34,6 @@ FIXTURES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fixtures")
 
 # Each optional app's file, and the app whose doctypes it names.
 OPTIONAL = {
-	"custom_field_education.json": "education",
 	"custom_field_erpnext.json": "erpnext",
 }
 

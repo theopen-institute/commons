@@ -23,7 +23,7 @@ import {
  * looks exactly like a right one, and a bookkeeper working down forty lines
  * accepts what it offers.
  *
- * The descriptions are shaped like the real ones on register.localhost's
+ * The descriptions are shaped like the real ones on one lender's
  * statements: named transfers, and QR payments that name nobody.
  */
 
@@ -41,8 +41,8 @@ function transaction(overrides: Partial<TransactionRow> = {}): TransactionRow {
     allocated_amount: 0,
     unallocated_amount: 5000,
     status: 'Unreconciled',
-    bank_account: 'OI Checking - Laxmi Bank',
-    company: 'Open Institute (Nepal)',
+    bank_account: 'Checking - Example Bank',
+    company: 'Example Company',
     transaction_type: null,
     ...overrides,
   }
@@ -53,7 +53,7 @@ function loan(name: string, applicant: string, overrides: Partial<LoanRow> = {})
     name,
     applicant_type: 'Student',
     applicant,
-    company: 'Open Institute (Nepal)',
+    company: 'Example Company',
     loan_product: 'Good Faith Loan',
     status: 'Disbursed',
     loan_amount: 50000,
@@ -68,8 +68,8 @@ function loan(name: string, applicant: string, overrides: Partial<LoanRow> = {})
 }
 
 const KIRAN = loan('LOAN-KIRAN', 'kiran@example.org')
-const HEEMA = loan('LOAN-HEEMA', 'heema@example.org')
-const NAMES = { 'kiran@example.org': 'Kiran Adhikari', 'heema@example.org': 'Heema Rai' }
+const MAYA = loan('LOAN-MAYA', 'maya@example.org')
+const NAMES = { 'kiran@example.org': 'Kiran Adhikari', 'maya@example.org': 'Maya Sharma' }
 
 describe('outstandingPrincipal', () => {
   it('is the repayable total less what has been paid, on a disbursed loan', () => {
@@ -113,11 +113,11 @@ describe('identifiers', () => {
 
 describe('nameAppears', () => {
   it('matches a full name whatever the punctuation around it', () => {
-    expect(nameAppears('Heema Rai', 'CIPS/ACCOUNTFT:Heema Rai/Heema Rai GFL/Open Institute')).toBe(true)
+    expect(nameAppears('Maya Sharma', 'CIPS/ACCOUNTFT:Maya Sharma/Maya Sharma Loan/Example Org')).toBe(true)
   })
 
   it('wants every part of the name, not only the surname', () => {
-    expect(nameAppears('Heema Rai', 'transfer from Sita Rai')).toBe(false)
+    expect(nameAppears('Maya Sharma', 'transfer from Sita Sharma')).toBe(false)
   })
 
   it('does not match part of a longer word', () => {
@@ -132,12 +132,12 @@ describe('nameAppears', () => {
 describe('suggestLoans', () => {
   it('suggests the borrower named in the description', () => {
     const found = suggestLoans(
-      transaction({ description: 'CIPS/ACCOUNTFT:Heema Rai/Heema Rai GFL/Open Institute' }),
-      [KIRAN, HEEMA],
+      transaction({ description: 'CIPS/ACCOUNTFT:Maya Sharma/Maya Sharma Loan/Example Org' }),
+      [KIRAN, MAYA],
       NAMES,
       [],
     )
-    expect(found.map((row) => row.loan)).toEqual(['LOAN-HEEMA'])
+    expect(found.map((row) => row.loan)).toEqual(['LOAN-MAYA'])
     expect(found[0].reasons).toContain('Borrower named in the description')
   })
 
@@ -148,7 +148,7 @@ describe('suggestLoans', () => {
     ]
     const found = suggestLoans(
       transaction({ description: 'FT/09711000594/some sender/mobile payment' }),
-      [KIRAN, HEEMA],
+      [KIRAN, MAYA],
       NAMES,
       history,
     )
@@ -162,7 +162,7 @@ describe('suggestLoans', () => {
     ]
     const [found] = suggestLoans(
       transaction({ description: 'FON:IBFT:451883554:3528' }),
-      [KIRAN, HEEMA],
+      [KIRAN, MAYA],
       NAMES,
       history,
     )
@@ -177,13 +177,13 @@ describe('suggestLoans', () => {
       { loan: 'LOAN-KIRAN', amount: 1, description: 'FT/09711000594' },
     ]
     expect(suggestLoans(transaction({ description: 'FT/09711000594' }), [KIRAN], NAMES, history)[0].strong).toBe(true)
-    expect(suggestLoans(transaction({ description: 'Heema Rai' }), [HEEMA], NAMES, [])[0].strong).toBe(true)
+    expect(suggestLoans(transaction({ description: 'Maya Sharma' }), [MAYA], NAMES, [])[0].strong).toBe(true)
   })
 
   it('prefers the loan a borrower with two paid last', () => {
-    const older = loan('LOAN-1', 'heema@example.org')
-    const newer = loan('LOAN-2', 'heema@example.org')
-    const found = suggestLoans(transaction({ description: 'Heema Rai' }), [older, newer], NAMES, [
+    const older = loan('LOAN-1', 'maya@example.org')
+    const newer = loan('LOAN-2', 'maya@example.org')
+    const found = suggestLoans(transaction({ description: 'Maya Sharma' }), [older, newer], NAMES, [
       { loan: 'LOAN-1', amount: 5000, description: null },
       { loan: 'LOAN-2', amount: 5000, description: null },
     ])
@@ -195,10 +195,10 @@ describe('suggestLoans', () => {
     // A branch or clearing code, on everybody's lines.
     const history: RepaymentHistory[] = [
       { loan: 'LOAN-KIRAN', amount: 5000, description: 'CIPS/100000001/x' },
-      { loan: 'LOAN-HEEMA', amount: 5000, description: 'CIPS/100000001/y' },
+      { loan: 'LOAN-MAYA', amount: 5000, description: 'CIPS/100000001/y' },
     ]
     expect(
-      suggestLoans(transaction({ description: 'CIPS/100000001/z' }), [KIRAN, HEEMA], NAMES, history),
+      suggestLoans(transaction({ description: 'CIPS/100000001/z' }), [KIRAN, MAYA], NAMES, history),
     ).toEqual([])
   })
 
@@ -221,13 +221,13 @@ describe('suggestLoans', () => {
       transaction({
         party_type: 'Student',
         party: 'kiran@example.org',
-        description: 'CIPS/ACCOUNTFT:Heema Rai/Heema Rai GFL',
+        description: 'CIPS/ACCOUNTFT:Maya Sharma/Maya Sharma Loan',
       }),
-      [KIRAN, HEEMA],
+      [KIRAN, MAYA],
       NAMES,
       [],
     )
-    expect(found.map((row) => row.loan)).toEqual(['LOAN-KIRAN', 'LOAN-HEEMA'])
+    expect(found.map((row) => row.loan)).toEqual(['LOAN-KIRAN', 'LOAN-MAYA'])
   })
 
   it('breaks a tie with the amount that pays the loan off', () => {
@@ -244,17 +244,17 @@ describe('suggestLoans', () => {
   })
 
   it('leaves out loans with nothing left to repay', () => {
-    const paid = loan('LOAN-HEEMA', 'heema@example.org', { total_principal_paid: 50000 })
+    const paid = loan('LOAN-MAYA', 'maya@example.org', { total_principal_paid: 50000 })
     expect(
-      suggestLoans(transaction({ description: 'Heema Rai' }), [paid], NAMES, []),
+      suggestLoans(transaction({ description: 'Maya Sharma' }), [paid], NAMES, []),
     ).toEqual([])
   })
 
   it('suggests nothing for a withdrawal', () => {
     expect(
       suggestLoans(
-        transaction({ deposit: 0, withdrawal: 5000, description: 'Heema Rai' }),
-        [HEEMA],
+        transaction({ deposit: 0, withdrawal: 5000, description: 'Maya Sharma' }),
+        [MAYA],
         NAMES,
         [],
       ),

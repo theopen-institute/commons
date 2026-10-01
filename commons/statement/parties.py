@@ -1,7 +1,8 @@
 """Which parties the session user is, so a statement can be drawn for them.
 
 A login is not a party. `Customer`, `Supplier`, `Employee` and `Student` are
-four doctypes that each name a user in their own way, and one person can be
+four doctypes that each name a user in their own way (and a site may add party
+types of its own -- see `user_links`), and one person can be
 several of them at once -- a member of staff who is also a student pays fees as
 one and is reimbursed as the other, and the two have separate balances because
 they are separate accounts.
@@ -12,16 +13,24 @@ asking, which is what keeps the scoping in one readable place: if a party is
 not in the list this module returns, no query in this section can reach its
 rows.
 
-Why the links are a table rather than a rule
---------------------------------------------
+Why the links are a table first and a rule second
+-------------------------------------------------
 
 It is tempting to look for a Link-to-User field on each party doctype and use
-whatever turns up. That would cover `Student.user` and `Employee.user_id`
-today, and it would be a guess -- a field called `user` on a doctype nobody
-here has seen is as likely to be "who created this" as "whose this is", and
-guessing wrong hands somebody another person's ledger. So each link is written
-down, next to the app that owns it, and a party type with no entry is reported
-on for nobody.
+whatever turns up. For the four doctypes this app knows, that would be a guess
+where the answer is known -- `Student` has a fallback the rule would miss, and
+`Employee` has filters it would skip -- so each of them is written down in
+`USER_LINKS`, next to the app that owns it.
+
+Any other `Party Type` is read from its doctype's meta, and only two shapes
+count (`user_links`). One is ERPNext's own portal mechanism, a table of
+`Portal User` rows, which says "these logins are this party" and nothing else.
+The other is a single Link field to `User`. A field like that on a doctype
+nobody here has seen could be "who created this" rather than "whose this is",
+and guessing wrong hands somebody another person's ledger. One field is taken
+at its word, because the site made that doctype a party type, which says its
+rows are people's accounts. Two or more are a guess between them, and that
+party type is reported on for nobody, as one with no such field is.
 
 That is also why `Member` is absent, and worth saying out loud since this app
 used to ship it. The register's `Member` is not a `Party Type`: nothing posts a
@@ -84,6 +93,26 @@ USER_LINKS: dict[str, tuple[str, ...] | None] = {
 	"Student": ("user", "student_email_id"),
 }
 
+# A party type with no way of naming a user, which is reported on for nobody.
+UNLINKED: tuple[str, ...] = ()
+
+
+def user_links(party_type: str) -> tuple[str, ...] | None:
+	"""How rows of `party_type` name the user behind them, as `USER_LINKS` says.
+
+	The four there are as written. Any other party doctype is read from its
+	meta, as the module docstring explains: a `Portal User` table is `None`,
+	exactly one Link field to `User` is that field, and anything else is
+	`UNLINKED`.
+	"""
+	if party_type in USER_LINKS:
+		return USER_LINKS[party_type]
+	meta = frappe.get_meta(party_type)
+	if meta.get("fields", {"fieldtype": "Table", "options": PORTAL_USER}):
+		return None
+	user_fields = [df.fieldname for df in meta.get("fields", {"fieldtype": "Link", "options": "User"})]
+	return (user_fields[0],) if len(user_fields) == 1 else UNLINKED
+
 
 @dataclass(frozen=True)
 class Party:
@@ -117,9 +146,12 @@ def session_parties() -> list[Party]:
 
 	found: list[Party] = []
 	for row in frappe.get_all(PARTY_TYPE, fields=["name", "account_type"], order_by="name asc"):
-		if row.name not in USER_LINKS or not apps.has_doctype(row.name):
+		if not apps.has_doctype(row.name):
 			continue
-		for name, title in _records(row.name):
+		links = user_links(row.name)
+		if links == UNLINKED:
+			continue
+		for name, title in _records(row.name, links):
 			found.append(
 				Party(
 					party_type=row.name,
@@ -235,7 +267,7 @@ def _party(party_type: str, name: str) -> Party | None:
 	)
 
 
-def _records(party_type: str) -> list[tuple[str, str]]:
+def _records(party_type: str, links: tuple[str, ...] | None) -> list[tuple[str, str]]:
 	"""The rows of one party doctype this user is, as (name, how it reads).
 
 	A raw read, and the reason is the same one `registry.owner_of` gives: this
@@ -243,6 +275,8 @@ def _records(party_type: str) -> list[tuple[str, str]]:
 	grants nothing on its own. A permission-checked read would make the answer
 	depend on whether the caller may browse the customer list, which is a
 	different question and one almost every reader of this page answers no to.
+
+	`links` is how this doctype names the user, from `user_links`.
 
 	The name a party reads by is the doctype's own title field rather than a
 	fourth column in `USER_LINKS`: every one of these has one, and a site that
@@ -252,7 +286,6 @@ def _records(party_type: str) -> list[tuple[str, str]]:
 	title_field = meta.get_title_field()
 	fields = ["name"] + ([title_field] if title_field != "name" else [])
 
-	links = USER_LINKS[party_type]
 	filters: dict = {}
 
 	if links is None:

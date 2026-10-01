@@ -44,7 +44,7 @@ class ProcurementRequestItem(Document):
 
 	@property
 	def committed_qty(self) -> float:
-		"""How much Resources has committed through submitted Material Requests.
+		"""How much procurement has committed through submitted Material Requests.
 
 		Cached on the instance, not across the request: two virtual fields
 		want the same number, and they should all be reading one answer taken

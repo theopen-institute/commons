@@ -6,7 +6,7 @@ alone, and that a repair refuses when the rebuilt rows would not add up to the
 GL (the case where writing anything would be a guess).
 
 That the whole thing finds and repairs real damage was checked against
-register.localhost inside a rolled-back transaction: 31 discrepancies across
+a real site inside a rolled-back transaction: 31 discrepancies across
 two companies, all 26 vouchers repaired, none left, the ledger unchanged after
 the rollback (see `ledger_audit.py` for what they were).
 """

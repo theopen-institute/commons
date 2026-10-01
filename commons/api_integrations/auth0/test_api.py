@@ -1,4 +1,4 @@
-"""The role gate, and what the whitelisted surface does and does not offer.
+"""The permission gate, and what the whitelisted surface does and does not offer.
 
 These endpoints take an address or an id and no document, so there is nothing to
 check a per-record permission against -- whoever can call them can make an
@@ -22,9 +22,17 @@ def throw(message, exc=Exception, **kwargs):
 
 
 class Gate(TestCase):
-	def call(self, endpoint, roles, **kwargs):
+	def call(self, endpoint, may_write, **kwargs):
+		"""`may_write` is whether the session may write Auth0 Settings."""
+
+		def has_permission(doctype, ptype="read", *args, **kw):
+			# The settings doctype and nothing else; any other question is a bug.
+			if (doctype, ptype) != ("Auth0 Settings", "write"):
+				raise AssertionError(f"asked about {ptype} on {doctype}")
+			return may_write
+
 		with (
-			patch.object(api.frappe, "get_roles", lambda *args: roles),
+			patch.object(api.frappe, "has_permission", has_permission),
 			patch.object(api.frappe, "throw", throw),
 			patch.object(api, "_", lambda text: text),
 			patch.object(api, "users", Recorded()),
@@ -32,26 +40,26 @@ class Gate(TestCase):
 		):
 			return endpoint(**kwargs)
 
-	def test_a_system_manager_may_make_an_account(self):
-		self.assertEqual(self.call(api.ensure_user, [api.ROLE], email="a@b.c"), "auth0|ensured")
+	def test_whoever_may_write_the_settings_may_make_an_account(self):
+		self.assertEqual(self.call(api.ensure_user, True, email="a@b.c"), "auth0|ensured")
 
 	def test_anybody_else_may_not(self):
 		with self.assertRaises(frappe.PermissionError):
-			self.call(api.ensure_user, ["Employee"], email="a@b.c")
+			self.call(api.ensure_user, False, email="a@b.c")
 
 	def test_reading_an_account_is_gated_too(self):
 		"""It is the most revealing thing here -- `app_metadata` included."""
 		with self.assertRaises(frappe.PermissionError):
-			self.call(api.get_user, ["Employee"], user_id="auth0|65f")
+			self.call(api.get_user, False, user_id="auth0|65f")
 
 	def test_a_password_link_is_gated(self):
 		"""It is a credential for as long as it lives."""
 		with self.assertRaises(frappe.PermissionError):
-			self.call(api.password_change_ticket, ["Employee"], user_id="auth0|65f")
+			self.call(api.password_change_ticket, False, user_id="auth0|65f")
 
 	def test_whether_the_site_has_auth0_is_not_gated(self):
 		"""So a page can leave the button out without needing the role to ask."""
-		self.assertTrue(self.call(api.configured, ["Employee"]))
+		self.assertTrue(self.call(api.configured, False))
 
 
 class Recorded:

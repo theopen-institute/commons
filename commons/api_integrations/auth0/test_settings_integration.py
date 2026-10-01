@@ -147,11 +147,11 @@ class TestAuth0Settings(unittest.TestCase):
 
 	# Who may ask
 
-	def test_a_session_without_the_role_is_refused(self):
+	def test_a_session_that_may_not_write_the_settings_is_refused(self):
 		"""The whole of the security of the HTTP surface -- see `commons.api_integrations.auth0.api`."""
 		self.configure()
 		frappe.set_user(self.ordinary_user())
-		self.assertNotIn(api.ROLE, frappe.get_roles())
+		self.assertFalse(frappe.has_permission(client.SETTINGS, "write"))
 		with self.assertRaises(frappe.PermissionError):
 			api.find_user("somebody@example.com")
 
@@ -161,8 +161,8 @@ class TestAuth0Settings(unittest.TestCase):
 		with self.assertRaises(frappe.PermissionError):
 			api.find_user("somebody@example.com")
 
-	def test_whether_the_site_has_auth0_is_askable_without_the_role(self):
-		"""So a page can leave the button out without holding System Manager."""
+	def test_whether_the_site_has_auth0_is_askable_without_the_permission(self):
+		"""So a page can leave the button out without being able to write the settings."""
 		self.configure()
 		frappe.set_user(self.ordinary_user())
 		self.assertTrue(api.configured())

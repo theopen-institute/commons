@@ -68,8 +68,8 @@ describe('proposeRows', () => {
   })
 
   it('accepts a line a day or two away only when the description agrees', () => {
-    const existing = [line('BT-1', '2026-07-11', 5000, 0, 'CIPS/Heema Rai')]
-    expect(proposeRows({ rows: [row('2026-07-10', 5000, 0, 'CIPS/Heema Rai')], opening_balance: null }, existing)[0].status).toBe(
+    const existing = [line('BT-1', '2026-07-11', 5000, 0, 'CIPS/A Customer')]
+    expect(proposeRows({ rows: [row('2026-07-10', 5000, 0, 'CIPS/A Customer')], opening_balance: null }, existing)[0].status).toBe(
       'duplicate',
     )
     expect(proposeRows({ rows: [row('2026-07-10', 5000, 0, 'Someone else')], opening_balance: null }, existing)[0].status).toBe(
@@ -129,11 +129,11 @@ describe('accountMatches', () => {
 describe('transactionFor', () => {
   it('is a submitted Bank Transaction on the account', () => {
     const [proposed] = proposeRows({ rows: [row('2026-07-10', 5000, 0, 'FPQR')], opening_balance: null }, [])
-    expect(transactionFor(proposed, 'OI Checking - Laxmi Bank', 'NPR')).toEqual({
+    expect(transactionFor(proposed, 'Main Checking - Example Bank', 'NPR')).toEqual({
       doctype: 'Bank Transaction',
       docstatus: 1,
       date: '2026-07-10',
-      bank_account: 'OI Checking - Laxmi Bank',
+      bank_account: 'Main Checking - Example Bank',
       deposit: 5000,
       withdrawal: 0,
       description: 'FPQR',

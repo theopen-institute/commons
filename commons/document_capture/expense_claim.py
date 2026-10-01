@@ -24,15 +24,19 @@ the page, never worked out. A photo of several receipts gives one expense
 each. The expense type is Claude's suggestion, from this site's own list, and
 the dialog offers only the types the claimant's company can book to, so a
 suggestion outside those is dropped there.
+
+The prompt is written for the claimant's company, through
+`commons.api_integrations.claude.locale`: its country and currency, and
+Bikram Sambat dates only where the site has switched them on.
 """
 
 import frappe
 from frappe import _
 
 from commons.api_integrations.claude import client as claude
-from commons.api_integrations.claude import documents, jobs
+from commons.api_integrations.claude import documents, jobs, locale
 from commons.commons_core import apps
-from commons.document_capture.purchase_invoice import DATE, STRING, _nullable, _object
+from commons.document_capture.purchase_invoice import STRING, _nullable, _object
 
 EXPENSE_CLAIM = "Expense Claim"
 EXPENSE_CLAIM_TYPE = "Expense Claim Type"
@@ -70,12 +74,13 @@ def _require_drafting() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def schema(expense_types: list[str]) -> dict:
-	"""The receipts' fields, with the site's expense types to choose from."""
+def schema(expense_types: list[str], where: locale.Locale | None = None) -> dict:
+	"""The receipts' fields, with the site's expense types to choose from and
+	dates in the calendars `where` allows."""
 	expense_type = (
 		_nullable(
 			{"type": "string", "enum": expense_types},
-			"The one of our expense types this is, or null if none clearly fits.",
+			"The one of the listed expense types this is, or null if none clearly fits.",
 		)
 		if expense_types
 		else {"type": "null"}
@@ -93,7 +98,7 @@ def schema(expense_types: list[str]) -> dict:
 					{
 						"merchant": _nullable(STRING, "Who was paid, as printed."),
 						"receipt_number": _nullable(STRING),
-						"date": _nullable(DATE),
+						"date": _nullable(locale.date_schema(where or locale.Locale())),
 						"description": STRING,
 						"amount": _nullable(
 							{"type": "number"}, "The total paid, tax included, as printed; null if illegible."
@@ -107,9 +112,12 @@ def schema(expense_types: list[str]) -> dict:
 	)
 
 
-INSTRUCTIONS = """\
-This is a receipt, or several, for something one of our employees paid for \
-themselves and is claiming back from us. Copy what it says into the schema.
+def instructions(where: locale.Locale) -> str:
+	"""The prompt sent with the receipts, for a claimant's company in `where`."""
+	return locale.finish(
+		f"""\
+This is a receipt, or several, for something an employee paid for themselves \
+and is claiming back from their employer. Copy what it says into the schema.
 
 Copy, don't compute. Every figure must be one that is printed on the page. If a \
 figure is missing or illegible, use null and say so in notes. Never fill a gap \
@@ -118,24 +126,31 @@ with arithmetic.
 - One expense per receipt, not per line on it. amount is the total the receipt \
 says was paid, tax and service charge included, exactly as printed.
 - Numbers are plain numbers, without currency symbols or thousands separators. \
-Convert Devanagari digits (०१२३४५६७८९) to 0-9. South Asian grouping such as \
-1,13,000.00 is 113000.
-- description is a few words on what was paid for, from the receipt: "Taxi, \
-Thamel to airport", "Lunch at Bhojan Griha", "Printer toner".
+Convert digits in other scripts, such as Devanagari (०१२३४५६७८९), to 0-9. Read \
+the grouping as printed: 1,13,000.00 is 113000, and 1.234,56 is 1234.56.
+- description is a few words on what was paid for, from the receipt: "Taxi to \
+the airport", "Lunch with the visiting auditors", "Printer toner".
 - expense_type: the one of the listed types this expense clearly is, or null.
-- Dates: give each as printed, then its year, month and day. Nepali receipts \
-often use Bikram Sambat (B.S. or वि.सं.), whose years currently run from about \
-2075 to 2090. Mark those calendar "BS" and give the Bikram Sambat year, month \
-and day as printed; do not convert them. Mark Gregorian dates "AD".
-- currency: NPR for rupees on a Nepali receipt, INR on an Indian one, USD for \
-US dollars, and so on; null if it cannot be told.
+- {locale.date_rule(where, "receipts")}
+- {locale.currency_rule(where, "receipt")}
 - If the document is not a receipt or bill for something paid (a quotation, a \
 bank statement, a supplier's invoice to be paid later), set is_receipt to false \
 and fill in what you can.
 - notes: anything worth checking against the paper, such as handwritten \
 amounts, figures you are unsure of, or a total that does not match its lines. \
 Keep each note to a sentence. Leave the list empty if there is nothing to say.
-"""
+""",
+		where,
+	)
+
+
+def _claimant_company() -> str | None:
+	"""The company of the employee the claim will be raised for, if there is one
+	this person may see."""
+	from commons.api import session_employee
+
+	employee = session_employee(["company"])
+	return employee.company if employee else None
 
 
 def read_scan(content: bytes, progress=lambda **changes: None) -> dict:
@@ -146,10 +161,11 @@ def read_scan(content: bytes, progress=lambda **changes: None) -> dict:
 	progress(step="reading")
 	counter = jobs.RowCounter(lambda lines: progress(lines=lines))
 	types = frappe.get_all(EXPENSE_CLAIM_TYPE, pluck="name", order_by="name asc")
+	where = locale.for_company(_claimant_company())
 	return documents.read(
 		content,
-		schema(types),
-		INSTRUCTIONS,
+		schema(types, where),
+		instructions(where),
 		on_text=counter.feed,
 		timeout=READ_TIMEOUT,
 		max_tokens=MAX_TOKENS,

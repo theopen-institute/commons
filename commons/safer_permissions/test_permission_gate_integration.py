@@ -1,6 +1,6 @@
 """The gate against a real site: bench --site SITE execute commons.test_permission_gate_integration.run
 
-Not purely rollback-only, unlike the budget suite. The `Custom DocPerm` rows are
+Not purely rollback-only, unlike most of this app's site suites. The `Custom DocPerm` rows are
 committed so other connections see them, and `_register_gate` and `_retire_gate`
 bracket the run to put them back; everything within it rolls back. The gate
 column itself comes from this app's fixtures and is left alone.

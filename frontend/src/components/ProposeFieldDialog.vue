@@ -4,7 +4,7 @@
 	<Dialog v-model:open="open" :title="field ? `Change ${field.label}` : ''" :actions="actions">
 		<div v-if="field" class="space-y-4">
 			<p class="text-p-base text-ink-gray-6">
-				This goes to HR as a proposal. Nothing on your record changes until someone
+				This goes for review as a proposal. Nothing on your record changes until someone
 				approves it.
 			</p>
 
@@ -31,11 +31,11 @@
 				type="textarea"
 				label="Reason"
 				:rows="2"
-				placeholder="Optional, but it helps HR decide — a move, a new number, a spelling to fix."
+				placeholder="Optional, but it helps the reviewer decide — a move, a new number, a spelling to fix."
 			/>
 
 			<!-- Raising a second request for a field already in the queue is not
-           refused -- HR may well want the newer answer -- but it is worth
+           refused -- the reviewer may well want the newer answer -- but it is worth
            knowing you are about to do it. -->
 			<Alert
 				v-if="alreadyPending !== undefined"
@@ -43,7 +43,7 @@
 				title="Already waiting on review"
 				:description="`You've asked for this to become ${displayValue(
 					alreadyPending
-				)}. HR hasn't decided that yet, and sending this adds a second request.`"
+				)}. That hasn't been decided yet, and sending this adds a second request.`"
 			/>
 
 			<ErrorMessage v-if="request.error" :message="request.error.message" />
@@ -160,14 +160,14 @@ async function send() {
 	})
 	// `submit` resolves null on failure; the reason renders inline.
 	if (!created) return
-	toast.success('Sent to HR for review')
+	toast.success('Sent for review')
 	emit('created', created.name)
 	emit('close')
 }
 
 const actions = computed<DialogAction[]>(() => [
 	{
-		label: 'Send to HR',
+		label: 'Send for review',
 		variant: 'solid',
 		loading: request.loading,
 		onClick: () => send(),

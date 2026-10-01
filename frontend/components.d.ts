@@ -31,7 +31,6 @@ declare module 'vue' {
     CaptureInvoiceDialog: typeof import('./src/components/CaptureInvoiceDialog.vue')['default']
     ChangeDiff: typeof import('./src/components/ChangeDiff.vue')['default']
     ChangeRequestList: typeof import('./src/components/ChangeRequestList.vue')['default']
-    DepartmentBudgetCard: typeof import('./src/components/DepartmentBudgetCard.vue')['default']
     EmployeeRequired: typeof import('./src/components/EmployeeRequired.vue')['default']
     ExpenseClaimDialog: typeof import('./src/components/ExpenseClaimDialog.vue')['default']
     ExpenseClaimLines: typeof import('./src/components/ExpenseClaimLines.vue')['default']

@@ -1,17 +1,16 @@
 """Whitelisted endpoints for the procurement section of the Commons frontend.
 
-The budget readout has its own module (`commons.requests.budget`); what
-is here is the request lifecycle -- raising one, listing your own, and working
-the approval queue the Workflow defines.
+The request lifecycle -- raising one, listing your own, and working the
+approval queue the site's Workflow defines.
 
 Procurement is the third of this module's request types, and the one that has
 always been a Workflow from the start. What it shares with leave and expenses
 is `approvals.RequestType` -- reading the active Workflow, naming the state
 column, counting a badge, and vetting the parent names behind a child-table
 read. What it does not share is the queue itself: a procurement queue is
-grouped by the department whose budget it spends, and a request carries a
-priced readout beside it, so `get_procurement_workflow_queue` answers a shape
-of its own rather than the flat list the other two return.
+grouped by department, each group with its estimated total, so
+`get_procurement_workflow_queue` answers a shape of its own rather than the
+flat list the other two return.
 """
 
 import frappe
@@ -46,9 +45,8 @@ class Procurement(approvals.RequestType):
 
 	# `Procurement Request` is this app's own doctype, so it is here on every
 	# site this app is -- and the section still does not work without ERPNext.
-	# A request names a Company, an Item and a UOM, it is charged to a
-	# Department against a Fiscal Year, it hands over to a Material Request, and
-	# the readout beside it is counted from those. See
+	# A request names a Company, an Item and a UOM, it hands over to a Material
+	# Request, and what is left to order is counted from those. See
 	# `approvals.RequestType.available` and `commons.commons_core.apps`.
 	requires_apps = ("erpnext",)
 
@@ -129,8 +127,15 @@ def get_procurement_permissions() -> dict:
 		"workflow_access": workflow_access,
 		"pending_workflow_actions": pending,
 		"approver_query": PROCUREMENT.approver_query,
+		"approver_required": _approver_required(),
 		"page_length": PROCUREMENT.page_length,
 	}
+
+
+def _approver_required() -> bool:
+	"""Whether this site makes a request name its approver -- the field's own `reqd`, as customised."""
+	field = frappe.get_meta(PROCUREMENT_REQUEST).get_field(APPROVER_FIELD)
+	return bool(field and field.reqd)
 
 
 def _unavailable_permissions() -> dict:
@@ -148,6 +153,7 @@ def _unavailable_permissions() -> dict:
 		"workflow_access": False,
 		"pending_workflow_actions": 0,
 		"approver_query": PROCUREMENT.approver_query,
+		"approver_required": False,
 		"page_length": PROCUREMENT.page_length,
 	}
 
@@ -158,9 +164,13 @@ def get_procurement_request_defaults() -> dict:
 
 	Asked by the form rather than sent with the permissions, because that is what
 	it is: form state, wanted by the one page that draws a blank request and by
-	none of the pages that merely list them. Four queries -- a company, the
-	employee behind the session, their department's approver, the stock UOM --
-	that used to run on every visit to the section.
+	none of the pages that merely list them. Three queries -- a company, the
+	employee behind the session, the stock UOM -- that used to run on every
+	visit to the section.
+
+	No approver. Who decides a request is the site's Workflow, and a default
+	here would be this app's guess at it; the picker offers the requester's own
+	expense approvers first (`get_procurement_approvers`).
 
 	Gated on `create` for the same reason `get_procurement_approvers` is: someone
 	who cannot raise a request has no blank form to fill, and each of these
@@ -181,10 +191,6 @@ def get_procurement_request_defaults() -> dict:
 		"company": company,
 		"currency": (frappe.db.get_value("Company", company, "default_currency") if company else None),
 		"department": employee.department if employee else None,
-		# The department's head, and only the department's head. A request spends
-		# the department's budget, so the requester's own expense approver -- who
-		# signs off their personal claims -- is not an answer here.
-		"approver": approvers.department_head(employee.department if employee else None),
 		"uom": frappe.db.get_single_value("Stock Settings", "stock_uom") or "Nos",
 	}
 
@@ -255,7 +261,13 @@ def _can_edit_procurement_request(doc, workflow=None) -> bool:
 
 
 def _preserve_non_frontend_line_fields(items: list[dict], request=None) -> None:
-	"""Keep catalogue assignment and verification outside the requester UI."""
+	"""Keep the row fields the SPA's form does not carry.
+
+	`item_code` and `verified_rate` are not on the form, so a save from it says
+	nothing about them: whatever a row already holds is kept, and a new row
+	starts without them. Who may set them is the desk's, through their
+	permlevel.
+	"""
 	stored = {row.name: row for row in request.items} if request else {}
 	for row in items:
 		previous = stored.get(row.get("name"))
@@ -382,31 +394,20 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 
 
 def group_by_department(requests: list[dict]) -> list[dict]:
-	"""The queue in the unit the decision is actually made in.
+	"""The queue by department, each group with its estimated total.
 
-	A budget is a department's, not a request's, so one readout stands over every
-	request charged to it rather than being repeated on each. Grouped here rather
-	than in the page because `estimate` is money: it is weighed against the
-	allocation printed beside it, and the two figures should not be arrived at in
-	different places by different rules.
-
-	Keyed by allocation, not by department name alone. A department's requests can
-	straddle two budget periods and one readout cannot speak for both -- the
-	figures belong to the period a request's transaction date falls in, so requests
-	answering to different allocations are different groups even when the
-	department above them is the same.
+	Grouped here rather than in the page because `estimate` is money, and
+	should be arrived at in one place by one rule.
 
 	Departments are ordered by name rather than by recency, so acting on a request
 	-- which reloads the queue -- does not shuffle the groups around the approver
 	working through them. Requests keep the query's order within a group, and a
-	group without a department sorts last: it is the exception, not the heading to
-	start from.
+	group without a department sorts last.
 	"""
 	groups: dict[str, dict] = {}
 	for request in requests:
-		summary = request.get("budget_summary") or None
-		department = request.get("department") or (summary or {}).get("department")
-		key = f"{department or ''}::{(summary or {}).get('name') or ''}"
+		department = request.get("department") or None
+		key = department or ""
 		group = groups.get(key)
 		if group:
 			group["requests"].append(request.name)
@@ -414,7 +415,6 @@ def group_by_department(requests: list[dict]) -> list[dict]:
 			groups[key] = {
 				"key": key,
 				"department": department,
-				"summary": summary,
 				"requests": [request.name],
 				"currency": request.get("currency"),
 				"estimate": None,
@@ -451,13 +451,7 @@ def _add_procurement_costs(requests: list[dict]) -> None:
 	`AttributeError`. Going through the dict works whichever way a field is
 	backed, so switching between them stays a DocType-only change.
 	"""
-	from commons.requests.budget import request_summary
-
 	workflow = PROCUREMENT.workflow()
-	# Rows on one page usually share a department, and the department-wide half of
-	# a summary is the expensive half: the Material Request join, the outstanding
-	# Procurement Request scan and its UOM conversions. Compute it once per budget.
-	position_cache: dict = {}
 	for request in requests:
 		doc = frappe.get_doc(PROCUREMENT_REQUEST, request.name)
 		computed = doc.as_dict()
@@ -465,7 +459,6 @@ def _add_procurement_costs(requests: list[dict]) -> None:
 		request.requester_name = computed.get("requester_name")
 		request.total_estimated_cost = flt(computed.get("total_estimated_cost"))
 		request.can_edit = _can_edit_procurement_request(doc, workflow)
-		request.budget_summary = request_summary(doc, position_cache)
 
 
 @frappe.whitelist()

@@ -36,7 +36,11 @@
 			@retry="reloadProcurementPermissions()"
 		>
 			<div class="mx-auto max-w-3xl">
-				<ErrorMessage v-if="requests.error" :message="requests.error.message" class="mb-3" />
+				<ErrorMessage
+					v-if="requests.error"
+					:message="requests.error.message"
+					class="mb-3"
+				/>
 				<ErrorMessage
 					v-if="requestLines.error"
 					:message="requestLines.error.message"
@@ -56,7 +60,11 @@
 						:class="tab === 'pending' ? 'lucide-check-check' : 'lucide-inbox'"
 					/>
 					<p class="text-base-medium text-ink-gray-7">
-						{{ tab === 'pending' ? 'Nothing waiting on you' : 'No workflow history yet' }}
+						{{
+							tab === 'pending'
+								? 'Nothing waiting on you'
+								: 'No workflow history yet'
+						}}
 					</p>
 					<p class="text-p-sm text-ink-gray-5">
 						{{
@@ -67,8 +75,7 @@
 					</p>
 				</div>
 
-				<!-- Grouped by department because that is what a budget belongs to, and
-				     so what an approver is deciding against. -->
+				<!-- Grouped by department, each with what its requests would cost together. -->
 				<ul v-else class="space-y-8">
 					<li v-for="group in departmentGroups" :key="group.key">
 						<div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -83,16 +90,6 @@
 								</template>
 							</span>
 						</div>
-
-						<!-- Once per department, not once per request: every request below
-						     it is charged to this same allocation. Any of them resolves it,
-						     so the first stands for the group in the drill-down. -->
-						<DepartmentBudgetCard
-							v-if="group.summary"
-							:summary="group.summary"
-							:request-name="group.requests[0]"
-							class="mt-2"
-						/>
 
 						<ul class="mt-3 space-y-3">
 							<li
@@ -115,17 +112,26 @@
 									</div>
 									<div class="text-right">
 										<Badge
-											:theme="procurementStatus(request, procurementWorkflow).theme"
+											:theme="
+												procurementStatus(request, procurementWorkflow)
+													.theme
+											"
 											variant="subtle"
 										>
-											{{ procurementStatus(request, procurementWorkflow).label }}
+											{{
+												procurementStatus(request, procurementWorkflow)
+													.label
+											}}
 										</Badge>
 										<div
 											v-if="request.total_estimated_cost"
 											class="mt-1 text-base-medium text-ink-gray-8"
 										>
 											{{
-												formatCurrency(request.total_estimated_cost, request.currency)
+												formatCurrency(
+													request.total_estimated_cost,
+													request.currency
+												)
 											}}
 										</div>
 									</div>
@@ -180,7 +186,7 @@
 		<ProcurementReviewDialog
 			v-model:open="review.open"
 			:request="review.row"
-			:lines="review.row ? (byRequest.get(review.row.name) ?? []) : []"
+			:lines="review.row ? byRequest.get(review.row.name) ?? [] : []"
 			:lines-loaded="review.row ? linesLoaded(review.row) : false"
 			:actions="review.row ? availableActions(review.row) : []"
 			:gone="review.gone"
@@ -191,7 +197,7 @@
 		<ProcurementRequestDialog
 			v-model:open="showEdit"
 			:request="editingRequest"
-			:lines="editingRequest ? (byRequest.get(editingRequest.name) ?? []) : []"
+			:lines="editingRequest ? byRequest.get(editingRequest.name) ?? [] : []"
 			:workflow-actions="editingRequest ? availableActions(editingRequest) : []"
 			@created="refresh"
 		/>
@@ -200,15 +206,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import {
-	Alert,
-	Avatar,
-	Badge,
-	Button,
-	ErrorMessage,
-	Skeleton,
-	TabButtons,
-} from 'frappe-ui'
+import { Alert, Avatar, Badge, Button, ErrorMessage, Skeleton, TabButtons } from 'frappe-ui'
 import {
 	procurementCan,
 	procurementPermissionsError,
@@ -225,7 +223,6 @@ import {
 import { useReviewTarget } from '@/data/requests/review'
 import { formatCurrency, formatDate } from '@/data/format'
 import AppPageHeader from '@/components/AppPageHeader.vue'
-import DepartmentBudgetCard from '@/components/DepartmentBudgetCard.vue'
 import ProcurementLines from '@/components/ProcurementLines.vue'
 import ProcurementRequestDialog from '@/components/ProcurementRequestDialog.vue'
 import ProcurementReviewDialog from '@/components/ProcurementReviewDialog.vue'
@@ -239,7 +236,7 @@ const editingRequest = ref<ProcurementRequestRow | null>(null)
 // Held back until the answer arrives, so the page never flashes controls (or a
 // refusal) it then takes away.
 const hasWorkflowAccess = computed(
-	() => procurementPermissionsLoaded.value && procurementCan.value.workflow_access,
+	() => procurementPermissionsLoaded.value && procurementCan.value.workflow_access
 )
 
 const requests = useProcurementWorkflowQueue(() => tab.value === 'decided')
@@ -252,7 +249,7 @@ const departmentGroups = computed(() => requests.data?.groups ?? [])
 // A group carries request names, not rows: the page holds one list of requests
 // and the grouping points into it.
 const rowsByName = computed(
-	() => new Map(requestRows.value.map((request) => [request.name, request])),
+	() => new Map(requestRows.value.map((request) => [request.name, request]))
 )
 
 function groupRequests(group: DepartmentRequestGroup) {
@@ -262,7 +259,7 @@ function groupRequests(group: DepartmentRequestGroup) {
 }
 
 const { lines: requestLines, byRequest } = useProcurementRequestLines(() =>
-	requestRows.value.map((request) => request.name),
+	requestRows.value.map((request) => request.name)
 )
 
 // The request open in its review dialog, if any. Applying a transition to it

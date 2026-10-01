@@ -25,22 +25,15 @@ table is `allow_on_submit`, and refuses any cancellation that would orphan a
 submitted Material Request. What is left in this file is arithmetic, and the
 few rules none of them can state.
 
-A request moves through the active Frappe Workflow: staff draft it, procurement
-checks and codes it, its expense approver reviews it, and procurement fulfills
-it. The `status` field is also the workflow state field.
+What steps a request goes through, and who takes each, is the site's own Workflow
+-- this app ships none, and names no state. `status` is a plain field for that
+Workflow to keep its state in; a site may point its Workflow at another field
+instead. Department and approver are optional here for the same reason: a site
+whose Workflow routes on them makes them mandatory with a Property Setter.
 
 Approval is what submits a request: every state before a decision is a draft,
-and so is `Rejected`. `docstatus` 1 therefore means approved, and nothing has to
-consult the name of a state to know it. A rejection is not the end of the road
-either -- procurement can `Reopen` a turned-down request, which hands it back to
-them at `Pending` with the old reason cleared off it.
-
-Because approval is the spending decision, it is also where the department's
-allocation has to hold: `on_submit` refuses a request whose outstanding estimate
-no longer fits what the department has left. The arithmetic is the same one the
-approver's budget banner shows, so the refusal never contradicts the readout it
-sits next to. It lives in `commons.requests.budget` with everything else
-that knows about allocations -- all this file decides is when to ask.
+a turned-down one included. `docstatus` 1 therefore means approved, and nothing
+has to consult the name of a state to know it.
 
 Once approved, `make_material_request` carries the request -- all of it, or the
 rows and quantities the buyer picks -- onto a draft Material Request. That is
@@ -61,9 +54,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.model.mapper import get_mapped_doc
+from frappe.query_builder.functions import Sum
 from frappe.utils import flt, getdate
-
-from commons.requests.budget import enforce_request_allocation, ordered_stock_qty
 
 DOCTYPE = "Procurement Request"
 
@@ -82,11 +74,11 @@ class ProcurementRequest(Document):
 		)
 
 		amended_from: DF.Link | None
-		approver: DF.Link
+		approver: DF.Link | None
 		approver_name: DF.Data | None
 		company: DF.Link
 		currency: DF.Link | None
-		department: DF.Link
+		department: DF.Link | None
 		item_summary: DF.Data | None
 		items: DF.Table[ProcurementRequestItem]
 		justification: DF.SmallText | None
@@ -95,7 +87,7 @@ class ProcurementRequest(Document):
 		requested_by: DF.Link
 		requester_name: DF.Data | None
 		schedule_date: DF.Date
-		status: DF.Data
+		status: DF.Data | None
 		title: DF.Data | None
 		total_estimated_cost: DF.Currency
 		transaction_date: DF.Date
@@ -116,7 +108,7 @@ class ProcurementRequest(Document):
 		the parent always, but on child rows only once the parent exists
 		(`Document.validate_higher_perm_levels`). A requester's own verified rate
 		on a new request's rows would otherwise stand, understating the estimate
-		the approval is checked against.
+		the approver is shown.
 		"""
 		if not self.is_new() or self.flags.ignore_permissions or frappe.session.user == "Administrator":
 			return
@@ -151,7 +143,7 @@ class ProcurementRequest(Document):
 
 		A row sent with an existing `name` is saved by core as an UPDATE of that
 		row -- `parent` included -- so without this an edit could take a row from
-		another request, approved or not, and with it the budget the row carried.
+		another request, approved or not, and with it what had been ordered against it.
 		"""
 		names = [row.name for row in self.items if row.name and not row.is_new()]
 		if not names:
@@ -166,16 +158,6 @@ class ProcurementRequest(Document):
 			frappe.throw(
 				_("Row {0} belongs to another Procurement Request.").format(idx), frappe.PermissionError
 			)
-
-	def on_submit(self) -> None:
-		"""Refuse an approval the department's allocation cannot hold.
-
-		Here rather than in `validate` because the check counts this request
-		among the approved ones, which it only is once the submit has been
-		written -- and because a draft is free to exceed a budget it has not yet
-		asked anyone to spend.
-		"""
-		enforce_request_allocation(self)
 
 	def validate_quantities(self) -> None:
 		"""Refuse a row that asks for nothing.
@@ -237,16 +219,33 @@ class ProcurementRequest(Document):
 
 
 def on_doctype_update() -> None:
-	"""Index what the department budget reads, and locks, requests by.
-
-	`budget.request_rows` selects a department's requests for a period with
-	`FOR UPDATE` while an approval is being decided. Without an index on those
-	columns InnoDB scans the table and locks every row it looks at, so one open
-	approval holds up saves of every Procurement Request on the site. `status`
-	is what the queues and the open-request readout filter on.
-	"""
-	frappe.db.add_index("Procurement Request", ["company", "department", "transaction_date"])
+	"""`status` is what the queues filter on, when it is the Workflow's state field."""
 	frappe.db.add_index("Procurement Request", ["status"])
+
+
+def ordered_stock_qty(names) -> dict[str, object]:
+	"""How much of each Procurement Request row submitted Material Requests order, in stock UOM.
+
+	Every submitted Material Request that links back to a row counts, whatever
+	its type: the link is only ever made by `make_material_request`, or by a
+	buyer pointing a row at the request it orders, and either way it says the
+	row has been acted on. Values are as the database returns them; callers
+	convert.
+	"""
+	if not names:
+		return {}
+	item = frappe.qb.DocType("Material Request Item")
+	request = frappe.qb.DocType("Material Request")
+	covered = (
+		frappe.qb.from_(item)
+		.inner_join(request)
+		.on(request.name == item.parent)
+		.select(item.procurement_request_item, Sum(item.stock_qty).as_("stock_qty"))
+		.where((request.docstatus == 1) & item.procurement_request.isin(list(names)))
+		.groupby(item.procurement_request_item)
+		.run(as_dict=True)
+	)
+	return {row.procurement_request_item: row.stock_qty for row in covered}
 
 
 def get_conversion_factor(item_code: str, uom: str) -> float:
@@ -270,7 +269,6 @@ def get_committed_qty_map(procurement_requests: str | list[str], items=None) -> 
 	if not names:
 		return {}
 
-	# The budget's count, so the two cannot disagree about what has been ordered.
 	stock_quantities = {row: flt(qty) for row, qty in ordered_stock_qty(names).items()}
 	if not stock_quantities:
 		return {}

@@ -10,7 +10,11 @@ been checked.
 
 Who may call these
 ------------------
-`System Manager`, and that is a deliberately blunt answer. These endpoints take
+Whoever may write `Auth0 Settings`, and that is a deliberately blunt answer.
+A stock site grants that to System Manager alone, and a site that wants
+somebody else to manage these accounts grants it in Role Permissions. It is the
+settings doctype because whoever may change the credentials can already do
+anything these endpoints do. These endpoints take
 an address or an Auth0 id and no document, so there is no record to check a
 permission against and no per-user rule to apply: whoever can call them can make
 an account for any address on the tenant. A site wiring this to a doctype -- a
@@ -47,19 +51,15 @@ from frappe import _
 
 from commons.api_integrations.auth0 import client, users
 
-# Who may reach the tenant over HTTP. See the module docstring on why this is a
-# role and not a document permission.
-ROLE = "System Manager"
-
 
 def _permitted() -> None:
-	"""Refuse anyone without the role, before anything reaches Auth0.
+	"""Refuse anyone who may not write Auth0 Settings, before anything reaches Auth0.
 
 	Its own function rather than a decorator so that the check is visible in
 	each endpoint, and so that adding one that is *not* checked has to be done
 	on purpose rather than by forgetting an import.
 	"""
-	if ROLE not in frappe.get_roles():
+	if not frappe.has_permission(client.SETTINGS, "write"):
 		frappe.throw(_("Not permitted to manage Auth0 accounts."), frappe.PermissionError)
 
 
@@ -68,7 +68,7 @@ def configured() -> bool:
 	"""Whether this site has Auth0 set up, for a caller deciding what to draw.
 
 	Says nothing about the credentials themselves, only that there are some --
-	which is why this is the one endpoint here without a role check. The
+	which is why this is the one endpoint here without a permission check. The
 	alternative is a button that exists on every site and explains itself only
 	after being pressed.
 	"""
@@ -113,7 +113,7 @@ def find_user(email: str) -> str | None:
 def get_user(user_id: str) -> dict | None:
 	"""One account as Auth0 holds it, or `None` if there is no such account.
 
-	The whole record, including `app_metadata`. It is behind the role check for
+	The whole record, including `app_metadata`. It is behind the permission check for
 	that reason: it is the most revealing thing here.
 	"""
 	_permitted()
@@ -138,7 +138,7 @@ def password_change_ticket(
 	that knows how the link is being delivered, and that is what decides whether
 	using it proves anything -- `users.password_change_ticket` says which way
 	round. It is a claim that somebody owns an address, so it sits behind the
-	same role check as everything else here.
+	same permission check as everything else here.
 	"""
 	_permitted()
 	return users.password_change_ticket(

@@ -10,3 +10,4 @@ Email Extensions
 Banking
 Document Capture
 Pseudo Islands
+Attendance Register

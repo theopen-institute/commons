@@ -32,8 +32,25 @@ What happens, per site
   `Module Def`, then unused, is removed by `drop_stale_module_defs` after the
   migrate. A workspace a site has edited is kept, as on register.
 
+And on every site, whatever became of the module:
+
+* **The register's fields are named in Attendance Register Settings** where the site has
+  them (register). This app used to ship `custom_late`, `custom_session_type`,
+  `custom_session_details` and `custom_inactive` as fixtures, and the register
+  read them by those names. The fixture file is gone and the register reads
+  whichever fields the settings name; the four Custom Fields stay on the site,
+  since removing a fixture deletes nothing. Naming them here, with a late
+  arrival worth half a session as it always was there, is what keeps that
+  register as it was with nobody opening the form. Only on a site whose four
+  settings are all blank, so one that has turned a feature off since is not
+  turned back on; a site with none of the fields is left blank, and its
+  register goes without.
+
 Why `before_migrate`: the same reason as `community_handover` -- after the
-files are gone and before anything in the migrate acts on their absence.
+files are gone and before anything in the migrate acts on their absence. The
+settings step does not need it, but it does not mind it: Commons Settings is a
+Single, so its values are rows in `tabSingles` and can be written before the
+doctype sync has added the fields that will read them.
 """
 
 import frappe
@@ -50,7 +67,32 @@ SHIPPED = {
 }
 
 
+SETTINGS = "Attendance Register Settings"
+
+# Where an earlier copy of this step wrote the same settings, before the
+# register had a settings page of its own; moved from there when present.
+OLD_SETTINGS = "Commons Settings"
+OLD_PREFIX = "attendance_"
+
+# The register's fields as one school's register named them, and the
+# settings field that names each now.
+REGISTER_FIELDS = {
+	"late_field": ("Student Attendance", "custom_late"),
+	"session_type_field": ("Course Schedule", "custom_session_type"),
+	"session_details_field": ("Course Schedule", "custom_session_details"),
+	"inactive_term_field": ("Academic Term", "custom_inactive"),
+}
+
+# What a late arrival earned under the register's own rule, before it was a setting.
+LATE_CREDIT = ("late_credit", 0.5)
+
+
 def run() -> None:
+	hand_over_module()
+	name_register_fields()
+
+
+def hand_over_module() -> None:
 	module = frappe.db.get_value("Module Def", MODULE, ("custom", "app_name"), as_dict=True)
 	if not module or module.custom or module.app_name != APP:
 		return
@@ -118,3 +160,42 @@ def delete_workspace(name: str) -> None:
 		frappe.db.delete(table.options, {"parent": name, "parenttype": "Workspace"})
 	frappe.db.delete("Workspace", name)
 	frappe.cache.delete_key("bootinfo")
+
+
+def name_register_fields() -> None:
+	"""Name the register's old fields in its settings, where the site has them and has named none.
+
+	Read from `tabSingles` raw rather than through the document: before this
+	migrate's doctype sync the settings doctype does not exist yet, and the
+	document would not be there to read. Written with `set_single_value` for
+	the same reason, which writes the rows and asks the doctype nothing.
+	"""
+	settings = [*REGISTER_FIELDS, LATE_CREDIT[0]]
+	old = frappe.db.get_singles_dict(OLD_SETTINGS)
+	moved = {
+		setting: old.get(OLD_PREFIX + setting)
+		for setting in settings
+		if old.get(OLD_PREFIX + setting) not in (None, "")
+	}
+	if any(OLD_PREFIX + setting in old for setting in settings):
+		frappe.db.delete(
+			"Singles", {"doctype": OLD_SETTINGS, "field": ("in", [OLD_PREFIX + s for s in settings])}
+		)
+
+	stored = frappe.db.get_singles_dict(SETTINGS)
+	if any((stored.get(setting) or "").strip() for setting in REGISTER_FIELDS):
+		return
+
+	values = moved or {
+		setting: fieldname
+		for setting, (doctype, fieldname) in REGISTER_FIELDS.items()
+		if frappe.db.exists("Custom Field", {"dt": doctype, "fieldname": fieldname})
+	}
+	if not values:
+		return
+	if "late_field" in values and LATE_CREDIT[0] not in values:
+		values[LATE_CREDIT[0]] = LATE_CREDIT[1]
+
+	frappe.db.set_single_value(SETTINGS, values, update_modified=False)
+	named = ", ".join(str(fieldname) for setting, fieldname in values.items() if setting in REGISTER_FIELDS)
+	print(f"Education handover: Attendance Register Settings names the register's fields, {named}.")

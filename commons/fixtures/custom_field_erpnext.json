@@ -16,20 +16,6 @@
  },
  {
   "doctype": "Custom Field",
-  "name": "Material Request-department",
-  "owner": "Administrator",
-  "is_system_generated": 1,
-  "dt": "Material Request",
-  "fieldname": "department",
-  "label": "Department",
-  "fieldtype": "Link",
-  "options": "Department",
-  "insert_after": "company",
-  "search_index": 1,
-  "description": "Whose budget this request is charged to. Required to submit Purchase/Material Issue requests; inherited from linked Procurement Requests."
- },
- {
-  "doctype": "Custom Field",
   "name": "Material Request Item-procurement_request",
   "owner": "Administrator",
   "is_system_generated": 1,

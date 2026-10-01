@@ -11,10 +11,10 @@ empty Reference is offered as an unallocated payment. Nothing checks the one
 against the other, so a refund line in an entry that also charges the same
 party is counted on both sides:
 
-* ACC-JV-2025-00142 credits HR-EMP-00005 750 on TDS 11211 and credits -75 (a
+* A payroll JE credits an employee 750 on a TDS account and credits -75 (a
   refund). The invoice side shows 675, which has the refund in it, and the
   payment side offers the 75 again.
-* ACC-JV-2024-00046-1 debits and credits the same 3,000 on the same account and
+* An amended JE debits and credits the same 3,000 on the same account and
   party. It nets to nothing, so the invoice side never shows it, but the payment
   side offers the 3,000.
 
@@ -22,8 +22,8 @@ The fix is the one a reconciliation makes when such a line is matched against
 its own entry: the line's Reference is set to the journal entry itself. The
 payment ledger already says exactly that (the line settles its own entry), so
 nothing in the payment ledger or the GL changes, and no amount moves; the line
-just stops being offered as a payment. ERPNext did this itself on
-ACC-JV-2025-00142's TDS 11112 refund when it was reconciled on 2026-05-08.
+just stops being offered as a payment. ERPNext does this itself
+to such a refund when it is reconciled.
 
 It is only right when the refunds do not exceed the charges they sit with. If
 an entry pays out more on an account and party than it charges there, the
@@ -38,7 +38,7 @@ import frappe
 from frappe import _
 from frappe.utils import escape_html, flt
 
-from commons.banking.ledger_audit import REPAIR_ROLES, TOLERANCE
+from commons.banking.ledger_audit import TOLERANCE, check_can_repair
 
 NETTED = "Refund already netted in its own entry"
 EXCESS = "Pays out more than it charges: split by hand"
@@ -142,7 +142,7 @@ def _find_for(voucher_no: str) -> list[dict]:
 @frappe.whitelist()
 def preview_netted(voucher_no: str) -> list[dict]:
 	"""What the fix of one journal entry would mark, worked out on the server."""
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	return for_display(_find_for(voucher_no))
 
 
@@ -185,14 +185,14 @@ def _mark(voucher_no: str) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def fix_netted(voucher_no: str) -> dict:
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	return _mark(voucher_no)
 
 
 @frappe.whitelist(methods=["POST"])
 def fix_netted_many(vouchers: list | str) -> list[dict]:
 	"""`fix_netted` for several journal entries, each alone."""
-	frappe.only_for(REPAIR_ROLES)
+	check_can_repair()
 	vouchers = frappe.parse_json(vouchers)
 	if len(vouchers) > MAX_BULK:
 		frappe.throw(_("At most {0} vouchers at a time").format(MAX_BULK))

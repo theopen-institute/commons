@@ -3,7 +3,7 @@ whether what keeps it there is in place. The checks and the repair are in
 `commons.banking.loan_dates`.
 
 Both checks run by default and their problems share one list: vouchers on the
-wrong date, and safeguards that are missing or do not exist. A clean report
+wrong date, and safeguards that are missing. A clean report
 means both are clean. Choosing Safeguards lists every safeguard, the ones in
 place too, as the record of what was checked.
 """
@@ -90,7 +90,4 @@ def _summary(checks, rows):
 		summary.append(
 			_figure(sum(r.status == loan_dates.MISSING for r in rows), _("Safeguards missing"), "Red")
 		)
-		redundant = sum(r.status == loan_dates.REDUNDANT for r in rows)
-		if redundant:
-			summary.append(_figure(redundant, _("Redundant server scripts"), "Orange"))
 	return summary

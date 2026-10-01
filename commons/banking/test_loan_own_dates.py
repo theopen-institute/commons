@@ -6,9 +6,9 @@ overwrite first, the voucher's own date after it, and nothing when the setting
 is off.
 
 That the real classes do this through lending's own submit and repost was
-checked against register.localhost inside rolled-back transactions: a
-backdated repayment, write-off and disbursement, and a repost of
-ACC-LOAN-2023-00036, each on its own date with the setting on and on the day
+checked against a real site inside rolled-back transactions: a
+backdated repayment, write-off and disbursement, and a repost of one
+loan's repayments, each on its own date with the setting on and on the day
 of the test with it off.
 """
 

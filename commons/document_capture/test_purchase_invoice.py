@@ -7,8 +7,8 @@ invoice's fixed tax amount copied onto this one. What is billed, and for whom,
 is `test_capture`'s.
 
 That the draft inserts, and that ERPNext's totals come out right, was checked
-against register.localhost's own invoices (see `purchase_invoice.py`), and is
-not restated with mocks here.
+against a site's own invoices, and is not restated with mocks here. What the
+prompt says for which site is `api_integrations.claude.test_locale`'s.
 """
 
 import logging
@@ -75,7 +75,7 @@ class TestSavingAReadDraftNeedsNoKey(TestCase):
 	def test_preview_and_create_go_ahead_without_it(self):
 		built = SimpleNamespace(
 			name="PI-1",
-			supplier="Vianet",
+			supplier="Nettel",
 			currency="NPR",
 			total=100,
 			net_total=100,
@@ -124,11 +124,12 @@ class TestReadingInTheBackground(TestCase):
 	def test_reads_with_the_jobs_allowance_and_stores_only_what_it_read(self):
 		from commons.document_capture.capture import READ_TIMEOUT
 
-		extracted = {"buyer": {"name": "KC"}, "supplier": {"name": "Vianet"}}
+		extracted = {"buyer": {"name": "KC"}, "supplier": {"name": "Nettel"}}
 		steps = []
 		with (
 			patch.object(capture.documents, "read", return_value=extracted) as read,
 			patch.object(capture, "_companies") as companies,
+			patch.object(capture.locale, "for_company", return_value=capture.locale.Locale()),
 		):
 			result = capture.read_scan(b"%PDF-1.7", progress=lambda **changes: steps.append(changes))
 		sent = read.call_args.kwargs
@@ -141,7 +142,7 @@ class TestReadingInTheBackground(TestCase):
 		companies.assert_not_called()
 
 	def test_opening_matches_what_was_read_for_the_viewer(self):
-		extracted = {"buyer": {"name": "KC"}, "supplier": {"name": "Vianet"}}
+		extracted = {"buyer": {"name": "KC"}, "supplier": {"name": "Nettel"}}
 		with (
 			patch.object(capture, "_require_drafting"),
 			patch.object(capture, "_companies", return_value=[]),
@@ -151,13 +152,13 @@ class TestReadingInTheBackground(TestCase):
 			result = capture.reading(None, extracted)
 		self.assertEqual(result["extracted"], extracted)
 		self.assertEqual(result["company"]["name"], "KC")
-		suppliers.assert_called_once_with({"name": "Vianet"})
+		suppliers.assert_called_once_with({"name": "Nettel"})
 
 
 class TestSimilarity(TestCase):
 	def test_spelling_of_the_suffix_does_not_matter(self):
 		self.assertGreaterEqual(
-			capture.similarity("VIANET COMMUNICATIONS PVT. LTD.", "Vianet Communications Pvt.Ltd"), 0.95
+			capture.similarity("NETTEL COMMUNICATIONS PVT. LTD.", "Nettel Communications Pvt.Ltd"), 0.95
 		)
 
 	def test_a_letter_out_is_still_the_same_supplier(self):
@@ -170,23 +171,23 @@ class TestSimilarity(TestCase):
 
 	def test_one_long_word_in_common_is_not_a_match(self):
 		self.assertLess(
-			capture.similarity("Vianet Communications", "Worldlink Communications"), capture.SUPPLIER_OFFERED
+			capture.similarity("Nettel Communications", "Skylinks Communications"), capture.SUPPLIER_OFFERED
 		)
 
 	def test_a_shortened_name_is_offered_but_not_chosen(self):
-		score = capture.similarity("Vianet", "Vianet Communications Pvt.Ltd")
+		score = capture.similarity("Nettel", "Nettel Communications Pvt.Ltd")
 		self.assertGreaterEqual(score, capture.SUPPLIER_OFFERED)
 		self.assertLess(score, capture.SUPPLIER_CHOSEN)
 
 	def test_nothing_is_like_nothing(self):
-		self.assertEqual(capture.similarity(None, "Vianet"), 0.0)
+		self.assertEqual(capture.similarity(None, "Nettel"), 0.0)
 		self.assertEqual(capture.similarity("Pvt Ltd", "Pvt Ltd"), 0.0)
 
 
 class TestWhichSupplier(TestCase):
 	SUPPLIERS: ClassVar = [
-		row(name="Vianet Communications Pvt.Ltd", supplier_name="Vianet Communications Pvt.Ltd", tax_id=None),
-		row(name="Worldlink, Pvt Ltd", supplier_name="Worldlink Communications Pvt Ltd", tax_id=None),
+		row(name="Nettel Communications Pvt.Ltd", supplier_name="Nettel Communications Pvt.Ltd", tax_id=None),
+		row(name="Skylinks, Pvt Ltd", supplier_name="Skylinks Communications Pvt Ltd", tax_id=None),
 		row(name="Muna Gurung", supplier_name="Muna Gurung", tax_id="108251384"),
 	]
 
@@ -200,8 +201,8 @@ class TestWhichSupplier(TestCase):
 		self.assertTrue(found[0]["strong"])
 
 	def test_the_same_name_is_chosen_and_nothing_else_is_offered(self):
-		found = self.match({"name": "VIANET COMMUNICATIONS PVT. LTD.", "tax_id": None})
-		self.assertEqual([match["name"] for match in found], ["Vianet Communications Pvt.Ltd"])
+		found = self.match({"name": "NETTEL COMMUNICATIONS PVT. LTD.", "tax_id": None})
+		self.assertEqual([match["name"] for match in found], ["Nettel Communications Pvt.Ltd"])
 		self.assertTrue(found[0]["strong"])
 
 	def test_a_stranger_is_nobody(self):
@@ -215,7 +216,7 @@ class TestWhichSupplier(TestCase):
 
 class TestWhichCompany(TestCase):
 	COMPANIES: ClassVar = [
-		row(name="Open Institute (Nepal)", company_name="Open Institute (Nepal)", tax_id=None),
+		row(name="Example Org (Nepal)", company_name="Example Org (Nepal)", tax_id=None),
 		row(
 			name="Kula Culture Management Training, Pvt. Ltd.",
 			company_name="Kula Culture Management Training, Pvt. Ltd.",
@@ -228,16 +229,16 @@ class TestWhichCompany(TestCase):
 			return capture._match_company(buyer, self.COMPANIES)
 
 	def test_the_tax_number_first(self):
-		found = self.match({"name": "Open Institute", "tax_id": "605-953-985"})
+		found = self.match({"name": "Example Org", "tax_id": "605-953-985"})
 		self.assertEqual(found["name"], "Kula Culture Management Training, Pvt. Ltd.")
 
 	def test_then_the_name(self):
-		found = self.match({"name": "Open Institute Nepal", "tax_id": None})
-		self.assertEqual(found["name"], "Open Institute (Nepal)")
+		found = self.match({"name": "Example Org Nepal", "tax_id": None})
+		self.assertEqual(found["name"], "Example Org (Nepal)")
 
 	def test_then_the_readers_default_and_the_reason_says_it_is_a_guess(self):
-		found = self.match({"name": None, "tax_id": None}, default="Open Institute (Nepal)")
-		self.assertEqual(found["name"], "Open Institute (Nepal)")
+		found = self.match({"name": None, "tax_id": None}, default="Example Org (Nepal)")
+		self.assertEqual(found["name"], "Example Org (Nepal)")
 		self.assertIn("default", found["reason"])
 
 	def test_several_companies_and_no_clue_is_no_answer(self):
@@ -248,38 +249,41 @@ class TestWhichAccount(TestCase):
 	HISTORY: ClassVar = [
 		row(
 			name="PI-3",
-			supplier="Vianet",
-			item_name="Internet from Vianet (6mo)",
-			expense_account="Utility - KC",
+			supplier="Nettel",
+			item_name="Internet from Nettel (6mo)",
+			expense_account="Utility - EX",
 		),
-		row(name="PI-2", supplier="Vianet", item_name="Router", expense_account="Equipment - KC"),
+		row(name="PI-2", supplier="Nettel", item_name="Router", expense_account="Equipment - EX"),
 		row(
-			name="PI-1", supplier="Amatya", item_name="Statutory Audit 2080/81", expense_account="Legal - KC"
+			name="PI-1",
+			supplier="Audit & Co",
+			item_name="Statutory Audit 2080/81",
+			expense_account="Legal - EX",
 		),
 	]
 
 	def suggest(self, description, supplier):
 		from_supplier = [line for line in self.HISTORY if line.supplier == supplier]
-		return capture._suggest_account(description, from_supplier, self.HISTORY, "Cost of Goods Sold - KC")
+		return capture._suggest_account(description, from_supplier, self.HISTORY, "Cost of Goods Sold - EX")
 
 	def test_like_this_suppliers_own_line_first(self):
-		found = self.suggest("Internet from Vianet 6 months", "Vianet")
-		self.assertEqual(found["account"], "Utility - KC")
+		found = self.suggest("Internet from Nettel 6 months", "Nettel")
+		self.assertEqual(found["account"], "Utility - EX")
 		self.assertIn("PI-3", found["reason"])
 
 	def test_then_where_this_supplier_usually_goes(self):
-		found = self.suggest("Something new entirely", "Vianet")
-		self.assertIn(found["account"], ("Utility - KC", "Equipment - KC"))
+		found = self.suggest("Something new entirely", "Nettel")
+		self.assertIn(found["account"], ("Utility - EX", "Equipment - EX"))
 		self.assertIn("usually", found["reason"])
 		self.assertFalse(found["review"])
 
 	def test_then_a_line_described_the_same_way_from_anybody(self):
 		found = self.suggest("Statutory Audit 2081/82", "A new auditor")
-		self.assertEqual(found["account"], "Legal - KC")
+		self.assertEqual(found["account"], "Legal - EX")
 
 	def test_last_the_default_and_it_asks_to_be_checked(self):
 		found = self.suggest("Tea and biscuits", "A new cafe")
-		self.assertEqual(found["account"], "Cost of Goods Sold - KC")
+		self.assertEqual(found["account"], "Cost of Goods Sold - EX")
 		self.assertTrue(found["review"])
 
 
@@ -326,7 +330,7 @@ class TestTaxOptions(TestCase):
 			patch.object(capture, "_rows_from_template", return_value=[tax()]),
 			patch.object(capture, "_rows_from_invoice", return_value=[tax()]),
 		):
-			return capture._tax_options("KC", "Vianet", taxed)
+			return capture._tax_options("KC", "Nettel", taxed)
 
 	def test_an_untaxed_scan_starts_untaxed(self):
 		found = self.options(False, last=row(name="PI-3"), templates=[row(name="Nepal Tax", is_default=1)])

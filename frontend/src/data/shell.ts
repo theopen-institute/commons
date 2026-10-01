@@ -50,7 +50,7 @@ export type PageKey =
  * Balance needs neither and says so with nulls; the attendance register needs
  * both, because `Student Attendance` is readable by every student on the site
  * and the page is a whole cohort's marks on one screen. See
- * `commons.education_extensions.attendance.can_mark`, which is the server's
+ * `commons.attendance_register.register.can_mark`, which is the server's
  * half of the same rule.
  */
 interface PageGate {
@@ -222,6 +222,10 @@ interface ShellData {
    *  request section answers. See `serverGate`. Optional so an older server's
    *  payload reads as "no" rather than as an error. */
   access?: Partial<Record<PageKey, boolean>>
+  /** The `Commons Settings` switches the SPA draws differently for. Read
+   *  through `data/features.ts`, which also answers on a desk page. Optional
+   *  for the same reason as `access`. */
+  features?: { bikram_sambat?: boolean }
 }
 
 declare global {
@@ -244,6 +248,9 @@ const shell = computed<ShellData>(() => bootShell ?? shellCall.data ?? { title: 
 
 /** Whether the shell is the site's answer rather than this module's placeholder. */
 export const shellLoaded = computed(() => bootShell !== undefined || shellCall.isFinished)
+
+/** The site's feature switches, as the shell carries them. See `data/features.ts`. */
+export const features = computed(() => shell.value.features ?? {})
 
 /** What this app is called on this site. Read by the sidebar and the browser tab. */
 export const title = computed(() => shell.value.title?.trim() || DEFAULT_TITLE)

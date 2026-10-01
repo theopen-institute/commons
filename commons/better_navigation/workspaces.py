@@ -41,6 +41,7 @@ import frappe
 
 from commons.better_navigation import pages as page_list
 from commons.better_navigation.pages import DEFAULT_REQUEST_PAGES, PAGES
+from commons.commons_core import settings
 from commons.self_service import registry
 
 WORKSPACE = "Commons Workspace"
@@ -48,15 +49,16 @@ ITEM = "Commons Workspace Item"
 
 # The workspace a site gets before it has said otherwise: the sidebar this app
 # shipped when there was only one of these and it was a constant in the
-# frontend. The title is the name that constant held.
-DEFAULT_TITLE = "Staff Member"
+# frontend. It has no name of its own -- it is called whatever the site calls
+# this app (`commons.commons_core.settings.title`, "Commons" when unset), since
+# any name chosen here would be one organisation's word for its people.
 DEFAULT_ICON = "lucide-inbox"
 
 # Headings the default workspace groups its rows under. Configuration once a
-# site writes its own workspace; here they are only what the old sidebar said.
+# site writes its own workspace; here they are kept to words that fit any site.
 PROFILE_GROUP = "Profile"
 REQUESTS_GROUP = "Requests"
-TEACHING_GROUP = "Teaching"
+EDUCATION_GROUP = "Education"
 
 # The page the default workspace closes its Profile group with. Named rather
 # than spelled inline for the same reason `DEFAULT_REQUEST_PAGES` is: the key is
@@ -64,16 +66,16 @@ TEACHING_GROUP = "Teaching"
 # is the kind of thing a rename misses.
 STATEMENT_PAGE = "statement"
 
-# And the page the Teaching group holds, on a site that teaches. Its own heading
-# rather than a row among the requests: nothing is raised on it and nobody
-# approves it, and it is the only page in this app addressed to somebody in their
-# capacity as staff rather than as a person with a payslip and a leave balance.
+# And the page the Education group holds, on a site with the education module.
+# Its own heading rather than a row among the requests: nothing is raised on it
+# and nobody approves it, and it is addressed to somebody in their capacity as an
+# instructor rather than as a person with a leave balance.
 ATTENDANCE_PAGE = "attendance"
 
 # And the pages the Accounts group holds: reconciliation on a site that keeps
 # bank statements, and document capture on one that can read scans. Their own
-# heading for the reason Teaching has one: they are addressed to somebody in
-# their capacity as staff, here as whoever keeps the books.
+# heading for the reason Education has one: they are addressed to somebody in
+# a role, here as whoever keeps the books.
 ACCOUNTS_GROUP = "Accounts"
 RECONCILIATION_PAGE = "reconciliation"
 CAPTURE_PAGE = "capture"
@@ -244,7 +246,7 @@ def _default() -> dict:
 	# site's sidebar, not one person's, and `PAGE_ACCESS` is what takes the row
 	# away from somebody who does not mark attendance.
 	if page_list.available(ATTENDANCE_PAGE):
-		items.append(_item("page", ATTENDANCE_PAGE, TEACHING_GROUP))
+		items.append(_item("page", ATTENDANCE_PAGE, EDUCATION_GROUP))
 	# Same arrangement: the site decides whether the row exists, and
 	# `PAGE_ACCESS` whether this reader is somebody who reconciles.
 	if page_list.available(RECONCILIATION_PAGE):
@@ -253,7 +255,7 @@ def _default() -> dict:
 		items.append(_item("page", CAPTURE_PAGE, ACCOUNTS_GROUP))
 	return {
 		"name": None,
-		"title": DEFAULT_TITLE,
+		"title": settings.title(),
 		"icon": DEFAULT_ICON,
 		"logo": None,
 		"items": items,

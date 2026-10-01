@@ -1,0 +1,88 @@
+{
+ "actions": [],
+ "creation": "2026-10-01 15:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "marks_section",
+  "late_field",
+  "late_credit",
+  "sessions_section",
+  "session_type_field",
+  "session_details_field",
+  "terms_column",
+  "inactive_term_field"
+ ],
+ "fields": [
+  {
+   "description": "The fields a site has added to Education's doctypes for what Education has no field for. Each is the fieldname of a field on that doctype; left blank, the register at <b>/commons/attendance</b> does without it.",
+   "fieldname": "marks_section",
+   "fieldtype": "Section Break",
+   "label": "Marks"
+  },
+  {
+   "description": "A Check field on <b>Student Attendance</b> marking a student present but late. Blank: the register offers no Late mark.",
+   "fieldname": "late_field",
+   "fieldtype": "Data",
+   "label": "Late Arrival Field"
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.late_field",
+   "description": "The share of a session's hours a late arrival earns, from 0 to 1. 1 counts it as fully present.",
+   "fieldname": "late_credit",
+   "fieldtype": "Float",
+   "label": "Late Arrival Credit"
+  },
+  {
+   "fieldname": "sessions_section",
+   "fieldtype": "Section Break",
+   "label": "Sessions and Terms"
+  },
+  {
+   "description": "A Data or Select field on <b>Course Schedule</b> naming the kind of session. The register groups and totals by it. Blank: no grouping by type.",
+   "fieldname": "session_type_field",
+   "fieldtype": "Data",
+   "label": "Session Type Field"
+  },
+  {
+   "description": "A text field on <b>Course Schedule</b> describing the session, shown and edited beside it.",
+   "fieldname": "session_details_field",
+   "fieldtype": "Data",
+   "label": "Session Details Field"
+  },
+  {
+   "fieldname": "terms_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "A Check field on <b>Academic Term</b> retiring a term. Ticked terms are left out of the register. Blank: every term is offered.",
+   "fieldname": "inactive_term_field",
+   "fieldtype": "Data",
+   "label": "Inactive Term Field"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-01 15:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Attendance Register",
+ "name": "Attendance Register Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

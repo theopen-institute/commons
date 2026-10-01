@@ -14,8 +14,8 @@ All of it is optional. The fields and tables read here -- `Department Approver`,
 and the `expense_approvers` table HRMS adds to ERPNext's `Department` -- ship
 with HRMS, which is not in `required_apps`. On a site without it every function
 here answers "nobody" rather than throwing, and the one caller that is not
-itself HRMS-only (procurement's blank form, which pre-fills a department head)
-simply opens with the field empty for the requester to pick.
+itself HRMS-only (procurement's approver picker, which sorts the requester's
+own expense approvers first) simply offers them in name order.
 """
 
 import frappe
@@ -167,10 +167,8 @@ def default_expense_approver(employee: frappe._dict | None) -> str | None:
 	head, which is how the desk's own Expense Claim decides it too -- see
 	`hrms.api.get_expense_approval_details`.
 
-	Expense claims only. Procurement deliberately names the department head and
-	nothing else: a request spends the department's budget, so it is the
-	department's head who decides it, whoever happens to sign off the requester's
-	personal expenses.
+	Expense claims only. A Procurement Request opens with no approver: who
+	decides one is the site's Workflow.
 	"""
 	if not employee:
 		return None

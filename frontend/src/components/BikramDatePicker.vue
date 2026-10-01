@@ -7,6 +7,12 @@
   the grid is drawn in — so nothing downstream, on the wire or in the database,
   has to know this component exists.
 
+  The toggle is there only on a site that uses Bikram Sambat (`Commons Settings`
+  → Enable Bikram Sambat, read through `data/features.ts`). Elsewhere this is a
+  plain Gregorian picker: no toggle, and no Bikram Sambat in a tooltip or the
+  footer. Decided here rather than by each dialog that draws one, so none of
+  them has to ask.
+
   ## Why this is not frappe-ui's DatePicker
 
   `FormControl type="date"` dispatches to `frappe-ui`'s `DatePicker`, and that is
@@ -58,7 +64,7 @@
 			<!-- Calendar switch. Disabled rather than hidden when the visible date
            falls outside the Bikram Sambat table's span, so the control does not
            appear and disappear as someone pages through years. -->
-			<div class="mb-2 flex items-center gap-1">
+			<div v-if="bikramSambatEnabled" class="mb-2 flex items-center gap-1">
 				<button
 					v-for="option in MODES"
 					:key="option.value"
@@ -150,7 +156,7 @@
 					class="rounded px-2 py-1 text-xs text-ink-gray-7 hover:bg-surface-gray-2"
 					@click="chooseIso(todayIso)"
 				>
-					{{ mode === 'BS' ? 'आज' : 'Today' }}
+					{{ todayLabel(mode) }}
 				</button>
 				<!-- The same date in the calendar that is not on screen. The toggle is
              only useful if you can see the correspondence while you use it. -->
@@ -174,8 +180,14 @@ import {
 	to_gregorian,
 	weekday_name,
 } from '@bikram/bikram_sambat.js'
-
-type Mode = 'AD' | 'BS'
+import {
+	adDayTitle,
+	calendarMode,
+	counterpartLabel,
+	todayLabel,
+	type CalendarMode as Mode,
+} from '@/data/calendar'
+import { bikramSambatEnabled } from '@/data/features'
 
 interface Cell {
 	key: string
@@ -232,7 +244,7 @@ const props = withDefaults(
 		placeholder: 'YYYY-MM-DD',
 		size: 'sm',
 		variant: 'subtle',
-	},
+	}
 )
 
 const emit = defineEmits<{
@@ -262,7 +274,10 @@ const todayIso = toIso(new Date())
 
 const open = ref(false)
 const gridRef = ref<HTMLElement | null>(null)
-const mode = ref<Mode>(loadMode())
+/** The calendar this browser last chose, which a site without Bikram Sambat
+ *  never draws -- see `calendarMode`. */
+const preferred = ref<Mode>(loadMode())
+const mode = computed(() => calendarMode(preferred.value, bikramSambatEnabled.value))
 /** Any day inside the month on screen. Shared by both calendars, so toggling
  *  keeps you on the same period instead of jumping to today. */
 const anchor = ref<Date>(fromIso(props.modelValue) ?? new Date())
@@ -278,7 +293,7 @@ watch(
 			anchor.value = date
 			focusedIso.value = value
 		}
-	},
+	}
 )
 
 function loadMode(): Mode {
@@ -291,7 +306,7 @@ function loadMode(): Mode {
 }
 
 function setMode(next: Mode) {
-	mode.value = next
+	preferred.value = next
 	try {
 		localStorage.setItem(STORAGE_KEY, next)
 	} catch {
@@ -353,8 +368,7 @@ function adGrid() {
 	const cells = Array.from({ length }, (_, index) => {
 		const date = new Date(year, month, index + 1)
 		const iso = toIso(date)
-		const bs = from_gregorian(date)
-		return makeCell(iso, String(index + 1), bs ? `${iso} — ${formatBs(bs)}` : iso)
+		return makeCell(iso, String(index + 1), adDayTitle(date, iso, bikramSambatEnabled.value))
 	})
 
 	return {
@@ -397,10 +411,7 @@ const tabStopIso = computed(() => {
 /** The selected date written in whichever calendar is not on screen. */
 const counterpart = computed(() => {
 	const date = fromIso(props.modelValue) ?? fromIso(focusedIso.value)
-	if (!date) return ''
-	if (mode.value === 'BS') return toIso(date)
-	const bs = from_gregorian(date)
-	return bs ? formatBs(bs) : ''
+	return counterpartLabel(date, date ? toIso(date) : '', mode.value, bikramSambatEnabled.value)
 })
 
 function cellClass(cell: Cell) {

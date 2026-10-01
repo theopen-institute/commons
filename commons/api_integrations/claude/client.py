@@ -74,7 +74,8 @@ def fail(message: str, status: int | None = None):
 
 
 def settings() -> dict:
-	"""What `Claude Settings` holds, key included.
+	"""What `Claude Settings` holds, key included, and the site's additional
+	instructions for every document read (`locale.finish`).
 
 	Guarded by the doctype's existence, for the window between code landing and
 	the migrate that creates the Single. That reads as unconfigured, not as an
@@ -87,6 +88,7 @@ def settings() -> dict:
 	return {
 		"api_key": (document.get_password("api_key", raise_exception=False) or "").strip(),
 		"model": (document.model or "").strip() or DEFAULT_MODEL,
+		"additional_instructions": (document.get("additional_instructions") or "").strip(),
 	}
 
 
@@ -101,6 +103,12 @@ def available() -> bool:
 
 def model() -> str:
 	return settings().get("model") or DEFAULT_MODEL
+
+
+def additional_instructions() -> str:
+	"""What the site has asked to be added to every document-reading prompt,
+	or nothing."""
+	return settings().get("additional_instructions") or ""
 
 
 def create_message(**params):

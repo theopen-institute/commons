@@ -99,7 +99,7 @@
 				label="Approver"
 				title-first
 				:query="procurementCan.approver_query"
-				required
+				:required="procurementCan.approver_required"
 			/>
 
 			<ErrorMessage v-if="saveRequest.error" :message="saveRequest.error.message" />
@@ -216,7 +216,7 @@ function blankForm(fill = defaults.data): RequestForm {
 		department: fill?.department ?? '',
 		// Workflow state is deliberately absent. Frappe applies the doctype or
 		// active Workflow's initial value.
-		approver: fill?.approver ?? '',
+		approver: '',
 		items: [blankLine(fill)],
 	}
 }
@@ -229,7 +229,7 @@ const currency = computed(() => defaults.data?.currency ?? null)
 // The code, not a symbol: the company currency can be one the viewer's locale
 // has no symbol for, and a bare number is the thing an approver misreads.
 const priceLabel = computed(() =>
-	currency.value ? `Estimated price each (${currency.value})` : 'Estimated price each',
+	currency.value ? `Estimated price each (${currency.value})` : 'Estimated price each'
 )
 
 function addLine() {
@@ -248,7 +248,7 @@ let awaitingDefaults = false
 /** An edit opened before its lines were in — see the watch on `lines`. */
 let awaitingLines = false
 
-// Fresh on every open: a user's default company or department approver can have
+// Fresh on every open: a user's default company or department can have
 // changed since the section was loaded, and this is the moment it matters.
 watch(open, (isOpen) => {
 	awaitingDefaults = isOpen && !props.request
@@ -267,9 +267,8 @@ watch(
 		awaitingDefaults = false
 		form.company ??= fill.company ?? undefined
 		form.department ||= fill.department ?? ''
-		form.approver ||= fill.approver ?? ''
 		for (const line of form.items) line.uom ||= fill.uom ?? ''
-	},
+	}
 )
 
 // The other late arrival: an edited request's lines, when the list's line
@@ -282,7 +281,7 @@ watch(
 		if (!open.value || !awaitingLines || !lines?.length) return
 		awaitingLines = false
 		if (!form.items.length) form.items = lineForms(lines)
-	},
+	}
 )
 
 function requestDocument() {
@@ -306,7 +305,7 @@ async function save(close: () => void, action?: string) {
 		})
 		if (!saved) return
 		toast.success(
-			action ? `${action} applied` : props.request ? 'Changes saved' : 'Draft saved',
+			action ? `${action} applied` : props.request ? 'Changes saved' : 'Draft saved'
 		)
 		emit('created', saved.name!)
 		close()
@@ -323,20 +322,19 @@ const actions = computed<DialogAction[]>(() => {
 		onClick: ({ close }) => save(close),
 	}
 	const available = props.request
-		? (props.workflowActions ?? [])
-		: (procurementWorkflow.value?.initial_actions ?? [])
-	const workflowActions = workflowActionButtons(
-		available,
-		procurementWorkflow.value,
-	).map((button): DialogAction => ({
-		label: button.label,
-		variant: button.variant,
-		theme: button.theme,
-		// The action's own name, not the button's label. They are the same string
-		// today; the label is what a site could rename, and `apply_workflow` would
-		// then be asked for a transition the workflow has never heard of.
-		onClick: ({ close }) => save(close, button.action.action),
-	}))
+		? props.workflowActions ?? []
+		: procurementWorkflow.value?.initial_actions ?? []
+	const workflowActions = workflowActionButtons(available, procurementWorkflow.value).map(
+		(button): DialogAction => ({
+			label: button.label,
+			variant: button.variant,
+			theme: button.theme,
+			// The action's own name, not the button's label. They are the same string
+			// today; the label is what a site could rename, and `apply_workflow` would
+			// then be asked for a transition the workflow has never heard of.
+			onClick: ({ close }) => save(close, button.action.action),
+		})
+	)
 	return [saveDraft, ...workflowActions]
 })
 </script>

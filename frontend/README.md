@@ -222,7 +222,7 @@ The browser mirrors that split. `src/data/requests/section.ts` is a factory:
 leave and expenses are both built from it, so a permissions call, the employee
 behind the session, your own list, an approvals queue with per-row buttons and a
 label for each row are written once. Procurement keeps its own module, because
-its queue is grouped by the department whose budget it spends and its
+its queue is grouped by department and its
 permissions payload answers a different question — workflow access, not an
 approve right.
 
@@ -305,8 +305,9 @@ the section's own:
 ### Procurement
 
 `Procurement Request` is this app's own doctype and has been driven by a Frappe
-Workflow from the start. Its approvals page is grouped by department, with the
-budget each group spends priced beside it — see `docs/department-budgets.md`.
+Workflow from the start, and the Workflow is the site's own: nothing here names
+a state, a role or who approves. Its approvals page is grouped by department,
+with what each group's requests would cost together.
 
 ## Attendance
 
@@ -326,17 +327,18 @@ click. That was quick, but a stray tap while scrolling on a tablet changed a
 real record and nothing on screen showed it.
 
 **The arithmetic is in `src/data/attendanceRegister.ts`**, which is pure and
-tested (`yarn test`). What a late arrival is worth — half the session's hours —
-is said once, in `CREDIT`, and the blocks and footings are built from it. That
-matters because the version this replaced said it in a template and got the
-group totals wrong in a way nobody could see: it footed the *first* group's
-hours under every group on the page.
+tested (`yarn test`). What a late arrival is worth is a site's setting
+(Attendance Register Settings, *Late Arrival Credit*), handed to `buildRegister` once, and
+the blocks and footings are all built from it. That matters because the
+version this replaced said it in a template and got the group totals wrong in a
+way nobody could see: it footed the *first* group's hours under every group on
+the page.
 
-**Nothing here has an endpoint of its own.** An earlier version of this page
-assembled the whole register in one custom API and answered in a single call,
-which read nicely and was wrong: to do it the server had to read six tables with
-`frappe.get_all`, which is `ignore_permissions=True`, so it walked past User
-Permissions and past `commons.safer_permissions` — the gate whose entire purpose
+**Nothing here reads a row through an endpoint of its own.** An earlier
+version of this page assembled the whole register in one custom API and
+answered in a single call, which read nicely and was wrong: to do it the server
+had to read six tables with `frappe.get_all`, which is `ignore_permissions=True`,
+so it walked past User Permissions and past `commons.safer_permissions` — the gate whose entire purpose
 is that a role grants nothing until a User Permission narrows it. A single
 "may this person mark attendance" check at the door is not a substitute for that.
 
@@ -365,13 +367,30 @@ so a row that is there is a register that exists.
 ### What attendance needs configured
 
 The section is absent without the education module — `Course Schedule` and
-`Student Attendance` are what it is made of. Beyond that it stands on four
-Custom Fields this app ships as fixtures
-(`commons/fixtures/custom_field_education.json`): a session's type and details, the
-`custom_late` flag, and `custom_inactive` on `Academic Term` for retiring a term
-from the picker. `custom_session_type` is free text on purpose — the vocabulary
-is the school's, the dialog offers whatever is already in use, and a fifth kind
-of session is somebody typing it once rather than a deploy.
+`Student Attendance` are what it is made of. Everything else is optional, and
+is a field the site adds itself and names in **Attendance Register Settings**:
+
+| Setting               | A field on                    | What the register does with it                      | Left blank           |
+| --------------------- | ----------------------------- | --------------------------------------------------- | -------------------- |
+| Late Arrival Field    | `Student Attendance`, a Check | offers a Late mark, stored as Present with the flag | no Late mark         |
+| Late Arrival Credit   | —                             | the share of a session's hours Late earns, 0 to 1   | 1, a full session    |
+| Session Type Field    | `Course Schedule`, text       | groups the sessions and foots each kind apart       | one block, one total |
+| Session Details Field | `Course Schedule`, text       | a line under the date, edited with the session      | not shown            |
+| Inactive Term Field   | `Academic Term`, a Check      | drops ticked terms from the picker                  | every term offered   |
+
+The page asks `commons.attendance_register.register.register_fields` for them,
+which sends a name only if the doctype's meta has a field of that name and a
+usable type, so a typo in the settings switches a feature off rather than
+breaking every read. A session type is free text on purpose — the vocabulary is
+the school's, the dialog offers whatever is already in use, and a fifth kind of
+session is somebody typing it once rather than a deploy.
+
+The register this page was first written for keeps them as
+`custom_late` (worth half a session), `custom_session_type`,
+`custom_session_details` and `custom_inactive`. This app shipped those four as
+fixtures until it stopped hardwiring one school's fields; they are that site's
+own Custom Fields now, and `commons.commons_core.education_handover` filled its
+settings in.
 
 A `Course` wants a `default_instructor` and a default classroom: `Course
 Schedule` requires both and the site fetches them from there, and this page
@@ -380,7 +399,7 @@ deliberately sets neither rather than overriding a school's answer with a guess.
 Unlike the other sections, the sidebar row is **gated**: `Student Attendance` is
 readable by every student and guardian on the site, and the register is a whole
 cohort's marks on one screen. It is offered to whoever may *write* a mark. See
-`commons.education_extensions.attendance.can_mark`, which the navigation and the
+`commons.attendance_register.register.can_mark`, which the navigation and the
 desk's Awesome Bar ask, and which the browser asks for itself.
 
 ## Bank Reconciliation
@@ -438,8 +457,8 @@ unallocated advance. The allocation goes on the entry's references table,
 whether it is created or drafted.
 
 **Accounting dimensions.** The payment and journal entry tabs ask for every
-accounting dimension the company makes mandatory (on register.localhost,
-Department, for both Profit and Loss and Balance Sheet accounts), with the
+accounting dimension the company makes mandatory (for example a Department
+dimension required on both Profit and Loss and Balance Sheet accounts), with the
 company's default filled in. The bank's own line is a Balance Sheet account,
 so on such a company every entry needs it. Which dimensions are mandatory comes
 from `commons.banking.reconciliation.accounting_dimensions`, because Accounts
@@ -469,7 +488,7 @@ and create on Bank Transaction.
 why: the party on the line, the borrower's name in the description, or an
 account or phone number seen on their earlier repayments. The logic is in
 `src/data/reconciliationRules.ts`, tested by `yarn test`, together with how it
-scored against register.localhost's history. Booking goes through
+scored against one site's repayment history. Booking goes through
 `commons.banking.reconciliation.create_loan_repayments`, which makes the same
 Loan Repayment the desk would and matches it in one transaction. A deposit can
 be split across several loans.

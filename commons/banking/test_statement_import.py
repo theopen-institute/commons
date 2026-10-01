@@ -126,7 +126,7 @@ class TestDates(TestCase):
 
 
 GRID = [
-	["Laxmi Sunrise Bank", None, None, None, None],
+	["Example Bank", None, None, None, None],
 	["Account: 00111222333", None, None, None, None],
 	["Date", "Narration", "Cheque", "Debit", "Credit", "Balance"],
 	["01/07/2026", "Balance B/F", None, None, None, "100,000.00"],
@@ -422,6 +422,7 @@ class TestTheBackgroundJob(TestCase):
 		with (
 			patch.object(si.documents.client, "stream_message", return_value=cut_off),
 			patch.object(si.frappe, "throw", throw),
+			patch.object(si.locale, "for_company", return_value=si.locale.Locale()),
 		):
 			with self.assertRaisesRegex(ValueError, "fewer pages"):
 				si.read_statement(b"%PDF-1.7")

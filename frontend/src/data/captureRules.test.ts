@@ -22,8 +22,9 @@ import {
  * What the scan page has to get right before a person looks at the draft. A
  * wrong date or a quietly accepted total reads exactly like a right one.
  *
- * The invoices are shaped like the ones on register.localhost: Nepali VAT
- * bills, dated in Bikram Sambat, 13% on the net.
+ * Most invoices here are Nepali VAT bills, dated in Bikram Sambat, 13% on the
+ * net, as a site with Bikram Sambat switched on reads them; the AD-only cases
+ * are a site without it.
  */
 
 function scanned(overrides: Partial<ScannedInvoice> = {}): ScannedInvoice {
@@ -112,6 +113,25 @@ describe('draftFrom', () => {
     const draft = draftFrom(reading(), '2026-09-23')
     expect(draft.bill_date).toBe('2024-08-28')
     expect(draft.posting_date).toBe('2024-08-28')
+  })
+
+  it('dates a reading from a site without Bikram Sambat, whose every date is AD', () => {
+    // A US company's bill: the server offered only the Gregorian calendar.
+    const draft = draftFrom(
+      reading({
+        extracted: scanned({
+          invoice_date: { printed: '09/15/2026', year: 2026, month: 9, day: 15, calendar: 'AD' },
+          due_date: { printed: '10/15/2026', year: 2026, month: 10, day: 15, calendar: 'AD' },
+          currency: 'USD',
+          taxes: [],
+          total: 10000,
+        }),
+      }),
+      '2026-09-23',
+    )
+    expect(draft.bill_date).toBe('2026-09-15')
+    expect(draft.posting_date).toBe('2026-09-15')
+    expect(draft.due_date).toBe('2026-10-15')
   })
 
   it('falls back to today where the scan has no usable date', () => {
@@ -355,22 +375,22 @@ describe('the draft sent to the server', () => {
 
   it('carries only what the server reads from a line', () => {
     const draft = draftFrom(reading(), '2026-09-23')
-    draft.lines[0].expense_account = 'Utility Expenses - KC'
+    draft.lines[0].expense_account = 'Utility Expenses - EX'
     expect(invoicePayload(draft).items).toEqual([
-      { description: 'Internet 6 months', qty: 1, rate: 10000, expense_account: 'Utility Expenses - KC' },
+      { description: 'Internet 6 months', qty: 1, rate: 10000, expense_account: 'Utility Expenses - EX' },
     ])
   })
 
   it('is held back, beside the field, until every line has an account', () => {
     const draft = draftFrom(reading(), '2026-09-23')
     expect(draftProblems(draft)).toEqual({ 'account-0': 'Choose an account' })
-    draft.lines[0].expense_account = 'Utility Expenses - KC'
+    draft.lines[0].expense_account = 'Utility Expenses - EX'
     expect(draftProblems(draft)).toEqual({})
   })
 
   it('refuses a due date before the posting date', () => {
     const draft = draftFrom(reading(), '2026-09-23')
-    draft.lines[0].expense_account = 'Utility Expenses - KC'
+    draft.lines[0].expense_account = 'Utility Expenses - EX'
     draft.due_date = '2024-08-01'
     expect(draftProblems(draft).due_date).toBeDefined()
   })
@@ -440,6 +460,15 @@ describe('a receipt becomes one expense each', () => {
     expect(bs.printed).toBe('')
     expect(bad.expense_date).toBe('2026-09-27')
     expect(bad.printed).toContain('31/02/2026')
+  })
+
+  it('passes a Gregorian date through, and notes nothing beside it', () => {
+    const [line] = expenseLinesFrom(
+      reading([expense({ date: { printed: 'Sep 2, 2026', year: 2026, month: 9, day: 2, calendar: 'AD' } })]),
+      '2026-09-27',
+    )
+    expect(line.expense_date).toBe('2026-09-02')
+    expect(line.printed).toBe('')
   })
 
   it('names the merchant once', () => {

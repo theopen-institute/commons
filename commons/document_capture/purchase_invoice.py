@@ -5,7 +5,7 @@ the background by `commons.document_capture.capture`, which calls two things
 here:
 
 `read_scan`
-	The scan goes to Claude and comes back as the fields in `SCHEMA`. Stored
+	The scan goes to Claude and comes back as the fields in `schema`. Stored
 	on the capture as it came back, and nothing else: which company and
 	supplier it means depends on who is looking, so that is left to `reading`.
 `reading`
@@ -26,27 +26,33 @@ Then three endpoints, in the order the dialog calls them:
 	new one, in one transaction, and marks the capture drafted with its scan
 	attached to the invoice.
 
-How this site books purchases, which the suggestions follow
------------------------------------------------------------
-On register.localhost almost no invoice line names an Item: 106 of 117 are free
-text ("Consulting fees - Accreditation management", "Internet from Vianet
-(6mo)") booked straight to an expense account. So the question each line needs
-answered is which account, not which item, and the answer is read from this
-company's own submitted invoices: first what this supplier's lines were booked
-to, then any line described the same way, and only then the company's default
-expense account, flagged for review because on a stock company that is Cost of
-Goods Sold.
+How the draft is booked, and where the suggestions come from
+------------------------------------------------------------
+Each line is drafted as free text, not as an Item: the description as printed,
+booked straight to an expense account, as a non-stock purchase. A scanned bill
+names what the supplier calls the thing, which seldom matches an Item on the
+site, and services, rent and utilities have no Item at all; goods for stock
+are received against their Items on a Purchase Receipt. So the question each line needs answered
+is which account, not which item, and the answer is read from this company's
+own submitted invoices: first what this supplier's lines were booked to, then
+any line described the same way, and only then the company's default expense
+account, flagged for review because on a stock company that is Cost of Goods
+Sold.
 
 Taxes are the company's templates, or the rows on this supplier's last invoice,
-which is how the invoices without a template here were taxed. The rows are
-copied, not typed: an invoice's VAT account differs between the companies on
-this site ("VAT In - KC", "VAT - OI-Nepal", "Tax and Fee Expenses - OI-Nepal"),
-and a guess would be wrong on one of them.
+for invoices booked without a template. The rows are copied, not typed: each
+company has its own tax accounts, and a guess would be wrong on all but one of
+them.
 
-Every date arrives Gregorian. The scan's date may be in Bikram Sambat, and
-`SCHEMA` asks for it as printed and says which calendar. The browser converts it
-with the same tables its date picker uses, and nothing here converts dates
-again.
+What the reading is told about where the scans come from (the company's
+country and currency, and whether dates may be in Bikram Sambat) is
+`commons.api_integrations.claude.locale`, with Claude Settings' Additional
+Instructions after the rules here.
+
+Every date arrives Gregorian. Where Bikram Sambat is switched on, the scan's
+date may be in it, and `schema` asks for it as printed and says which calendar.
+The browser converts it with the same tables its date picker uses, and nothing
+here converts dates again.
 
 Who may use it
 --------------
@@ -69,7 +75,7 @@ from frappe import _
 from frappe.utils import flt, today
 
 from commons.api_integrations.claude import client as claude
-from commons.api_integrations.claude import documents, jobs
+from commons.api_integrations.claude import documents, jobs, locale
 from commons.commons_core import apps
 
 PURCHASE_INVOICE = "Purchase Invoice"
@@ -83,8 +89,8 @@ TAX_TEMPLATE = "Purchase Taxes and Charges Template"
 # invoice, and `read` says so.
 MAX_TOKENS = 32000
 
-# How far back the account suggestions look. A company here books a hundred or
-# so invoices a year, so this is several years of them.
+# How far back the account suggestions look. For a company booking a hundred
+# or so invoices a year, several years of them; for a busier one, its latest.
 HISTORY_ROWS = 2000
 SUPPLIER_ROWS = 10000
 
@@ -157,93 +163,90 @@ def _object(properties: dict) -> dict:
 STRING = {"type": "string"}
 NUMBER = {"type": "number"}
 
-DATE = _object(
-	{
-		"printed": {"type": "string", "description": "The date exactly as printed."},
-		"year": {"type": "integer"},
-		"month": {"type": "integer", "description": "1 to 12."},
-		"day": {"type": "integer"},
-		"calendar": {
-			"type": "string",
-			"enum": ["AD", "BS"],
-			"description": "BS for a Bikram Sambat date, AD for a Gregorian one.",
-		},
-	}
-)
 
-PARTY = _object(
-	{
-		"name": _nullable(STRING),
-		"tax_id": _nullable(STRING, "PAN, VAT or other tax registration number, as printed."),
-	}
-)
+def date_schema(where: locale.Locale) -> dict:
+	"""A date as printed, with the calendars this site may read: see `locale`."""
+	return locale.date_schema(where)
 
-SCHEMA = _object(
-	{
-		"is_invoice": {
-			"type": "boolean",
-			"description": "Whether this is an invoice or bill from a supplier at all.",
-		},
-		"supplier": PARTY,
-		"buyer": PARTY,
-		"invoice_number": _nullable(STRING),
-		"invoice_date": _nullable(DATE),
-		"due_date": _nullable(DATE),
-		"currency": _nullable(STRING, "ISO 4217 code."),
-		"lines": {
-			"type": "array",
-			"items": _object(
-				{
-					"description": STRING,
-					# Each nullable, and each read on its own. A line that prints only
-					# an amount comes back with no quantity or rate, rather than with
-					# the 1 and the amount that would make it multiply out: the page
-					# checks the three against each other, and a figure worked out
-					# from the other two would pass that check by construction.
-					"quantity": _nullable(NUMBER, "As printed; null if none is printed."),
-					"rate": _nullable(
-						NUMBER, "Price per unit before tax, as printed; null if none is printed."
-					),
-					"amount": _nullable(NUMBER, "The line's total before tax, as printed; null if none."),
-				}
-			),
-		},
-		"discount": _nullable(NUMBER, "A discount on the whole invoice, as a positive amount."),
-		"subtotal": _nullable(NUMBER, "The lines' total before tax, as printed."),
-		"taxes": {
-			"type": "array",
-			"items": _object(
-				{
-					"label": STRING,
-					"rate": _nullable(NUMBER, "In percent: 13 for 13%."),
-					"amount": _nullable(NUMBER, "As printed; null if illegible."),
-				}
-			),
-		},
-		"total": _nullable(NUMBER, "The final amount payable, as printed."),
-		"notes": {"type": "array", "items": STRING},
-	}
-)
 
-INSTRUCTIONS = """\
-This is an invoice or bill that our organisation has received from a supplier. \
-Copy what it says into the schema.
+def party_schema(where: locale.Locale) -> dict:
+	return _object(
+		{
+			"name": _nullable(STRING),
+			"tax_id": _nullable(STRING, f"The {locale.tax_id_name(where)}, as printed."),
+		}
+	)
+
+
+def schema(where: locale.Locale) -> dict:
+	"""The fields read off an invoice, with dates in the calendars `where` allows."""
+	date = date_schema(where)
+	party = party_schema(where)
+	return _object(
+		{
+			"is_invoice": {
+				"type": "boolean",
+				"description": "Whether this is an invoice or bill from a supplier at all.",
+			},
+			"supplier": party,
+			"buyer": party,
+			"invoice_number": _nullable(STRING),
+			"invoice_date": _nullable(date),
+			"due_date": _nullable(date),
+			"currency": _nullable(STRING, "ISO 4217 code."),
+			"lines": {
+				"type": "array",
+				"items": _object(
+					{
+						"description": STRING,
+						# Each nullable, and each read on its own. A line that prints only
+						# an amount comes back with no quantity or rate, rather than with
+						# the 1 and the amount that would make it multiply out: the page
+						# checks the three against each other, and a figure worked out
+						# from the other two would pass that check by construction.
+						"quantity": _nullable(NUMBER, "As printed; null if none is printed."),
+						"rate": _nullable(
+							NUMBER, "Price per unit before tax, as printed; null if none is printed."
+						),
+						"amount": _nullable(NUMBER, "The line's total before tax, as printed; null if none."),
+					}
+				),
+			},
+			"discount": _nullable(NUMBER, "A discount on the whole invoice, as a positive amount."),
+			"subtotal": _nullable(NUMBER, "The lines' total before tax, as printed."),
+			"taxes": {
+				"type": "array",
+				"items": _object(
+					{
+						"label": STRING,
+						"rate": _nullable(NUMBER, "In percent: 13 for 13%."),
+						"amount": _nullable(NUMBER, "As printed; null if illegible."),
+					}
+				),
+			},
+			"total": _nullable(NUMBER, "The final amount payable, as printed."),
+			"notes": {"type": "array", "items": STRING},
+		}
+	)
+
+
+def instructions(where: locale.Locale) -> str:
+	"""The prompt sent with the scan, for documents from `where`."""
+	return locale.finish(
+		f"""\
+This is an invoice or bill received from a supplier. Copy what it says into the \
+schema.
 
 Copy, don't compute. Every figure must be one that is printed on the page. If a \
 figure is missing or illegible, use null (or leave it out of a list) and say so \
 in notes. Never fill a gap with arithmetic.
 
 - Numbers are plain numbers, without currency symbols or thousands separators. \
-Convert Devanagari digits (०१२३४५६७८९) to 0-9. South Asian grouping such as \
-1,13,000.00 is 113000.
+Convert digits in other scripts, such as Devanagari (०१२३४५६७८९), to 0-9. Read \
+the grouping as printed: 1,13,000.00 is 113000, and 1.234,56 is 1234.56.
 - The supplier is whoever issued the invoice; the buyer is whoever it is billed \
-to. tax_id is the PAN, VAT or other tax registration number printed for that \
-party.
-- Dates: give each as printed, then its year, month and day. Nepali invoices \
-often use Bikram Sambat (B.S. or वि.सं.), whose years currently run from about \
-2075 to 2090. Mark those calendar "BS" and give the Bikram Sambat year, month \
-and day as printed; do not convert them. Mark Gregorian dates "AD". If both are \
-printed, give the Gregorian one.
+to. tax_id is the {locale.tax_id_name(where)} printed for that party.
+- {locale.date_rule(where, "invoices")}
 - lines are the goods or services charged for. Leave out taxes, discounts and \
 totals. quantity, rate (the price per unit before tax) and amount (the line's \
 total before tax) are each read separately from the page. Give each exactly as \
@@ -254,36 +257,43 @@ three against each other, and a derived or corrected figure hides a misread.
 - subtotal is the total of the lines before tax, where one is printed (often \
 "Sub total", "Total" or "Taxable amount"); null where there is none.
 - taxes are VAT, GST, sales tax or similar charges added on top, each with its \
-printed rate and amount. Leave out tax withheld by the buyer (TDS). Copy the \
-amount as printed even if it is not the rate applied to the subtotal.
+printed rate and amount. Leave out {locale.withholding_name(where)}: tax the \
+buyer withholds from the payment. Copy the amount as printed even if it is not \
+the rate applied to the subtotal.
 - total is the amount payable as printed. Copy it even if the lines, tax and \
 discount on the page do not add up to it; say so in notes.
-- currency: NPR for rupees on a Nepali invoice, INR on an Indian one, USD for \
-US dollars, and so on; null if it cannot be told.
+- {locale.currency_rule(where, "invoice")}
 - If the document is not an invoice or bill (a quotation, a delivery note, a \
 bank statement), set is_invoice to false and fill in what you can.
 - notes: anything a bookkeeper should check against the paper, such as \
 handwritten corrections, figures you are unsure of, more than one invoice on \
 the page, or totals on the page that do not add up. Keep each note to a \
 sentence. Leave the list empty if there is nothing to say.
-"""
+""",
+		where,
+	)
 
 
 def read_scan(content: bytes, progress=lambda **changes: None) -> dict:
-	"""What the scan says, in the shape of `SCHEMA`. Run in `capture`'s job.
+	"""What the scan says, in the shape of `schema`. Run in `capture`'s job,
+	as the person who asked for the read.
+
+	Nothing says yet which company the invoice is billed to, so the prompt is
+	written for that person's default company (`locale.for_company`).
 
 	`progress` is told the step, and while Claude writes, how many lines it has
-	copied, counted by their `"description"`, which no other field in `SCHEMA`
+	copied, counted by their `"description"`, which no other field in `schema`
 	has.
 	"""
 	from commons.document_capture.capture import READ_TIMEOUT
 
 	progress(step="reading")
 	counter = jobs.RowCounter(lambda lines: progress(lines=lines))
+	where = locale.for_company()
 	return documents.read(
 		content,
-		SCHEMA,
-		INSTRUCTIONS,
+		schema(where),
+		instructions(where),
 		on_text=counter.feed,
 		timeout=READ_TIMEOUT,
 		max_tokens=MAX_TOKENS,
@@ -747,9 +757,10 @@ def _build(invoice: dict, supplier_to_come: bool = False):
 			"doctype": PURCHASE_INVOICE,
 			"company": company,
 			"supplier": supplier or None,
-			# Dated as the invoice is unless the reader says otherwise, and
-			# marked as set by hand, which is how nearly every invoice on this
-			# site is booked.
+			# Dated as the invoice is unless the reader says otherwise. Without
+			# `set_posting_time`, ERPNext resets the posting date to today on
+			# every save (`validate_posting_time`), and the bill's own date
+			# would be lost.
 			"posting_date": invoice.get("posting_date") or bill_date or today(),
 			"set_posting_time": 1,
 			"bill_no": (invoice.get("bill_no") or "").strip() or None,
@@ -841,7 +852,6 @@ def _new_supplier(values: dict) -> str:
 		{
 			"doctype": SUPPLIER,
 			"supplier_name": name,
-			"supplier_type": "Company",
 			"tax_id": (values.get("tax_id") or "").strip() or None,
 		}
 	)

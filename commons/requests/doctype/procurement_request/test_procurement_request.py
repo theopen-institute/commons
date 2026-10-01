@@ -147,6 +147,7 @@ class ProcurementTestCase(IntegrationTestCase):
 	def setUpClass(cls) -> None:
 		super().setUpClass()
 		make_test_workflow()
+		grant_test_permissions()
 		# `_Test Company` by name, not whichever company comes back first: it is
 		# the one ERPNext's `before_tests` hook sets up, so its currency matches
 		# the buying price list and its warehouses and departments exist. A site
@@ -154,15 +155,9 @@ class ProcurementTestCase(IntegrationTestCase):
 		cls.company = frappe.db.get_value("Company", "_Test Company", "name") or frappe.db.get_value(
 			"Company", {}, "name"
 		)
-		# Of that company: `Material Request` refuses a department belonging to
-		# another one, and a site with more than one company will otherwise hand
+		# Of that company: a site with more than one company will otherwise hand
 		# back an unrelated pair.
 		cls.department = make_test_department(cls.company)
-		# Submitting a Material Request charges a department budget, and
-		# `commons.requests.budget` refuses one with no submitted
-		# allocation behind it. Generous on purpose: what the budget tests
-		# measure is elsewhere, and these should never fail for want of funds.
-		make_test_budget(cls.company, cls.department)
 		cls.item = make_test_item()
 		cls.requester = make_test_user("requester@procurement.test", "Employee", cls.company)
 		cls.procurement_user = make_test_user("buyer@procurement.test", "Purchase User")
@@ -207,9 +202,7 @@ class ProcurementTestCase(IntegrationTestCase):
 
 		The mapper hands back a draft on purpose -- the warehouse and the dates
 		are the stock document's business -- so the fixture fills in what a buyer
-		would fill in on the form. That includes a rate: the budget charges
-		against one, and `commons.requests.budget` will not let a request
-		be submitted without it, whatever the source request estimated.
+		would fill in on the form, a rate included where the request carried none.
 		"""
 		material_request = make_material_request(request.name, selected_items=selected_items)
 		material_request.warehouse = frappe.db.get_value(
@@ -769,35 +762,40 @@ def make_test_item(code: str = "_Test Procurement Item") -> str:
 	)
 
 
-def make_test_budget(company: str, department: str) -> str | None:
-	"""A submitted allocation covering today, so Material Requests can be raised."""
-	from erpnext.accounts.utils import get_fiscal_year
+# The permissions this app used to ship, which a site now grants for itself. The
+# suite grants them for the length of its own transaction, unless the site has
+# customised the doctype's permissions already, in which case those stand.
+TEST_PERMISSIONS = [
+	{
+		"role": "Purchase Manager",
+		"read": 1,
+		"write": 1,
+		"create": 1,
+		"submit": 1,
+		"cancel": 1,
+		"amend": 1,
+		"delete": 1,
+	},
+	{"role": "Purchase User", "read": 1, "write": 1, "create": 1, "submit": 1},
+	{"role": "Employee", "read": 1, "write": 1, "create": 1, "if_owner": 1},
+	{"role": "Expense Approver", "read": 1, "write": 1, "submit": 1},
+	{"role": "All", "permlevel": 1, "read": 1},
+	{"role": "Purchase Manager", "permlevel": 1, "read": 1, "write": 1},
+	{"role": "Purchase User", "permlevel": 1, "read": 1, "write": 1},
+]
 
-	fiscal_year = get_fiscal_year(today(), company=company, boolean=True)
-	if not fiscal_year:
-		return None
-	fiscal_year = fiscal_year[0]
 
-	existing = frappe.db.get_value(
-		"Department Budget",
-		{"company": company, "department": department, "fiscal_year": fiscal_year, "docstatus": 1},
-		"name",
-	)
-	if existing:
-		return existing
+def grant_test_permissions() -> None:
+	"""The roles this suite's users hold, given the access the tests assume."""
+	from frappe.permissions import setup_custom_perms
 
-	budget = frappe.get_doc(
-		{
-			"doctype": "Department Budget",
-			"company": company,
-			"department": department,
-			"fiscal_year": fiscal_year,
-			"budget_owner": "Administrator",
-			"annual_amount": 10_000_000,
-		}
-	).insert(ignore_permissions=True)
-	budget.submit()
-	return budget.name
+	if not setup_custom_perms(PROCUREMENT_REQUEST):
+		return
+	for row in TEST_PERMISSIONS:
+		frappe.get_doc({"doctype": "Custom DocPerm", "parent": PROCUREMENT_REQUEST, **row}).insert(
+			ignore_permissions=True
+		)
+	frappe.clear_cache(doctype=PROCUREMENT_REQUEST)
 
 
 #: The department this suite raises every request against. Its own, by name.
@@ -809,12 +807,8 @@ def make_test_department(company: str) -> str:
 
 	Its own, rather than whichever leaf department the site happens to list
 	first. That is what this did, and on a site with real departments it picked
-	a real one -- `Fine Arts` here -- whose budget carries real committed spend.
-	`make_test_budget` then found that department's existing allocation and
-	reused it, so the four approval tests charged a live overspent budget and
-	failed with a shortfall rather than on anything they were written to check.
-	The comment beside `make_test_budget` in `setUpClass` says these should
-	never fail for want of funds; this is what makes that true.
+	a real one, whose real requests and permissions then leaked into tests
+	written to check nothing about them.
 
 	Matched on `department_name` rather than on the full name, because ERPNext
 	autonames a Department by appending the company abbreviation and a site

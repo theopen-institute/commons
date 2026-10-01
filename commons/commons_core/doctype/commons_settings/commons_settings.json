@@ -30,9 +30,7 @@
   "enable_party_on_payable_payment_lines",
   "enable_payroll_lines_per_employee",
   "enable_clearing_internal_transfers",
-  "enable_loan_vouchers_on_own_dates",
-  "procurement_section",
-  "enable_department_budgets"
+  "enable_loan_vouchers_on_own_dates"
  ],
  "fields": [
   {
@@ -196,18 +194,6 @@
    "fieldname": "enable_loan_vouchers_on_own_dates",
    "fieldtype": "Check",
    "label": "Enable Loan Vouchers on Their Own Dates"
-  },
-  {
-   "fieldname": "procurement_section",
-   "fieldtype": "Section Break",
-   "label": "Procurement"
-  },
-  {
-   "default": "0",
-   "description": "Holds Purchase and Material Issue Material Requests to the Department Budgets Finance submits. Submitting one then needs a Department, a positive rate on every row in the company's currency, and a submitted Department Budget covering that department on the request's date with enough left in it. Approving a Procurement Request is refused when the department's budget cannot hold it, the procurement pages show each department's budget position, and a submitted request's rates are no longer refreshed from the price list. Requests ERPNext raises itself for reorder levels are left out. Without it, Material Requests and Procurement Requests ignore Department Budgets; the budgets are kept, and count again when this is ticked. Suspect this first if a Material Request or Procurement Request will not submit for budget reasons.",
-   "fieldname": "enable_department_budgets",
-   "fieldtype": "Check",
-   "label": "Enable Department Budgets"
   }
  ],
  "index_web_pages_for_search": 1,

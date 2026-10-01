@@ -16,7 +16,6 @@ rewritten.
 | File | What it holds |
 | --- | --- |
 | `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, one on Email Account, and two on Web Template |
-| `custom_field_education.json` | The four fields the attendance register adds to Education's doctypes |
 | `custom_field_erpnext.json` | The four fields the requests section adds to ERPNext's doctypes |
 | `property_setter.json` | Which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification, and the fieldtypes a Web Template's inputs may have |
 
@@ -26,8 +25,8 @@ file matters where one field's `insert_after` names another.
 
 ## Fields for apps a site may not have
 
-Education and ERPNext are optional, so their fields are in files of their own,
-and a site without the app skips that file whole. What makes that work, as of
+ERPNext is optional, so its fields are in a file of their own, and a site
+without it skips that file whole. Any other optional app's would be the same. What makes that work, as of
 Frappe 16.34:
 
 * fixture records are inserted with `ignore_links`, so the Custom Field's own
@@ -170,36 +169,26 @@ Claude guessing from the scan, which would be billed for and sometimes wrong.
 Read by `commons.document_capture.capture.sort_email`. Shown only while the
 account appends to Captured Document.
 
-### Education (`custom_field_education.json`)
+### Fields this app no longer ships
 
-What the attendance register records that Education has nowhere to put. Read by
-`commons.education_extensions.attendance`.
+**`custom_field_education.json`** held four fields on Education's doctypes that
+one school's attendance register stores its answers in: `Course
+Schedule.custom_session_type` and `.custom_session_details`, `Student
+Attendance.custom_late` and `Academic Term.custom_inactive`. They were that
+school's vocabulary rather than the register's, so the file is gone, and the
+register reads whichever fields a site names in Attendance Register Settings (see
+`commons.attendance_register.register.register_fields`).
 
-**`Course Schedule.custom_session_type`** — what kind of session it was. The
-register groups by it and foots each group separately, because a term's seminar
-hours and its field research hours are two different obligations and a single
-total of them answers neither. Free text rather than a Select: the vocabulary is
-the school's (this one runs four, another will run two), the register offers
-whatever is already in use, and a Select would make adding a fifth a deploy.
-
-**`Course Schedule.custom_session_details`** — what that session was actually
-about, said in a few words beside the date.
-
-**`Student Attendance.custom_late`** — that the student was there, but not at
-the start. `status` has `Present`, `Absent` and `Leave` and nothing for it, and
-it is not a fourth status: a late arrival *was* present, and every report that
-counts attendance should keep counting them. What it changes is what the hour is
-worth, which is the register's arithmetic and not the doctype's — see
-`attendance.CREDIT`.
-
-**`Academic Term.custom_inactive`** — that a term was run once and is not run
-again. The term picker drops them; nothing else looks at it.
-
-The `custom_` prefix is Frappe's mark of a site customisation rather than an
-app's own field, and these are an app's. They keep it anyway: they were added by
-hand on the site this register was written for, and there are thousands of rows
-carrying them. A tidier name would be a rename, a patch, and a fortnight of
-somebody's attendance quietly reading as nobody's.
+Removing a fixture file deletes nothing: fixture sync only imports, and no
+cleanup looks for a record a file used to hold. So a site that had the four
+keeps them as its own Custom Fields, with their columns and rows, and
+`commons.commons_core.education_handover` names them in its settings. Nothing
+ties them to this app afterwards either. Their `module` is empty, so
+`remove_app`, which deletes every record that links to one of the app's
+`Module Def`s, passes over them, and so does an export filtered by module. They
+do carry `is_system_generated`, as every fixture Custom Field does, which keeps
+them through Customize Form's *Reset to Defaults* and refuses a rename. A site
+that wants to rename or drop one clears that tick first.
 
 ### ERPNext (`custom_field_erpnext.json`)
 
@@ -210,12 +199,6 @@ Fields rather than part of the `Procurement Request` definition.
 `make_material_request` fills them in, and every read of a request counts back
 through them to see what has actually been ordered — which is why the two on the
 item rows are indexed.
-
-**`Material Request.department`** — whose budget a request is charged to,
-including on requests raised directly. Header-level and singular on purpose: one
-request charges one department's budget. Note that enabling a Department
-accounting dimension would add a separate per-row `department` to Material
-Request Item, which is ERPNext's accounting attribution and not this.
 
 ## Property Setters (`property_setter.json`)
 

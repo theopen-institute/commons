@@ -214,7 +214,7 @@ export interface Balances {
  * ERPNext's "balance as per ERP" (`get_account_balance`), which is the
  * *cleared* balance: the ledger less every entry with no clearance date. That
  * figure differs from the report by any old payment nobody marked cleared, and
- * on register.localhost two unmatched purchase invoices from 2020 made it read
+ * on one site two unmatched purchase invoices from 2020 made it read
  * 97,470 higher than the ledger for every period since. Such entries are in the
  * board's right-hand column, where they can be matched.
  *
@@ -644,14 +644,6 @@ export function inView(row: TransactionRow, view: TransactionView): boolean {
 /* Loans                                                                       */
 /* -------------------------------------------------------------------------- */
 
-/** The field each applicant doctype keeps a person's name in. */
-const APPLICANT_TITLE: Record<string, string> = {
-  Student: 'student_name',
-  Employee: 'employee_name',
-  Customer: 'customer_name',
-  Member: 'member_name',
-}
-
 export interface LoanBook {
   loans: LoanRow[]
   /** Applicant id to the name a person would recognise. */
@@ -683,7 +675,11 @@ export function useLoanBook() {
     { doctype: string; parent: string; fields: string; filters: string; limit_page_length: number }
   >({ url: `${CLIENT}.get_list`, immediate: false })
   const lines = documentList<{ name: string; description: string | null }>(BANK_TRANSACTION)
-  const nameLists = new Map<string, ReturnType<typeof documentList<Record<string, string>>>>()
+  // One per applicant doctype, so their reads can run side by side.
+  const titleCalls = new Map<
+    string,
+    ReturnType<typeof useCall<Record<string, string>, { doctype: string; names: string }>>
+  >()
 
   const book = ref<LoanBook>(EMPTY_BOOK) as Ref<LoanBook>
   const loading = ref(false)
@@ -804,9 +800,10 @@ export function useLoanBook() {
     }
   }
 
-  /** The names behind the applicant ids, one read per applicant doctype. A
-   *  doctype this reader may not read leaves its borrowers named by id, which
-   *  costs the name-in-description suggestion and nothing else. */
+  /** The names behind the applicant ids, one read per applicant doctype, by
+   *  that doctype's title field (`applicant_titles`). A doctype this reader
+   *  may not read leaves its borrowers named by id, which costs the
+   *  name-in-description suggestion and nothing else. */
   async function borrowerNames(rows: LoanRow[]): Promise<Record<string, string>> {
     const byType = new Map<string, string[]>()
     for (const row of rows) {
@@ -816,16 +813,20 @@ export function useLoanBook() {
     const names: Record<string, string> = {}
     await Promise.all(
       [...byType].map(async ([doctype, ids]) => {
-        const field = APPLICANT_TITLE[doctype]
-        if (!field) return
-        if (!nameLists.has(doctype)) nameLists.set(doctype, documentList<Record<string, string>>(doctype))
-        const call = nameLists.get(doctype)!
-        const found = await call.submit({
-          fields: JSON.stringify(['name', field]),
-          filters: JSON.stringify([['name', 'in', [...new Set(ids)]]]),
-          limit: PAGE.loans,
+        if (!titleCalls.has(doctype)) {
+          titleCalls.set(
+            doctype,
+            useCall<Record<string, string>, { doctype: string; names: string }>({
+              url: `${COMMONS}.applicant_titles`,
+              immediate: false,
+            }),
+          )
+        }
+        const found = await titleCalls.get(doctype)!.submit({
+          doctype,
+          names: JSON.stringify([...new Set(ids)]),
         })
-        for (const row of found ?? []) if (row[field]) names[row.name] = row[field]
+        Object.assign(names, found ?? {})
       }),
     )
     return names

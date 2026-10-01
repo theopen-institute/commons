@@ -122,11 +122,6 @@ ENABLE_CLEAR_INTERNAL_TRANSFERS = "enable_clearing_internal_transfers"
 # their own dates. Server-side only too.
 ENABLE_LOAN_OWN_DATES = "enable_loan_vouchers_on_own_dates"
 
-# Procurement.
-# `commons.requests.budget`, which holds ERPNext's Material Requests and this
-# app's Procurement Request approvals to the Department Budgets. Server-side only.
-ENABLE_DEPARTMENT_BUDGETS = "enable_department_budgets"
-
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.
 DESK_FEATURES = {

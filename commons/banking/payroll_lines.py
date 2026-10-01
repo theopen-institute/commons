@@ -4,8 +4,8 @@ HRMS posts a payroll run's accrual journal with one line per account and cost
 center: all of a run's Salary Expenses on one line, all its income tax on
 another. With Payroll Settings' "Process Payroll Accounting Entry Based on
 Employee" it splits the Payroll Payable line per employee too, but nothing
-else. A site that reads its payroll by department (a Department accounting
-dimension, one per programme) or keeps its withholding per employee (TDS
+else. A site that reads its payroll by department (an accounting dimension on
+Department) or keeps its withholding per employee (TDS
 accounts of type Payable) needs every line split, and HRMS has no way to do
 either: the dimension is copied from the Payroll Entry, one value for the whole
 run, and the deduction lines carry no party.
@@ -34,8 +34,24 @@ from frappe.utils import flt
 
 from commons.commons_core.settings import ENABLE_PAYROLL_LINES, feature_enabled
 
-# The Department accounting dimension's field on a journal line.
-DEPARTMENT = "department"
+
+def department_dimension(accounting_dimensions) -> str | None:
+	"""The journal line field of the site's accounting dimension on Department,
+	or None when it has none (or it is not among the run's `accounting_dimensions`).
+
+	ERPNext has no built-in department dimension: `get_dimensions` adds only
+	cost center and project to the ones a site defines. So it is the enabled
+	Accounting Dimension whose Reference Document Type is Department, whatever
+	its fieldname is.
+	"""
+	from erpnext.accounts.doctype.accounting_dimension.accounting_dimension import (
+		get_accounting_dimensions,
+	)
+
+	for dimension in get_accounting_dimensions(as_list=False):
+		if dimension.document_type == "Department" and dimension.fieldname in accounting_dimensions:
+			return dimension.fieldname
+	return None
 
 
 def split_total(parts: dict, total: float, precision: int) -> dict | None:
@@ -104,6 +120,7 @@ class EmployeePayrollLinesMixin:
 			)
 
 		departments = self._slip_departments()
+		department_field = department_dimension(accounting_dimensions)
 		for component_type, totals, entry_type in (
 			("earnings", earnings, "debit"),
 			("deductions", deductions, "credit"),
@@ -135,7 +152,7 @@ class EmployeePayrollLinesMixin:
 						accounts=accounts,
 					)
 					if employee and len(accounts) > posted:
-						self._set_department(accounts[-1], departments.get(employee), accounting_dimensions)
+						self._set_department(accounts[-1], departments.get(employee), department_field)
 		return payable_amount
 
 	def set_payable_amount_against_payroll_payable_account(
@@ -162,9 +179,10 @@ class EmployeePayrollLinesMixin:
 		if feature_enabled(ENABLE_PAYROLL_LINES):
 			# Payroll Payable and advance recoveries: HRMS names the employee, not the department.
 			departments = self._slip_departments()
+			department_field = department_dimension(accounting_dimensions)
 			for row in accounts:
 				if row.get("party_type") == "Employee":
-					self._set_department(row, departments.get(row.get("party")), accounting_dimensions)
+					self._set_department(row, departments.get(row.get("party")), department_field)
 
 	def _slip_departments(self) -> dict:
 		"""{employee: department} from this run's salary slips, as the accrual reads them."""
@@ -181,8 +199,9 @@ class EmployeePayrollLinesMixin:
 		)
 
 	@staticmethod
-	def _set_department(row: dict, department: str | None, accounting_dimensions) -> None:
-		"""The slip's department on the line, where the site has the dimension
-		and the slip names one; otherwise whatever HRMS put there."""
-		if department and DEPARTMENT in accounting_dimensions:
-			row[DEPARTMENT] = department
+	def _set_department(row: dict, department: str | None, field: str | None) -> None:
+		"""The slip's department on the line, in the department dimension's
+		`field`, where the site has the dimension and the slip names one;
+		otherwise whatever HRMS put there."""
+		if department and field:
+			row[field] = department

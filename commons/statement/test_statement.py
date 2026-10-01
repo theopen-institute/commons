@@ -789,3 +789,79 @@ class TestWhichStudentsALoginIs(TestCase):
 	def test_a_site_without_the_user_field_still_needs_the_email_to_be_unique(self):
 		self.students(("EDU-1", None, self.LOGIN), ("EDU-2", None, self.LOGIN))
 		self.assertEqual(self.linked(has=("student_email_id",)), [])
+
+
+class FakeMeta:
+	"""Just enough of a doctype's meta for `user_links`: its fields, filtered."""
+
+	def __init__(self, *fields):
+		self.fields = [frappe._dict(fieldname=f, fieldtype=t, options=o) for f, t, o in fields]
+
+	def get(self, key, filters):
+		return [df for df in self.fields if all(df.get(k) == v for k, v in filters.items())]
+
+
+class TestHowAPartyTypeNamesItsUser(TestCase):
+	"""`parties.user_links`: the four as written, any other read from its meta."""
+
+	def links(self, party_type, *fields):
+		with patch.object(parties.frappe, "get_meta", return_value=FakeMeta(*fields)) as meta:
+			found = parties.user_links(party_type)
+		return found, meta.called
+
+	def test_the_four_are_as_written_and_their_meta_is_not_asked(self):
+		for party_type in ("Customer", "Supplier", "Employee", "Student"):
+			found, asked = self.links(party_type, ("owner_user", "Link", "User"))
+			self.assertEqual(found, parties.USER_LINKS[party_type])
+			self.assertFalse(asked)
+
+	def test_a_portal_user_table_is_the_portal_link(self):
+		found, _ = self.links("Donor", ("portal_users", "Table", "Portal User"), ("user", "Link", "User"))
+		self.assertIsNone(found)
+
+	def test_one_link_to_user_is_that_field(self):
+		found, _ = self.links("Donor", ("donor_name", "Data", None), ("login", "Link", "User"))
+		self.assertEqual(found, ("login",))
+
+	def test_two_links_to_user_are_a_guess_and_nobody(self):
+		found, _ = self.links("Donor", ("login", "Link", "User"), ("approved_by", "Link", "User"))
+		self.assertEqual(found, parties.UNLINKED)
+
+	def test_no_link_at_all_is_nobody(self):
+		found, _ = self.links("Donor", ("donor_name", "Data", None), ("contact", "Link", "Contact"))
+		self.assertEqual(found, parties.UNLINKED)
+
+
+class TestWhichPartiesAreTheSessions(TestCase):
+	"""`session_parties` reaches a site's own party type, and still skips one it cannot link."""
+
+	LOGIN = "donor@example.com"
+
+	def test_a_site_party_type_with_a_user_link_is_resolved(self):
+		donors = [frappe._dict(name="DON-1", donor_name="A Donor", login=self.LOGIN)]
+		metas = {
+			"Donor": FakeMeta(("donor_name", "Data", None), ("login", "Link", "User")),
+			"Grant": FakeMeta(("title", "Data", None)),
+		}
+		for meta, title in ((metas["Donor"], "donor_name"), (metas["Grant"], "title")):
+			meta.get_title_field = lambda title=title: title
+			meta.has_field = lambda field, meta=meta: any(df.fieldname == field for df in meta.fields)
+
+		def get_all(doctype, filters=None, fields=None, order_by=None, **kwargs):
+			if doctype == parties.PARTY_TYPE:
+				return [
+					frappe._dict(name="Donor", account_type="Payable"),
+					frappe._dict(name="Grant", account_type="Receivable"),
+				]
+			if doctype == "Donor":
+				return [d for d in donors if all(d.get(k) == v for k, v in filters.items())]
+			raise AssertionError(f"read {doctype}")
+
+		with (
+			patch.object(parties.apps, "has_doctype", return_value=True),
+			patch.object(parties.frappe, "get_meta", side_effect=lambda dt: metas[dt]),
+			patch.object(parties.frappe, "get_all", side_effect=get_all),
+			patch.object(parties.frappe, "session", SimpleNamespace(user=self.LOGIN)),
+		):
+			found = parties.session_parties()
+		self.assertEqual(found, [Party("Donor", "DON-1", "A Donor", "Payable")])
