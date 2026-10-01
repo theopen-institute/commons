@@ -10,7 +10,8 @@
   "fieldtype": "Data",
   "options": "URL",
   "insert_after": "home_page",
-  "description": "Where the <b>Website</b> button in the desk sidebar and the Commons sidebar opens. An absolute URL (<code>https://example.org</code>) or a path on this site (<code>/about</code>). Leave blank to open the site root. This does <b>not</b> change where anyone lands after logging in — that is Home Page above, together with the Home Page on each Role."
+  "description": "Where the <b>Website</b> button in the desk sidebar and the Commons sidebar opens. An absolute URL (<code>https://example.org</code>) or a path on this site (<code>/about</code>). Leave blank to open the site root. This does <b>not</b> change where anyone lands after logging in — that is Home Page above, together with the Home Page on each Role.",
+  "module": "Better Navigation"
  },
  {
   "doctype": "Custom Field",
@@ -23,7 +24,8 @@
   "fieldtype": "Int",
   "insert_after": "home_page",
   "default": "0",
-  "description": "Which Home Page wins when someone holds several roles that each name one. <b>Lowest number wins</b>; roles on the same number are settled by name, so the order is always the same on every site and every login. Only meaningful alongside Home Page above. <b>Has no effect unless Enable Home Page Priority is ticked in Commons Settings.</b>"
+  "description": "Which Home Page wins when someone holds several roles that each name one. <b>Lowest number wins</b>; roles on the same number are settled by name, so the order is always the same on every site and every login. Only meaningful alongside Home Page above. <b>Has no effect unless Enable Home Page Priority is ticked in Commons Settings.</b>",
+  "module": "Better Navigation"
  },
  {
   "doctype": "Custom Field",
@@ -35,7 +37,8 @@
   "label": "Require User Permission",
   "fieldtype": "Check",
   "insert_after": "append",
-  "description": "A role ticked here sees no records until a User Permission aimed at this doctype narrows it. <b>Has no effect unless Enable Require User Permission Gate is ticked in Commons Settings.</b>"
+  "description": "A role ticked here sees no records until a User Permission aimed at this doctype narrows it. <b>Has no effect unless Enable Require User Permission Gate is ticked in Commons Settings.</b>",
+  "module": "Safer Permissions"
  },
  {
   "doctype": "Custom Field",
@@ -47,7 +50,8 @@
   "label": "Require User Permission",
   "fieldtype": "Check",
   "insert_after": "append",
-  "description": "A role ticked here sees no records until a User Permission aimed at this doctype narrows it. <b>Has no effect unless Enable Require User Permission Gate is ticked in Commons Settings.</b>"
+  "description": "A role ticked here sees no records until a User Permission aimed at this doctype narrows it. <b>Has no effect unless Enable Require User Permission Gate is ticked in Commons Settings.</b>",
+  "module": "Safer Permissions"
  },
  {
   "doctype": "Custom Field",
@@ -59,7 +63,8 @@
   "label": "Derived From",
   "fieldtype": "Data",
   "insert_after": "fetch_if_empty",
-  "description": "Show a value read live from a linked record instead of storing it: <code>link_field.target_field</code>, as in Fetch From. The target may itself be a derived field, which is how a value is reached through several links. The field becomes read-only and has no database column. <b>Has no effect unless Enable Derived Docfields is ticked in Commons Settings.</b>"
+  "description": "Show a value read live from a linked record instead of storing it: <code>link_field.target_field</code>, as in Fetch From. The target may itself be a derived field, which is how a value is reached through several links. The field becomes read-only and has no database column. <b>Has no effect unless Enable Derived Docfields is ticked in Commons Settings.</b>",
+  "module": "Derived Docfields"
  },
  {
   "doctype": "Custom Field",
@@ -72,7 +77,8 @@
   "fieldtype": "Small Text",
   "insert_after": "derived_from",
   "depends_on": "eval:doc.derived_from",
-  "description": "Only when the link in Derived From is a Dynamic Link: the doctypes it may point at, one per line. Each must have the target field. Rows pointing anywhere else read as empty."
+  "description": "Only when the link in Derived From is a Dynamic Link: the doctypes it may point at, one per line. Each must have the target field. Rows pointing anywhere else read as empty.",
+  "module": "Derived Docfields"
  },
  {
   "doctype": "Custom Field",
@@ -85,7 +91,8 @@
   "fieldtype": "Check",
   "insert_after": "derived_from_doctypes",
   "depends_on": "eval:doc.derived_from",
-  "description": "Also return this field when code asks for every field (<code>fields=\"*\"</code>). Every such query then pays for the join, and code that writes those rows back may fail on the missing column, so leave this off unless you know the doctype is queried that way on purpose."
+  "description": "Also return this field when code asks for every field (<code>fields=\"*\"</code>). Every such query then pays for the join, and code that writes those rows back may fail on the missing column, so leave this off unless you know the doctype is queried that way on purpose.",
+  "module": "Derived Docfields"
  },
  {
   "doctype": "Custom Field",
@@ -98,7 +105,8 @@
   "fieldtype": "Data",
   "insert_after": "fetch_if_empty",
   "depends_on": "eval:doc.is_custom_field",
-  "description": "Show a value read live from a linked record instead of storing it: <code>link_field.target_field</code>, as in Fetch From. The target may itself be a derived field, which is how a value is reached through several links. The field becomes read-only and has no database column. <b>Has no effect unless Enable Derived Docfields is ticked in Commons Settings.</b>"
+  "description": "Show a value read live from a linked record instead of storing it: <code>link_field.target_field</code>, as in Fetch From. The target may itself be a derived field, which is how a value is reached through several links. The field becomes read-only and has no database column. <b>Has no effect unless Enable Derived Docfields is ticked in Commons Settings.</b>",
+  "module": "Derived Docfields"
  },
  {
   "doctype": "Custom Field",
@@ -111,7 +119,8 @@
   "fieldtype": "Small Text",
   "insert_after": "derived_from",
   "depends_on": "eval:doc.is_custom_field && doc.derived_from",
-  "description": "Only when the link in Derived From is a Dynamic Link: the doctypes it may point at, one per line. Each must have the target field. Rows pointing anywhere else read as empty."
+  "description": "Only when the link in Derived From is a Dynamic Link: the doctypes it may point at, one per line. Each must have the target field. Rows pointing anywhere else read as empty.",
+  "module": "Derived Docfields"
  },
  {
   "doctype": "Custom Field",
@@ -124,7 +133,8 @@
   "fieldtype": "Check",
   "insert_after": "derived_from_doctypes",
   "depends_on": "eval:doc.is_custom_field && doc.derived_from",
-  "description": "Also return this field when code asks for every field (<code>fields=\"*\"</code>). Every such query then pays for the join, and code that writes those rows back may fail on the missing column, so leave this off unless you know the doctype is queried that way on purpose."
+  "description": "Also return this field when code asks for every field (<code>fields=\"*\"</code>). Every such query then pays for the join, and code that writes those rows back may fail on the missing column, so leave this off unless you know the doctype is queried that way on purpose.",
+  "module": "Derived Docfields"
  },
  {
   "doctype": "Custom Field",
@@ -135,7 +145,8 @@
   "fieldname": "custom_tab_break_ybjfo",
   "label": "Form Button",
   "fieldtype": "Tab Break",
-  "insert_after": "email_reply_help"
+  "insert_after": "email_reply_help",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -148,7 +159,8 @@
   "fieldtype": "Link",
   "options": "DocType",
   "insert_after": "custom_tab_break_ybjfo",
-  "description": "Every saved document of this type offers the template under <b>Email</b> in its toolbar, opening the composer already filled in. Leave blank for a template that is only picked from inside the composer."
+  "description": "Every saved document of this type offers the template under <b>Email</b> in its toolbar, opening the composer already filled in. Leave blank for a template that is only picked from inside the composer.",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -161,7 +173,8 @@
   "fieldtype": "Data",
   "insert_after": "email_doctype",
   "depends_on": "email_doctype",
-  "description": "Offer the template only on documents for which this is true: an expression over <code>doc</code>, written the way a field's Depends On is, e.g. <code>doc.docstatus == 1</code> or <code>doc.application_status == \"Approved\"</code>. Blank offers it on every saved document."
+  "description": "Offer the template only on documents for which this is true: an expression over <code>doc</code>, written the way a field's Depends On is, e.g. <code>doc.docstatus == 1</code> or <code>doc.application_status == \"Approved\"</code>. Blank offers it on every saved document.",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -174,7 +187,8 @@
   "fieldtype": "Autocomplete",
   "insert_after": "email_condition",
   "depends_on": "email_doctype",
-  "description": "The field of the document holding who the email goes to. An address is used as it stands; a Link, such as a Payment Entry's Party, is followed to the linked record's address, or its primary Contact's. Several fields can be given, separated by commas."
+  "description": "The field of the document holding who the email goes to. An address is used as it stands; a Link, such as a Payment Entry's Party, is followed to the linked record's address, or its primary Contact's. Several fields can be given, separated by commas.",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -188,7 +202,8 @@
   "options": "Email Account",
   "insert_after": "custom_recipient_fieldname",
   "depends_on": "email_doctype",
-  "description": "Preselected as the sender, when the user has access to this account. Otherwise the user's own default is kept."
+  "description": "Preselected as the sender, when the user has access to this account. Otherwise the user's own default is kept.",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -198,7 +213,8 @@
   "dt": "Email Template",
   "fieldname": "column_break_9",
   "fieldtype": "Column Break",
-  "insert_after": "custom_sending_account"
+  "insert_after": "custom_sending_account",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -210,7 +226,8 @@
   "label": "Attach Document Print",
   "fieldtype": "Check",
   "insert_after": "column_break_9",
-  "depends_on": "email_doctype"
+  "depends_on": "email_doctype",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -224,7 +241,8 @@
   "options": "Print Format",
   "insert_after": "attach_document_print",
   "depends_on": "attach_document_print",
-  "description": "Leave blank to attach the doctype's default print format."
+  "description": "Leave blank to attach the doctype's default print format.",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -236,7 +254,8 @@
   "label": "Design with MJML",
   "fieldtype": "Check",
   "insert_after": "use_html",
-  "description": "Write the email in <a href=\"https://documentation.mjml.io\" target=\"_blank\">MJML</a>, which lays it out to read well on a phone as well as on a desktop. Each save compiles it into the HTML that is sent, and ticks Use HTML. Jinja works anywhere in it, including a <code>{% for %}</code> around whole sections."
+  "description": "Write the email in <a href=\"https://documentation.mjml.io\" target=\"_blank\">MJML</a>, which lays it out to read well on a phone as well as on a desktop. Each save compiles it into the HTML that is sent, and ticks Use HTML. Jinja works anywhere in it, including a <code>{% for %}</code> around whole sections.",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -250,7 +269,8 @@
   "options": "HTML",
   "insert_after": "use_mjml",
   "depends_on": "use_mjml",
-  "mandatory_depends_on": "use_mjml"
+  "mandatory_depends_on": "use_mjml",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -262,7 +282,8 @@
   "label": "Preview",
   "fieldtype": "HTML",
   "insert_after": "mjml_source",
-  "depends_on": "use_mjml"
+  "depends_on": "use_mjml",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -276,7 +297,8 @@
   "insert_after": "sender_email",
   "depends_on": "eval:doc.channel == 'Email'",
   "non_negative": 1,
-  "description": "Hold the email in the queue this long before it is sent. It shows as Scheduled on the document's timeline meanwhile, with Send Now and Don't Send on the form; cancelling the document takes it back. 0 sends it straight away."
+  "description": "Hold the email in the queue this long before it is sent. It shows as Scheduled on the document's timeline meanwhile, with Send Now and Don't Send on the form; cancelling the document takes it back. 0 sends it straight away.",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -289,7 +311,8 @@
   "fieldtype": "Check",
   "insert_after": "send_delay_minutes",
   "depends_on": "eval:doc.channel == 'Email'",
-  "description": "Don't email about a document amended from one this notification already emailed about, as when a submitted payment is cancelled, corrected and submitted again. If the earlier email was taken back when that document was cancelled, the amended one is still sent."
+  "description": "Don't email about a document amended from one this notification already emailed about, as when a submitted payment is cancelled, corrected and submitted again. If the earlier email was taken back when that document was cancelled, the amended one is still sent.",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -304,7 +327,8 @@
   "insert_after": "email_template",
   "read_only": 1,
   "search_index": 1,
-  "description": "The Notification whose email this is, when it is one. Set by Commons as the email is queued."
+  "description": "The Notification whose email this is, when it is one. Set by Commons as the email is queued.",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Custom Field",
@@ -316,7 +340,8 @@
   "label": "Print",
   "fieldtype": "Section Break",
   "insert_after": "fields",
-  "description": "To print this template from a Print Format, write <code>{{ render_web_template(\"Template Name\", input_name=value, ...) }}</code> there. Each input is a row in the Fields table above: its fieldname is the name to pass, and its type and Required say what to pass. For example <code>{{ render_web_template(\"Student Statement\", student=doc.name) }}</code>. Context Prep turns the inputs into what the template reads; <b>Test PDF</b> in the toolbar asks for them and prints the result.<br><br>Frappe places the letter head chosen in the print dialog only on its standard format, so a Print Format that should carry one includes the same markup around the call:<pre style=\"margin-top: 6px; white-space: pre-wrap\"><code>{% if letter_head and not no_letterhead %}\n&lt;div {% if print_settings.repeat_header_footer %}id=&quot;header-html&quot; class=&quot;hidden-pdf&quot;{% endif %}&gt;\n\t&lt;div class=&quot;letter-head&quot;&gt;{{ letter_head }}&lt;/div&gt;\n&lt;/div&gt;\n{% endif %}\n\n{{ render_web_template(&quot;Student Statement&quot;, student=doc.name) }}\n\n{% if footer and not no_letterhead %}\n&lt;div {% if print_settings.repeat_header_footer %}id=&quot;footer-html&quot; class=&quot;visible-pdf&quot;{% endif %}&gt;\n\t&lt;div class=&quot;letter-head-footer&quot;&gt;{{ footer }}&lt;/div&gt;\n&lt;/div&gt;\n{% endif %}</code></pre>"
+  "description": "To print this template from a Print Format, write <code>{{ render_web_template(\"Template Name\", input_name=value, ...) }}</code> there. Each input is a row in the Fields table above: its fieldname is the name to pass, and its type and Required say what to pass. For example <code>{{ render_web_template(\"Student Statement\", student=doc.name) }}</code>. Context Prep turns the inputs into what the template reads; <b>Test PDF</b> in the toolbar asks for them and prints the result.<br><br>Frappe places the letter head chosen in the print dialog only on its standard format, so a Print Format that should carry one includes the same markup around the call:<pre style=\"margin-top: 6px; white-space: pre-wrap\"><code>{% if letter_head and not no_letterhead %}\n&lt;div {% if print_settings.repeat_header_footer %}id=&quot;header-html&quot; class=&quot;hidden-pdf&quot;{% endif %}&gt;\n\t&lt;div class=&quot;letter-head&quot;&gt;{{ letter_head }}&lt;/div&gt;\n&lt;/div&gt;\n{% endif %}\n\n{{ render_web_template(&quot;Student Statement&quot;, student=doc.name) }}\n\n{% if footer and not no_letterhead %}\n&lt;div {% if print_settings.repeat_header_footer %}id=&quot;footer-html&quot; class=&quot;visible-pdf&quot;{% endif %}&gt;\n\t&lt;div class=&quot;letter-head-footer&quot;&gt;{{ footer }}&lt;/div&gt;\n&lt;/div&gt;\n{% endif %}</code></pre>",
+  "module": "Commons Core"
  },
  {
   "doctype": "Custom Field",
@@ -329,7 +354,8 @@
   "fieldtype": "Code",
   "options": "Python",
   "insert_after": "print_section",
-  "description": "Python run in the Server Script sandbox before each print. The inputs are in <code>inputs</code> (for example <code>inputs.student</code>), and the printed document in <code>doc</code> when the Print Format passes one. Set <code>values</code> to a dict; its keys are the template's variables. Left empty, the template is given the inputs themselves. Only a Script Manager may change it."
+  "description": "Python run in the Server Script sandbox before each print. The inputs are in <code>inputs</code> (for example <code>inputs.student</code>), and the printed document in <code>doc</code> when the Print Format passes one. Set <code>values</code> to a dict; its keys are the template's variables. Left empty, the template is given the inputs themselves. Only a Script Manager may change it.",
+  "module": "Commons Core"
  },
  {
   "doctype": "Custom Field",
@@ -344,6 +370,7 @@
   "default": "Purchase Invoice",
   "insert_after": "append_to",
   "depends_on": "eval:doc.append_to=='Captured Document'",
-  "description": "What the scans emailed to this account are drafted as in Document Capture. They are read automatically only when the sender is a user on this site."
+  "description": "What the scans emailed to this account are drafted as in Document Capture. They are read automatically only when the sender is a user on this site.",
+  "module": "Document Capture"
  }
 ]

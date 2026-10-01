@@ -11,6 +11,7 @@
   "options": "Email Template",
   "insert_after": "message_sb",
   "depends_on": "eval:doc.channel == 'Email'",
-  "description": "Send this template's message in place of the one below. Its subject is used when Subject above is left blank. Write it against the document's fields (<code>{{ program }}</code>), as in any template; <code>doc</code>, <code>alert</code> and <code>comments</code> work too. Recipients, sender and attachments are still set here."
+  "description": "Send this template's message in place of the one below. Its subject is used when Subject above is left blank. Write it against the document's fields (<code>{{ program }}</code>), as in any template; <code>doc</code>, <code>alert</code> and <code>comments</code> work too. Recipients, sender and attachments are still set here.",
+  "module": "Email Extensions"
  }
 ]

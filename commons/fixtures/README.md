@@ -23,6 +23,14 @@ All of the Custom Fields are schema: code dereferences every one of them, and
 the part of the app that reads them does not work without them. Order within a
 file matters where one field's `insert_after` names another.
 
+Every record names the module of the section that reads it. That is what takes
+it away when the app is uninstalled: `remove_app` deletes every record linked to
+one of the app's `Module Def`s, and a field left behind would sit on its form
+promising behaviour nothing provides. Only the definition goes. Deleting a
+Custom Field never drops its column, so the values stay in the database and
+reappear when the app is installed again. A new record here needs a module too;
+`test_fixtures` fails without one. See `commons.commons_core.uninstall`.
+
 ## Fields for apps a site may not have
 
 ERPNext is optional, so its fields are in a file of their own, and a site
@@ -181,8 +189,8 @@ register reads whichever fields a site names in Attendance Register Settings (se
 
 Removing a fixture file deletes nothing: fixture sync only imports, and no
 cleanup looks for a record a file used to hold. So a site that had the four
-keeps them as its own Custom Fields, with their columns and rows, and
-`commons.commons_core.education_handover` names them in its settings. Nothing
+keeps them as its own Custom Fields, with their columns and rows, named in its
+Attendance Register Settings. Nothing
 ties them to this app afterwards either. Their `module` is empty, so
 `remove_app`, which deletes every record that links to one of the app's
 `Module Def`s, passes over them, and so does an export filtered by module. They

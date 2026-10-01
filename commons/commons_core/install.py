@@ -18,15 +18,16 @@ Manager's to set up on a new site, and the app ships none of them -- not as a
 seed, not as a fixture, not at all. Property Setters are shipped only where they
 belong to something else the app ships, in `commons/fixtures/property_setter.json`:
 
-* the image and title fields of this app's own member doctypes, pointed at the
-  derived fields beside them -- a property of the app's schema;
 * two on Frappe's `Email Template`, hiding the compiled HTML and making
   `use_html` read-only while a template is written in MJML -- the other half of
   the MJML Custom Fields;
 * three on Frappe's `Notification`, hiding Message and relaxing Subject while an
   Email Template is named -- the other half of `Notification.email_template`.
 
-The last five change Frappe's own forms, and only in ways that follow from a
+* one on Frappe's `Web Template Field`, adding the fieldtypes a print
+  template's inputs may have.
+
+The first five change Frappe's own forms, and only in ways that follow from a
 field this app adds: each is inert until that field is set.
 
 About that desk icon. It ships as a file in `commons/desktop_icon/`,
@@ -49,7 +50,7 @@ meets the same gap on every site that already has the app.
 It runs unfiltered: every name in `modules.txt` is one this app answers for,
 and every one of them gets a record. None is somebody else's any more --
 `Education Extensions`, a site's module this app once claimed, is that site's
-own custom module now (`commons.commons_core.education_handover`).
+own custom module now.
 
 Why this is in `commons_core` and not at the app root
 -----------------------------------------------------

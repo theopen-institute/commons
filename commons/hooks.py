@@ -101,22 +101,7 @@ after_migrate = [
 # -- and `Module Def` records are only written at install. Without one, migrate
 # cannot import a doctype that names the module, so this has to run before the
 # doctype sync, not after it.
-before_migrate = [
-	# TEMPORARY: the Open Institute's register takes Member, Faculty, Fellow and
-	# Associate Faculty as its own custom doctypes. Before the doctype sync and
-	# the orphan cleanup, both of which would otherwise take them. Remove, with
-	# the module, once both register sites have migrated. See its docstring.
-	"commons.commons_core.community_handover.run",
-	# TEMPORARY, the same way: `Education Extensions` becomes the register's own
-	# custom module, and its three workspaces leave the sites that never used
-	# them. Remove once every site has migrated. See its docstring.
-	"commons.commons_core.education_handover.run",
-	# TEMPORARY, the same way: Department Budget leaves the app for the sites
-	# that hold budgets, and the doctypes whose shipped permissions shrank to
-	# System Manager keep the ones each site had. See its docstring.
-	"commons.commons_core.procurement_handover.run",
-	"commons.commons_core.install.sync_module_defs",
-]
+before_migrate = ["commons.commons_core.install.sync_module_defs"]
 
 # The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
 # Manage Dock on a developer-mode site and press Export to App, and it is written to
@@ -240,7 +225,11 @@ jinja = {
 # Uninstallation
 # ------------
 
-# before_uninstall = "commons.uninstall.before_uninstall"
+# Frappe deletes by module, which is too little for this app's configuration and
+# derived fields, and too much for a site's own records filed under its modules.
+# This evens it out, refuses while such records are there, and warns where
+# uninstalling widens access. See `commons.commons_core.uninstall`.
+before_uninstall = "commons.commons_core.uninstall.before_uninstall"
 # after_uninstall = "commons.uninstall.after_uninstall"
 
 # Disable / Enable

@@ -39,7 +39,7 @@ EXPENSE_CLAIM = "Expense Claim"
 # The Commons Settings switch that lets a claim naming no approver be decided by
 # anyone who may submit claims. Off by default, which is HRMS's own behaviour:
 # such a claim waits until somebody names its approver. Sites that ran this app
-# before it was a setting have it on -- see `procurement_handover`.
+# before it was a setting had it switched on when it arrived.
 UNASSIGNED_OPEN = "expense_unassigned_open"
 EXPENSE_CLAIM_DETAIL = "Expense Claim Detail"
 

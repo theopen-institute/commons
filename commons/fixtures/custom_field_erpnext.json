@@ -12,7 +12,8 @@
   "insert_after": "job_card",
   "read_only": 1,
   "no_copy": 1,
-  "print_hide": 1
+  "print_hide": 1,
+  "module": "Requests"
  },
  {
   "doctype": "Custom Field",
@@ -28,7 +29,8 @@
   "read_only": 1,
   "no_copy": 1,
   "print_hide": 1,
-  "search_index": 1
+  "search_index": 1,
+  "module": "Requests"
  },
  {
   "doctype": "Custom Field",
@@ -44,7 +46,8 @@
   "hidden": 1,
   "no_copy": 1,
   "print_hide": 1,
-  "search_index": 1
+  "search_index": 1,
+  "module": "Requests"
  },
  {
   "doctype": "Custom Field",
@@ -57,7 +60,8 @@
   "fieldtype": "Link",
   "options": "Print Format",
   "insert_after": "account_type",
-  "description": "The Print Format a statement for a party of this type is downloaded with, from the statement page. It must be an enabled Print Format for this doctype. Left blank, the statement uses the one named <b>{Party Type} Account Statement</b> (for example <code>Customer Account Statement</code>), and refuses the download when neither exists."
+  "description": "The Print Format a statement for a party of this type is downloaded with, from the statement page. It must be an enabled Print Format for this doctype. Left blank, the statement uses the one named <b>{Party Type} Account Statement</b> (for example <code>Customer Account Statement</code>), and refuses the download when neither exists.",
+  "module": "Statement"
  },
  {
   "doctype": "Custom Field",
@@ -70,6 +74,7 @@
   "fieldtype": "Check",
   "default": "0",
   "insert_after": "balance_must_be",
-  "description": "Records money moving between this organisation's own departments rather than with anyone outside it. Profit and Loss can leave it out, and every account under it, with Hide Internal Accounts, when Commons Settings offers that filter."
+  "description": "Records money moving between this organisation's own departments rather than with anyone outside it. Profit and Loss can leave it out, and every account under it, with Hide Internal Accounts, when Commons Settings offers that filter.",
+  "module": "Banking"
  }
 ]

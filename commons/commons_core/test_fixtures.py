@@ -78,6 +78,18 @@ class TestFixtureFiles(TestCase):
 			if fname.endswith(".json") and fname != NOTIFICATION_FILE:
 				self.assertNotIn(CUSTOM_FIELD, {row.get("name") for row in records(fname)}, fname)
 
+	def test_every_record_names_one_of_this_apps_modules(self):
+		"""What takes it away on uninstall. See `commons.commons_core.uninstall`."""
+		from commons.commons_core.test_install import declared
+
+		modules = set(declared())
+		for fname in sorted(os.listdir(FIXTURES)):
+			if not fname.endswith(".json"):
+				continue
+			for row in records(fname):
+				with self.subTest(record=row["name"]):
+					self.assertIn(row.get("module"), modules, fname)
+
 	def test_optional_app_files_do_not_share_doctypes(self):
 		seen = {}
 		for fname in OPTIONAL:

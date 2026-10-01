@@ -105,8 +105,8 @@ class ProcurementRequest(Document):
 
 		Whichever row fields the site puts above permlevel 0. None ships there:
 		a site that has its buyers verify rates puts `verified_rate` at permlevel
-		1 with a Property Setter (sites that ran the release where it shipped so
-		keep it that way -- see `procurement_handover`). Core resets such a field
+		1 with a Property Setter, as the sites that ran the release where it
+		shipped so were given. Core resets such a field
 		when someone without that permlevel writes it -- on the parent always,
 		but on child rows only once the parent exists
 		(`Document.validate_higher_perm_levels`). A requester's own verified rate

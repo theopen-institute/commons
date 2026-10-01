@@ -414,8 +414,7 @@ The register this page was first written for keeps them as
 `custom_late` (worth half a session), `custom_session_type`,
 `custom_session_details` and `custom_inactive`. This app shipped those four as
 fixtures until it stopped hardwiring one school's fields; they are that site's
-own Custom Fields now, and `commons.commons_core.education_handover` filled its
-settings in.
+own Custom Fields now, named in its Attendance Register Settings.
 
 A `Course` wants a `default_instructor` and a default classroom: `Course
 Schedule` requires both and the site fetches them from there, and this page

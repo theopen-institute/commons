@@ -455,8 +455,8 @@ class TestProcurementRequest(ProcurementTestCase):
 		"""Where the site has buyers verify rates: a cheap verified rate understated
 		the estimate at approval, and carried over onto the Material Request.
 
-		Ships at permlevel 0, so only a site that raised it (by Property Setter,
-		as `procurement_handover` does for the sites that ran it at 1) is asked.
+		Ships at permlevel 0, so only a site that raised it by Property Setter
+		is asked.
 		"""
 		if not frappe.get_meta("Procurement Request Item").get_field("verified_rate").permlevel:
 			self.skipTest("verified_rate is at permlevel 0 on this site")

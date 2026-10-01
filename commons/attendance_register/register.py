@@ -11,8 +11,8 @@ A module of its own, with its own settings (`Attendance Register Settings`),
 because the register is not part of what Commons is: it is a page for a site
 that teaches, and it lives in this app only because this app's frontend draws
 it. It used to sit in a package called `education_extensions`, named after a
-module one site keeps its Custom DocTypes in; see
-`commons.commons_core.education_handover` for what became of that.
+module one site keeps its Custom DocTypes in, which is that site's own custom
+module now.
 
 There was a good deal more here. An earlier version of the register assembled
 the whole page on the server: it resolved a term and a course into student

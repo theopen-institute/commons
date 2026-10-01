@@ -9,7 +9,8 @@
   "field_name": "response_html",
   "property": "depends_on",
   "property_type": "Data",
-  "value": "eval:doc.use_html && !doc.use_mjml"
+  "value": "eval:doc.use_html && !doc.use_mjml",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Property Setter",
@@ -21,7 +22,8 @@
   "field_name": "use_html",
   "property": "read_only_depends_on",
   "property_type": "Data",
-  "value": "eval:doc.use_mjml"
+  "value": "eval:doc.use_mjml",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Property Setter",
@@ -33,7 +35,8 @@
   "field_name": "message",
   "property": "depends_on",
   "property_type": "Data",
-  "value": "eval:!doc.email_template"
+  "value": "eval:!doc.email_template",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Property Setter",
@@ -45,7 +48,8 @@
   "field_name": "message_examples",
   "property": "depends_on",
   "property_type": "Data",
-  "value": "eval:!doc.email_template"
+  "value": "eval:!doc.email_template",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Property Setter",
@@ -57,7 +61,8 @@
   "field_name": "subject",
   "property": "mandatory_depends_on",
   "property_type": "Data",
-  "value": "eval: in_list(['Email', 'Slack'], doc.channel) && !doc.email_template"
+  "value": "eval: in_list(['Email', 'Slack'], doc.channel) && !doc.email_template",
+  "module": "Email Extensions"
  },
  {
   "doctype": "Property Setter",
@@ -69,6 +74,7 @@
   "field_name": "fieldtype",
   "property": "options",
   "property_type": "Text",
-  "value": "Attach Image\nCheck\nCurrency\nData\nDate\nFloat\nInt\nJSON\nLink\nSelect\nSmall Text\nText\nMarkdown Editor\nSection Break\nColumn Break\nTable Break"
+  "value": "Attach Image\nCheck\nCurrency\nData\nDate\nFloat\nInt\nJSON\nLink\nSelect\nSmall Text\nText\nMarkdown Editor\nSection Break\nColumn Break\nTable Break",
+  "module": "Commons Core"
  }
 ]
