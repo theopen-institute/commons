@@ -67,7 +67,7 @@ FIXTURES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fixtures")
 
 # What this app's templates may call (`jinja` in hooks.py), and where a site
 # keeps Jinja that could call it: (doctype, fields).
-JINJA_METHODS = ("party_statement", "render_web_template", "make_qr_code")
+JINJA_METHODS = ("render_web_template", "make_qr_code")
 JINJA_SOURCES = (
 	("Print Format", ("html",)),
 	("Letter Head", ("content", "footer")),

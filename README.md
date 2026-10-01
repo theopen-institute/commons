@@ -18,7 +18,7 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 
 - **Self Service Records**: a site declares which doctypes people can view as their own records (such as their Employee record), and which fields they may propose changes to.
 - **Record Change Requests**: the owner proposes a correction and the responsible team approves or rejects it. The change is written under the approver's own permissions, and a field that changed in the meantime is refused. Without a Workflow, Commons Settings names the outcome that applies the change and whether reviewers may decide their own requests.
-- **Account statement** (`/commons/account`): what a person owes the organisation and what it owes them, from the general ledger, with loans shown separately, a PDF per account, and a `party_statement` Jinja helper for print formats. Any Party Type whose record links to a User can be a statement party, and each Party Type can name its statement Print Format.
+- **Account statement** (`/commons/account`): what a person owes the organisation and what it owes them, from the general ledger, with loans shown separately, a PDF per account, and a `party_statement` endpoint a Web Template's Context Prep calls to print one. Any Party Type whose record links to a User can be a statement party, and each Party Type can name its statement Print Format.
 
 #### Requests and approvals
 
@@ -39,7 +39,7 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 
 #### Document capture
 
-- **Captured Documents** (`/commons/capture`): scans come in by upload or email. Claude reads them, but only when someone presses Read, in a background job. The prompts follow the company's country and currency and the Bikram Sambat setting, and Claude Settings' **Additional Instructions** and tax-term names add a site's own conventions. **Document Capture Settings** choose which kinds are captured, who sees each, a supervisor role, and extra legal-suffix words for matching suppliers.
+- **Captured Documents** (`/commons/capture`): scans come in by upload or email. Claude reads them, but only when someone presses Read, in a background job. The prompts follow the company's country and currency and the Bikram Sambat setting, and Claude Settings' **Additional Instructions** and tax-term names add a site's own conventions. **Document Capture Settings** choose which kinds are captured and extra legal-suffix words for matching suppliers; who sees which captures is the role permissions'.
 - Drafts a **Purchase Invoice** from a supplier invoice (visible to the accounts team) or an **Expense Claim** from receipts (visible to the sender), with the scan attached.
 
 #### Education (needs `education`)

@@ -191,8 +191,8 @@ without it — Frappe would otherwise fall back to "Standard" and print the whol
 party record. The four formats are one line each and never need changing;
 everything the statement shows is in the Web Template and the call.
 
-`party_statement` is the app's own endpoint, reachable from Jinja through the
-`jinja` hook in `hooks.py`. So the printed statement asks the app what somebody
+`party_statement` is the app's own whitelisted endpoint, which the Context Prep
+calls through `frappe.call`. So the printed statement asks the app what somebody
 owes rather than working it out again in a template: which way a balance runs,
 which accounts are left out because they belong to the lending module, how a
 running balance reconciles with a total — all of it answered once, in Python,

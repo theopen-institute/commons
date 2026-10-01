@@ -379,98 +379,6 @@ class TestTheDoctypeDoesNotThreadBySubject(TestCase):
 		self.assertEqual(meta["sender_field"], "sender")
 
 
-class TestWhoSeesWhich(TestCase):
-	"""Each kind's visibility, from Document Capture Settings. The defaults are
-	the rule as it was hard-coded: invoices the accounts team's, receipts their
-	sender's alone."""
-
-	def check(self, doc, may_create, roles=(), user="b@example.com"):
-		with (
-			patch.object(capture.frappe, "get_roles", return_value=list(roles)),
-			patch.object(capture.apps, "has_doctype", return_value=True),
-			patch.object(capture.frappe, "has_permission", return_value=may_create),
-		):
-			return capture.has_permission(doc, "read", user)
-
-	def conditions(self, may_create, roles=()):
-		db = SimpleNamespace(escape=lambda value: f"'{value}'")
-		with (
-			patch.object(capture.frappe, "get_roles", return_value=list(roles)),
-			patch.object(capture.frappe, "db", db, create=True),
-			patch.object(capture.apps, "has_doctype", return_value=True),
-			patch.object(
-				capture.frappe, "has_permission", lambda doctype, ptype, user: doctype in may_create
-			),
-		):
-			return capture.permission_query_conditions("b@example.com")
-
-	invoice = frappe._dict(owner="a@example.com", document_type="Purchase Invoice")
-	receipt = frappe._dict(owner="a@example.com", document_type="Expense Claim")
-
-	def test_an_invoice_capture_is_the_accounts_teams(self):
-		self.assertIs(self.check(self.invoice, True), True)
-		self.assertIs(self.check(self.invoice, False), False)
-
-	def test_a_receipt_is_its_senders_alone(self):
-		self.assertIs(self.check(self.receipt, True), False)
-		self.assertIs(self.check(frappe._dict(self.receipt, owner="b@example.com"), False), True)
-
-	def test_the_list_says_the_same_by_default(self):
-		own = "`tabCaptured Document`.`owner` = 'b@example.com'"
-		self.assertEqual(
-			self.conditions({"Purchase Invoice", "Expense Claim"}),
-			f"({own} or `tabCaptured Document`.`document_type` in ('Purchase Invoice'))",
-		)
-		self.assertEqual(self.conditions(set()), f"({own})")
-
-	def test_invoices_can_be_their_senders_alone(self):
-		with with_settings(purchase_invoice_visibility=capture_settings.SENDER_ONLY):
-			self.assertIs(self.check(self.invoice, True), False)
-			self.assertEqual(
-				self.conditions({"Purchase Invoice"}), "(`tabCaptured Document`.`owner` = 'b@example.com')"
-			)
-
-	def test_receipts_can_be_shared_with_whoever_may_claim(self):
-		with with_settings(expense_claim_visibility=capture_settings.ANYONE):
-			self.assertIs(self.check(self.receipt, True), True)
-			self.assertIs(self.check(self.receipt, False), False)
-			self.assertIn(
-				"in ('Purchase Invoice', 'Expense Claim')",
-				self.conditions({"Purchase Invoice", "Expense Claim"}),
-			)
-
-	def test_an_unknown_kind_is_its_senders_alone(self):
-		other = frappe._dict(owner="a@example.com", document_type="Sales Invoice")
-		self.assertIs(self.check(other, True), False)
-
-
-class TestTheSupervisorRole(TestCase):
-	receipt = frappe._dict(owner="a@example.com", document_type="Expense Claim")
-
-	def sees_everything(self, roles, user="b@example.com"):
-		with (
-			patch.object(capture.frappe, "get_roles", return_value=list(roles)),
-			patch.object(capture.frappe, "has_permission", return_value=False),
-		):
-			return capture.has_permission(self.receipt, "read", user) and (
-				capture.permission_query_conditions(user) == ""
-			)
-
-	def test_system_manager_by_default(self):
-		self.assertTrue(self.sees_everything(["System Manager"]))
-		self.assertFalse(self.sees_everything(["Accounts Manager"]))
-
-	def test_the_site_chooses_the_role(self):
-		with with_settings(supervisor_role="Accounts Manager"):
-			self.assertTrue(self.sees_everything(["Accounts Manager"]))
-			self.assertFalse(self.sees_everything(["System Manager"]))
-
-	def test_none_leaves_only_administrator(self):
-		with with_settings(supervisor_role=""):
-			self.assertFalse(self.sees_everything(["System Manager"]))
-			self.assertTrue(self.sees_everything([], user="Administrator"))
-
-
 @patch.object(capture.frappe, "throw", _raise)
 class TestADisabledKind(TestCase):
 	"""Switched off in Document Capture Settings: not offered, not uploaded,
@@ -569,7 +477,6 @@ class TestTheSettingsDoctype(TestCase):
 				self.assertEqual(stored, str(default))
 		for kind in capture.KINDS.values():
 			self.assertEqual(fields[kind.ENABLE_FIELD]["fieldtype"], "Check")
-			self.assertIn(capture_settings.ANYONE, fields[kind.VISIBILITY_FIELD]["options"].split("\n"))
 
 
 @patch.object(capture.frappe, "throw", _raise)

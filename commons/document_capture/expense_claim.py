@@ -41,9 +41,8 @@ from commons.document_capture.purchase_invoice import STRING, _nullable, _object
 EXPENSE_CLAIM = "Expense Claim"
 EXPENSE_CLAIM_TYPE = "Expense Claim Type"
 
-# This kind's switches in Document Capture Settings (`commons.document_capture.settings`).
+# This kind's switch in Document Capture Settings (`commons.document_capture.settings`).
 ENABLE_FIELD = "enable_expense_claims"
-VISIBILITY_FIELD = "expense_claim_visibility"
 
 # A few receipts' worth, with room for the effort's thinking.
 MAX_TOKENS = 16000

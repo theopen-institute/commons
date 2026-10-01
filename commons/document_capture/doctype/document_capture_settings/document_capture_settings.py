@@ -25,9 +25,6 @@ class DocumentCaptureSettings(Document):
 
 		enable_expense_claims: DF.Check
 		enable_purchase_invoices: DF.Check
-		expense_claim_visibility: DF.Literal["Anyone who may create the drafted document", "Sender only"]
-		purchase_invoice_visibility: DF.Literal["Anyone who may create the drafted document", "Sender only"]
-		supervisor_role: DF.Link | None
 		supplier_legal_words: DF.SmallText | None
 	# end: auto-generated types
 

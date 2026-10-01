@@ -12,10 +12,10 @@ the hook if it is useful to a template that has nothing to do with the section
 it came from.
 
 Helpers that *are* about a section stay with it, and are named individually in
-the same hook -- `commons.statement.api.party_statement` is one. The test is the
-usual one: a template calling `party_statement` is asking this app a question
-about a party, and a template calling `make_qr_code` is only asking for an
-image.
+the same hook -- `commons.print_templates.api.render_web_template` is one. A
+section's data is not a helper: a template that needs a party's balance asks
+for it in its Web Template's Context Prep, through `frappe.call`, and a template
+calling `make_qr_code` is only asking for an image.
 
 Here rather than at the app root because "belongs to no section" is what this
 module is for, and it is the same test stated the other way round: a helper that

@@ -499,8 +499,8 @@ def record_exists(doctype: str) -> bool:
 def clear_cache() -> None:
 	"""Drop the resolved registry.
 
-	Called whenever a `Self Service Record` is saved or deleted, and on migrate.
-	Without it a configuration change would appear to do nothing until something
+	Called whenever a `Self Service Record` is saved or deleted. A deploy needs
+	no call: migrate's `frappe.clear_cache()` drops every key the site has. Without it a configuration change would appear to do nothing until something
 	else happened to clear the cache.
 	"""
 	frappe.cache.delete_value(POLICY_CACHE_KEY)

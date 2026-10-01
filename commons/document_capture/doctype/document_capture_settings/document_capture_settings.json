@@ -9,11 +9,6 @@
   "enable_purchase_invoices",
   "column_break_kinds",
   "enable_expense_claims",
-  "visibility_section",
-  "purchase_invoice_visibility",
-  "column_break_visibility",
-  "expense_claim_visibility",
-  "supervisor_role",
   "matching_section",
   "supplier_legal_words"
  ],
@@ -43,40 +38,6 @@
    "label": "Expense Claims"
   },
   {
-   "description": "Who sees a capture besides whoever uploaded or emailed it. These narrow the role permissions on Captured Document, and never widen them.",
-   "fieldname": "visibility_section",
-   "fieldtype": "Section Break",
-   "label": "Who Sees Which"
-  },
-  {
-   "default": "Anyone who may create the drafted document",
-   "description": "Anyone who may create a Purchase Invoice, as everyone on a shared accounts inbox would; or the sender alone.",
-   "fieldname": "purchase_invoice_visibility",
-   "fieldtype": "Select",
-   "label": "Purchase Invoice Captures",
-   "options": "Anyone who may create the drafted document\nSender only"
-  },
-  {
-   "fieldname": "column_break_visibility",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "Sender only",
-   "description": "A receipt can only be claimed by its sender, so others seeing it is for oversight only.",
-   "fieldname": "expense_claim_visibility",
-   "fieldtype": "Select",
-   "label": "Expense Claim Captures",
-   "options": "Anyone who may create the drafted document\nSender only"
-  },
-  {
-   "default": "System Manager",
-   "description": "Holders of this role see every capture, of every kind. Administrator always does. Leave it empty for nobody else.",
-   "fieldname": "supervisor_role",
-   "fieldtype": "Link",
-   "label": "Supervisor Role",
-   "options": "Role"
-  },
-  {
    "fieldname": "matching_section",
    "fieldtype": "Section Break",
    "label": "Matching Names"
@@ -91,7 +52,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-01 00:00:00.000000",
+ "modified": "2026-10-01 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Document Capture",
  "name": "Document Capture Settings",

@@ -68,9 +68,9 @@ website_route_rules = [
 # same declaration.
 #
 # What is left are the things no sync can do: registering this app's modules,
-# dropping a cache whose key `frappe.clear_cache` does not know about, and
-# getting a changed `page_js` in front of admins whose desks are still holding
-# the last copy of it.
+# and getting a changed `page_js` in front of admins whose desks are still
+# holding the last copy of it. Server-side caches need nothing: migrate's own
+# `frappe.clear_cache()` drops every key the site has.
 #
 # No approval chain, no self-service configuration and no statement print
 # formats. Those are a System Manager's to set up on a new site, and a deploy is
@@ -78,22 +78,16 @@ website_route_rules = [
 # reads whatever a site has rather than assuming any particular shape -- see
 # `commons.requests.procurement_workflow`, `commons.self_service.registry` and
 # `commons.statement.api.download_statement`.
-after_install = [
-	"commons.self_service.install.sync_self_service",
-	"commons.safer_permissions.install.sync_permission_manager",
-]
+after_install = ["commons.safer_permissions.install.sync_permission_manager"]
 after_migrate = [
+	"commons.safer_permissions.install.sync_permission_manager",
 	# The other half of `before_migrate`'s module registration: records for
 	# modules this app no longer has, removed once the sync has moved whatever
 	# used to name them. See `commons.commons_core.install.drop_stale_module_defs`.
 	"commons.commons_core.install.drop_stale_module_defs",
-	"commons.self_service.install.sync_self_service",
-	"commons.safer_permissions.install.sync_permission_manager",
 	# A migrate is when a doctype along some derived field's path most often
 	# changes under it. Reports what no longer resolves; repairs nothing.
 	"commons.derived_docfields.validation.check_all",
-	# An app installed or removed changes the rail's inputs without a doc event.
-	"commons.better_navigation.navigation_apps.clear_cache",
 ]
 
 # Modules are added to `modules.txt` after this app has already been installed
@@ -184,35 +178,24 @@ app_include_css = "commons.bundle.css"
 
 # What a print format, a letterhead or a web template on this site may call.
 #
-# Two entries, of the two kinds there are. `make_qr_code` belongs to no section
-# and is useful to any template that wants an image -- it lives in
-# `commons/commons_core/jinja.py`, which is where a helper goes when the section
-# it came from is not part of the answer. It came from the retired NepalERP app,
-# whose own hook is where sites that print QR codes first got the name.
+# Two entries, both exposed by name to every template on the site, not only to
+# the formats this app creates.
 #
-# `party_statement` is the other kind: the statement section's own data function,
-# the same one the SPA calls over HTTP. It is here so a printed statement asks
-# the app what somebody's balance is rather than working it out again in Jinja
-# (the layout is a site's own Web Template now, which fetches it through
-# `frappe.call` in its Context Prep), which is the whole reason the
-# printed statement and the one in the browser cannot drift. Which way a balance
-# runs, which accounts are left out because they belong to the lending module,
-# how a running balance reconciles with a total: all of that is answered once, in
-# Python, for both.
+# `make_qr_code` belongs to no section and is useful to any template that wants
+# an image -- it lives in `commons/commons_core/jinja.py`, which is where a
+# helper goes when the section it came from is not part of the answer. It came
+# from the retired NepalERP app, whose own hook is where sites that print QR
+# codes first got the name. It reads nothing and so has nothing to check.
 #
-# Both are exposed by name to every template on the site, not only to the formats
-# this app creates. For `party_statement` that is why it does its own permission
-# check rather than trusting its caller -- see `commons.statement.parties.named`;
-# `make_qr_code` reads nothing and so has nothing to check.
-#
-# `render_web_template` is the third: one Web Template, a layout kept on the
-# site, printed from as many doctypes' formats as call it, each through the
-# template's own Context Prep. It reads only the `doc` its caller already holds.
-# See `commons.print_templates`.
+# `render_web_template` prints one Web Template, a layout kept on the site, from
+# as many doctypes' formats as call it, each through the template's own Context
+# Prep. It reads only the `doc` its caller already holds. Data a layout needs
+# from this app is fetched in the prep, through `frappe.call` -- the Account
+# Statement template calls `commons.statement.api.party_statement` that way --
+# so no section's functions need a name in Jinja. See `commons.print_templates`.
 jinja = {
 	"methods": [
 		"commons.commons_core.jinja.make_qr_code",
-		"commons.statement.api.party_statement",
 		"commons.print_templates.api.render_web_template",
 	],
 }
@@ -299,9 +282,6 @@ awesomebar_search = ["commons.better_navigation.search.awesomebar_results"]
 # nobody has gated.
 permission_query_conditions = {
 	"*": "commons.safer_permissions.permissions.permission_query_conditions",
-	# Purchase invoice captures to the accounts team, receipts to their sender.
-	# See `commons.document_capture.capture`.
-	"Captured Document": "commons.document_capture.capture.permission_query_conditions",
 }
 
 has_permission = {
@@ -310,7 +290,6 @@ has_permission = {
 	# may access the report read them. Core registers its own hook for this
 	# doctype too; both are consulted, and either can deny.
 	"Prepared Report": "commons.safer_permissions.permissions.has_prepared_report_permission",
-	"Captured Document": "commons.document_capture.capture.has_permission",
 }
 
 # Document Events

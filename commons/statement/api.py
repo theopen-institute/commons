@@ -7,10 +7,10 @@ that is the only thing the three differ on:
 * `get_statement` -- the session's own parties. The page. Nothing is accepted
   from the caller, because every argument would be a way of asking about
   somebody else.
-* `party_statement` -- one party, by name, permission-checked. What a print
-  format calls, and what makes the PDF and the page one interpretation rather
-  than two implementations that agree for now. Exposed to Jinja through the
-  `jinja` hook in `hooks.py`.
+* `party_statement` -- one party, by name, permission-checked. What the
+  Account Statement Web Template's Context Prep calls through `frappe.call`,
+  and what makes the PDF and the page one interpretation rather than two
+  implementations that agree for now.
 * `download_statement` -- the same print format, rendered to PDF for a reader
   who cannot open the desk.
 
@@ -48,10 +48,10 @@ def get_statement() -> dict:
 def party_statement(party_type: str, party: str) -> dict:
 	"""The statement of one named party -- the print format's data source.
 
-	Whitelisted and exposed to Jinja, which are two ways of reaching the same
-	function on purpose. A print format calls it with the document it is
-	printing; the desk and anything else calls it over HTTP; both get the
-	figures the page gets, from the code the page uses.
+	Whitelisted, and reached two ways: a Web Template's Context Prep calls it
+	through `frappe.call` with the document being printed, and anything else
+	calls it over HTTP. Both get the figures the page gets, from the code the
+	page uses.
 
 	Who may ask is `parties.named`, which throws rather than answering thinly.
 	"""

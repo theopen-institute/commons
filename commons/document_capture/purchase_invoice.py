@@ -107,9 +107,8 @@ COMPANY_CHOSEN = 0.6
 SAME_SUPPLIER_LINE = 0.5
 ANY_LINE = 0.7
 
-# This kind's switches in Document Capture Settings (`commons.document_capture.settings`).
+# This kind's switch in Document Capture Settings (`commons.document_capture.settings`).
 ENABLE_FIELD = "enable_purchase_invoices"
-VISIBILITY_FIELD = "purchase_invoice_visibility"
 
 # Words that say what sort of company a name belongs to rather than which one.
 # "Vianet Communications Pvt.Ltd" and "VIANET COMMUNICATIONS PVT. LTD." are the

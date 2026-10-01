@@ -53,14 +53,14 @@ queued again, the older job finds it has been superseded and does nothing.
 
 Who sees which
 --------------
-Each kind's rule is Document Capture Settings' (`settings.visibility`): either
-anybody who may create the kind's document sees every capture of it, as
-everyone on a shared accounts inbox would, or only its sender does. By
-default a purchase invoice capture is the accounts team's and an expense
-receipt its sender's alone, as they were before the rule was the site's.
-`has_permission` and `permission_query_conditions` narrow the role permissions
-to that. They can only deny, and the settings' supervisor role (System Manager
-by default) and Administrator are left alone.
+The role permissions on Captured Document, and nothing else. The app ships
+System Manager alone; a site grants the rest in the Role Permission Manager.
+The usual shape is a role every sender holds (Employee) with Only if Creator
+ticked, so each person sees their own captures, and the accounts roles without
+it, so they see everyone's -- receipts included, and an emailed scan from
+somebody who is not a user here, which nobody owns. Core cannot narrow a role
+by kind, since `document_type` is a Select and User Permissions follow Links;
+a site that needs receipts kept from its accounts team does it with roles.
 
 Which kinds
 -----------
@@ -68,7 +68,7 @@ Which kinds
 `context`), is derived from it. A kind the site has switched off in Document
 Capture Settings is not offered, its uploads and reads are refused, and an
 email to an account that captures it is discarded with the reason
-(`sort_email`). Captures already made of it stay visible by the rule above.
+(`sort_email`). Captures already made of it stay visible to whoever the role permissions allow.
 """
 
 import json
@@ -79,7 +79,6 @@ from frappe.utils import now_datetime, time_diff_in_seconds
 
 from commons.api_integrations.claude import client as claude
 from commons.api_integrations.claude import documents
-from commons.commons_core import apps
 from commons.document_capture import expense_claim, purchase_invoice
 from commons.document_capture import settings as capture_settings
 
@@ -87,8 +86,8 @@ CAPTURED_DOCUMENT = "Captured Document"
 
 # What each kind of capture becomes, and the module that reads it: the one list
 # of kinds. Each has `available`, `can_capture`, `read_scan` and `reading`, and
-# its switches in Document Capture Settings, `ENABLE_FIELD` and
-# `VISIBILITY_FIELD`; see `purchase_invoice`. The first is what an email
+# its switch in Document Capture Settings, `ENABLE_FIELD`; see
+# `purchase_invoice`. The first is what an email
 # becomes when its account does not say (`_account_kind`).
 KINDS = {
 	purchase_invoice.PURCHASE_INVOICE: purchase_invoice,
@@ -693,55 +692,3 @@ def _attach(file_name: str, doctype: str, name: str, field: str | None = None):
 	return frappe.get_doc("File", file_name).create_attachment_copy(
 		doctype, name, field, ignore_permissions=True
 	)
-
-
-# --------------------------------------------------------------------------- #
-# Permissions                                                                 #
-# --------------------------------------------------------------------------- #
-
-
-def _unrestricted(user: str) -> bool:
-	"""Administrator, or a holder of the settings' supervisor role."""
-	if user == "Administrator":
-		return True
-	role = capture_settings.supervisor_role()
-	return bool(role) and role in frappe.get_roles(user)
-
-
-def _sees_all_of(name: str, user: str) -> bool:
-	"""Whether `user` sees every capture of the kind `name`, not only their own:
-	the kind is shared with whoever may create its document, and they may."""
-	kind = KINDS.get(name)
-	if not kind or capture_settings.visibility(kind) != capture_settings.ANYONE:
-		return False
-	return apps.has_doctype(name) and bool(frappe.has_permission(name, "create", user=user))
-
-
-def _shared_kinds(user: str) -> list[str]:
-	"""The kinds whose every capture `user` sees."""
-	return [name for name in KINDS if _sees_all_of(name, user)]
-
-
-def has_permission(doc, ptype=None, user=None):
-	"""Deny what the role permissions grant beyond the rule in the module
-	docstring: a capture to its owner, and to whoever may create its kind's
-	document where the kind is shared that way.
-
-	True where it has no objection, never None: Frappe 16 reads None from a
-	controller hook as a refusal. True grants nothing the roles do not."""
-	user = user or frappe.session.user
-	if _unrestricted(user) or doc.owner == user:
-		return True
-	return _sees_all_of(doc.document_type, user)
-
-
-def permission_query_conditions(user=None) -> str:
-	user = user or frappe.session.user
-	if _unrestricted(user):
-		return ""
-	own = f"`tab{CAPTURED_DOCUMENT}`.`owner` = {frappe.db.escape(user)}"
-	shared = _shared_kinds(user)
-	if shared:
-		names = ", ".join(frappe.db.escape(name) for name in shared)
-		return f"({own} or `tab{CAPTURED_DOCUMENT}`.`document_type` in ({names}))"
-	return f"({own})"

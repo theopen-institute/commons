@@ -1,9 +1,9 @@
 """Document Capture Settings, read safely.
 
-The rules a site chooses for its captures: which kinds it takes in, who sees a
-capture of each kind, the role that sees all of them, and the extra words a
-supplier's name is matched without. Each kind's fields are named by the kind's
-own module (`ENABLE_FIELD`, `VISIBILITY_FIELD`), and the kinds themselves are
+The rules a site chooses for its captures: which kinds it takes in, and the
+extra words a supplier's name is matched without. Who sees a capture is the
+role permissions' (`commons.document_capture.capture`). Each kind's switch is
+named by the kind's own module (`ENABLE_FIELD`), and the kinds themselves are
 `capture.KINDS`; nothing here lists them.
 
 Read the way `commons.commons_core.settings._settings` reads Commons Settings:
@@ -19,18 +19,11 @@ import frappe
 
 SETTINGS = "Document Capture Settings"
 
-# The two answers to "who besides the sender sees a capture of this kind".
-ANYONE = "Anyone who may create the drafted document"
-SENDER_ONLY = "Sender only"
-
 # The doctype's own defaults, for a site that has no doctype to read them from.
 # `test_capture` holds these equal to the JSON.
 DEFAULTS = {
 	"enable_purchase_invoices": 1,
 	"enable_expense_claims": 1,
-	"purchase_invoice_visibility": ANYONE,
-	"expense_claim_visibility": SENDER_ONLY,
-	"supervisor_role": "System Manager",
 	"supplier_legal_words": "",
 }
 
@@ -60,18 +53,6 @@ def value(fieldname: str):
 def enabled(kind) -> bool:
 	"""Whether this site captures `kind`, a module of `capture.KINDS`."""
 	return bool(value(kind.ENABLE_FIELD))
-
-
-def visibility(kind) -> str:
-	"""Who besides the sender sees a capture of `kind`: `ANYONE` or
-	`SENDER_ONLY`. Anything unrecognised is read as the narrower."""
-	return ANYONE if value(kind.VISIBILITY_FIELD) == ANYONE else SENDER_ONLY
-
-
-def supervisor_role() -> str | None:
-	"""The role whose holders see every capture, or None for nobody but
-	Administrator."""
-	return (value("supervisor_role") or "").strip() or None
 
 
 def legal_words() -> frozenset[str]:

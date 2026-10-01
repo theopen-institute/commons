@@ -124,7 +124,10 @@ def _site_inputs() -> dict:
 	Seven queries and a hooks read per desk load otherwise, for data that
 	changes when an administrator edits the rail or installs an app. Kept in
 	`frappe.client_cache` (process-local, invalidated through redis) and dropped
-	by `clear_cache`, which the doc events on everything read here call.
+	by `clear_cache`, which the doc events on everything read here call. An app
+	installed, removed or migrated needs no call: `install_app`, `remove_app`
+	and migrate each run `frappe.clear_cache()`, which drops every key the site
+	has.
 	"""
 	return frappe.client_cache.get_value(
 		CACHE_KEY,

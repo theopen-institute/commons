@@ -8,10 +8,8 @@ an app a site may not have are in a file of that app's own, which a site
 without it skips (`commons/fixtures/README.md`). The desk icon is a file under
 `desktop_icon/`, written by the model sync. None of that needs a hook. The hooks
 left in `hooks.py` do only what no sync can: this module registers the app's
-modules, `commons.self_service.install` drops a cache whose key
-`frappe.clear_cache` does not know about, and `commons.safer_permissions.install`
-gets a changed `page_js` in front of admins whose desks still hold the last copy
-of it. None of them creates a document a site would think of as its own.
+modules, and `commons.safer_permissions.install` gets a changed `page_js` in
+front of admins whose desks still hold the last copy of it. None of them creates a document a site would think of as its own.
 
 Workflows, self-service configuration and statement print formats are a System
 Manager's to set up on a new site, and the app ships none of them -- not as a
