@@ -14,17 +14,25 @@
   "enable_user_menu",
   "enable_sidebar_memory",
   "enable_home_page_priority",
+  "enable_desk_todos",
   "core_overrides_tab",
   "core_overrides_section",
+  "core_overrides_intro",
+  "desk_section",
   "enable_unencoded_at_in_routes",
+  "enable_pseudo_islands",
+  "permissions_section",
   "enable_user_permission_gate",
   "enable_derived_docfields",
+  "email_section",
   "enable_visual_email_editor",
-  "enable_pseudo_islands",
+  "accounting_section",
   "enable_party_on_payable_payment_lines",
   "enable_payroll_lines_per_employee",
   "enable_clearing_internal_transfers",
-  "enable_loan_vouchers_on_own_dates"
+  "enable_loan_vouchers_on_own_dates",
+  "procurement_section",
+  "enable_department_budgets"
  ],
  "fields": [
   {
@@ -58,7 +66,7 @@
   },
   {
    "default": "0",
-   "description": "Adds a narrow rail down the left of the sidebar: Home, one icon per app, then Search, Notifications, To Do and Website. The apps are the Navigation Apps configured here, then every installed app for the sidebars those leave unclaimed. Picking an app opens its first module, and the menu at the top of the sidebar then lists that app's modules. Applies to the desk; the Commons frontend does not have the rail yet. Suspect this first if the rail or the sidebar's top menu are missing entries or open the wrong page.",
+   "description": "Adds a narrow rail down the left of the sidebar: Home, one icon per app, then Search, Notifications, To Do (with Desk To Do on) and Website. The apps are the Navigation Apps configured here, then every installed app for the sidebars those leave unclaimed. Picking an app opens its first module, and the menu at the top of the sidebar then lists that app's modules. Applies to the desk; the Commons frontend does not have the rail yet. Suspect this first if the rail or the sidebar's top menu are missing entries or open the wrong page.",
    "fieldname": "enable_navigation_rail",
    "fieldtype": "Check",
    "label": "Enable Navigation Rail"
@@ -85,14 +93,30 @@
    "label": "Enable Home Page Priority"
   },
   {
+   "default": "0",
+   "description": "Adds a To Do button beside the notification bell, in the workspace sidebar and on the Desktop, opening your open ToDos with a count of them. The navigation rail's To Do button needs this as well. The Commons frontend has its own To Do panel either way. Suspect this first if the desk sidebar is missing its standard rows or the To Do panel misbehaves.",
+   "fieldname": "enable_desk_todos",
+   "fieldtype": "Check",
+   "label": "Enable Desk To Do"
+  },
+  {
    "fieldname": "core_overrides_tab",
    "fieldtype": "Tab Break",
    "label": "Core Overrides"
   },
   {
-   "description": "Opt-in features that change how Frappe itself behaves, not just what Commons adds on top of it. They depend on details of Frappe's code that an upgrade can change without warning. If something in the desk or in permissions stops working the way it should, especially just after an upgrade, try switching these off first. Changes to the desk take effect when each user reloads the page.",
    "fieldname": "core_overrides_section",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "core_overrides_intro",
+   "fieldtype": "HTML",
+   "options": "<p class=\"text-muted\">Opt-in features that change how Frappe and its apps behave, not just what Commons adds on top of them. They depend on details of code that an upgrade can change without warning. If something stops working the way it should, especially just after an upgrade, try switching the matching one off first. Changes to the desk take effect when each user reloads the page.</p>"
+  },
+  {
+   "fieldname": "desk_section",
+   "fieldtype": "Section Break",
+   "label": "Desk"
   },
   {
    "default": "0",
@@ -100,6 +124,18 @@
    "fieldname": "enable_unencoded_at_in_routes",
    "fieldtype": "Check",
    "label": "Enable Literal @ in Desk URLs"
+  },
+  {
+   "default": "0",
+   "description": "Lets desk pages show screens from this app's own frontend, such as Bank Reconciliation at <b>/app/commons-banking</b> and Document Capture at <b>/app/commons-capture</b>. It installs, on this version of Frappe, the way of doing this that the next version of Frappe will ship (desk islands). Nothing is stored, so switching this off loses nothing; the pages then point to the same screens under <b>/commons</b>. Suspect this first if a desk page drawn by this app is blank or its dialogs misbehave.",
+   "fieldname": "enable_pseudo_islands",
+   "fieldtype": "Check",
+   "label": "Enable Desk Islands"
+  },
+  {
+   "fieldname": "permissions_section",
+   "fieldtype": "Section Break",
+   "label": "Permissions and Data"
   },
   {
    "default": "0",
@@ -116,6 +152,11 @@
    "label": "Enable Derived Docfields"
   },
   {
+   "fieldname": "email_section",
+   "fieldtype": "Section Break",
+   "label": "Email"
+  },
+  {
    "default": "0",
    "description": "Adds a <b>Visual</b> view to the email composer whenever it holds an HTML email, such as one from an MJML template: the email as it will look, with its text editable in place and its layout left alone. The HTML view is still one click away. Suspect this first if the composer misbehaves while writing an HTML email.",
    "fieldname": "enable_visual_email_editor",
@@ -123,11 +164,10 @@
    "label": "Enable Visual HTML Email Editor"
   },
   {
-   "default": "0",
-   "description": "Lets desk pages show screens from this app's own frontend, such as Bank Reconciliation at <b>/app/commons-banking</b> and Document Capture at <b>/app/commons-capture</b>. It installs, on this version of Frappe, the way of doing this that the next version of Frappe will ship (desk islands). Nothing is stored, so switching this off loses nothing; the pages then point to the same screens under <b>/commons</b>. Suspect this first if a desk page drawn by this app is blank or its dialogs misbehave.",
-   "fieldname": "enable_pseudo_islands",
-   "fieldtype": "Check",
-   "label": "Enable Desk Islands"
+   "description": "What ERPNext, HRMS and Lending write to the books. Each says which documents it reaches.",
+   "fieldname": "accounting_section",
+   "fieldtype": "Section Break",
+   "label": "Accounting"
   },
   {
    "default": "0",
@@ -156,12 +196,24 @@
    "fieldname": "enable_loan_vouchers_on_own_dates",
    "fieldtype": "Check",
    "label": "Enable Loan Vouchers on Their Own Dates"
+  },
+  {
+   "fieldname": "procurement_section",
+   "fieldtype": "Section Break",
+   "label": "Procurement"
+  },
+  {
+   "default": "0",
+   "description": "Holds Purchase and Material Issue Material Requests to the Department Budgets Finance submits. Submitting one then needs a Department, a positive rate on every row in the company's currency, and a submitted Department Budget covering that department on the request's date with enough left in it. Approving a Procurement Request is refused when the department's budget cannot hold it, the procurement pages show each department's budget position, and a submitted request's rates are no longer refreshed from the price list. Requests ERPNext raises itself for reorder levels are left out. Without it, Material Requests and Procurement Requests ignore Department Budgets; the budgets are kept, and count again when this is ticked. Suspect this first if a Material Request or Procurement Request will not submit for budget reasons.",
+   "fieldname": "enable_department_budgets",
+   "fieldtype": "Check",
+   "label": "Enable Department Budgets"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-30 18:00:00.000000",
+ "modified": "2026-10-01 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

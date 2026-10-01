@@ -14,6 +14,10 @@ from commons.requests import budget
 class TestDepartmentBudget(unittest.TestCase):
 	def setUp(self):
 		frappe.db.savepoint("budget_test")
+		# A site keeps department budgets only once Commons Settings says so.
+		enforced = patch.object(budget, "enforced", return_value=True)
+		enforced.start()
+		self.addCleanup(enforced.stop)
 		# `_Test Company` by name rather than whichever company answers first:
 		# it is the one ERPNext's `before_tests` hook sets up, so its currency
 		# matches the buying price list and its warehouses exist. A site

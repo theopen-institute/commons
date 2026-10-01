@@ -111,5 +111,6 @@ class TestOverrideEnabled(TestCase):
 				"derived_docfields": False,
 				"visual_email_editor": False,
 				"pseudo_islands": False,
+				"desk_todos": False,
 			},
 		)

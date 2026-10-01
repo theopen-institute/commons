@@ -6,6 +6,12 @@ from ERPNext's own **Budget** doctype: it is held against Department rather than
 a Cost Center and expense account, and it does not read or post to the General
 Ledger or the Stock Ledger.
 
+It is off until **Enable Department Budgets** is ticked in **Commons Settings**
+(Core Overrides → Procurement). Off, Material Requests and Procurement Requests
+ignore Department Budgets entirely: nothing is checked or charged, and the
+procurement pages show no budget. The budgets themselves are kept, and since
+usage is derived rather than stored, ticking it again picks up where it left off.
+
 ## The allocation
 
 **Department Budget** is submittable, and only a *submitted* budget authorises

@@ -18,7 +18,7 @@ from frappe import _
 from frappe.query_builder.functions import Sum
 from frappe.utils import flt
 
-from commons.commons_core import apps
+from commons.commons_core import apps, settings
 from commons.requests.procurement_workflow import open_request_states
 
 BUDGET = "Department Budget"
@@ -206,6 +206,18 @@ def material_request_department(doc):
 	return department
 
 
+def enforced() -> bool:
+	"""Whether this site keeps department budgets: Commons Settings' switch.
+
+	Off, ERPNext's Material Request and this app's Procurement Request behave as
+	though no allocation existed -- nothing is checked, charged or summarised --
+	and the Department Budget documents are kept, to count again once it is
+	ticked. The tally is derived, not stored, so switching back on loses nothing
+	and needs no rebuild.
+	"""
+	return settings.feature_enabled(settings.ENABLE_DEPARTMENT_BUDGETS)
+
+
 def budgeted(doc) -> bool:
 	"""Whether this Material Request is charged to a department budget at all.
 
@@ -224,6 +236,10 @@ def validate_material_request(doc, method=None):
 		return
 	department = material_request_department(doc)
 	doc.department = department
+	# The Procurement Request references above are checked either way: they are
+	# what `ordered_stock_qty` counts a request's orders by, budget or none.
+	if not enforced():
+		return
 	currency = frappe.db.get_value("Company", doc.company, "default_currency")
 	if doc.get("buying_price_list"):
 		list_currency = frappe.db.get_value("Price List", doc.buying_price_list, "currency")
@@ -275,7 +291,7 @@ def material_rows(doc):
 
 
 def protect_submitted_material_request(doc, method=None):
-	if not doc.get("department"):
+	if not doc.get("department") or not enforced():
 		return
 	old = doc.get_doc_before_save()
 	if not old or (old.material_request_type not in MR_TYPES and doc.material_request_type not in MR_TYPES):
@@ -327,7 +343,7 @@ def charge_material_request(doc, method=None):
 	virtue of its docstatus.
 	"""
 	# Defense in depth: callers outside MR hooks cannot post purchasing values.
-	if doc.doctype != "Material Request" or not budgeted(doc):
+	if doc.doctype != "Material Request" or not budgeted(doc) or not enforced():
 		return
 	if doc.docstatus != 1:
 		return
@@ -518,7 +534,7 @@ def enforce_request_allocation(doc, method=None):
 	draft allocation authorises nothing either, and reads here as the absence of
 	one.
 	"""
-	if doc.doctype != REQUEST or doc.docstatus != 1:
+	if doc.doctype != REQUEST or doc.docstatus != 1 or not enforced():
 		return
 	name = budget_name(doc.company, doc.department, doc.transaction_date)
 	if not name:
@@ -678,7 +694,7 @@ def summary_notices(lines, department=None):
 
 
 def request_summary(doc, cache=None):
-	if not can_view_summary(doc):
+	if not enforced() or not can_view_summary(doc):
 		return None
 	name = budget_name(doc.company, doc.department, doc.transaction_date, submitted_only=False)
 	if not name:
@@ -704,7 +720,7 @@ def get_budget_documents(request: str) -> list[dict]:
 	# -- see `commons.commons_core.apps`. The document hooks in this module need no such
 	# guard: they are registered against `Material Request` and a doctype that is
 	# not here fires nothing.
-	if not apps.has_doctype("Material Request"):
+	if not apps.has_doctype("Material Request") or not enforced():
 		return []
 
 	doc = frappe.get_doc("Procurement Request", request)
@@ -754,6 +770,6 @@ class BudgetMaterialRequestMixin:
 		# Keyed on purpose, not on `department`: that field is not cleared when a
 		# request's type changes, and a stale value would silently suppress the
 		# refresh on a submitted Material Transfer.
-		if self.docstatus != 0 and self.material_request_type in MR_TYPES:
+		if self.docstatus != 0 and self.material_request_type in MR_TYPES and enforced():
 			return
 		super().update_item_rates()

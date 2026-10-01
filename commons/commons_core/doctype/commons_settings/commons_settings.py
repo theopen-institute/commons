@@ -31,11 +31,15 @@ class CommonsSettings(Document):
 
 		enable_bikram_sambat: DF.Check
 		enable_clearing_internal_transfers: DF.Check
+		enable_department_budgets: DF.Check
 		enable_derived_docfields: DF.Check
+		enable_desk_todos: DF.Check
 		enable_home_page_priority: DF.Check
+		enable_loan_vouchers_on_own_dates: DF.Check
 		enable_navigation_rail: DF.Check
 		enable_party_on_payable_payment_lines: DF.Check
 		enable_payroll_lines_per_employee: DF.Check
+		enable_pseudo_islands: DF.Check
 		enable_sidebar_memory: DF.Check
 		enable_unencoded_at_in_routes: DF.Check
 		enable_user_menu: DF.Check

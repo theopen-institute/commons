@@ -155,5 +155,11 @@ function patch_desktop() {
 	});
 }
 
-patch_sidebar();
-patch_desktop();
+// Opt-in: "Enable Desk To Do" in Commons Settings. Off, neither seam is
+// wrapped, and the navigation rail's To Do button, which follows the sidebar
+// row, is not drawn either.
+const features = (frappe.boot && frappe.boot.commons_features) || {};
+if (features.desk_todos) {
+	patch_sidebar();
+	patch_desktop();
+}
