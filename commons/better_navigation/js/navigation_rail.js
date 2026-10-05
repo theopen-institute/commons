@@ -532,7 +532,17 @@
 	// into its header. Core's own sidebar state is left alone -- `sidebar_title`
 	// is still the module the page belongs to -- so leaving the list is just
 	// rebuilding what core already thinks it is showing.
+	//
+	// The list is drawn into a sidebar core has built, header and all. On a page
+	// core found no sidebar for (see `draw_report_module`) there is none yet, so
+	// the app's landing module is built first and the list drawn over it --
+	// which also gives leaving the list somewhere to go.
 	function show_module_list(sidebar, app, motion) {
+		if (!sidebar.sidebar_title) {
+			const first = landing(app);
+			if (!first) return;
+			sidebar.setup(first);
+		}
 		sidebar.commons_module_list = { app, route: frappe.get_route_str() };
 
 		const $header = sidebar.wrapper.find(".sidebar-header");
@@ -667,7 +677,34 @@
 			set_workspace_sidebar.apply(this, arguments);
 			const list = this.commons_module_list;
 			if (list && frappe.get_route_str() !== list.route) leave_module_list(this);
+			draw_report_module(this);
 		};
+	}
+
+	// Core picks a sidebar by the route's doctype, falling back to its module, and
+	// learns both from the doctype's meta. A report's route carries no doctype, so
+	// a report no sidebar links to, opened fresh, resolves to nothing: no sidebar
+	// is built at all, and the rail and header have nothing to stand on. Core
+	// already has the answer it would want -- the report's module -- one request
+	// away, and the report page fetches that same document, so it is usually in
+	// `locals` already. Only when nothing has been drawn yet: a sidebar you
+	// arrived with is kept, as core keeps it.
+	function draw_report_module(sidebar) {
+		const route = frappe.get_route();
+		if (sidebar.sidebar_title || route[0] !== "query-report" || !route[1]) return;
+		if (typeof sidebar.resolve_module_sidebar !== "function") return;
+		const route_str = frappe.get_route_str();
+		frappe.model
+			.with_doc("Report", route[1])
+			.then((doc) => {
+				// Navigated on, or something else drew a sidebar, while this waited.
+				if (sidebar.sidebar_title || frappe.get_route_str() !== route_str) return;
+				const target = doc && doc.module && sidebar.resolve_module_sidebar(doc.module);
+				if (target) sidebar.setup(target);
+			})
+			.catch(() => {
+				// The report page reports its own failure to load; no second one here.
+			});
 	}
 
 	// "Open Last Module" beside the theme under Display, ticked while on. The same
