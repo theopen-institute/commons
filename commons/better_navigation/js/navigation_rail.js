@@ -89,11 +89,29 @@
 	const openable = (title) =>
 		Boolean(frappe.boot.workspace_sidebar_item[(title || "").toLowerCase()]);
 
+	// An app's modules less those this user cannot open. A Category or a gap
+	// over a dropped module moves on to the next one the way the server's
+	// `_layout` moves them: a Category ends whatever came before it, so it wins
+	// over a gap, and a gap over the first module is dropped.
+	function openable_modules(sidebars) {
+		const kept = [];
+		let carried = {};
+		for (const { category, space_before, ...module } of sidebars) {
+			if (category) carried = { category };
+			else if (space_before && !carried.category) carried = { space_before };
+			if (!openable(module.sidebar)) continue;
+			kept.push({ ...module, ...carried });
+			carried = {};
+		}
+		if (kept.length) delete kept[0].space_before;
+		return kept;
+	}
+
 	// The server's rail, less what this user cannot open. An app with a frontend
 	// of its own stays even when none of its sidebars are left: the frontend is
 	// somewhere to go too.
 	const apps = frappe.boot.navigation_apps
-		.map((app) => ({ ...app, sidebars: app.sidebars.filter((s) => openable(s.sidebar)) }))
+		.map((app) => ({ ...app, sidebars: openable_modules(app.sidebars) }))
 		.filter((app) => app.sidebars.length || app.frontend);
 
 	// What an app offers: its own frontend if it has one, first and apart, then
@@ -140,20 +158,37 @@
 	};
 
 	// An app's choices as the sidebar's top menu lists them, the current one ticked.
-	// A divider follows the frontend, when there are modules after it.
+	// A divider follows the frontend, when there are modules after it, and
+	// stands for a gap; a Category is a divider and its heading.
 	function module_items(app, current) {
-		const items = choices(app).map((entry, index) => {
+		const items = [];
+		for (const [index, entry] of choices(app).entries()) {
+			const apart = (index === 1 && app.frontend) || entry.space_before || entry.category;
+			if (apart && items.length) items.push({ is_divider: true });
+			if (entry.category) items.push({ is_heading: true, label: entry.category });
 			const ticked = entry.kind === "sidebar" && entry.sidebar === current;
-			return {
+			items.push({
 				name: `module-${index}`,
 				label: entry.label,
 				icon: ticked ? "check" : entry.icon || "",
 				icon_html: ticked || entry.icon ? undefined : "&nbsp;",
 				onClick: () => open_choice(entry, "fade"),
-			};
-		});
-		if (app.frontend && app.sidebars.length) items.splice(1, 0, { is_divider: true });
+			});
+		}
 		return items;
+	}
+
+	// Core's menu has dividers but no headings; an `is_heading` item is drawn as
+	// one, a label that does nothing. Not a `.dropdown-menu-item`, so nothing
+	// that finds or hovers the menu's rows takes it for one.
+	const add_menu_item = frappe.ui.menu && frappe.ui.menu.prototype.add_menu_item;
+	if (add_menu_item) {
+		frappe.ui.menu.prototype.add_menu_item = function (item) {
+			if (!item || !item.is_heading) return add_menu_item.apply(this, arguments);
+			$('<div class="commons-menu-heading" role="presentation"></div>')
+				.text(item.label)
+				.appendTo(this.template);
+		};
 	}
 
 	// Plays one of the row transitions on the sidebar's rows (see the file
@@ -530,6 +565,13 @@
 				sidebar.$items_container.append(
 					'<div class="commons-module-divider" role="separator"></div>'
 				);
+			}
+			if (entry.category) {
+				$('<div class="commons-module-category" role="heading" aria-level="3"></div>')
+					.text(entry.category)
+					.appendTo(sidebar.$items_container);
+			} else if (entry.space_before) {
+				sidebar.$items_container.append('<div class="commons-module-spacer"></div>');
 			}
 			sidebar.add_item(sidebar.$items_container, {
 				type: "Button",

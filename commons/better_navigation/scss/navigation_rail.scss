@@ -248,6 +248,31 @@
 	background: var(--sidebar-border-color);
 }
 
+// A Navigation App's Category and Spacer rows, in its module list. The heading
+// is muted the way core's own Section Break rows are.
+.commons-module-category {
+	padding: 10px 8px 4px;
+	color: var(--ink-gray-5);
+	font-size: var(--text-sm);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.commons-module-spacer {
+	height: 12px;
+}
+
+// The same Category, as a heading in the sidebar's top menu.
+.commons-menu-heading {
+	padding: 4px 8px 2px;
+	color: var(--ink-gray-5);
+	font-size: var(--text-xs);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 // The sidebar rows the rail's foot now carries. Hidden rather than removed: the
 // rail's buttons press them, and core and `desk_todos` keep updating them.
 body.commons-rail-on .standard-items-sections {

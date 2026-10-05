@@ -11,7 +11,13 @@ hide without releasing, and personal sidebars.
 from types import SimpleNamespace
 from unittest import TestCase
 
-from commons.better_navigation.navigation_apps import OTHER, installed_app_of, is_desk_route, resolve
+from commons.better_navigation.navigation_apps import (
+	OTHER,
+	installed_app_of,
+	is_desk_route,
+	resolve,
+	row_type,
+)
 
 INSTALLED = ["frappe", "erpnext", "education", "commons"]
 META = {
@@ -61,8 +67,24 @@ def app(name, *sidebars, roles=(), icon=None, labels=None):
 		"icon": icon,
 		"logo": None,
 		"roles": list(roles),
-		"sidebars": [{"sidebar": s, "label": labels.get(s)} for s in sidebars],
+		# A sidebar's name, or a row as it is (a Category or Spacer).
+		"sidebars": [s if isinstance(s, dict) else {"sidebar": s, "label": labels.get(s)} for s in sidebars],
 	}
+
+
+def category(label):
+	return {"type": "Category", "sidebar": None, "label": label}
+
+
+SPACER = {"type": "Spacer", "sidebar": None, "label": None}
+
+
+def layout(entry):
+	"""An app's modules with what is drawn above each: a heading, a gap, or nothing."""
+	return [
+		(s["sidebar"], s.get("category") or ("gap" if s.get("space_before") else None))
+		for s in entry["sidebars"]
+	]
 
 
 def shape(result):
@@ -405,3 +427,42 @@ class TestFrontends(TestCase):
 			patch.object(nav.frappe, "get_all", side_effect=AssertionError("read the database")),
 		):
 			self.assertEqual(nav._frontends(), {"helpdesk": "/helpdesk", "commons": "/commons"})
+
+
+class TestCategoriesAndSpacers(TestCase):
+	"""Category and Spacer rows ride on the module after them; `sidebars` stays modules only."""
+
+	def test_each_marks_the_module_after_it(self):
+		entry = rail(
+			[app("Finance", category("Books"), "Accounting", SPACER, "Stock", category("People"), "Users")]
+		)[0]
+		self.assertEqual(layout(entry), [("Accounting", "Books"), ("Stock", "gap"), ("Users", "People")])
+
+	def test_a_category_ends_a_spacer_next_to_it(self):
+		entry = rail([app("Finance", "Accounting", SPACER, category("Stock"), SPACER, "Stock")])[0]
+		self.assertEqual(layout(entry), [("Accounting", None), ("Stock", "Stock")])
+
+	def test_a_category_whose_modules_are_gone_is_dropped(self):
+		# Stock is claimed by the first app, so Finance's "Stores" heads nothing.
+		finance = app("Finance", category("Stores"), "Stock", category("Books"), "Accounting")
+		entry = rail([app("Ops", "Stock"), finance])[1]
+		self.assertEqual(layout(entry), [("Accounting", "Books")])
+
+	def test_a_gap_over_the_first_module_is_dropped(self):
+		entry = rail([app("Finance", SPACER, "Accounting")])[0]
+		self.assertEqual(layout(entry), [("Accounting", None)])
+
+	def test_a_trailing_category_heads_what_the_app_holds_besides(self):
+		entry = rail([bound("Books", "erpnext", "Stock", category("More"))])[0]
+		self.assertEqual(layout(entry), [("Stock", None), ("Accounting", "More")])
+
+	def test_only_markers_is_no_app(self):
+		self.assertNotIn("Finance", [e["title"] for e in rail([app("Finance", category("Empty"), SPACER)])])
+
+	def test_a_category_without_a_label_is_a_gap(self):
+		entry = rail([app("Finance", "Accounting", category("  "), "Stock")])[0]
+		self.assertEqual(layout(entry), [("Accounting", None), ("Stock", "gap")])
+
+	def test_rows_from_before_the_column_are_modules(self):
+		self.assertEqual(row_type({"sidebar": "Stock"}), "Sidebar")
+		self.assertEqual(row_type({"type": "", "sidebar": "Stock"}), "Sidebar")

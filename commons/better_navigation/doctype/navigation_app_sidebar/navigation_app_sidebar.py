@@ -1,7 +1,8 @@
 # Copyright (c) 2026, Peter and contributors
 # For license information, please see license.txt
 
-"""One module in a Navigation App's top menu: a Workspace Sidebar, and what to call it."""
+"""One row of a Navigation App's top menu: a module (a Workspace Sidebar, and what to call
+it), or a Category heading or a Spacer between them."""
 
 from frappe.model.document import Document
 
@@ -19,7 +20,8 @@ class NavigationAppSidebar(Document):
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
-		sidebar: DF.Link
+		sidebar: DF.Link | None
+		type: DF.Literal["Sidebar", "Category", "Spacer"]
 	# end: auto-generated types
 
 	pass

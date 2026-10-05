@@ -24,7 +24,8 @@ sidebars table either adds to what the app already holds (and relabels
 anything it lists) or, set to Replace, is the whole list, and what the app
 would have held goes to Other. The table's row order is the order the rail
 lists them in; only what nobody has put in order is sorted, landing module
-first (see `_default_order`). Hidden takes it off the rail, and its sidebars
+first (see `_default_order`). The table can also hold Category rows, a heading
+over the modules after it, and Spacer rows, a gap; see `_layout`. Hidden takes it off the rail, and its sidebars
 with it. "Other" is bindable like any installed app: the one group no hooks
 describe, but as much the site's to rename, restrict or hide.
 
@@ -79,6 +80,12 @@ OTHER_LOGO = "/assets/commons/images/commons-other-logo.svg"
 # what the app already holds, or replaces it.
 ADD = "Add"
 REPLACE = "Replace"
+
+# What a row of a Navigation App's sidebars table is. Rows saved before the
+# column existed are modules.
+MODULE = "Sidebar"
+CATEGORY = "Category"
+SPACER = "Spacer"
 
 # The module an app starts from, when its name does not say so already.
 HOME = "home"
@@ -173,7 +180,7 @@ def resolve(
 	"""The rail, from plain data: configured apps first, then the installed ones.
 
 	`configured` is the enabled Navigation Apps in rail order, each with its
-	`sidebars` rows (`sidebar`, `label`), `roles`, and optionally the
+	`sidebars` rows (`type`, `sidebar`, `label`), `roles`, and optionally the
 	`installed_app` it stands for, its `sidebar_mode` and whether it is `hidden`.
 	`sidebars` is every Workspace Sidebar (`name`, `header_icon`, `app`,
 	`module`, `for_user`). The rest say what an installed app is called and
@@ -181,7 +188,8 @@ def resolve(
 	frontend is, outside the desk.
 
 	Every entry carries `frontend` -- `{label, url}` or None -- beside its
-	`sidebars`. An app is on the rail if it has either: a frontend with no desk
+	`sidebars`, which are modules only: a module may carry a `category` or
+	`space_before` to draw above it (see `_layout`). An app is on the rail if it has either: a frontend with no desk
 	sidebars (Frappe Builder, say) is somewhere to go too.
 	"""
 	frontends = frontends or {}
@@ -195,6 +203,9 @@ def resolve(
 	for app in configured:
 		entries = []
 		for row in app["sidebars"]:
+			if row_type(row) != MODULE:
+				entries.append(_marker(row))
+				continue
 			sidebar = by_name.get(row["sidebar"])
 			# Deleted since, personal, or already claimed by an earlier app.
 			if not sidebar or sidebar.get("for_user") or sidebar["name"] in claimed:
@@ -240,6 +251,7 @@ def resolve(
 		if target and app.get("sidebar_mode") != REPLACE:
 			names = {app["title"], meta.get("title") or target, target}
 			entries += _default_order(grouped.get(target) or [], names)
+		entries = _layout(entries)
 
 		# Hidden, or restricted to roles this user lacks: off the rail, and what it
 		# holds goes with it rather than back to an installed app.
@@ -346,6 +358,48 @@ def _default_order(entries: list[dict], app_names: set[str]) -> list[dict]:
 	return sorted(entries, key=rank)
 
 
+def row_type(row) -> str:
+	"""What a sidebars table row is; anything unknown or unset is a module."""
+	kind = row.get("type")
+	return kind if kind in (CATEGORY, SPACER) else MODULE
+
+
+def _marker(row: dict) -> dict:
+	"""A Category or Spacer row, as `_layout` reads it. A Category with no label is a Spacer."""
+	label = (row.get("label") or "").strip()
+	if row_type(row) == CATEGORY and label:
+		return {"category": label}
+	return {"space_before": True}
+
+
+def _layout(rows: list[dict]) -> list[dict]:
+	"""Modules only, each Category or Spacer moved onto the module that follows it.
+
+	So everything that counts or picks modules -- the "N modules" subtitle, the
+	landing module, the last one opened -- sees modules and nothing else, and a
+	browser that drops a module this user cannot open moves what was above it
+	on to the next (the rail does the same).
+
+	A Category ends whatever came before it, so a Spacer just before or just
+	after one adds nothing. One with no module after it in the table heads what
+	the app holds besides (Add mode), and with nothing there either is dropped,
+	as is a Category whose modules are all gone. A gap over the first module is
+	dropped too: there is nothing above it to keep apart from.
+	"""
+	laid_out: list[dict] = []
+	pending: dict = {}
+	for row in rows:
+		if "sidebar" not in row:
+			if "category" in row or "category" not in pending:
+				pending = dict(row)
+			continue
+		laid_out.append({**row, **pending})
+		pending = {}
+	if laid_out:
+		laid_out[0].pop("space_before", None)
+	return laid_out
+
+
 def _entry(sidebar: dict, label: str | None = None) -> dict:
 	return {
 		"sidebar": sidebar["name"],
@@ -387,10 +441,14 @@ def _configured() -> list[dict]:
 		return []
 
 	names = [app.name for app in apps]
+	# `type` arrives with a migrate; until then every row is a module.
+	fields = ["parent", "sidebar", "label"]
+	if frappe.db.has_column(APP_SIDEBAR, "type"):
+		fields.append("type")
 	rows = frappe.get_all(
 		APP_SIDEBAR,
 		filters={"parent": ["in", names], "parenttype": APP},
-		fields=["parent", "sidebar", "label"],
+		fields=fields,
 		order_by="parent asc, idx asc",
 		parent_doctype=APP,
 	)

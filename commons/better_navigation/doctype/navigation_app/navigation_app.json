@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-09-27 14:00:00.000000",
+ "modified": "2026-10-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -94,7 +94,7 @@
    "fieldtype": "Table",
    "label": "Sidebars",
    "options": "Navigation App Sidebar",
-   "description": "The modules this app offers, in the order the rail and the sidebar's top menu list them: drag rows to reorder. For an installed app in Add mode, these come first and the app's other sidebars follow in the default order (Home, or the one named after the app, first; then alphabetical). Listing one of its own sidebars here relabels it. A sidebar can belong to only one enabled app."
+   "description": "The modules this app offers, in the order the rail and the sidebar's top menu list them: drag rows to reorder. For an installed app in Add mode, these come first and the app's other sidebars follow in the default order (Home, or the one named after the app, first; then alphabetical). Listing one of its own sidebars here relabels it. A sidebar can belong to only one enabled app. A Category row is a heading over the modules after it, and a Spacer row a gap; a Category left last heads the app's other sidebars."
   },
   {
    "collapsible": 1,

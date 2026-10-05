@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-09-26 12:00:00.000000",
+ "modified": "2026-10-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -19,10 +19,21 @@
  "editable_grid": 1,
  "name": "Navigation App Sidebar",
  "field_order": [
+  "type",
   "sidebar",
   "label"
  ],
  "fields": [
+  {
+   "columns": 2,
+   "default": "Sidebar",
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "Sidebar\nCategory\nSpacer",
+   "description": "A Category is a heading over the modules after it; a Spacer is a gap."
+  },
   {
    "columns": 4,
    "fieldname": "sidebar",
@@ -30,8 +41,9 @@
    "in_list_view": 1,
    "label": "Sidebar",
    "options": "Workspace Sidebar",
-   "reqd": 1,
-   "link_filters": "[[\"Workspace Sidebar\",\"for_user\",\"is\",\"not set\"]]"
+   "link_filters": "[[\"Workspace Sidebar\",\"for_user\",\"is\",\"not set\"]]",
+   "mandatory_depends_on": "eval:(doc.type || \"Sidebar\") == \"Sidebar\"",
+   "read_only_depends_on": "eval:doc.type && doc.type != \"Sidebar\""
   },
   {
    "columns": 4,
@@ -39,7 +51,8 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Label",
-   "description": "What the top menu calls this module. Left blank, the sidebar's own title."
+   "description": "What the top menu calls this module, or a category's heading. Left blank on a module, the sidebar's own title.",
+   "mandatory_depends_on": "eval:doc.type == \"Category\""
   }
  ],
  "permissions": []

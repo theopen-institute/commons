@@ -12,6 +12,9 @@ shapes that resolver could not give a stable answer for:
   already stands for. The rail has one place for each app, so the second is
   refused and told which record has it;
 
+- a module row with no sidebar, or a Category with no heading. A Category or
+  Spacer row names no sidebar; one picked before the type was changed is
+  dropped rather than left to claim it unseen;
 - the same sidebar twice in one app, which would put it in the top menu twice;
 - a personal sidebar (`for_user`), which is one person's and not the site's;
 - a sidebar another enabled app already holds. The header has to say which app
@@ -24,7 +27,15 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from commons.better_navigation.navigation_apps import APP, APP_SIDEBAR, OTHER, SIDEBAR
+from commons.better_navigation.navigation_apps import (
+	APP,
+	APP_SIDEBAR,
+	MODULE,
+	OTHER,
+	SIDEBAR,
+	SPACER,
+	row_type,
+)
 
 
 class NavigationApp(Document):
@@ -83,8 +94,20 @@ class NavigationApp(Document):
 			)
 
 	def validate_sidebars(self):
-		seen = set()
 		for row in self.sidebars:
+			row.type = row_type(row)
+			if row.type == MODULE:
+				if not row.sidebar:
+					frappe.throw(_("Row {0}: pick a sidebar.").format(row.idx))
+				continue
+			row.sidebar = None
+			if row.type == SPACER:
+				row.label = None
+			elif not (row.label or "").strip():
+				frappe.throw(_("Row {0}: a Category needs a label.").format(row.idx))
+
+		seen = set()
+		for row in self.modules():
 			if row.sidebar in seen:
 				frappe.throw(
 					_("Row {0}: {1} is already in this app.").format(row.idx, frappe.bold(row.sidebar))
@@ -100,7 +123,7 @@ class NavigationApp(Document):
 					pluck="name",
 				)
 			)
-		for row in self.sidebars:
+		for row in self.modules():
 			if row.sidebar in personal:
 				frappe.throw(
 					_("Row {0}: {1} is a personal sidebar and cannot be put on the rail.").format(
@@ -111,13 +134,17 @@ class NavigationApp(Document):
 		if not self.enabled:
 			return
 		held = claimed_elsewhere(self.name)
-		for row in self.sidebars:
+		for row in self.modules():
 			if row.sidebar in held:
 				frappe.throw(
 					_("Row {0}: {1} is already in {2}. A sidebar can belong to only one app.").format(
 						row.idx, frappe.bold(row.sidebar), frappe.bold(held[row.sidebar])
 					)
 				)
+
+	def modules(self):
+		"""The rows that are modules, not Categories or Spacers."""
+		return [row for row in self.sidebars if row.sidebar]
 
 
 def claimed_elsewhere(app: str | None) -> dict[str, str]:
@@ -127,7 +154,7 @@ def claimed_elsewhere(app: str | None) -> dict[str, str]:
 		return {}
 	rows = frappe.get_all(
 		APP_SIDEBAR,
-		filters={"parent": ["in", others], "parenttype": APP},
+		filters={"parent": ["in", others], "parenttype": APP, "sidebar": ["is", "set"]},
 		fields=["parent", "sidebar"],
 		parent_doctype=APP,
 	)
