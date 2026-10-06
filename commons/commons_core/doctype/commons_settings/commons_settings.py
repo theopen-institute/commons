@@ -50,6 +50,7 @@ class CommonsSettings(Document):
 		enable_clearing_internal_transfers: DF.Check
 		enable_derived_docfields: DF.Check
 		enable_desk_todos: DF.Check
+		enable_desktop_from_navigation_apps: DF.Check
 		enable_home_page_priority: DF.Check
 		enable_loan_vouchers_on_own_dates: DF.Check
 		enable_navigation_rail: DF.Check

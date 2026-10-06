@@ -354,6 +354,12 @@ doc_events = {
 		}
 		for doctype in ("Navigation App", "Workspace Sidebar", "Module Def")
 	},
+	# So does the Desktop built from it, and how the site's Desktop Icons look.
+	# See `commons.better_navigation.desktop`.
+	"Desktop Icon": {
+		"on_update": "commons.better_navigation.desktop.clear_cache",
+		"after_delete": "commons.better_navigation.desktop.clear_cache",
+	},
 	# A cancelled document's Notification emails that are still waiting in the
 	# queue are not sent. See `commons.email_extensions.scheduled`.
 	"*": {
@@ -578,6 +584,8 @@ extend_bootinfo = [
 	"commons.better_navigation.website_link.extend_bootinfo",
 	# The navigation rail's apps, when Commons Settings switches it on.
 	"commons.better_navigation.navigation_apps.extend_bootinfo",
+	# The Desktop laid out from the same apps, when Commons Settings says so.
+	"commons.better_navigation.desktop.extend_bootinfo",
 	"commons.commons_core.settings.extend_bootinfo",
 	# Which Email Templates each doctype's forms offer, so a form can draw its
 	# Email menu without asking. See `commons.email_extensions`.

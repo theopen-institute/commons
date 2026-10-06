@@ -86,6 +86,8 @@ ENABLE_HOME_PAGE_PRIORITY = "enable_home_page_priority"
 # `commons/public/js/desk_todos/`, which wraps core's sidebar and Desktop to add
 # a To Do button beside the bell; the rail's own To Do button follows it
 ENABLE_DESK_TODOS = "enable_desk_todos"
+# `commons.better_navigation.desktop`, which replaces core's Desktop icons in the boot
+ENABLE_DESKTOP_FROM_NAVIGATION_APPS = "enable_desktop_from_navigation_apps"
 
 # The rest share the Core Overrides tab, a section per theme, in the order they
 # are listed here.

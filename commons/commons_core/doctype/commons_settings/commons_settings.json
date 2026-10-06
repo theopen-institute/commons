@@ -16,6 +16,7 @@
   "enable_sidebar_memory",
   "enable_home_page_priority",
   "enable_desk_todos",
+  "enable_desktop_from_navigation_apps",
   "core_overrides_tab",
   "core_overrides_section",
   "core_overrides_intro",
@@ -138,6 +139,13 @@
    "fieldname": "enable_desk_todos",
    "fieldtype": "Check",
    "label": "Enable Desk To Do"
+  },
+  {
+   "default": "0",
+   "description": "Replaces the Desktop's icons with the Navigation Apps, in rail order. A Navigation App that is not bound to an installed app puts each of its modules (and its frontend) on the Desktop as an icon of its own; every installed app, and Other, gets one icon that opens a window of its modules, or goes straight there when it has only one. Hidden and role-restricted apps are left out, as on the rail, and every other Desktop Icon is hidden. Nothing is written to Desktop Icons: turning this off brings back the standard Desktop. A user who has saved their own Desktop layout keeps it until they reset it. Suspect this first if the Desktop is missing an app or module.",
+   "fieldname": "enable_desktop_from_navigation_apps",
+   "fieldtype": "Check",
+   "label": "Enable Desktop from Navigation Apps"
   },
   {
    "fieldname": "core_overrides_tab",
@@ -448,7 +456,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-06 12:00:00.000000",
+ "modified": "2026-10-06 21:11:37.141474",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",
