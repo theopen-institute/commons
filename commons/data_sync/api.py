@@ -162,13 +162,14 @@ def apply(rule, key: str, doc, expected: str | None = None) -> dict:
 
 	ignored = set(rule["ignored_fields"]) if current else set()
 	for df in meta.fields:
-		if df.fieldname in ignored or df.fieldtype in no_value_fields or df.fieldtype == "Password":
+		if df.fieldname in ignored or df.fieldtype == "Password":
 			continue
+		# Before the `no_value_fields` test: Frappe counts Table fields among them.
 		if df.fieldtype in table_fields:
 			target.set(df.fieldname, [])
 			for row in doc.get(df.fieldname) or []:
 				target.append(df.fieldname, {k: v for k, v in row.items() if k != "idx"})
-		else:
+		elif df.fieldtype not in no_value_fields:
 			target.set(df.fieldname, doc.get(df.fieldname))
 
 	if target.is_new() and not meta.issingle:
