@@ -1,5 +1,5 @@
 .data-sync {
-	padding: var(--padding-md) 0;
+	padding: var(--padding-md) var(--padding-lg);
 }
 .data-sync .ds-sources {
 	display: flex;
