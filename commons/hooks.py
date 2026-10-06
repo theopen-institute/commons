@@ -142,6 +142,8 @@ app_include_css = "commons.bundle.css"
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+# The Payroll Entry form's "Create Payment Entries". See `commons.banking.payroll_payments`.
+doctype_js = {"Payroll Entry": "public/js/payroll_entry.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -548,7 +550,12 @@ extend_doctype_class = {
 	# A payment's party on its tax and deduction lines to payable accounts, such
 	# as TDS. Extended rather than overridden, so it sits on top of HRMS's own
 	# Payment Entry class. See `commons.banking.payable_party`.
-	"Payment Entry": ["commons.banking.payable_party.PayablePartyPaymentEntryMixin"],
+	# An employee's payment may also settle their salary on a payroll run. See
+	# `commons.banking.payroll_payments`.
+	"Payment Entry": [
+		"commons.banking.payable_party.PayablePartyPaymentEntryMixin",
+		"commons.banking.payroll_payments.PayrollPaymentEntryMixin",
+	],
 	# A payroll run's accrual journal split per employee, with their department
 	# and, on payable accounts, their party. See `commons.banking.payroll_lines`.
 	"Payroll Entry": ["commons.banking.payroll_lines.EmployeePayrollLinesMixin"],
