@@ -59,7 +59,13 @@
   "attendance_course_plan_field",
   "attendance_course_plan_column",
   "attendance_course_plan_type_column",
-  "attendance_course_plan_hours_column"
+  "attendance_course_plan_hours_column",
+  "data_sync_tab",
+  "data_sync_source_section",
+  "data_sync_source_url",
+  "data_sync_doctypes_section",
+  "data_sync_doctypes",
+  "data_sync_fill_defaults"
  ],
  "fields": [
   {
@@ -403,12 +409,46 @@
    "fieldname": "attendance_course_plan_hours_column",
    "fieldtype": "Data",
    "label": "Planned Hours Column"
+  },
+  {
+   "fieldname": "data_sync_tab",
+   "fieldtype": "Tab Break",
+   "label": "Data Sync"
+  },
+  {
+   "description": "The <b>Data Sync</b> page (<b>/app/commons-data-sync</b>) compares this site's configuration with a source site, usually a development copy of it, and copies changes here one record at a time. Your browser reads the source, so it only has to be reachable from where you open the page.",
+   "fieldname": "data_sync_source_section",
+   "fieldtype": "Section Break",
+   "label": "Source"
+  },
+  {
+   "description": "The source site's address as your browser reaches it, for example <code>http://mysite.localhost:8000</code>. The source must allow this site's origin: <code>bench --site &lt;source&gt; set-config allow_cors \"https://this.site\"</code>.",
+   "fieldname": "data_sync_source_url",
+   "fieldtype": "Data",
+   "label": "Source Site URL"
+  },
+  {
+   "description": "Compared and copied in this order, so list a doctype after what it depends on: Custom Fields before the Property Setters that change them. Empty: the defaults, which cover site-made customisation.",
+   "fieldname": "data_sync_doctypes_section",
+   "fieldtype": "Section Break",
+   "label": "Tracked Doctypes"
+  },
+  {
+   "fieldname": "data_sync_doctypes",
+   "fieldtype": "Table",
+   "label": "Doctypes",
+   "options": "Data Sync Doctype"
+  },
+  {
+   "fieldname": "data_sync_fill_defaults",
+   "fieldtype": "Button",
+   "label": "Fill With Defaults"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-05 13:00:00.000000",
+ "modified": "2026-10-06 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

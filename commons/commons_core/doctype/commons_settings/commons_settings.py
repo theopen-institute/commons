@@ -29,6 +29,8 @@ class CommonsSettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		from commons.data_sync.doctype.data_sync_doctype.data_sync_doctype import DataSyncDoctype
+
 		attendance_course_plan_field: DF.Data | None
 		attendance_course_plan_hours_column: DF.Data | None
 		attendance_course_plan_type_column: DF.Data | None
@@ -42,6 +44,8 @@ class CommonsSettings(Document):
 		attendance_session_type_field: DF.Data | None
 		change_request_allow_self_approval: DF.Check
 		change_request_applying_outcome: DF.Data | None
+		data_sync_doctypes: DF.Table[DataSyncDoctype]
+		data_sync_source_url: DF.Data | None
 		enable_bikram_sambat: DF.Check
 		enable_clearing_internal_transfers: DF.Check
 		enable_derived_docfields: DF.Check

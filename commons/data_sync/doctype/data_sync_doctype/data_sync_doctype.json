@@ -1,0 +1,64 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-06 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "document_type",
+  "key_fields",
+  "filters",
+  "ignored_fields"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Document Type",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Fieldnames, comma separated, that identify the same record on both sites. Blank: the record's name. Use it where names are random, as on Custom DocPerm: <code>parent, role, permlevel, if_owner</code>.",
+   "fieldname": "key_fields",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Match On"
+  },
+  {
+   "columns": 3,
+   "description": "Which records to compare, as Frappe filters in JSON, for example <code>{\"is_standard\": \"No\"}</code>. Blank: every record.",
+   "fieldname": "filters",
+   "fieldtype": "Code",
+   "in_list_view": 1,
+   "label": "Filters",
+   "options": "JSON"
+  },
+  {
+   "columns": 2,
+   "description": "Fieldnames, comma separated, that change on their own and should not count as a difference. Copying a record leaves them as they are on this site.",
+   "fieldname": "ignored_fields",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Ignore Fields"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-06 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Data Sync",
+ "name": "Data Sync Doctype",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
