@@ -137,6 +137,12 @@ class TestConfigured(TestCase):
 		self.assertEqual(result[0]["key"], "navigation-app:Finance")
 		self.assertTrue(result[0]["configured"])
 
+	def test_desktop_display_is_passed_on(self):
+		configured = app("Finance", "Accounting")
+		configured["desktop_display"] = "One Icon"
+		self.assertEqual(rail([configured])[0]["desktop"], "One Icon")
+		self.assertIsNone(rail([app("Finance", "Accounting")])[0]["desktop"])
+
 	def test_label_overrides_the_sidebar_title(self):
 		entry = rail([app("Finance", "Accounting", labels={"Accounting": "Books"})])[0]
 		self.assertEqual(entry["sidebars"][0], {"sidebar": "Accounting", "label": "Books", "icon": None})

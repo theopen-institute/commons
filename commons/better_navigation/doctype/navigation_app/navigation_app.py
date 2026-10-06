@@ -52,6 +52,7 @@ class NavigationApp(Document):
 			NavigationAppSidebar,
 		)
 
+		desktop_display: DF.Literal["Default", "Separate Icons", "One Icon"]
 		enabled: DF.Check
 		frontend_label: DF.Data | None
 		frontend_url: DF.Data | None

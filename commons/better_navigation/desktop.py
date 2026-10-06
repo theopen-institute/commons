@@ -10,6 +10,11 @@ by a list built from what `navigation_apps.resolve` gives the user:
     an installed app (bound or not),    one App icon, opening a modal of its
     and Other                            frontend and modules
 
+A Navigation App's "Desktop" field (`desktop_display`) overrides that default
+either way: Separate Icons spreads even a bound app over the Desktop, and One
+Icon gathers one of the site's own into a single icon. An app with no record
+of its own -- an installed app nobody configured, or Other -- has the default.
+
 Every other icon is left out, so a site's Desktop is the rail laid flat: the
 same apps, in the same order, under the same titles, hidden and restricted the
 same way.
@@ -35,6 +40,10 @@ from commons.better_navigation import navigation_apps
 
 APP_KEY = "app:"
 OTHER = navigation_apps.OTHER
+
+# A Navigation App's `desktop_display`; anything else is the default.
+SEPARATE = "Separate Icons"
+ONE = "One Icon"
 
 # How each Desktop Icon looks, by label, and each installed app's own App icon.
 CACHE_KEY = "commons_desktop_icon_looks"
@@ -103,8 +112,8 @@ def desktop_icons(
 		if not destinations:
 			continue
 
-		# A Navigation App of the site's own: its modules on the Desktop itself.
-		if app_name is None:
+		# Spread over the Desktop: by default a Navigation App of the site's own.
+		if _spread(entry, bound=app_name is not None):
 			for destination in destinations:
 				add(destination)
 			continue
@@ -128,6 +137,14 @@ def desktop_icons(
 		for destination in destinations:
 			add({**destination, "parent_icon": label})
 	return icons
+
+
+def _spread(entry: dict, bound: bool) -> bool:
+	"""Whether an app's destinations are icons of their own, rather than one icon's window."""
+	display = entry.get("desktop")
+	if display in (SEPARATE, ONE):
+		return display == SEPARATE
+	return not bound
 
 
 def _routable(sidebar: dict | None) -> bool:

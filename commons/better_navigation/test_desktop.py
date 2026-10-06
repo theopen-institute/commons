@@ -8,8 +8,9 @@ from unittest import TestCase
 from commons.better_navigation.desktop import desktop_icons
 
 
-def entry(key, title, sidebars=(), configured=False, frontend=None, logo=None):
+def entry(key, title, sidebars=(), configured=False, frontend=None, logo=None, desktop=None):
 	return {
+		"desktop": desktop,
 		"key": key,
 		"title": title,
 		"logo": logo,
@@ -98,3 +99,25 @@ class TestDesktop(TestCase):
 		result = icons(rail)
 		self.assertEqual(result["Users"].parent_icon, "Admin")
 		self.assertEqual(result["Admin"].logo_url, "/mine.svg")
+
+	def test_separate_icons_spreads_a_bound_app(self):
+		rail = [entry("app:frappe", "Admin", ["Users", "Build"], configured=True, desktop="Separate Icons")]
+		result = icons(rail)
+		self.assertEqual(set(result), {"Users", "Build"})
+		self.assertIsNone(result["Users"].parent_icon)
+
+	def test_one_icon_gathers_a_navigation_app_of_the_sites_own(self):
+		rail = [entry("navigation-app:OI", "OI", ["Members", "Courses"], configured=True, desktop="One Icon")]
+		result = icons(rail)
+		self.assertEqual(result["OI"].icon_type, "App")
+		self.assertEqual(result["Members"].parent_icon, "OI")
+		self.assertEqual(result["Courses"].parent_icon, "OI")
+
+	def test_default_follows_whether_the_app_is_bound(self):
+		rail = [
+			entry("navigation-app:OI", "OI", ["Members", "Courses"], configured=True, desktop="Default"),
+			entry("app:frappe", "Admin", ["Users", "Build"], configured=True, desktop="Default"),
+		]
+		result = icons(rail)
+		self.assertIsNone(result["Members"].parent_icon)
+		self.assertEqual(result["Users"].parent_icon, "Admin")

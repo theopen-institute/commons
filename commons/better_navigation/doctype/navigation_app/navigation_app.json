@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-10-06 21:30:53.777123",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -31,6 +31,7 @@
   "logo",
   "sidebars_section",
   "sidebar_mode",
+  "desktop_display",
   "sidebars",
   "frontend_section",
   "frontend_url",
@@ -150,6 +151,14 @@
    "options": "Add\nReplace",
    "depends_on": "installed_app",
    "description": "Add: the app keeps the sidebars it already has, after any listed below. Replace: only the sidebars listed below, in their order; the rest go to Other."
+  },
+  {
+   "default": "Default",
+   "fieldname": "desktop_display",
+   "fieldtype": "Select",
+   "label": "Desktop",
+   "options": "Default\nSeparate Icons\nOne Icon",
+   "description": "How the Desktop shows this app, when Commons Settings builds the Desktop from Navigation Apps. Separate Icons: each of its modules (and its frontend) is an icon of its own. One Icon: one icon that opens a window of them. Default: separate icons when no Installed App is picked, one icon when one is. An app with a single module or frontend goes straight there either way."
   }
  ],
  "permissions": [

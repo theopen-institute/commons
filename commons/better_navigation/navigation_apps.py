@@ -181,7 +181,8 @@ def resolve(
 
 	`configured` is the enabled Navigation Apps in rail order, each with its
 	`sidebars` rows (`type`, `sidebar`, `label`), `roles`, and optionally the
-	`installed_app` it stands for, its `sidebar_mode` and whether it is `hidden`.
+	`installed_app` it stands for, its `sidebar_mode`, whether it is `hidden`
+	and its `desktop_display`.
 	`sidebars` is every Workspace Sidebar (`name`, `header_icon`, `app`,
 	`module`, `for_user`). The rest say what an installed app is called and
 	which app a module belongs to, and `frontends` where an installed app's own
@@ -279,6 +280,8 @@ def resolve(
 					"configured": True,
 					"sidebars": entries,
 					"frontend": frontend,
+					# How the Desktop shows it; see `commons.better_navigation.desktop`.
+					"desktop": app.get("desktop_display") or None,
 				}
 			)
 
@@ -434,6 +437,8 @@ def _configured() -> list[dict]:
 			"installed_app",
 			"sidebar_mode",
 			"hidden",
+			# Arrives with a migrate; until then every app shows the default way.
+			*(["desktop_display"] if frappe.db.has_column(APP, "desktop_display") else []),
 		],
 		order_by="rail_order asc, title asc",
 	)
