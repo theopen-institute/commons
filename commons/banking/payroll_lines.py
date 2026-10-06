@@ -85,8 +85,10 @@ class EmployeePayrollLinesMixin:
 		"""{(account, cost_center): {employee: amount}}, as HRMS's totals are
 		keyed, from the same rows and the same cost center split."""
 		parts = defaultdict(lambda: defaultdict(float))
-		for item in self.get_salary_components(component_type) or []:
-			if self.get_advance_deduction(component_type, item):
+		salary_components = self.get_salary_components(component_type) or []
+		advance_deductions = self.get_advance_deductions(component_type, salary_components)
+		for item in salary_components:
+			if advance_deductions.get(item.additional_salary):
 				continue
 			account = self.get_salary_component_account(item.salary_component)
 			cost_centers = self.get_payroll_cost_centers_for_employee(item.employee, item.salary_structure)
