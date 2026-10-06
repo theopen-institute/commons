@@ -23,7 +23,7 @@ from frappe import _
 from frappe.model import no_value_fields, table_fields
 from frappe.permissions import setup_custom_perms
 
-from commons.data_sync import baseline, records
+from commons.data_sync import records
 from commons.data_sync import rules as sync_rules
 
 
@@ -45,7 +45,7 @@ def settings() -> dict:
 
 @frappe.whitelist()
 def manifest(rules=None) -> dict:
-	"""Every selected record's hash, per doctype, plus the baseline's when there is one.
+	"""Every selected record's hash, per doctype.
 
 	`rules` is the page's list -- the site being changed decides what both sides
 	load. Without it, this site's own. A doctype that fails to load (not on this
@@ -54,9 +54,8 @@ def manifest(rules=None) -> dict:
 	"""
 	_guard()
 	selected = _rules(rules)
-	data = baseline.read()
 
-	entries, errors, duplicates, base = {}, {}, {}, {}
+	entries, errors, duplicates = {}, {}, {}
 	for rule in selected:
 		doctype = rule["doctype"]
 		try:
@@ -71,9 +70,6 @@ def manifest(rules=None) -> dict:
 		dupes = {key: r["duplicates"] for key, r in loaded.items() if r.get("duplicates")}
 		if dupes:
 			duplicates[doctype] = dupes
-		recorded = baseline.keyed(data, rule)
-		if recorded is not None:
-			base[doctype] = {key: records.hash_of(doc, rule) for key, doc in recorded.items()}
 
 	return {
 		"site": frappe.local.site,
@@ -82,23 +78,20 @@ def manifest(rules=None) -> dict:
 		"entries": entries,
 		"errors": errors,
 		"duplicates": duplicates,
-		"baseline": {"taken_at": data["taken_at"], "hashes": base} if data else None,
 	}
 
 
 @frappe.whitelist()
 def record(rule, key: str) -> dict:
-	"""One record's content on this site, and its baseline copy if there is one."""
+	"""One record's content on this site."""
 	_guard()
 	rule = sync_rules.parse(rule)[0]
 	found = records.find(rule, key)
-	recorded = baseline.keyed(baseline.read(), rule) or {}
 	return {
 		"doc": found["doc"] if found else None,
 		"name": found["name"] if found else None,
 		"modified": found["modified"] if found else None,
 		"hash": records.hash_of(found["doc"], rule) if found else None,
-		"baseline": recorded.get(key),
 	}
 
 
@@ -113,15 +106,11 @@ def snapshot(rules=None) -> dict:
 	_guard()
 	selected = _rules(rules)
 	out = manifest(rules=selected)
-	data = baseline.read()
-	out["records"], out["baseline_records"] = {}, {}
+	out["records"] = {}
 	for rule in selected:
 		if rule["doctype"] in out["errors"]:
 			continue
 		out["records"][rule["doctype"]] = {key: r["doc"] for key, r in records.load(rule).items()}
-		recorded = baseline.keyed(data, rule)
-		if recorded is not None:
-			out["baseline_records"][rule["doctype"]] = recorded
 	return out
 
 

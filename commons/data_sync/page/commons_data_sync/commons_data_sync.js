@@ -21,102 +21,31 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 (() => {
 	const API = "commons.data_sync.api";
 
-	// What each outcome of the three-way comparison means, in the order listed.
-	// `shown`: on by default. Changes made on this site are hidden at first --
-	// copying the source over them would undo them.
+	// How a record can differ between the two sites, in the order listed. The
+	// sites are compared as they are now: which one changed is for you to judge.
 	const STATUSES = {
-		conflict: {
-			label: __("Changed on both"),
-			color: "red",
-			shown: true,
-			help: __(
-				"Both sites changed this record since the copy. Copying the source's version loses this site's changes."
-			),
-		},
-		new_source: {
-			label: __("New on source"),
-			color: "green",
-			shown: true,
-			help: __("Added on the source since the copy. Copying adds it here."),
-		},
-		changed_source: {
-			label: __("Changed on source"),
-			color: "blue",
-			shown: true,
-			help: __(
-				"Changed on the source since the copy; this site still has the copied version."
-			),
-		},
-		deleted_source: {
-			label: __("Deleted on source"),
-			color: "orange",
-			shown: true,
-			help: __("Deleted on the source since the copy. You can delete it here too."),
-		},
 		differs: {
 			label: __("Differs"),
-			color: "yellow",
-			shown: true,
-			help: __(
-				"The source has no baseline for this doctype, so which site changed it is unknown."
-			),
+			color: "blue",
+			help: __("Both sites have this record, with different content."),
 		},
 		only_source: {
 			label: __("Only on source"),
-			color: "yellow",
-			shown: true,
-			help: __(
-				"Without a baseline: on the source and not here. Either it was added there or deleted here."
-			),
+			color: "green",
+			help: __("The source has this record and this site does not. Copying adds it here."),
 		},
 		only_here: {
 			label: __("Only here"),
-			color: "yellow",
-			shown: true,
-			help: __(
-				"Without a baseline: here and not on the source. Either it was added here or deleted there."
-			),
-		},
-		changed_here: {
-			label: __("Changed here"),
-			color: "gray",
-			shown: false,
-			help: __(
-				"Changed on this site since the copy; the source still has the old version. Copying would undo that change."
-			),
-		},
-		new_here: {
-			label: __("New here"),
-			color: "gray",
-			shown: false,
-			help: __("Added on this site since the copy. Deleting it would lose it."),
-		},
-		deleted_here: {
-			label: __("Deleted here"),
-			color: "gray",
-			shown: false,
-			help: __("Deleted on this site since the copy. Copying would bring it back."),
+			color: "orange",
+			help: __("This site has this record and the source does not. You can delete it here."),
 		},
 	};
 	const ORDER = Object.keys(STATUSES);
-	// Outcomes where copying overwrites or deletes something made on this site.
-	const RISKY = new Set([
-		"conflict",
-		"changed_here",
-		"new_here",
-		"deleted_here",
-		"differs",
-		"only_here",
-	]);
 
-	// d, p, b: the record's hash on the source, here, and in the baseline (null:
-	// absent). Without a baseline only "differs" or "only on one side" can be said.
-	function classify(d, p, b, has_baseline) {
+	// d, p: the record's hash on the source and here (null: absent).
+	function classify(d, p) {
 		if (d === p) return null;
-		if (!has_baseline) return !p ? "only_source" : !d ? "only_here" : "differs";
-		if (d === b) return !p ? "deleted_here" : !b ? "new_here" : "changed_here";
-		if (p === b) return !d ? "deleted_source" : !b ? "new_source" : "changed_source";
-		return "conflict";
+		return !p ? "only_source" : !d ? "only_here" : "differs";
 	}
 
 	const esc = (v) => frappe.utils.escape_html(v == null ? "" : String(v));
@@ -232,7 +161,6 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 					hash: entry?.[0] ?? null,
 					name: entry?.[1] ?? null,
 					modified: entry?.[2] ?? null,
-					baseline: data.baseline_records?.[rule.doctype]?.[key] ?? null,
 				};
 			},
 		};
@@ -360,7 +288,7 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 		constructor(page) {
 			this.page = page;
 			this.filters = {
-				statuses: new Set(ORDER.filter((s) => STATUSES[s].shown)),
+				statuses: new Set(ORDER),
 				doctype: "",
 				text: "",
 			};
@@ -428,14 +356,6 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 				)}</b>`,
 				`${esc(__("This site"))}: <b>${esc(this.settings?.site || "")}</b>`,
 			];
-			const base = this.result?.src.baseline;
-			if (base) {
-				parts.push(
-					`${esc(__("Baseline"))}: <b>${esc(
-						frappe.datetime.str_to_user(base.taken_at)
-					)}</b>`
-				);
-			}
 			this.$body.find(".ds-sources").html(parts.map((p) => `<span>${p}</span>`).join(""));
 		}
 
@@ -485,7 +405,6 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 
 		build_rows() {
 			const { rules, src, here } = this.result;
-			const base = src.baseline?.hashes || {};
 			this.rows = [];
 			this.errors = {};
 			for (const rule of rules) {
@@ -499,14 +418,8 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 				}
 				const s = src.entries[dt] || {};
 				const h = here.entries[dt] || {};
-				const b = base[dt];
 				for (const key of new Set([...Object.keys(s), ...Object.keys(h)])) {
-					const status = classify(
-						s[key]?.[0] ?? null,
-						h[key]?.[0] ?? null,
-						b ? b[key] ?? null : null,
-						b !== undefined
-					);
+					const status = classify(s[key]?.[0] ?? null, h[key]?.[0] ?? null);
 					if (status)
 						this.rows.push({
 							rule,
@@ -565,32 +478,7 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 		}
 
 		render_notes() {
-			const { src, rules } = this.result;
-			if (!src.baseline) {
-				this.message(
-					__(
-						"The source has no baseline, so this page can say that records differ but not which site changed them. Record one on the source straight after copying this site to it: {0}",
-						[
-							`<code>bench --site ${esc(
-								src.site
-							)} execute commons.data_sync.baseline.record</code>`,
-						]
-					)
-				);
-			} else {
-				const missing = rules
-					.map((r) => r.doctype)
-					.filter((dt) => !(dt in src.baseline.hashes) && !this.errors[dt]);
-				if (missing.length) {
-					this.message(
-						esc(
-							__("No baseline for {0}: these are compared without one.", [
-								missing.join(", "),
-							])
-						)
-					);
-				}
-			}
+			const { src } = this.result;
 			for (const [label, manifest] of [
 				[__("source"), src],
 				[__("this site"), this.result.here],
@@ -905,9 +793,7 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 			const stale =
 				(here.hash ?? null) !== (row.here?.[0] ?? null) ||
 				(src.hash ?? null) !== (row.src?.[0] ?? null);
-			const show_base = row.status === "conflict" && src.baseline;
-
-			const fields = this.fields(show_base);
+			const fields = this.fields();
 			const changed = fields.filter((f) => f.changed);
 			const unchanged = fields.filter((f) => !f.changed);
 
@@ -946,7 +832,7 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 					!src.doc || !here.doc
 						? this.single_html(fields, src.doc ? "source" : "here")
 						: changed.length
-						? changed.map((f) => this.field_html(f, show_base)).join("")
+						? changed.map((f) => this.field_html(f)).join("")
 						: `<p class="text-muted">${esc(
 								__("No field differs except ignored ones.")
 						  )}</p>`
@@ -955,18 +841,17 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 		}
 
 		// Every field either copy has, in the doctype's own order where it knows it.
-		fields(show_base) {
+		fields() {
 			const a = this.here.doc || {};
 			const b = this.src.doc || {};
-			const c = show_base ? this.src.baseline || {} : {};
 			const order = (this.meta?.fields || []).map((df) => df.fieldname);
 			const rank = (k) => {
 				const i = order.indexOf(k);
 				return i < 0 ? order.length : i;
 			};
-			const names = [
-				...new Set([...Object.keys(a), ...Object.keys(b), ...Object.keys(c)]),
-			].sort((x, y) => rank(x) - rank(y) || x.localeCompare(y));
+			const names = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort(
+				(x, y) => rank(x) - rank(y) || x.localeCompare(y)
+			);
 			const ignored = new Set(this.row.rule.ignored_fields);
 			return names.map((name) => {
 				const df = this.meta
@@ -978,14 +863,13 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 					label: df?.label ? __(df.label) : name,
 					here: a[name],
 					source: b[name],
-					base: c[name],
 					ignored: ignored.has(name),
 					changed: !ignored.has(name) && stable(a[name]) !== stable(b[name]),
 				};
 			});
 		}
 
-		field_html(f, show_base) {
+		field_html(f) {
 			const head = `<div class="ds-field-head">${esc(f.label)}<span class="text-muted">${esc(
 				f.name
 			)}</span></div>`;
@@ -1021,7 +905,6 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 				[here_label, f.here, "here"],
 				[source_label, f.source, "source"],
 			];
-			if (show_base) cells.push([__("At the copy"), f.base, ""]);
 			return `<div class="ds-field">${head}<div class="ds-values" style="--ds-columns:${
 				cells.length
 			}">${cells
@@ -1127,20 +1010,16 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 			</div>`;
 		}
 
+		// Copying replaces what the modal shows, so the button is the decision;
+		// deleting is asked once more.
 		confirm(copying) {
-			const risky = RISKY.has(this.row.status) || !copying;
 			const run = () => this.write(copying);
-			if (!risky) return run();
+			if (copying) return run();
 			frappe.confirm(
-				copying
-					? __("{0} This site's version will be replaced by the source's. Continue?", [
-							STATUSES[this.row.status].help,
-					  ])
-					: __("Delete {0} {1} on this site? {2}", [
-							__(this.row.rule.doctype),
-							this.here.name,
-							STATUSES[this.row.status].help,
-					  ]),
+				__("Delete {0} {1} on this site? The source has no such record.", [
+					__(this.row.rule.doctype),
+					this.here.name,
+				]),
 				run
 			);
 		}

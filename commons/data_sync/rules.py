@@ -50,8 +50,7 @@ DEFAULT_RULES = [
 def configured() -> list[dict]:
 	"""This site's rules: the settings table, or the defaults when it is empty.
 
-	Also answers between this code landing and the migrate that creates the
-	table -- `pull-prod.sh` records a baseline in exactly that window.
+	Also answers between this code landing and the migrate that creates the table.
 	"""
 	rows = []
 	if frappe.db.table_exists(TABLE):

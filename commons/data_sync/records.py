@@ -36,7 +36,7 @@ import frappe
 from frappe.model import no_value_fields, table_fields
 
 # Which normalisation produced a hash. The page checks both sites report the same.
-FORMAT = 1
+FORMAT = 2
 
 PARENT_SKIP = frozenset(
 	{"name", "owner", "creation", "modified", "modified_by", "idx", "doctype", "docstatus"}
