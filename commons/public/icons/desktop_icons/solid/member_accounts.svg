@@ -1,0 +1,14 @@
+<svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+<!--
+     A wallet, for the Member Accounts sidebar: what a member holds with the
+     institute, opened on their balances. Kept clear of membership.svg's
+     card by its flap along the top and the clasp on its right edge, which
+     survive at the 32px the sidebar renders this at.
+
+     Same tile, colour and stroke as students.svg, which says why the desk's
+     container and this app's glyph idiom are both used here.
+-->
+<path d="M38.5714 0H15.4286C6.90761 0 0 6.90761 0 15.4286V38.5714C0 47.0924 6.90761 54 15.4286 54H38.5714C47.0924 54 54 47.0924 54 38.5714V15.4286C54 6.90761 47.0924 0 38.5714 0Z" fill="#184a83"/>
+<path d="M15 18.5H38.5C40.2 18.5 41.5 19.8 41.5 21.5V36.5C41.5 38.2 40.2 39.5 38.5 39.5H15.5C13.8 39.5 12.5 38.2 12.5 36.5V17.5C12.5 15.8 13.8 14.5 15.5 14.5H34.5" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M41.5 25H36C34.1 25 32.5 26.6 32.5 28.5C32.5 30.4 34.1 32 36 32H41.5" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

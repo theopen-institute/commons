@@ -5,7 +5,7 @@
 
 from unittest import TestCase
 
-from commons.better_navigation.desktop import desktop_icons
+from commons.better_navigation.desktop import _artwork, desktop_icons
 
 
 def entry(key, title, sidebars=(), configured=False, frontend=None, logo=None, desktop=None):
@@ -121,3 +121,19 @@ class TestDesktop(TestCase):
 		result = icons(rail)
 		self.assertIsNone(result["Members"].parent_icon)
 		self.assertEqual(result["Users"].parent_icon, "Admin")
+
+	def test_artwork_shipped_by_an_app_is_found_by_name(self):
+		urls = {"commons": {"solid": ["assets/commons/icons/desktop_icons/solid/courses.svg"], "subtle": []}}
+		result = icons(looks={}, artwork=_artwork(urls))
+		self.assertEqual(result["Courses"].app, "commons")
+		self.assertIsNone(result["Members"].app)
+
+	def test_artwork_does_not_replace_a_logo_of_its_own(self):
+		artwork = {"commons": {"members"}}
+		result = icons(looks={"Members": {"logo_url": "/mine.svg"}}, artwork=artwork)
+		self.assertEqual(result["Members"].logo_url, "/mine.svg")
+		self.assertIsNone(result["Members"].app)
+
+	def test_own_apps_artwork_comes_first(self):
+		artwork = {"commons": {"users"}, "frappe": {"users"}}
+		self.assertEqual(icons(artwork=artwork)["Users"].app, "frappe")

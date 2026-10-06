@@ -67,6 +67,7 @@ def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 		looks=looks["by_label"],
 		app_looks=looks["by_app"],
 		sidebar_items=bootinfo.get("workspace_sidebar_item") or {},
+		artwork=_artwork(bootinfo.get("desktop_icon_urls") or {}),
 		frontend_permitted=lambda app_name: bool(check_app_permission("", app_name)),
 	)
 
@@ -78,6 +79,7 @@ def desktop_icons(
 	app_looks: dict[str, dict],
 	sidebar_items: dict[str, dict],
 	frontend_permitted=lambda app_name: True,
+	artwork: dict[str, set[str]] | None = None,
 ) -> list[dict]:
 	"""The Desktop's icons, from plain data.
 
@@ -87,7 +89,10 @@ def desktop_icons(
 	`workspace_sidebar_item`: a sidebar the user can open nothing in has no
 	icon, as with core. `frontend_permitted` asks an installed app's
 	`add_to_apps_screen` permission hook whether its frontend is offered.
+	`artwork` is the Desktop artwork each installed app ships, by app, as the
+	file names `_artwork` reads out of the boot.
 	"""
+	artwork = artwork or {}
 	icons: list[dict] = []
 	taken: set[str] = set()
 
@@ -106,7 +111,7 @@ def desktop_icons(
 			destinations.append(_frontend_icon(frontend, installed, entry))
 		for module in entry["sidebars"]:
 			if _routable(sidebar_items.get(module["sidebar"].lower())):
-				destinations.append(_sidebar_icon(module, installed, looks))
+				destinations.append(_sidebar_icon(module, installed, looks, artwork))
 		destinations = [d for d in destinations if d["label"].casefold() not in taken]
 		destinations = list({d["label"].casefold(): d for d in destinations}.values())
 		if not destinations:
@@ -192,13 +197,36 @@ def _app_look(entry: dict, installed: str | None, app_looks: dict) -> dict:
 	return look
 
 
-def _sidebar_icon(module: dict, installed: str | None, looks: dict) -> dict:
-	"""A module's icon, looking as its own Desktop Icon does if the site has one."""
+def _sidebar_icon(module: dict, installed: str | None, looks: dict, artwork: dict[str, set[str]]) -> dict:
+	"""A module's icon, looking as its own Desktop Icon does if the site has one.
+
+	Failing that, as artwork an app ships for it. Core draws the file
+	`<app>/public/icons/desktop_icons/<style>/<scrubbed label>.svg` for an icon
+	whose `app` has one, in the user's Solid or Subtle style, so naming the app
+	is all it takes: its own installed app's first, else any app's. A sidebar
+	made on the site (Transactions) gets artwork by adding a file to this app,
+	with no Desktop Icon record. An icon with a logo or image of its own keeps
+	it.
+	"""
 	name = module["sidebar"]
 	look = {key: (looks.get(name) or {}).get(key) for key in LOOKS}
 	look["app"] = look.get("app") or installed
 	look["icon"] = look.get("icon") or module.get("icon")
+	stem = frappe.scrub(name)
+	has_own_art = stem in artwork.get(look["app"], ()) or look.get("logo_url") or look.get("icon_image")
+	if not has_own_art:
+		look["app"] = next(
+			(app for app in (installed, *artwork) if app and stem in artwork.get(app, ())), look["app"]
+		)
 	return _icon(name, icon_type="Link", link_type="Workspace Sidebar", link_to=name, **look)
+
+
+def _artwork(urls: dict[str, dict[str, list[str]]]) -> dict[str, set[str]]:
+	"""The boot's `desktop_icon_urls`, as the file names each app has in either style."""
+	return {
+		app: {url.rsplit("/", 1)[-1].removesuffix(".svg") for paths in styles.values() for url in paths}
+		for app, styles in urls.items()
+	}
 
 
 def _frontend_icon(frontend: dict, installed: str | None, entry: dict) -> dict:
