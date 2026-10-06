@@ -212,7 +212,7 @@ def resolve(
 			if not sidebar or sidebar.get("for_user") or sidebar["name"] in claimed:
 				continue
 			claimed.add(sidebar["name"])
-			entries.append(_entry(sidebar, row.get("label")))
+			entries.append(_entry(sidebar, row.get("label"), row.get("desktop_image")))
 		claims.append(entries)
 
 	grouped: dict[str, list[dict]] = {}
@@ -403,12 +403,17 @@ def _layout(rows: list[dict]) -> list[dict]:
 	return laid_out
 
 
-def _entry(sidebar: dict, label: str | None = None) -> dict:
-	return {
+def _entry(sidebar: dict, label: str | None = None, desktop_image: str | None = None) -> dict:
+	entry = {
 		"sidebar": sidebar["name"],
 		"label": (label or "").strip() or sidebar["name"],
 		"icon": sidebar.get("header_icon") or None,
 	}
+	# Only the Desktop draws it (`commons.better_navigation.desktop`), so it is
+	# carried only when a row sets one.
+	if desktop_image:
+		entry["desktop_image"] = desktop_image
+	return entry
 
 
 def installed() -> bool:
@@ -450,6 +455,9 @@ def _configured() -> list[dict]:
 	fields = ["parent", "sidebar", "label"]
 	if frappe.db.has_column(APP_SIDEBAR, "type"):
 		fields.append("type")
+	# So does `desktop_image`, which only the Desktop reads.
+	if frappe.db.has_column(APP_SIDEBAR, "desktop_image"):
+		fields.append("desktop_image")
 	rows = frappe.get_all(
 		APP_SIDEBAR,
 		filters={"parent": ["in", names], "parenttype": APP},

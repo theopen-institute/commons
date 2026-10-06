@@ -70,6 +70,7 @@ class NavigationApp(Document):
 	def validate(self):
 		self.validate_installed_app()
 		self.validate_sidebars()
+		self.warn_private_images()
 
 	def validate_installed_app(self):
 		self.installed_app = (self.installed_app or "").strip() or None
@@ -102,6 +103,7 @@ class NavigationApp(Document):
 					frappe.throw(_("Row {0}: pick a sidebar.").format(row.idx))
 				continue
 			row.sidebar = None
+			row.desktop_image = None
 			if row.type == SPACER:
 				row.label = None
 			elif not (row.label or "").strip():
@@ -142,6 +144,29 @@ class NavigationApp(Document):
 						row.idx, frappe.bold(row.sidebar), frappe.bold(held[row.sidebar])
 					)
 				)
+
+	def warn_private_images(self):
+		"""Say so when a picture is a private file, which the rail and the Desktop cannot load.
+
+		A warning, not a refusal: the record is still right, only its picture
+		is missing until the file is made public.
+		"""
+		private = [
+			_("Logo") if (self.logo or "").startswith("/private/") else None,
+			*(
+				_("Row {0}: Desktop Image").format(row.idx)
+				for row in self.sidebars
+				if (row.desktop_image or "").startswith("/private/")
+			),
+		]
+		if private := [p for p in private if p]:
+			frappe.msgprint(
+				_("These are private files, so they will not show: {0}. Make each file public.").format(
+					", ".join(private)
+				),
+				indicator="orange",
+				alert=True,
+			)
 
 	def modules(self):
 		"""The rows that are modules, not Categories or Spacers."""

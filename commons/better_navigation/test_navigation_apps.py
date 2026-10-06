@@ -143,6 +143,13 @@ class TestConfigured(TestCase):
 		self.assertEqual(rail([configured])[0]["desktop"], "One Icon")
 		self.assertIsNone(rail([app("Finance", "Accounting")])[0]["desktop"])
 
+	def test_desktop_image_is_carried_only_when_set(self):
+		row = {"sidebar": "Accounting", "label": None, "desktop_image": "/files/books.png"}
+		entry = rail([app("Finance", row, "Stock")])[0]
+		by_name = {s["sidebar"]: s for s in entry["sidebars"]}
+		self.assertEqual(by_name["Accounting"]["desktop_image"], "/files/books.png")
+		self.assertNotIn("desktop_image", by_name["Stock"])
+
 	def test_label_overrides_the_sidebar_title(self):
 		entry = rail([app("Finance", "Accounting", labels={"Accounting": "Books"})])[0]
 		self.assertEqual(entry["sidebars"][0], {"sidebar": "Accounting", "label": "Books", "icon": None})

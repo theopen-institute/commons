@@ -19,8 +19,9 @@ Every other icon is left out, so a site's Desktop is the rail laid flat: the
 same apps, in the same order, under the same titles, hidden and restricted the
 same way.
 
-Nothing is written. Desktop Icon records are only read, for how an icon looks
-(an app's logo, a sidebar's colour), so the records apps ship and migrate keeps
+Nothing is written. A module's picture is the Desktop Image on its Navigation
+App row, if set. Desktop Icon records are only read, for how an icon looks
+otherwise (an app's logo, a sidebar's colour), so the records apps ship and migrate keeps
 re-importing are untouched, and switching this off brings core's Desktop back
 as it was. The one place a list built here is kept is a Desktop Layout, which
 core saves when a user rearranges their Desktop and prefers to the boot from
@@ -198,7 +199,7 @@ def _app_look(entry: dict, installed: str | None, app_looks: dict) -> dict:
 
 
 def _sidebar_icon(module: dict, installed: str | None, looks: dict, artwork: dict[str, set[str]]) -> dict:
-	"""A module's icon, looking as its own Desktop Icon does if the site has one.
+	"""A module's icon: the Navigation App row's Desktop Image, else as its own Desktop Icon looks.
 
 	Failing that, as artwork an app ships for it. Core draws the file
 	`<app>/public/icons/desktop_icons/<style>/<scrubbed label>.svg` for an icon
@@ -212,6 +213,11 @@ def _sidebar_icon(module: dict, installed: str | None, looks: dict, artwork: dic
 	look = {key: (looks.get(name) or {}).get(key) for key in LOOKS}
 	look["app"] = look.get("app") or installed
 	look["icon"] = look.get("icon") or module.get("icon")
+	if module.get("desktop_image"):
+		# The Navigation App row's own picture comes first. No app, or core
+		# would draw the app's artwork by that label in its place.
+		look.update(app=None, logo_url=module["desktop_image"], icon_image=None)
+		return _icon(name, icon_type="Link", link_type="Workspace Sidebar", link_to=name, **look)
 	stem = frappe.scrub(name)
 	has_own_art = stem in artwork.get(look["app"], ()) or look.get("logo_url") or look.get("icon_image")
 	if not has_own_art:

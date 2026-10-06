@@ -16,6 +16,7 @@ class NavigationAppSidebar(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		desktop_image: DF.AttachImage | None
 		label: DF.Data | None
 		parent: DF.Data
 		parentfield: DF.Data

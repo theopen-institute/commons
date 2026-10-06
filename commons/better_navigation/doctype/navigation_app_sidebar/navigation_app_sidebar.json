@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-10-06 21:51:22.960670",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -21,7 +21,8 @@
  "field_order": [
   "type",
   "sidebar",
-  "label"
+  "label",
+  "desktop_image"
  ],
  "fields": [
   {
@@ -53,6 +54,13 @@
    "label": "Label",
    "description": "What the top menu calls this module, or a category's heading. Left blank on a module, the sidebar's own title.",
    "mandatory_depends_on": "eval:doc.type == \"Category\""
+  },
+  {
+   "fieldname": "desktop_image",
+   "fieldtype": "Attach Image",
+   "label": "Desktop Image",
+   "depends_on": "eval:(doc.type || \"Sidebar\") == \"Sidebar\"",
+   "description": "The picture on this module's Desktop icon, when Commons Settings builds the Desktop from Navigation Apps. Upload it as a public file: the Desktop cannot show a private one. Left blank, the module keeps its Desktop Icon's picture, else artwork an app ships under its name, else its first letter."
   }
  ],
  "permissions": []

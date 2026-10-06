@@ -137,3 +137,14 @@ class TestDesktop(TestCase):
 	def test_own_apps_artwork_comes_first(self):
 		artwork = {"commons": {"users"}, "frappe": {"users"}}
 		self.assertEqual(icons(artwork=artwork)["Users"].app, "frappe")
+
+	def test_row_image_comes_before_everything_else(self):
+		rail = [entry("navigation-app:OI", "OI", ["Members", "Courses"], configured=True)]
+		rail[0]["sidebars"][0]["desktop_image"] = "/files/members.png"
+		result = icons(
+			rail,
+			looks={"Members": {"logo_url": "/old.svg", "app": "commons"}},
+			artwork={"commons": {"members"}},
+		)
+		self.assertEqual(result["Members"].logo_url, "/files/members.png")
+		self.assertIsNone(result["Members"].app)
