@@ -92,6 +92,25 @@ export interface RegisterFields {
   group_resolution: GroupResolution
   /** What Education's `Leave` is worth. See `LeaveCountsAs`. */
   leave_counts_as: LeaveCountsAs
+  /** Where a course lists its kinds of session and the hours planned for each.
+   *  See `CoursePlanFields`. */
+  course_plan: CoursePlanFields | null
+}
+
+/**
+ * A table on `Course` listing the kinds of session the course is taught in and
+ * the hours planned for each, and which of its columns say which.
+ *
+ * All four or none, as the server sends them: the Table field, the child
+ * doctype it holds (which is what `frappe.client.get_list` reads a child table
+ * by), the column naming the kind of session in the same words as
+ * `session_type_field`, and the column of planned hours.
+ */
+export interface CoursePlanFields {
+  table_field: string
+  table_doctype: string
+  type_column: string
+  hours_column: string
 }
 
 /**
@@ -137,6 +156,7 @@ export const NO_FIELDS: RegisterFields = {
   session_hours_field: null,
   group_resolution: 'Programme',
   leave_counts_as: 'Absent',
+  course_plan: null,
 }
 
 /** What a fieldname can look like. The server has already checked each against
@@ -147,6 +167,26 @@ const FIELDNAME = /^[a-z_][a-z0-9_]*$/i
 function fieldname(value: unknown): string | null {
   return typeof value === 'string' && FIELDNAME.test(value.trim())
     ? value.trim()
+    : null
+}
+
+/** A doctype's name: words, digits, spaces and the odd hyphen, which is what
+ *  Frappe allows one to be called. Checked for the same reason as `fieldname`. */
+const DOCTYPE = /^[a-z0-9][a-z0-9 _-]*$/i
+
+/** The course plan as sent, or null unless every part of it is a name. */
+function coursePlanFields(value: unknown): CoursePlanFields | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  const table_field = fieldname(raw.table_field)
+  const type_column = fieldname(raw.type_column)
+  const hours_column = fieldname(raw.hours_column)
+  const table_doctype =
+    typeof raw.table_doctype === 'string' && DOCTYPE.test(raw.table_doctype.trim())
+      ? raw.table_doctype.trim()
+      : null
+  return table_field && table_doctype && type_column && hours_column
+    ? { table_field, table_doctype, type_column, hours_column }
     : null
 }
 
@@ -189,6 +229,7 @@ export function registerFields(
       LEAVE_RULES,
       NO_FIELDS.leave_counts_as,
     ),
+    course_plan: coursePlanFields(raw?.course_plan),
   }
 }
 
@@ -518,6 +559,39 @@ export function sessionFields(
 }
 
 /* -------------------------------------------------------------------------- */
+/* A course's plan                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** One kind of session a course is taught in, and the hours planned for it. */
+export interface PlanRow {
+  session_type: string
+  hours: number
+}
+
+/**
+ * The plan's rows, as the register uses them, in the table's own order.
+ *
+ * A kind listed twice is one kind with both rows' hours: a table has no rule
+ * against it, and two lines of fifteen hours mean thirty. A row naming no kind
+ * is dropped, because no session could be matched to it. Hours that are not a
+ * positive number count as none, so a row somebody has yet to fill in still
+ * offers its kind without planning anything for it.
+ */
+export function planRows(rows: ApiRow[], plan: CoursePlanFields): PlanRow[] {
+  const byType = new Map<string, number>()
+  for (const row of rows) {
+    const sessionType = String(row[plan.type_column] ?? '').trim()
+    if (!sessionType) continue
+    const hours = statedHours(row[plan.hours_column]) ?? 0
+    byType.set(sessionType, (byType.get(sessionType) ?? 0) + hours)
+  }
+  return [...byType].map(([session_type, hours]) => ({
+    session_type,
+    hours: round(hours),
+  }))
+}
+
+/* -------------------------------------------------------------------------- */
 /* The register, as the page draws it                                          */
 /* -------------------------------------------------------------------------- */
 
@@ -548,6 +622,9 @@ export interface Block {
   sessions: Session[]
   /** Hours timetabled. */
   scheduled: number
+  /** Hours the course's plan sets for this kind of session, or null where it
+   *  sets none: no plan, or a kind the plan does not list. */
+  planned: number | null
   /** Hours earned, per student. Less than `scheduled` for anybody who missed a
    *  session or arrived late at one. */
   credited: Record<string, number>
@@ -569,15 +646,20 @@ export interface GroupRegister {
   students: GroupStudent[]
   blocks: Block[]
   scheduled: number
+  /** The hours the course's plan sets in all, or null where it has no plan.
+   *  Every group taking the course is meant to be taught all of it. */
+  planned: number | null
   credited: Record<string, number>
   possible: Record<string, number>
 }
 
 export interface Register {
   groups: GroupRegister[]
+  /** The course's plan, empty where it has none. */
+  plan: PlanRow[]
 }
 
-export const EMPTY_REGISTER: Register = { groups: [] }
+export const EMPTY_REGISTER: Register = { groups: [], plan: [] }
 
 /** What a block of untyped sessions is called. The field is empty rather than
  *  naming the absence of a type; this is the English for it. On a site with no
@@ -608,6 +690,11 @@ export function courseChip(course: CourseRow): string {
  *
  * `rules` are the two settings that price a mark: what a late arrival earns and
  * what leave counts as.
+ *
+ * `plan` is the course's plan (see `planRows`), and puts planned hours beside
+ * scheduled ones. Every kind it lists gets a block in every group, sessions or
+ * none, because a kind of session a group has not had yet is exactly what a
+ * plan is there to show.
  */
 export function buildRegister(
   rows: {
@@ -615,9 +702,11 @@ export function buildRegister(
     students: StudentRow[]
     schedules: ScheduleRow[]
     marks: MarkRow[]
+    plan?: PlanRow[]
   },
   rules: RegisterRules,
 ): Register {
+  const plan = rows.plan ?? []
   const lateCredit = rules.late_credit
   const byGroup = new Map<string, GroupStudent[]>()
   for (const row of rows.students) {
@@ -658,8 +747,10 @@ export function buildRegister(
         byGroup.get(group.name) ?? [],
         sessions.filter((session) => session.group === group.name),
         lateCredit,
+        plan,
       ),
     ),
+    plan,
   }
 }
 
@@ -668,13 +759,16 @@ function buildGroup(
   students: GroupStudent[],
   sessions: Session[],
   lateCredit: number,
+  plan: PlanRow[],
 ): GroupRegister {
-  const blocks = sessionTypes(sessions).map((sessionType) =>
+  const planned = new Map(plan.map((line) => [line.session_type, line.hours]))
+  const blocks = sessionTypes(sessions, plan).map((sessionType) =>
     buildBlock(
       sessionType,
       sessions.filter((session) => session.session_type === sessionType),
       students,
       lateCredit,
+      sessionType === null ? null : (planned.get(sessionType) ?? null),
     ),
   )
   return {
@@ -686,6 +780,9 @@ function buildGroup(
     scheduled: round(
       blocks.reduce((total, block) => total + block.scheduled, 0),
     ),
+    planned: plan.length
+      ? round(plan.reduce((total, line) => total + line.hours, 0))
+      : null,
     credited: sumBlocks(blocks, students, 'credited'),
     possible: sumBlocks(blocks, students, 'possible'),
   }
@@ -711,22 +808,26 @@ function sumBlocks(
 }
 
 /**
- * The kinds of session a group had, in the order they are drawn.
+ * The kinds of session a group had or is planned to have, in the order they
+ * are drawn.
  *
- * Alphabetical, with the untyped block last. The register this replaced sorted
- * the school's own vocabulary by prefixing anything beginning "Faculty" with an
- * exclamation mark before comparing, which put seminars at the top of the page
- * — correct for one school's four session types and meaningless for a fifth or
- * for anybody else's. The field is free text, so there is no order to read off
- * it; alphabetical is the one a reader can predict, and a school that wants a
- * particular order has the naming of them.
+ * The course's plan first, in the plan's own order, whether the group has had
+ * any of each or not. Then any other kind it had, alphabetically, and the
+ * untyped block last. The register this replaced sorted the school's own
+ * vocabulary by prefixing anything beginning "Faculty" with an exclamation mark
+ * before comparing, which put seminars at the top of the page — correct for one
+ * school's four session types and meaningless for a fifth or for anybody
+ * else's. A plan is the school saying what order its kinds come in; without
+ * one, the field is free text with no order to read off it, and alphabetical is
+ * the one a reader can predict.
  */
-function sessionTypes(sessions: Session[]): (string | null)[] {
+function sessionTypes(sessions: Session[], plan: PlanRow[]): (string | null)[] {
+  const planned = plan.map((line) => line.session_type)
   const found = new Set(sessions.map((session) => session.session_type))
-  const typed = [...found]
-    .filter((name): name is string => Boolean(name))
+  const others = [...found]
+    .filter((name): name is string => Boolean(name) && !planned.includes(name!))
     .sort()
-  return found.has(null) ? [...typed, null] : typed
+  return [...planned, ...others, ...(found.has(null) ? [null] : [])]
 }
 
 /**
@@ -735,13 +836,15 @@ function sessionTypes(sessions: Session[]): (string | null)[] {
  * `scheduled` is what was timetabled and `credited` is what each student earned
  * of it — the same figure only for somebody who was at all of it on time, which
  * is the comparison the block exists to make. `possible` is what each student
- * could have earned: `scheduled` less what they were excused.
+ * could have earned: `scheduled` less what they were excused. `planned` is what
+ * the course's plan sets for the kind, where it sets anything.
  */
 function buildBlock(
   sessionType: string | null,
   sessions: Session[],
   students: GroupStudent[],
   lateCredit: number,
+  planned: number | null,
 ): Block {
   return {
     session_type: sessionType,
@@ -749,6 +852,7 @@ function buildBlock(
     scheduled: round(
       sessions.reduce((total, session) => total + session.hours, 0),
     ),
+    planned,
     credited: Object.fromEntries(
       students.map((student) => [
         student.student,
@@ -830,6 +934,141 @@ export async function pageThrough<Row>(
       return { rows, complete: beyond.length === 0 }
     }
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* A teacher's own courses                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The terms the course shortcuts cover: the current term, the one before it,
+ * and every term after it that has been created, oldest first.
+ *
+ * "Current" is Education Settings' current term where it names one the picker
+ * has. Otherwise it is the term today falls in, or failing that the last one
+ * to have started: a school between terms is still teaching the one it just
+ * finished, as far as its registers go. Terms starting the same day as the
+ * current one count as current too.
+ */
+export function shortcutTerms(
+  terms: TermRow[],
+  current: string | null,
+  today: string,
+): string[] {
+  const dated = terms
+    .filter((row): row is TermRow & { term_start_date: string } =>
+      Boolean(row.term_start_date),
+    )
+    .sort((a, b) =>
+      a.term_start_date < b.term_start_date
+        ? -1
+        : a.term_start_date > b.term_start_date
+          ? 1
+          : a.name < b.name
+            ? -1
+            : 1,
+    )
+  if (!dated.length) return []
+  const started = dated.filter((row) => row.term_start_date <= today)
+  const now =
+    dated.find((row) => row.name === current) ??
+    started.find(
+      (row) => !row.term_end_date || row.term_end_date >= today,
+    ) ??
+    started.at(-1) ??
+    null
+  if (!now) return dated.map((row) => row.name)
+  const from = now.term_start_date
+  const before = dated.filter((row) => row.term_start_date < from).at(-1)
+  return [
+    ...(before ? [before.name] : []),
+    ...dated.filter((row) => row.term_start_date >= from).map((row) => row.name),
+  ]
+}
+
+/** One term's row of course shortcuts. */
+export interface ShortcutRow {
+  term: string
+  courses: CourseRow[]
+}
+
+/** A `Student Group` as the shortcuts read it: which term, and how it reaches
+ *  its courses. */
+export interface ShortcutGroupRow {
+  name: string
+  academic_term: string
+  program: string | null
+  course: string | null
+}
+
+/**
+ * A teacher's own courses in each of the shortcut terms.
+ *
+ * A course is theirs in a term if either:
+ *
+ * - they taught a session of it in that term: `Course Schedule.instructor` is
+ *   one of `mine`, which is the record of who actually stood in the room; or
+ * - it is taught in that term at all, and its `default_instructor` is one of
+ *   `mine`. This is what puts a term on the list before anything in it is
+ *   timetabled, which is the only way a term that has just been created can
+ *   have any shortcuts. "Taught in that term" follows the site's
+ *   `GroupResolution`, as the register itself does.
+ *
+ * Terms with none of the teacher's courses are left out. Courses are in name
+ * order, as the picker has them.
+ */
+export function instructorShortcuts(input: {
+  terms: string[]
+  mine: string[]
+  courses: CourseRow[]
+  groups: ShortcutGroupRow[]
+  /** The teacher's own sessions in those terms, one row per course and group. */
+  taught: { course: string; student_group: string }[]
+  /** `Program Course` rows for the groups' programmes. */
+  programCourses: { parent: string; course: string }[]
+  resolution: GroupResolution
+}): ShortcutRow[] {
+  const termOf = new Map(input.groups.map((row) => [row.name, row.academic_term]))
+  const byName = new Map(input.courses.map((row) => [row.name, row]))
+  const defaults = new Set(
+    input.courses
+      .filter(
+        (row) => row.default_instructor && input.mine.includes(row.default_instructor),
+      )
+      .map((row) => row.name),
+  )
+  const viaProgramme = input.resolution !== 'Course'
+  const viaCourse = input.resolution !== 'Programme'
+
+  return input.terms
+    .map((term) => {
+      const found = new Set<string>()
+      for (const row of input.taught) {
+        if (termOf.get(row.student_group) === term) found.add(row.course)
+      }
+      for (const group of input.groups) {
+        if (group.academic_term !== term) continue
+        if (viaCourse && group.course && defaults.has(group.course)) found.add(group.course)
+        if (viaProgramme && group.program) {
+          for (const row of input.programCourses) {
+            if (row.parent === group.program && defaults.has(row.course)) found.add(row.course)
+          }
+        }
+      }
+      const courses = [...found]
+        .sort()
+        .map(
+          (name) =>
+            byName.get(name) ?? {
+              name,
+              course_name: null,
+              abbreviation: null,
+              default_instructor: null,
+            },
+        )
+      return { term, courses }
+    })
+    .filter((row) => row.courses.length)
 }
 
 /* -------------------------------------------------------------------------- */

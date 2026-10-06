@@ -25,6 +25,12 @@
   On a site that counts leave as excused, a student excused from some of a
   block's hours has a second line in its footing, "of" the hours they could
   have earned, since the scheduled column is no longer their total.
+
+  Where the course has a plan, the scheduled column's footings say "of" the
+  hours planned the same way, and every kind the plan lists has a block, with
+  "Nothing timetabled." in it until a session of that kind is. Planned hours get
+  no colour either, for the same reason: a term half way through is short of
+  its plan everywhere.
 -->
 
 <template>
@@ -66,6 +72,9 @@
 							{{ sessionTypeLabel(block.session_type) }}
 							<span class="font-normal text-ink-gray-5">
 								· {{ pluralise(block.sessions.length, 'session') }}
+								<template v-if="block.planned !== null">
+									· {{ formatHours(block.planned) }} planned hours
+								</template>
 							</span>
 						</th>
 					</tr>
@@ -111,12 +120,17 @@
 						<td
 							v-for="student in group.students"
 							:key="student.student"
-							class="border-b border-l border-outline-gray-2 p-0 text-center"
+							class="h-px border-b border-l border-outline-gray-2 p-0 text-center transition-colors hover:brightness-95"
+							:class="MARK_COLOURS[markOf(session, student.student)]"
 						>
+							<!-- The colour is the cell's and the button fills it, so a row
+                 made taller by its session's details line is coloured to its
+                 edges. `h-px` on the cell is what lets `h-full` here mean the
+                 row's height: a table cell grows to its row whatever it is
+                 given. -->
 							<button
 								type="button"
-								class="flex h-8 w-full cursor-pointer items-center justify-center transition-colors hover:brightness-95"
-								:class="MARK_COLOURS[markOf(session, student.student)]"
+								class="flex h-full min-h-8 w-full cursor-pointer items-center justify-center"
 								:title="cellTitle(session, student)"
 								:aria-label="cellTitle(session, student)"
 								@click="emit('open', session, student.student)"
@@ -153,8 +167,15 @@
 						</td>
 						<td
 							class="border-b border-outline-gray-2 bg-surface-gray-1 px-2 py-1.5 text-right font-medium tabular-nums"
+							:title="plannedTitle(block.scheduled, block.planned)"
 						>
 							{{ formatHours(block.scheduled) }}
+							<div
+								v-if="block.planned !== null"
+								class="text-p-xs font-normal text-ink-gray-5"
+							>
+								of {{ formatHours(block.planned) }}
+							</div>
 						</td>
 						<td
 							v-for="student in group.students"
@@ -188,8 +209,17 @@
 					>
 						Term total
 					</td>
-					<td class="bg-surface-gray-2 px-2 py-2 text-right font-semibold tabular-nums">
+					<td
+						class="bg-surface-gray-2 px-2 py-2 text-right font-semibold tabular-nums"
+						:title="plannedTitle(group.scheduled, group.planned)"
+					>
 						{{ formatHours(group.scheduled) }}
+						<div
+							v-if="group.planned !== null"
+							class="text-p-xs font-normal text-ink-gray-5"
+						>
+							of {{ formatHours(group.planned) }}
+						</div>
 					</td>
 					<td
 						v-for="student in group.students"
@@ -276,6 +306,12 @@ function footingTitle(
 	return `${student.student_name} · ${earned} of ${formatHours(
 		possible[student.student] ?? 0
 	)} hours, excused from ${formatHours(scheduled - (possible[student.student] ?? 0))}`
+}
+
+/** The scheduled footing's hover: scheduled against planned, where planned. */
+function plannedTitle(scheduled: number, planned: number | null): string | undefined {
+	if (planned === null) return undefined
+	return `${formatHours(scheduled)} of ${formatHours(planned)} planned hours scheduled`
 }
 
 function glyph(mark: Mark): string {

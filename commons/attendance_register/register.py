@@ -45,6 +45,7 @@ from commons.commons_core.settings import _settings
 # What every one of the register's fields in Commons Settings starts with.
 PREFIX = "attendance_"
 
+COURSE = "Course"
 COURSE_SCHEDULE = "Course Schedule"
 STUDENT_ATTENDANCE = "Student Attendance"
 ACADEMIC_TERM = "Academic Term"
@@ -64,6 +65,18 @@ REGISTER_FIELDS = {
 	"inactive_term_field": (ACADEMIC_TERM, frozenset(("Check",))),
 	"session_hours_field": (COURSE_SCHEDULE, frozenset(("Float", "Int"))),
 }
+
+# A course's plan: a Table on Course listing the kinds of session it is taught
+# in and the hours planned for each. Three settings, because the table is the
+# site's own and so are the names of both of its columns: the table field on
+# Course, then the column naming the kind and the column holding the hours.
+# Each is named rather than guessed from fieldtypes, so a column added to the
+# table later cannot quietly become the one the register reads.
+PLAN_FIELD = PREFIX + "course_plan_field"
+PLAN_TYPE_COLUMN = PREFIX + "course_plan_type_column"
+PLAN_HOURS_COLUMN = PREFIX + "course_plan_hours_column"
+PLAN_TYPE_FIELDTYPES = frozenset(("Link", "Data", "Select", "Autocomplete"))
+PLAN_HOURS_FIELDTYPES = frozenset(("Float", "Int"))
 
 LATE_CREDIT = PREFIX + "late_credit"
 
@@ -136,7 +149,9 @@ def register_fields() -> dict:
 	every term in the picker, and hours read off each session's times.
 
 	Two rules ride along with the fields, `group_resolution` and
-	`leave_counts_as`, each one of its options; see `CHOICES`.
+	`leave_counts_as`, each one of its options; see `CHOICES`. So does
+	`course_plan`, the table a course lists its planned hours in; see
+	`course_plan`.
 
 	A name is only sent if the doctype's meta has a field of that name and of a
 	type the page can use. The page puts these names into the filters and the
@@ -153,7 +168,39 @@ def register_fields() -> dict:
 	fields["late_credit"] = late_credit(settings)
 	for key, (options, default) in CHOICES.items():
 		fields[key] = choice(settings, PREFIX + key, options, default)
+	fields["course_plan"] = course_plan(settings)
 	return fields
+
+
+def course_plan(settings) -> dict | None:
+	"""Where a course lists the kinds of session it is taught in and the hours planned for each.
+
+	`table_field` is the Table on Course and `table_doctype` its child doctype,
+	which the page needs because `frappe.client.get_list` reads a child table by
+	its own doctype. `type_column` names the kind of session, in the same words
+	the session type field uses, and `hours_column` holds the planned hours.
+
+	All of it or nothing. A table without a type column has no rows the page
+	could match to a session, and one without an hours column has nothing to
+	plan. None is the page doing without: the session dialog offers every type
+	the school has used, and the register shows no planned hours.
+	"""
+	field = valid_field(settings, PLAN_FIELD, COURSE, frozenset(("Table",)))
+	if not field:
+		return None
+	table = frappe.get_meta(COURSE).get_field(field).options
+	if not table or not apps.has_doctype(table):
+		return None
+	type_column = valid_field(settings, PLAN_TYPE_COLUMN, table, PLAN_TYPE_FIELDTYPES)
+	hours_column = valid_field(settings, PLAN_HOURS_COLUMN, table, PLAN_HOURS_FIELDTYPES)
+	if not type_column or not hours_column:
+		return None
+	return {
+		"table_field": field,
+		"table_doctype": table,
+		"type_column": type_column,
+		"hours_column": hours_column,
+	}
 
 
 def choice(settings, setting: str, options: tuple, default: str) -> str:
@@ -195,3 +242,32 @@ def late_credit(settings) -> float:
 	if stored is None or stored == "":
 		return DEFAULT_LATE_CREDIT
 	return min(max(flt(stored), 0.0), 1.0)
+
+
+@frappe.whitelist(methods=["GET"])
+def my_instructors() -> list[str]:
+	"""The `Instructor` records that are this reader, for the register's course shortcuts.
+
+	An Instructor names an Employee and an Employee names a User; Education has
+	no link from an Instructor to a User of its own. So who is teaching is read
+	through the Employee, and the browser cannot do it: a teacher holding a
+	site's own role (a "Faculty", say) usually may read neither doctype, and
+	asking them for read on every colleague's Instructor and Employee record
+	to find their own would be a poor trade.
+
+	This reads past permissions, and it answers about nobody but the reader:
+	their own Instructor names, and nothing from any other row. The courses
+	and sessions those names lead to are read in the browser, through the
+	document API, like everything else on the page.
+
+	Empty for a reader who is no instructor, and on a site without the two
+	doctypes; the page then offers every course, as it did before.
+	"""
+	if not (apps.has_doctype("Instructor") and apps.has_doctype("Employee")):
+		return []
+	employees = frappe.get_all("Employee", filters={"user_id": frappe.session.user}, pluck="name")
+	if not employees:
+		return []
+	return frappe.get_all(
+		"Instructor", filters={"employee": ("in", employees)}, pluck="name", order_by="name asc"
+	)

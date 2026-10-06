@@ -38,19 +38,24 @@ Outside this folder, each shim is a line or two that names it:
 - `safer_permissions/test_permission_gate.py`: `NOT_REPORTS`, the override above
 - `.pre-commit-config.yaml`: `vendor/` is excluded, so the copies stay byte-identical to develop
 - `frontend/package.json`: `@framework/ui` links to `vendor/framework-ui`
-- the two page scripts, `banking/page/commons_banking/commons_banking.js` and
-  `document_capture/page/commons_capture/commons_capture.js`
+- the three page scripts, `banking/page/commons_banking/commons_banking.js`,
+  `document_capture/page/commons_capture/commons_capture.js` and
+  `attendance_register/page/commons_attendance/commons_attendance.js`
 
 What stays on v17, because it is how develop expects an app to ship islands:
 
-- `frontend/build-islands.mjs`: `buildIslands`, with entries `commons.banking` and
-  `commons.capture`
+- `frontend/build-islands.mjs`: `buildIslands`, with entries `commons.banking`,
+  `commons.capture` and `commons.attendance`
 - `frontend/src/islands/`: the entries, the shared `pageIsland` frame (provider, scroll box,
   CSRF token) and `contract.ts` (`title` / `actions`)
 - `frontend/src/screens/`: the screens, hosted both by the SPA's pages and by the desk
 - `frontend/src/types/framework-ui.d.ts`: develop's island package is plain JS
-- the Pages' JSON: `commons-banking` (module Banking) and `commons-capture` (module Document
-  Capture), Standard, with roles System Manager, Accounts Manager and Accounts User
+- the Pages' JSON, all Standard: `commons-banking` (module Banking) and `commons-capture` (module
+  Document Capture), with roles System Manager, Accounts Manager and Accounts User; and
+  `commons-attendance` (module Attendance Register), with roles System Manager, Academics User
+  and Instructor. A site whose markers hold another role (a "Faculty", say) adds it to the page
+  with Role Permission for Page and Report; the register itself still refuses anybody without
+  write on Student Attendance
 
 ## Building
 
@@ -73,12 +78,13 @@ dialog inside a shadow root. The patch was made against reka-ui 2.10.1. It appli
 3. In `hooks.py`, remove the `extend_bootinfo` line and the `get_island_assets` override. Remove
    `NOT_REPORTS` from `test_permission_gate.py`, and the import lines from `commons.bundle.js` and
    `commons.bundle.scss`.
-4. In each of the two Pages, set **Type** to "Frappe UI" and **Island** to `commons.banking` or
-   `commons.capture`, export them, and delete their `.js` files.
+4. In each of the three Pages, set **Type** to "Frappe UI" and **Island** to `commons.banking`,
+   `commons.capture` or `commons.attendance`, export them, and delete their `.js` files.
 5. Remove `enable_pseudo_islands` from Commons Settings and `settings.py`, and remove
    `Pseudo Islands` from `modules.txt`. `drop_stale_module_defs` removes its Module Def.
 6. Check whether develop's page host has gained a way for an island to write its query string.
-   Until it does, the banking island's filters still work but stop reaching the URL on the desk.
+   Until it does, the banking and attendance islands' filters still work but stop reaching the URL
+   on the desk.
    `onReplaceQuery` is this module's own event.
 
 Until step 1, every piece here stands aside for v17's own: the loader installs only where

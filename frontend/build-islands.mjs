@@ -37,6 +37,7 @@ await buildIslands({
   entries: {
     'commons.banking': 'src/islands/banking.ts',
     'commons.capture': 'src/islands/capture.ts',
+    'commons.attendance': 'src/islands/attendance.ts',
   },
   plugins: [aliases],
   production: process.argv.includes('--production'),

@@ -10,6 +10,7 @@ import {
   markRow,
   marksOffered,
   NO_FIELDS,
+  planRows,
   registerFields,
   scheduleFieldList,
   scheduleRow,
@@ -17,12 +18,17 @@ import {
   pageThrough,
   resolveGroups,
   sessionHours,
+  shortcutTerms,
+  instructorShortcuts,
   statedHours,
   toMark,
   type GroupResolution,
   type GroupRow,
   type Mark,
   type MarkRow,
+  type CoursePlanFields,
+  type CourseRow,
+  type TermRow,
   type RegisterFields,
   type ScheduleRow,
   type StudentRow,
@@ -62,6 +68,7 @@ const REGISTER: RegisterFields = {
   session_hours_field: null,
   group_resolution: 'Programme',
   leave_counts_as: 'Absent',
+  course_plan: null,
 }
 
 function student(name: string, group = 'Group A'): StudentRow {
@@ -845,5 +852,199 @@ describe('which groups take a course', () => {
   it('both ways still finds course-based groups with no programme', async () => {
     const groups = await resolveGroups('Both', 'T1', 'CEM', reads([]).reads)
     expect(names(groups)).toEqual(['Group A', 'Group C'])
+  })
+})
+
+/** The register site's course plan: `Course Contact Hours` rows on each course. */
+const PLAN: CoursePlanFields = {
+  table_field: 'custom_contact_hours',
+  table_doctype: 'Course Contact Hours',
+  type_column: 'contact_hour_type',
+  hours_column: 'hours',
+}
+
+describe("a course's plan", () => {
+  it('is sent whole or not at all', () => {
+    expect(registerFields({ course_plan: PLAN }).course_plan).toEqual(PLAN)
+    expect(
+      registerFields({ course_plan: { ...PLAN, hours_column: '' } }).course_plan,
+    ).toBeNull()
+    expect(
+      registerFields({
+        course_plan: { ...PLAN, type_column: 'x; drop table' },
+      }).course_plan,
+    ).toBeNull()
+    expect(registerFields({}).course_plan).toBeNull()
+  })
+
+  it("keeps the table's order, adds a kind listed twice, and drops a row naming none", () => {
+    expect(
+      planRows(
+        [
+          { contact_hour_type: 'Seminar', hours: 30 },
+          { contact_hour_type: 'Research', hours: 15 },
+          { contact_hour_type: '', hours: 5 },
+          { contact_hour_type: 'Seminar', hours: '6' },
+          { contact_hour_type: 'Workshop', hours: 0 },
+        ],
+        PLAN,
+      ),
+    ).toEqual([
+      { session_type: 'Seminar', hours: 36 },
+      { session_type: 'Research', hours: 15 },
+      { session_type: 'Workshop', hours: 0 },
+    ])
+  })
+
+  const rows = {
+    groups: [GROUP_A],
+    students: [student('ann')],
+    schedules: [
+      schedule('one', '09:00:00', '11:00:00', 'Workshop'),
+      schedule('two', '09:00:00', '11:00:00', 'Seminar'),
+      schedule('three', '09:00:00', '10:00:00', null),
+    ],
+    marks: [],
+    plan: [
+      { session_type: 'Seminar', hours: 30 },
+      { session_type: 'Research', hours: 15 },
+    ],
+  }
+  const group = buildRegister(rows, REGISTER).groups[0]
+
+  it("draws the plan's kinds first in its order, then the others, then the untyped", () => {
+    expect(group.blocks.map((block) => block.session_type)).toEqual([
+      'Seminar',
+      'Research',
+      'Workshop',
+      null,
+    ])
+  })
+
+  it('gives a planned kind a block even before any session of it', () => {
+    const research = group.blocks[1]
+    expect(research.sessions).toEqual([])
+    expect(research.scheduled).toBe(0)
+    expect(research.planned).toBe(15)
+  })
+
+  it('plans nothing for a kind the plan does not list', () => {
+    expect(group.blocks[0].planned).toBe(30)
+    expect(group.blocks[2].planned).toBeNull()
+    expect(group.blocks[3].planned).toBeNull()
+  })
+
+  it('totals the plan for the group, and leaves the scheduled total alone', () => {
+    expect(group.planned).toBe(45)
+    expect(group.scheduled).toBe(5)
+  })
+
+  it('is no plan at all where the course has none', () => {
+    const bare = buildRegister({ ...rows, plan: [] }, REGISTER).groups[0]
+    expect(bare.planned).toBeNull()
+    expect(bare.blocks.map((block) => block.session_type)).toEqual([
+      'Seminar',
+      'Workshop',
+      null,
+    ])
+  })
+})
+
+/** The register site's terms, as the picker reads them (newest first). */
+const TERMS: TermRow[] = [
+  { name: '2026-27 (Spring)', term_start_date: '2027-02-01', term_end_date: '2027-06-30' },
+  { name: '2026-27 (Fall)', term_start_date: '2026-08-01', term_end_date: '2026-12-31' },
+  { name: '2025-26 (Spring)', term_start_date: '2026-02-01', term_end_date: '2026-06-30' },
+  { name: '2025-26 (Fall)', term_start_date: '2025-08-01', term_end_date: '2025-12-31' },
+  { name: '2024-25 (Spring)', term_start_date: '2025-02-01', term_end_date: '2025-06-30' },
+]
+
+describe('which terms the shortcuts cover', () => {
+  it('is the current term, the one before, and every one after, oldest first', () => {
+    expect(shortcutTerms(TERMS, '2025-26 (Spring)', '2026-10-06')).toEqual([
+      '2025-26 (Fall)',
+      '2025-26 (Spring)',
+      '2026-27 (Fall)',
+      '2026-27 (Spring)',
+    ])
+  })
+
+  it("follows Education Settings' current term over the calendar", () => {
+    expect(shortcutTerms(TERMS, '2024-25 (Spring)', '2026-10-06')[0]).toBe(
+      '2024-25 (Spring)',
+    )
+  })
+
+  it('without a current term, is the term today falls in', () => {
+    expect(shortcutTerms(TERMS, null, '2026-09-15')).toEqual([
+      '2025-26 (Spring)',
+      '2026-27 (Fall)',
+      '2026-27 (Spring)',
+    ])
+  })
+
+  it('between terms, is the last one to have started', () => {
+    expect(shortcutTerms(TERMS, null, '2026-07-15')[1]).toBe('2025-26 (Spring)')
+  })
+
+  it('has nothing before the first term', () => {
+    expect(shortcutTerms(TERMS, '2024-25 (Spring)', '2025-03-01')[0]).toBe(
+      '2024-25 (Spring)',
+    )
+  })
+})
+
+describe("an instructor's own courses", () => {
+  const course = (name: string, teacher: string | null): CourseRow => ({
+    name,
+    course_name: name,
+    abbreviation: name.slice(0, 3).toUpperCase(),
+    default_instructor: teacher,
+  })
+  const base = {
+    terms: ['2025-26 (Fall)', '2025-26 (Spring)', '2026-27 (Fall)'],
+    mine: ['Peter Graif'],
+    courses: [
+      course('Ethnography', 'Peter Graif'),
+      course('Field Methods', 'Dhirendra Nalbo'),
+      course('History', 'Peter Graif'),
+    ],
+    groups: [
+      { name: 'Fall S2', academic_term: '2025-26 (Fall)', program: 'Sem 2', course: null },
+      { name: 'Spring S1', academic_term: '2025-26 (Spring)', program: 'Sem 1', course: null },
+      { name: 'Next S1', academic_term: '2026-27 (Fall)', program: 'Sem 1', course: null },
+    ],
+    taught: [{ course: 'Field Methods', student_group: 'Fall S2' }],
+    programCourses: [
+      { parent: 'Sem 1', course: 'History' },
+      { parent: 'Sem 2', course: 'Ethnography' },
+    ],
+    resolution: 'Programme' as GroupResolution,
+  }
+
+  it('counts a course they taught a session of, and one they are default for and is taught', () => {
+    expect(
+      instructorShortcuts(base).map((row) => [row.term, row.courses.map((c) => c.name)]),
+    ).toEqual([
+      ['2025-26 (Fall)', ['Ethnography', 'Field Methods']],
+      ['2025-26 (Spring)', ['History']],
+      ['2026-27 (Fall)', ['History']],
+    ])
+  })
+
+  it("leaves out a term with none of theirs", () => {
+    const rows = instructorShortcuts({ ...base, programCourses: [], taught: [] })
+    expect(rows).toEqual([])
+  })
+
+  it('finds course-based groups only where the site says so', () => {
+    const groups = [
+      { name: 'Writing', academic_term: '2025-26 (Spring)', program: null, course: 'History' },
+    ]
+    const by = (resolution: GroupResolution) =>
+      instructorShortcuts({ ...base, groups, taught: [], resolution }).length
+    expect(by('Programme')).toBe(0)
+    expect(by('Course')).toBe(1)
+    expect(by('Both')).toBe(1)
   })
 })

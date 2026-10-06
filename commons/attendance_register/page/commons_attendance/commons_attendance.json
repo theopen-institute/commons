@@ -1,0 +1,29 @@
+{
+ "content": null,
+ "creation": "2026-10-05 12:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Attendance Register",
+ "name": "commons-attendance",
+ "owner": "Administrator",
+ "page_name": "commons-attendance",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Academics User"
+  },
+  {
+   "role": "Instructor"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Attendance"
+}

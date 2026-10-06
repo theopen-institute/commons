@@ -3,23 +3,29 @@ import { useCall } from 'frappe-ui'
 import {
   buildRegister,
   EMPTY_REGISTER,
+  instructorShortcuts,
   markFieldList,
   markFields,
   markRow,
   pageThrough,
+  planRows,
   registerFields,
   resolveGroups,
   scheduleFieldList,
   scheduleRow,
+  shortcutTerms,
   type ApiRow,
   type CourseRow,
   type GroupRow,
   type Mark,
   type MarkRow,
   type Paged,
+  type PlanRow,
   type Register,
   type RegisterFields,
   type ScheduleRow,
+  type ShortcutGroupRow,
+  type ShortcutRow,
   type StudentRow,
   type TermRow,
 } from './attendanceRegister'
@@ -47,8 +53,9 @@ import { permissionCall } from './permissions'
  *
  * * `/api/v2/document/<doctype>` for ordinary doctypes. This is what
  *   `data/requests/section.ts` uses and what the app's README points at.
- * * `frappe.client.get_list` for the two child tables — `Program Course` and
- *   `Student Group Student`. The document API cannot read a child table
+ * * `frappe.client.get_list` for the child tables — `Program Course`,
+ *   `Student Group Student`, and the course plan's table where the site names
+ *   one. The document API cannot read a child table
  *   usefully: `document_list` never passes a `parent_doctype` to the query
  *   engine, so a child doctype is permission-checked against its own (empty)
  *   permissions and every requested field is stripped, leaving a list of bare
@@ -130,7 +137,9 @@ export {
   type CourseRow,
   type GroupRegister,
   type GroupStudent,
+  type PlanRow,
   type Session,
+  type ShortcutRow,
   type TermRow,
 } from './attendanceRegister'
 
@@ -342,10 +351,131 @@ export function useAttendancePickers() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* A teacher's own courses                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The course shortcuts: the reader's own courses in the current term, the one
+ * before it and every term after it, a row per term. See `shortcutTerms` and
+ * `instructorShortcuts` for which.
+ *
+ * `state` is `mine` once the rows are in, and `none` for a reader who is not
+ * an instructor or whose rows could not be read; the page then offers every
+ * course instead, as it always did, rather than nothing. Who the reader is
+ * comes from `my_instructors`, the one thing here the browser cannot read for
+ * itself (see its docstring); everything else is the document API.
+ */
+export function useCourseShortcuts() {
+  const mineCall = useCall<string[] | null>({
+    url: '/api/v2/method/commons.attendance_register.register.my_instructors',
+    immediate: false,
+  })
+  const groups = documentList<ShortcutGroupRow>('Student Group')
+  const sessions = documentList<{ course: string; student_group: string }>(
+    'Course Schedule',
+  )
+  const programs = childList<{ parent: string; course: string }>()
+
+  const rows = ref<ShortcutRow[]>([])
+  const state = ref<'loading' | 'mine' | 'none'>('loading')
+  let sequence = 0
+
+  async function load(
+    terms: TermRow[],
+    current: string | null,
+    courses: CourseRow[],
+  ) {
+    const ticket = ++sequence
+    try {
+      const fields = await loadAttendanceFields()
+      const mine = await mineCall.submit()
+      if (ticket !== sequence) return
+      if (mineCall.error || !mine?.length) {
+        state.value = 'none'
+        return
+      }
+      const window = shortcutTerms(terms, current, today())
+      const groupRows = window.length
+        ? (
+            await fetchRows(groups, 'document', {
+              fields: JSON.stringify(['name', 'academic_term', 'program', 'course']),
+              filters: JSON.stringify([['academic_term', 'in', window]]),
+              order_by: 'name asc',
+            })
+          ).rows
+        : []
+      const groupNames = groupRows.map((row) => row.name)
+      const programmes = [
+        ...new Set(groupRows.map((row) => row.program).filter(Boolean)),
+      ] as string[]
+      const defaults = courses
+        .filter(
+          (row) => row.default_instructor && mine.includes(row.default_instructor),
+        )
+        .map((row) => row.name)
+      const [taught, programCourses] = await Promise.all([
+        groupNames.length
+          ? fetchRows(sessions, 'document', {
+              fields: JSON.stringify(['course', 'student_group']),
+              filters: JSON.stringify([
+                ['instructor', 'in', mine],
+                ['student_group', 'in', groupNames],
+              ]),
+              group_by: 'course, student_group',
+              order_by: 'course asc, student_group asc',
+            }).then((read) => read.rows)
+          : [],
+        programmes.length && defaults.length
+          ? fetchRows(programs, 'client', {
+              doctype: 'Program Course',
+              parent: 'Program',
+              fields: JSON.stringify(['parent', 'course']),
+              filters: JSON.stringify([
+                ['parent', 'in', programmes],
+                ['course', 'in', defaults],
+              ]),
+              order_by: 'parent asc, name asc',
+            }).then((read) => read.rows)
+          : [],
+      ])
+      if (ticket !== sequence) return
+      rows.value = instructorShortcuts({
+        terms: window,
+        mine,
+        courses,
+        groups: groupRows,
+        taught,
+        programCourses,
+        resolution: fields.group_resolution,
+      })
+      state.value = 'mine'
+    } catch (problem) {
+      if (ticket !== sequence || problem instanceof Cancelled) return
+      // Not worth a message: the page still works, with every course offered.
+      state.value = 'none'
+    }
+  }
+
+  return {
+    load,
+    rows: computed(() => rows.value),
+    state: computed(() => state.value),
+  }
+}
+
+/** Today in the browser's own calendar, as a stored Date reads. */
+function today(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate(),
+  ).padStart(2, '0')}`
+}
+
+/* -------------------------------------------------------------------------- */
 /* The register                                                                */
 /* -------------------------------------------------------------------------- */
 
-/** The four lists a register is built from, kept as they arrived.
+/** The lists a register is built from, kept as they arrived.
  *
  *  Held rather than discarded because a mark changed on screen is a mark
  *  changed here: the register below is computed from these, so patching one row
@@ -357,6 +487,7 @@ export interface RegisterRows {
   students: StudentRow[]
   schedules: ScheduleRow[]
   marks: MarkRow[]
+  plan: PlanRow[]
 }
 
 const NO_ROWS: RegisterRows = {
@@ -364,6 +495,7 @@ const NO_ROWS: RegisterRows = {
   students: [],
   schedules: [],
   marks: [],
+  plan: [],
 }
 
 /**
@@ -385,6 +517,7 @@ export function useAttendanceRegister() {
   const students = childList<StudentRow>()
   const schedules = documentList<ApiRow>('Course Schedule')
   const marks = documentList<ApiRow>('Student Attendance')
+  const plan = childList<ApiRow>()
 
   const rows = ref<RegisterRows>(NO_ROWS) as Ref<RegisterRows>
   const register = computed<Register>(() =>
@@ -516,7 +649,13 @@ export function useAttendanceRegister() {
     const groupNames = groupRows.map((row) => row.name)
     if (!groupNames.length) return NO_ROWS
 
-    const [studentRows, scheduleRows] = await Promise.all([
+    // The course's plan, beside the students and sessions because it depends
+    // on the course alone. Only on a site that keeps a session type: the plan
+    // is matched to sessions by their type, and without one there is nothing
+    // to match it to. Read through `frappe.client.get_list` for the reason the
+    // module comment gives, which also has it checked against read on Course.
+    const planFields = fields.session_type_field ? fields.course_plan : null
+    const [studentRows, scheduleRows, planned] = await Promise.all([
       // Ordered by name rather than by roll number, because the register is
       // read across: a teacher looks along the top for the student in front of
       // them. Inactive members are dropped — a student who has left the group
@@ -540,6 +679,21 @@ export function useAttendanceRegister() {
         ]),
         order_by: 'schedule_date asc, from_time asc, name asc',
       })),
+      planFields
+        ? all('course plan', fetchRows(plan, 'client', {
+            doctype: planFields.table_doctype,
+            parent: 'Course',
+            fields: JSON.stringify([
+              planFields.type_column,
+              planFields.hours_column,
+            ]),
+            filters: JSON.stringify([
+              ['parent', '=', course],
+              ['parentfield', '=', planFields.table_field],
+            ]),
+            order_by: 'idx asc, name asc',
+          }))
+        : [],
     ])
     stillCurrent()
 
@@ -563,6 +717,7 @@ export function useAttendanceRegister() {
       students: studentRows,
       schedules: scheduleRows.map((row) => scheduleRow(row, fields)),
       marks: markRows.map((row) => markRow(row, fields)),
+      plan: planFields ? planRows(planned, planFields) : [],
     }
   }
 

@@ -13,7 +13,8 @@ puts a whole cohort's attendance in front of every student on the site.
 
 `register_fields` fails a third way: a fieldname sent that the doctype does not
 have breaks every read the page makes, so what is pinned is that only a field
-the meta has, of a type the page can use, is ever sent.
+the meta has, of a type the page can use, is ever sent. The course plan is three
+such names, and is sent whole or not at all.
 """
 
 import logging
@@ -85,12 +86,17 @@ class TestWhoTheRegisterIsFor(TestCase):
 
 
 class FakeMeta:
-	def __init__(self, fields: dict[str, str]):
+	"""A doctype's fields, each a fieldtype or a `(fieldtype, options)` pair."""
+
+	def __init__(self, fields: dict[str, str | tuple[str, str]]):
 		self.fields = fields
 
 	def get_field(self, fieldname):
-		fieldtype = self.fields.get(fieldname)
-		return frappe._dict(fieldname=fieldname, fieldtype=fieldtype) if fieldtype else None
+		spec = self.fields.get(fieldname)
+		if not spec:
+			return None
+		fieldtype, options = spec if isinstance(spec, tuple) else (spec, None)
+		return frappe._dict(fieldname=fieldname, fieldtype=fieldtype, options=options)
 
 
 # The register site's four fields, as Education plus its Custom Fields has them,
@@ -107,6 +113,23 @@ METAS = {
 		}
 	),
 	attendance.ACADEMIC_TERM: FakeMeta({"custom_inactive": "Check", "term_name": "Data"}),
+	# The register site's course plan, and a Table naming a doctype no site has.
+	attendance.COURSE: FakeMeta(
+		{
+			"custom_contact_hours": ("Table", "Course Contact Hours"),
+			"custom_orphan_table": ("Table", "Course Orphan Rows"),
+			"course_name": "Data",
+		}
+	),
+	"Course Contact Hours": FakeMeta(
+		{"contact_hour_type": "Link", "hours": "Int", "description": "Text", "note": "Small Text"}
+	),
+}
+
+PLAN = {
+	"course_plan_field": "custom_contact_hours",
+	"course_plan_type_column": "contact_hour_type",
+	"course_plan_hours_column": "hours",
 }
 
 CONFIGURED = {
@@ -118,6 +141,7 @@ CONFIGURED = {
 	"session_hours_field": "custom_hours",
 	"group_resolution": "Both",
 	"leave_counts_as": "Excused",
+	**PLAN,
 }
 
 
@@ -147,6 +171,12 @@ class TestWhichFieldsTheRegisterUses(TestCase):
 				"session_hours_field": "custom_hours",
 				"group_resolution": "Both",
 				"leave_counts_as": "Excused",
+				"course_plan": {
+					"table_field": "custom_contact_hours",
+					"table_doctype": "Course Contact Hours",
+					"type_column": "contact_hour_type",
+					"hours_column": "hours",
+				},
 			},
 		)
 
@@ -165,6 +195,7 @@ class TestWhichFieldsTheRegisterUses(TestCase):
 				"session_hours_field": None,
 				"group_resolution": "Programme",
 				"leave_counts_as": "Absent",
+				"course_plan": None,
 			},
 		)
 
@@ -173,6 +204,7 @@ class TestWhichFieldsTheRegisterUses(TestCase):
 		self.assertEqual(self.fields(None)["late_credit"], 1.0)
 		self.assertEqual(self.fields(None)["group_resolution"], "Programme")
 		self.assertEqual(self.fields(None)["leave_counts_as"], "Absent")
+		self.assertIsNone(self.fields(None)["course_plan"])
 
 	def test_a_field_the_doctype_lacks_is_blank(self):
 		"""A typo would otherwise be in the filter of every read the page makes."""
@@ -236,3 +268,78 @@ class TestWhichFieldsTheRegisterUses(TestCase):
 				fields = self.fields(settings)
 				self.assertEqual(fields["group_resolution"], "Programme")
 				self.assertEqual(fields["leave_counts_as"], "Absent")
+
+	def test_a_course_plan_is_all_three_names_or_none(self):
+		"""A table with no usable type column has no row the page could match to
+		a session, and one with no hours column has nothing planned."""
+		for setting, value in (
+			("course_plan_field", ""),
+			("course_plan_field", "custom_missing"),
+			("course_plan_field", "course_name"),
+			("course_plan_type_column", ""),
+			("course_plan_type_column", "custom_missing"),
+			("course_plan_type_column", "description"),
+			("course_plan_hours_column", ""),
+			("course_plan_hours_column", "contact_hour_type"),
+			("course_plan_hours_column", "note"),
+		):
+			with self.subTest(setting=setting, value=value):
+				settings = configured(CONFIGURED, **{setting: value})
+				self.assertIsNone(self.fields(settings)["course_plan"])
+
+	def test_a_table_whose_rows_the_site_lacks_is_no_plan(self):
+		settings = configured(CONFIGURED, course_plan_field="custom_orphan_table")
+		self.assertIsNone(self.fields(settings)["course_plan"])
+
+	def test_a_course_plan_column_may_be_a_link_or_text(self):
+		"""The register site's column links to a `Contact Hour Type`; another
+		school's may be free text, as the session type field is."""
+		for fieldtype in ("Link", "Data", "Select", "Autocomplete"):
+			with self.subTest(fieldtype=fieldtype):
+				meta = FakeMeta({"contact_hour_type": fieldtype, "hours": "Float"})
+				with patch.dict(METAS, {"Course Contact Hours": meta}):
+					plan = self.fields(configured(CONFIGURED))["course_plan"]
+				self.assertEqual(plan["type_column"], "contact_hour_type")
+
+
+class TestWhoIsTeaching(TestCase):
+	"""`my_instructors` reads past permissions, so what is pinned is that it
+	answers about the reader and nobody else."""
+
+	def answer(self, employees, instructors, doctypes=("Instructor", "Employee")):
+		asked = []
+
+		def get_all(doctype, filters=None, **_):
+			asked.append((doctype, filters))
+			return employees if doctype == "Employee" else instructors
+
+		with (
+			patch.object(attendance.apps, "has_doctype", side_effect=lambda doctype: doctype in doctypes),
+			patch.object(attendance.frappe, "get_all", side_effect=get_all),
+			patch.object(attendance.frappe, "session", frappe._dict(user="teacher@example.com")),
+		):
+			return attendance.my_instructors(), asked
+
+	def test_is_the_instructors_of_the_readers_own_employee_records(self):
+		found, asked = self.answer(["HR-EMP-1"], ["Peter Graif"])
+		self.assertEqual(found, ["Peter Graif"])
+		self.assertEqual(
+			asked,
+			[
+				("Employee", {"user_id": "teacher@example.com"}),
+				("Instructor", {"employee": ("in", ["HR-EMP-1"])}),
+			],
+		)
+
+	def test_no_employee_is_no_instructor(self):
+		"""And never an unfiltered read of every Instructor."""
+		found, asked = self.answer([], ["Somebody Else"])
+		self.assertEqual(found, [])
+		self.assertEqual([doctype for doctype, _ in asked], ["Employee"])
+
+	def test_without_education_or_hr_there_is_nobody(self):
+		for doctypes in (("Instructor",), ("Employee",), ()):
+			with self.subTest(doctypes=doctypes):
+				found, asked = self.answer(["HR-EMP-1"], ["Peter Graif"], doctypes)
+				self.assertEqual(found, [])
+				self.assertEqual(asked, [])

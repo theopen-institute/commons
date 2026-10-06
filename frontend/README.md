@@ -366,11 +366,11 @@ word. That is what correctness costs here, and it is the same
 bargain the rest of this app makes.
 
 Two of Frappe's shapes are used rather than one, and the split is not arbitrary:
-`Program Course` and `Student Group Student` are child tables, and the REST
+`Program Course`, `Student Group Student` and a course plan's table are child tables, and the REST
 document API cannot read one usefully — `document_list` never passes a
 `parent_doctype` to the query engine, so a child doctype is permission-checked
 against its own empty permissions and every requested field is stripped, leaving
-a list of bare `name`s. Those two go through `frappe.client.get_list`, which
+a list of bare `name`s. Those go through `frappe.client.get_list`, which
 takes `parent` and is what the desk uses for the same job.
 
 Whether this reader may mark attendance is asked with
@@ -402,6 +402,27 @@ was one:
 | Find Student Groups By | Programme (via `Program Course`), Course (course-based groups' `course`), Both | Programme |
 | Leave Counts As       | Absent, Excused                            | Absent      |
 
+And a course's plan: a table the site adds to `Course`, listing the kinds of
+session the course is taught in and the hours planned for each. Three
+settings, because the table and both of its columns are the site's own:
+**Course Plan Table** (the Table field on `Course`), **Session Type Column**
+(the column naming the kind, in the same words as the Session Type Field) and
+**Planned Hours Column** (Float or Int). All three or none; the plan also needs
+a Session Type Field, since it is matched to sessions by their type. With one:
+
+- the session dialog's type picker lists the course's kinds first, each with
+  the hours left of its plan for that group, then the rest the school has
+  used. A kind nobody has used yet is typed into the search and taken with its
+  "Use" row. The dialog says "Not in
+  this course's plan" under a kind the plan does not list. It never refuses one: a session that was something other than
+  planned is still recorded as what it was.
+- every kind the plan lists gets a block, in the plan's order, even before a
+  session of it is timetabled. Kinds the plan does not list follow
+  alphabetically, as before.
+- each block's heading and footing, and the term total, give the planned hours
+  beside the scheduled ones. A kind listed twice in a plan is one kind with
+  both rows' hours.
+
 The page asks `commons.attendance_register.register.register_fields` for them,
 which sends a name only if the doctype's meta has a field of that name and a
 usable type, so a typo in the settings switches a feature off rather than
@@ -415,6 +436,18 @@ The register this page was first written for keeps them as
 `custom_session_details` and `custom_inactive`. This app shipped those four as
 fixtures until it stopped hardwiring one school's fields; they are that site's
 own Custom Fields now, named on its Commons Settings Attendance tab.
+
+The shortcuts under the pickers are an instructor's own courses: a row per
+term, from the term before the current one to the last one created, and a
+chip picks its term with its course. A course is theirs in a term if they
+taught a session of it there (`Course Schedule.instructor`), or if they are its
+`default_instructor` and a group takes it that term (by *Find Student Groups
+By*), which is what fills a term before anything in it is timetabled. Who is an
+instructor is the one thing read on the server,
+`commons.attendance_register.register.my_instructors`: an Instructor names an
+Employee and the Employee names the User, and a teacher may read neither. It
+answers with the reader's own Instructor names and nothing else. A reader who
+is no instructor gets every course as a chip, as before.
 
 A `Course` wants a `default_instructor` and a default classroom: `Course
 Schedule` requires both and the site fetches them from there, and this page

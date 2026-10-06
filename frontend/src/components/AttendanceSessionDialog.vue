@@ -38,24 +38,36 @@
 						: ''
 				"
 			>
-				<!-- A text input over a list rather than a Select, because the field is
-             free text on purpose: the vocabulary is the school's, and a Select
-             would make its fifth kind of session a deploy. The list offers what
-             is already in use, so typing a new one is possible and never
-             accidental. -->
-				<div v-if="fields.session_type_field">
-					<FormControl
-						v-model="form.session_type"
-						type="text"
-						label="Session type"
-						list="attendance-session-types"
-						placeholder="e.g. Seminar"
-						:description="isNewType ? 'A new kind of session' : undefined"
-					/>
-					<datalist id="attendance-session-types">
-						<option v-for="name in sessionTypes" :key="name" :value="name" />
-					</datalist>
-				</div>
+				<!-- A picker rather than a Select, because the field is free text on
+             purpose: the vocabulary is the school's, and a Select would make
+             its fifth kind of session a deploy. The course's planned kinds come
+             first, each with what is left of its hours for this group; then the
+             rest the school has used; and a typed kind nobody has used yet is
+             one "Use" row away, so a new one is possible and never accidental. -->
+				<Combobox
+					v-if="fields.session_type_field"
+					v-model="sessionType"
+					v-model:query="typeQuery"
+					:options="typeOptions"
+					trigger="button"
+					label="Session type"
+					placeholder="Choose or type a kind"
+					empty-text="No kind of session matches"
+					:description="typeNote"
+					@update:open="(isOpen: boolean) => isOpen && (typeQuery = '')"
+				>
+					<template #item-label="{ item }">
+						<div class="min-w-0">
+							<div class="truncate">{{ item.label }}</div>
+							<div
+								v-if="item.description"
+								class="truncate text-p-sm text-ink-gray-5"
+							>
+								{{ item.description }}
+							</div>
+						</div>
+					</template>
+				</Combobox>
 				<FormControl
 					v-if="fields.session_details_field"
 					v-model="form.session_details"
@@ -125,7 +137,16 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Dialog, ErrorMessage, FormControl, TextInput, toast, type DialogAction } from 'frappe-ui'
+import {
+	Combobox,
+	Dialog,
+	ErrorMessage,
+	FormControl,
+	TextInput,
+	toast,
+	type ComboboxOption,
+	type DialogAction,
+} from 'frappe-ui'
 import BikramDatePicker from './BikramDatePicker.vue'
 import {
 	attendanceFields,
@@ -141,6 +162,7 @@ import {
 	useInsertDocuments,
 	useSetValue,
 	write,
+	type Block,
 	type GroupRegister,
 	type Session,
 } from '@/data/attendance'
@@ -215,9 +237,111 @@ function blankForm(): SessionForm {
 const form = reactive<SessionForm>(blankForm())
 const submitAttempted = ref(false)
 
-const isNewType = computed(
-	() => Boolean(form.session_type) && !props.sessionTypes.includes(form.session_type)
+/** The kinds the course's plan lists, in its order, from this group's blocks:
+ *  a block carries planned hours only for a kind the plan names. */
+const plannedBlocks = computed(() =>
+	props.group.blocks.filter(
+		(block): block is Block & { session_type: string; planned: number } =>
+			block.planned !== null && block.session_type !== null
+	)
 )
+const plannedTypes = computed(() => plannedBlocks.value.map((block) => block.session_type))
+
+const isNewType = computed(
+	() =>
+		Boolean(form.session_type) &&
+		!props.sessionTypes.includes(form.session_type) &&
+		!plannedTypes.value.includes(form.session_type)
+)
+
+/** Said under the type, never refused: a kind the school has never used, or one
+ *  this course's plan does not list. A session that was something other than
+ *  planned is still recorded as what it was. */
+const typeNote = computed(() => {
+	if (isNewType.value) return 'A new kind of session'
+	if (
+		form.session_type &&
+		plannedTypes.value.length &&
+		!plannedTypes.value.includes(form.session_type)
+	)
+		return "Not in this course's plan"
+	return undefined
+})
+
+/** The picker's value. Nothing chosen is null to the picker and the empty
+ *  string to the form, which writes it as no type. */
+const sessionType = computed({
+	get: () => form.session_type || null,
+	set: (value) => (form.session_type = value == null ? '' : String(value)),
+})
+
+/** What is typed into the picker's search. Held here so the "Use" row can say
+ *  what it will use; cleared each time the picker opens. */
+const typeQuery = ref('')
+
+/** What is left of a planned kind's hours for this group, in words. */
+function hoursLeft(block: { planned: number; scheduled: number }): string {
+	const left = block.planned - block.scheduled
+	if (left > 0) return `${formatHours(left)} of ${formatHours(block.planned)} hours left`
+	if (left === 0) return `All ${formatHours(block.planned)} hours scheduled`
+	return `${formatHours(-left)} hours over the ${formatHours(block.planned)} planned`
+}
+
+const typeOptions = computed<ComboboxOption[]>(() => {
+	const planned = plannedTypes.value
+	const others = props.sessionTypes.filter((name) => !planned.includes(name))
+	// The current value, where it is in neither list: a kind typed a moment ago
+	// with "Use", which has to be an option for the trigger to show it.
+	const current = form.session_type
+	if (current && !planned.includes(current) && !others.includes(current)) others.unshift(current)
+	return [
+		...(planned.length
+			? [
+					{
+						group: 'This course',
+						options: plannedBlocks.value.map((block) => ({
+							label: block.session_type,
+							value: block.session_type,
+							description: hoursLeft(block),
+						})),
+					},
+			  ]
+			: []),
+		...(others.length
+			? [
+					{
+						group: planned.length ? 'Other kinds' : 'Kinds in use',
+						options: others.map((name) => ({ label: name, value: name })),
+					},
+			  ]
+			: []),
+		{
+			group: 'New',
+			hideLabel: true,
+			options: [
+				{
+					type: 'custom' as const,
+					key: 'new-kind',
+					label: `Use "${newKind(typeQuery.value)}"`,
+					description: 'A new kind of session',
+					condition: ({ query }: { query: string }) => Boolean(newKind(query)),
+					onClick: ({ query }: { query: string }) => {
+						const kind = newKind(query)
+						if (kind) form.session_type = kind
+					},
+				},
+			],
+		},
+	]
+})
+
+/** A typed query as a new kind, or nothing if it is blank or already offered. */
+function newKind(query: string): string {
+	const kind = query.trim()
+	if (!kind) return ''
+	const known = [...plannedTypes.value, ...props.sessionTypes]
+	return known.some((name) => name.toLowerCase() === kind.toLowerCase()) ? '' : kind
+}
 
 // A start time on its own is nearly always a two-hour session here, and typing
 // the end time is the sort of keystroke a register should not ask for twice a

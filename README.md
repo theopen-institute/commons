@@ -66,7 +66,7 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 - **Sidebar memory**: a reloaded page keeps the sidebar it was reached from.
 - **Home page priority**: when a user holds several roles, the role with the lowest Home Page Priority decides where they land after login.
 - **Desk To Do**: your open ToDos, next to the notification bell.
-- **Desk islands**: shows Bank Reconciliation and Document Capture as desk pages (`/app/commons-banking`, `/app/commons-capture`) on Frappe v16.
+- **Desk islands**: shows Bank Reconciliation, Document Capture and the attendance register as desk pages (`/app/commons-banking`, `/app/commons-capture`, `/app/commons-attendance`) on Frappe v16.
 
 #### Desk conveniences
 

@@ -29,6 +29,9 @@ class CommonsSettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		attendance_course_plan_field: DF.Data | None
+		attendance_course_plan_hours_column: DF.Data | None
+		attendance_course_plan_type_column: DF.Data | None
 		attendance_group_resolution: DF.Literal["Programme", "Course", "Both"]
 		attendance_inactive_term_field: DF.Data | None
 		attendance_late_credit: DF.Float
