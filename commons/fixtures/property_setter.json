@@ -27,19 +27,6 @@
  },
  {
   "doctype": "Property Setter",
-  "name": "Notification-message-depends_on",
-  "owner": "Administrator",
-  "is_system_generated": 1,
-  "doctype_or_field": "DocField",
-  "doc_type": "Notification",
-  "field_name": "message",
-  "property": "depends_on",
-  "property_type": "Data",
-  "value": "eval:!doc.email_template",
-  "module": "Email Extensions"
- },
- {
-  "doctype": "Property Setter",
   "name": "Notification-message_examples-depends_on",
   "owner": "Administrator",
   "is_system_generated": 1,
@@ -49,19 +36,6 @@
   "property": "depends_on",
   "property_type": "Data",
   "value": "eval:!doc.email_template",
-  "module": "Email Extensions"
- },
- {
-  "doctype": "Property Setter",
-  "name": "Notification-subject-mandatory_depends_on",
-  "owner": "Administrator",
-  "is_system_generated": 1,
-  "doctype_or_field": "DocField",
-  "doc_type": "Notification",
-  "field_name": "subject",
-  "property": "mandatory_depends_on",
-  "property_type": "Data",
-  "value": "eval: in_list(['Email', 'Slack'], doc.channel) && !doc.email_template",
   "module": "Email Extensions"
  },
  {

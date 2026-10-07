@@ -45,21 +45,12 @@ ADDRESS_FIELDS = (
 
 
 def extend_bootinfo(bootinfo: "frappe._dict") -> None:
-	"""Tell the desk which templates each doctype's forms offer, and where emails may be waiting.
-
-	Empty, rather than an error, on a site whose fields haven't been migrated
-	in yet: code lands before migrate runs, and the boot must not fail in
-	between.
-	"""
+	"""Tell the desk which templates each doctype's forms offer, and where emails may be waiting."""
 	from commons.email_extensions import scheduled
 
 	# And which doctypes' forms may have a Notification's email waiting.
 	bootinfo.commons_delayed_doctypes = scheduled.delayed_doctypes()
 
-	meta = frappe.get_meta(TEMPLATE)
-	if not (meta.has_field(DOCTYPE_FIELD) and meta.has_field(CONDITION_FIELD)):
-		bootinfo.commons_email_templates = []
-		return
 	bootinfo.commons_email_templates = frappe.get_list(
 		TEMPLATE,
 		filters={DOCTYPE_FIELD: ["is", "set"]},
@@ -123,8 +114,7 @@ def recipients(record, fieldnames: str | None) -> list[str]:
 	A field's value is used as it stands when it is one or more addresses. When
 	it is not, and the field is a Link or a Dynamic Link, the address is read off
 	the record it points at (`address_of`) -- a Payment Entry's `party` names an
-	Employee as `HR-EMP-00008`, and the old per-doctype scripts put exactly that
-	in the To box. Anything else is skipped, so a template naming a field that
+	Employee as `HR-EMP-00008`, which is no use in the To box. Anything else is skipped, so a template naming a field that
 	is empty on this record opens with that recipient missing, not with an error.
 
 	The linked record is read without checking that the user may read it. The

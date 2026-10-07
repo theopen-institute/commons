@@ -1,8 +1,11 @@
-"""What this app calls itself on the site that runs it, and which of Frappe's
-own behaviours it is allowed to change.
+"""What this app calls itself on the site that runs it, which of Frappe's own
+behaviours it is allowed to change, and the settings of its sections.
 
 The second half is `commons.commons_core.settings.feature_enabled`. Each of
 those is opt-in: a site gets core's behaviour until somebody ticks the box.
+The other tabs hold policy the sections read for themselves -- expense claims,
+change requests and procurement on Requests, the register's marks and fields on
+Attendance, and the source and tracked doctypes of Data Sync.
 
 The title came first, because one thing was hard-coded: the sidebar said `Commons` under
 the workspace whatever the site was, and the browser tab said it too. That is a
@@ -51,6 +54,8 @@ class CommonsSettings(Document):
 		enable_derived_docfields: DF.Check
 		enable_desk_todos: DF.Check
 		enable_desktop_from_navigation_apps: DF.Check
+		enable_fiscal_year_columns: DF.Check
+		enable_hiding_internal_accounts: DF.Check
 		enable_home_page_priority: DF.Check
 		enable_loan_vouchers_on_own_dates: DF.Check
 		enable_navigation_rail: DF.Check
@@ -73,6 +78,8 @@ class CommonsSettings(Document):
 			"Bank Reconciliation",
 			"Document Capture",
 		]
+		payroll_payment_mode_of_payment: DF.Link | None
+		payroll_payment_reference: DF.Data | None
 		procurement_group_by: DF.Data | None
 		title: DF.Data | None
 	# end: auto-generated types

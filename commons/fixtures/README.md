@@ -15,7 +15,7 @@ rewritten.
 
 | File | What it holds |
 | --- | --- |
-| `custom_field.json` | The ten fields this app adds to Frappe's own doctypes, the eleven on Email Template, three on Notification, one on Communication, one on Email Account, and two on Web Template |
+| `custom_field.json` | The ten fields this app adds to Frappe's core and customisation doctypes, the ten on Email Template, two on Notification, one on Communication, one on Email Account, and two on Web Template |
 | `custom_field_erpnext.json` | The three fields the requests section adds to ERPNext's doctypes, the statement's one on Party Type, and the financial reports' one on Account |
 | `property_setter.json` | Which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification, and the fieldtypes a Web Template's inputs may have |
 
@@ -67,12 +67,13 @@ checked against a site, and is what the test above keeps checking.
 
 ### Frappe's own doctypes (`custom_field.json`)
 
-**`Website Settings.website_button_url`** — where the desk's "Website" button
-opens. A Custom Field rather than a fork of Website Settings: the target of a
-button is site configuration, and carrying a patched core doctype to say so
-would mean re-patching it on every Frappe release. Read by
-`commons.better_navigation.website_link`, which serves it through `extend_bootinfo`
-so the sidebar does not have to fetch a setting before it can render.
+**`Website Settings.website_button_url`** — where the Commons sidebar's
+"Website" button opens. A Custom Field rather than a fork of Website Settings:
+the target of a button is site configuration, and carrying a patched core
+doctype to say so would mean re-patching it on every Frappe release. Read by
+`commons.better_navigation.website_link`; `www/commons.py` puts it in the
+page's boot data so the sidebar does not have to fetch a setting before it can
+render. The desk has no Website button since Frappe 16.50.
 
 **`Role.home_page_priority`** — which role's Home Page wins when someone holds
 several that each name one. Core picks whichever role the database returned
@@ -111,12 +112,7 @@ Commons Settings.
 column break for the layout. What a template needs to say for a form to send
 it in one step: when, to whom, from which account and with which print. Which
 doctype's forms offer it is core's own `reference_doctype`, on the template's
-first tab; each of these is shown only once it is set. Commons had its own
-field for that, `email_doctype`, until Frappe 16.50 added `reference_doctype`
-and began filtering the composer's template picker on it: two fields saying
-the same thing would only ever drift apart. A fixture never deletes a field,
-so on a site that had `email_doctype` its values were copied across and the
-field deleted by a one-time script, not by migrate. Read by
+first tab; each of these is shown only once it is set. Read by
 `commons.email_extensions`, which draws the Email menu on those forms and
 fills the composer from them. Every one but `email_condition` was first added
 by hand on the site the module was written for, where the templates already
@@ -135,22 +131,6 @@ HTML template and nothing that reads templates needs to know. Two Property
 Setters go with them: `response_html` is hidden while the MJML is what gets
 edited (it is the compiled output, and an edit to it would be overwritten by
 the next save), and `use_html` is read-only while it has to stay ticked.
-
-**`Notification.email_template`** — the template whose content a Notification
-sends in place of its own message; read by `commons.email_extensions.notification`.
-It has a file to itself, `custom_field_notification.json`, because Frappe's
-develop branch has the field as a standard one, and there the fixture would
-fail every install and migrate ("A field with the name email_template already
-exists" is a ValidationError, which `import_fixtures` does not catch). A
-Custom Field `before_import` hook, `notification.skip_field_fixture`, raises
-`DoesNotExistError` for it on such a Frappe -- deleting a Custom Field left from
-before the upgrade first -- so the file is skipped the way a missing app's is,
-and a raise can only cost the rest of this one file. Three Property Setters go
-with it: the Message field and its examples are hidden
-while a template is named, and Subject stops being mandatory, since the
-template's subject stands in for a blank one. They replace no property a site
-had set: none of the three had a Property Setter on the site this was written
-for.
 
 **`Notification.send_delay_minutes`** and **`.once_across_amendments`**, and
 **`Communication.notification`** — a Notification's email held back, taken back,
@@ -186,24 +166,9 @@ account appends to Captured Document.
 
 ### Fields this app no longer ships
 
-**`custom_field_education.json`** held four fields on Education's doctypes that
-one school's attendance register stores its answers in: `Course
-Schedule.custom_session_type` and `.custom_session_details`, `Student
-Attendance.custom_late` and `Academic Term.custom_inactive`. They were that
-school's vocabulary rather than the register's, so the file is gone, and the
-register reads whichever fields a site names on the Attendance tab of Commons Settings (see
-`commons.attendance_register.register.register_fields`).
-
-Removing a fixture file deletes nothing: fixture sync only imports, and no
-cleanup looks for a record a file used to hold. So a site that had the four
-keeps them as its own Custom Fields, with their columns and rows, named on its
-Commons Settings Attendance tab. Nothing
-ties them to this app afterwards either. Their `module` is empty, so
-`remove_app`, which deletes every record that links to one of the app's
-`Module Def`s, passes over them, and so does an export filtered by module. They
-do carry `is_system_generated`, as every fixture Custom Field does, which keeps
-them through Customize Form's *Reset to Defaults* and refuses a rename. A site
-that wants to rename or drop one clears that tick first.
+Removing a fixture file or record deletes nothing on a site: fixture sync only
+imports. A field this app stopped shipping stays on a site that had it, as the
+site's own Custom Field, until something removes it there.
 
 ### ERPNext (`custom_field_erpnext.json`)
 
@@ -237,6 +202,11 @@ internal is the site's to say, so the field is a fact about the account and not
 a list in the settings.
 
 ## Property Setters (`property_setter.json`)
+
+The two on `Email Template` go with `use_mjml`, above. On `Notification`,
+Message and its examples are hidden while the Notification names an Email
+Template: core's own `email_template` already hides Message and lifts
+Subject's requirement then, but leaves the examples showing.
 
 `Web Template Field.fieldtype`'s options, with Currency, Date, Float and JSON
 added to core's list. A Web Template's Fields table is where

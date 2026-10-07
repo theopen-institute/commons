@@ -7,7 +7,7 @@ The gate column itself is two Custom Fields, one on each of the tables core keep
 role permission flags in -- `Custom DocPerm` and `DocPerm`. They are declared in
 `commons/fixtures/custom_field.json` and written by Frappe's own fixture
 sync, so nothing here creates them. Both name a Frappe doctype, so unlike the
-fields this app adds to ERPNext and Education they are never skipped -- see
+fields this app adds to ERPNext they are never skipped -- see
 `commons/fixtures/README.md`.
 
 Deliberately not a `Permission Type`. That core extension point registers one

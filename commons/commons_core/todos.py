@@ -4,7 +4,7 @@
 """The open ToDo list behind both of this app's To Do widgets.
 
 Two front ends ask this module the same question: the staff portal's sidebar
-(`frontend/src/data/todos.ts`) and the desk's (`commons/public/js/desk_todos.js`).
+(`frontend/src/data/todos.ts`) and the desk's (`commons/public/js/desk_todos/data.js`).
 One answer for both, because a person crossing between the two all day must not
 be shown two different numbers.
 
@@ -28,11 +28,11 @@ from 16.33.1 to 16.34.0.
 """
 
 import datetime
-import html
-import re
 
 import frappe
-from frappe.utils import cint, getdate, strip_html, today
+from frappe.utils import cint, getdate, today
+
+from commons.commons_core.notifications import as_text
 
 SORT_TYPES = ("due_date", "urgency", "doctype", "recent")
 DEFAULT_SORT = "due_date"
@@ -59,8 +59,6 @@ LIST_FIELDS = (
 	"modified",
 )
 
-_WHITESPACE = re.compile(r"\s+")
-
 
 def _mine_filter_sets() -> list[dict]:
 	"""The two disjoint filter sets that together make up "my open ToDos".
@@ -80,13 +78,6 @@ def _mine_filter_sets() -> list[dict]:
 def get_open_todo_count() -> int:
 	"""How many open ToDos belong to the session user."""
 	return sum(frappe.db.count("ToDo", filters) for filters in _mine_filter_sets())
-
-
-def _as_title(description: str | None) -> str:
-	"""Flatten a Text Editor description into one line of plain text."""
-	text = html.unescape(strip_html(description or ""))
-	# a `&nbsp;` unescapes to U+00A0, which \s does not match on its own
-	return _WHITESPACE.sub(" ", text.replace("\xa0", " ")).strip()
 
 
 def _sorter(sort_by: str):
@@ -153,7 +144,7 @@ def get_open_todos(sort_by: str = DEFAULT_SORT, limit: int | str = MAX_ROWS) -> 
 	todos.sort(key=key, reverse=reverse)
 
 	for todo in todos:
-		todo.title = _as_title(todo.description)
+		todo.title = as_text(todo.description)
 		todo.overdue = bool(todo.date) and getdate(todo.date) < current_date
 		# the raw HTML was only needed to derive the title
 		del todo.description

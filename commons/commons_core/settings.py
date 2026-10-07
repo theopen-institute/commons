@@ -1,12 +1,13 @@
 """This app's own settings: what it is called, and the switches for the places it
 changes Frappe's own behaviour.
 
-The document is `Commons Settings`, a Single with one field, and it lives here
-rather than with the navigation it names because it is a fact about the *app*
-rather than about the sidebar. The sidebar is one reader of it; the browser tab
-is another, and the desk's Awesome Bar labels this app's pages with it
-(`commons.better_navigation.search`). A second setting that had nothing to do with navigation
-would belong here too, which is the test that settled where it goes.
+The document is `Commons Settings`, a Single, and it lives here rather than with
+any one section because it is a fact about the *app*. Its General tab holds the
+title, the landing page and the Bikram Sambat switch; Better Navigation and Core
+Overrides hold the rest of the switches read below; Requests, Attendance and Data Sync hold the policy those
+sections read for themselves. The title has the most readers: the sidebar, the
+browser tab, and the desk's Awesome Bar, which labels this app's pages with it
+(`commons.better_navigation.search`).
 
 Reading it is one line and one caveat, so the reader sits beside the document
 rather than in each caller.
@@ -131,6 +132,13 @@ ENABLE_FISCAL_YEAR_COLUMNS = "enable_fiscal_year_columns"
 # `commons/public/js/hide_internal_accounts.js` adds
 ENABLE_HIDING_INTERNAL_ACCOUNTS = "enable_hiding_internal_accounts"
 
+# Values rather than switches, read with `value`.
+
+# `commons.banking.payroll_payments`: the Mode of Payment and the Reference No
+# its "Create Payment Entries" dialog starts on. Blank for none.
+PAYROLL_PAYMENT_MODE_OF_PAYMENT = "payroll_payment_mode_of_payment"
+PAYROLL_PAYMENT_REFERENCE = "payroll_payment_reference"
+
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.
 DESK_FEATURES = {
@@ -161,6 +169,14 @@ def feature_enabled(fieldname: str) -> bool:
 	"""
 	doc = _settings()
 	return bool(doc and doc.get(fieldname))
+
+
+def value(fieldname: str) -> str | None:
+	"""A setting's stored value, stripped, or None when it is blank or the
+	doctype is not there yet."""
+	doc = _settings()
+	stored = doc.get(fieldname) if doc else None
+	return (stored.strip() if isinstance(stored, str) else stored) or None
 
 
 def extend_bootinfo(bootinfo: "frappe._dict") -> None:

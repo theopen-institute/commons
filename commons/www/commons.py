@@ -87,7 +87,7 @@ def get_user_info() -> dict:
 		# question `User.validate` asks to decide whether they are a System User
 		# at all. The search bar reads it: half of what it offers is the desk --
 		# doctype lists, new documents, and whatever Global Search finds -- and
-		# all of it opens at `/app/...`. Offering somebody a result that will
+		# all of it opens in the desk. Offering somebody a result that will
 		# refuse them when they click it is worse than not offering it.
 		"desk_access": bool(user.has_desk_access()),
 	}

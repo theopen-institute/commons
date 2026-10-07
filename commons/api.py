@@ -1,9 +1,10 @@
 """Who is using this app -- the one question every section starts from.
 
 A request starts from "which employee am I", procurement reads the same record
-for a department and an approver, and self-service reads it as the record being
-corrected. That is what is left here: the session's own identity, and the
-handful of ways it can be absent.
+for a department and an approver, a captured receipt becomes that employee's
+Expense Claim, and the account statement finds the employee among the session's
+parties. That is what is left here: the session's own identity, and the handful
+of ways it can be absent.
 
 Nothing else. Domain endpoints live with their domain -- everything a person
 raises and waits on an approver for is `commons.requests`, the profile is

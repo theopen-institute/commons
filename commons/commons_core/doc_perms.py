@@ -23,8 +23,14 @@ def roles_with_permission(doctype: str, **ptypes: int) -> set[str]:
 	Custom DocPerm *replaces* the standard rows rather than adding to them, so a
 	doctype with any customisation at all is answered from there alone -- falling
 	back to `DocPerm` for a site that deliberately revoked something would hand
-	back the permission it had just taken away.
+	back the permission it had just taken away. The doctype's meta already holds
+	the rows that way (`Meta.set_custom_permissions`), cached, so it is read
+	from there. `frappe.permissions.get_doctype_roles` reads the same rows but
+	asks about one right at any level, which is not this question.
 	"""
-	source = "Custom DocPerm" if frappe.db.exists("Custom DocPerm", {"parent": doctype}) else "DocPerm"
 	ptypes.setdefault("permlevel", 0)
-	return set(frappe.get_all(source, filters={"parent": doctype, **ptypes}, pluck="role"))
+	return {
+		perm.role
+		for perm in frappe.get_meta(doctype).permissions
+		if all((perm.get(ptype) or 0) == value for ptype, value in ptypes.items())
+	}

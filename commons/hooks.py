@@ -4,11 +4,13 @@ app_publisher = "Peter"
 app_description = "Shared tools for Frappe"
 app_email = "pgraif@gmail.com"
 app_license = "none"
-# The rail and the sidebar header read an app's logo from this hook.
+# This app's logo where `add_to_apps_screen` below gives none; where it does, that
+# one wins, on the Apps screen and on the rail alike.
 app_logo_url = "/assets/commons/images/commons-logo.svg"
 # Commons' tile on Frappe's Apps screen (/desk), opening its own frontend. The
-# rail offers the same address as the app's "Commons app" row, read from `route`
-# here (see `commons.better_navigation.navigation_apps._frontends`).
+# rail offers the same address as the app's "Commons app" row, read from the
+# boot's `app_data`, which Frappe builds from this hook (see
+# `commons.better_navigation.navigation_apps.apps_from_app_data`).
 add_to_apps_screen = [
 	{
 		"name": "commons",
@@ -21,19 +23,20 @@ add_to_apps_screen = [
 # Apps
 # ------------------
 
-# Nothing but Frappe. This app uses ERPNext and HRMS where a site runs them and
-# takes the features that need them away where it does not -- see
-# `commons.commons_core.apps`, and `approvals.RequestType.available`, which is the one
-# question every such feature asks.
+# Nothing but Frappe. This app uses ERPNext, HRMS, Lending and Education where a
+# site runs them, and takes the features that need them away where it does not.
+# Each such feature asks `commons.commons_core.apps` first.
 #
-# Which features those are: leave and expenses are HRMS doctypes end to end, and
-# procurement spends against a Company, orders Items in a UOM and hands over to
-# a Material Request, so it needs ERPNext. What is left on a bare Frappe site is
-# self-service, announcements, workspaces, the permission gate and the desk
-# additions -- none of which reads another app's doctype.
+# Which features those are: procurement, bank reconciliation, the account
+# statement, the financial statement overrides and Purchase Invoice capture need
+# ERPNext; leave, expenses, receipt capture and the payroll extensions need HRMS;
+# loan matching and loan dates need Lending; the attendance register needs
+# Education. What is left on a bare Frappe site is self-service, workspaces and
+# navigation, the permission gate, derived fields, email, print templates and
+# the desk additions -- none of which reads another app's doctype.
 #
-# Two things had to change before this could be empty, and both are worth
-# knowing about before it is put back.
+# Two things had to hold before this could be empty, and both are worth knowing
+# about before it is put back.
 #
 # The doctypes are not the obstacle. Frappe's app sync imports them with
 # `ignore_validate`, so a Link field naming a doctype that is not on the site
@@ -42,9 +45,9 @@ add_to_apps_screen = [
 #
 # The fixtures were, once: a Custom Field naming an absent doctype used to raise
 # `LinkValidationError`, which escaped `import_fixtures` and aborted migrate for
-# the whole site. On Frappe 16.34 it raises `DoesNotExistError` instead, which
+# the whole site. Since Frappe 16.34 it raises `DoesNotExistError` instead, which
 # `import_fixtures` catches, skipping that file. So the fields this app adds to
-# ERPNext and Education are fixtures, one file per app --
+# ERPNext's doctypes are a fixture file of their own --
 # `commons/fixtures/README.md` says why that is safe, and
 # `commons.commons_core.test_fixtures` fails if it stops being.
 required_apps = []
@@ -62,57 +65,47 @@ website_route_rules = [
 
 # Almost nothing is left here, and that is the point. The Apps screen tile is
 # the `add_to_apps_screen` hook above; every Custom Field this app adds, to
-# Frappe's doctypes, to ERPNext's and Education's, and the derived fields on its
-# own, ships under `commons/fixtures/`, as do the Property Setters that go with
-# them (`commons/fixtures/README.md` lists both). All of it is written by
-# Frappe's own sync on install and on every migrate. None of it needs a hook,
+# Frappe's doctypes, to ERPNext's, and the derived fields on its own, ships under
+# `commons/fixtures/`, as do the Property Setters that go with them
+# (`commons/fixtures/README.md` lists both). All of it is written by Frappe's own
+# sync on install and on every migrate, and since 16.50 so are the `Module Def`
+# rows of modules added to `modules.txt` after install. None of it needs a hook,
 # and a hook that re-asserted it would only be a second, quieter copy of the
 # same declaration.
 #
-# What is left are the things no sync can do: registering this app's modules,
-# and getting a changed `page_js` in front of admins whose desks are still
-# holding the last copy of it. Server-side caches need nothing: migrate's own
-# `frappe.clear_cache()` drops every key the site has.
+# What is left are the things no sync does: making the doctype sync see a module
+# added since the last migrate, getting a changed `page_js` in front of admins
+# whose desks are still holding the last copy of it, and checking derived fields.
+# Server-side caches need nothing: migrate's own `frappe.clear_cache()` drops
+# every key the site has.
 #
 # No approval chain, no self-service configuration and no statement print
 # formats. Those are a System Manager's to set up on a new site, and a deploy is
-# not where they get made. The app ships none of them in any form, and the code
-# reads whatever a site has rather than assuming any particular shape -- see
+# not where they get made. The app ships none of them, and the code reads
+# whatever a site has rather than assuming any particular shape -- see
 # `commons.requests.procurement_workflow`, `commons.self_service.registry` and
 # `commons.statement.api.download_statement`.
 after_install = ["commons.safer_permissions.install.sync_permission_manager"]
 after_migrate = [
 	"commons.safer_permissions.install.sync_permission_manager",
-	# The other half of `before_migrate`'s module registration: records for
-	# modules this app no longer has, removed once the sync has moved whatever
-	# used to name them. See `commons.commons_core.install.drop_stale_module_defs`.
-	"commons.commons_core.install.drop_stale_module_defs",
 	# A migrate is when a doctype along some derived field's path most often
 	# changes under it. Reports what no longer resolves; repairs nothing.
 	"commons.derived_docfields.validation.check_all",
 ]
 
-# Modules are added to `modules.txt` after this app has already been installed
-# somewhere -- `Safer Permissions` was, and `Requests` is `Procurement` renamed
-# -- and `Module Def` records are only written at install. Without one, migrate
-# cannot import a doctype that names the module, so this has to run before the
-# doctype sync, not after it.
+# Core writes a new module's `Module Def` before this runs, but the module map
+# the doctype sync walks can still be the one cached before the pull, which
+# would skip the new module's doctypes until the next migrate. See
+# `commons.commons_core.install.refresh_module_map`.
 before_migrate = [
-	# TEMPORARY: Attendance Register Settings became the Attendance tab of
-	# Commons Settings; its values move before the orphan cleanup deletes it.
-	# Remove once every site has migrated. See its docstring.
-	"commons.commons_core.attendance_handover.run",
-	"commons.commons_core.install.sync_module_defs",
+	"commons.commons_core.install.refresh_module_map",
 ]
 
-# The dock, the rail down the left of the desk, is a document rather than a hook. Author it in
-# Manage Dock on a developer-mode site and press Export to App, and it is written to
-# `commons/dock/commons/commons.json` for git to carry. An app that ships none has no
-# rail: its sidebar gets a switcher in the header instead.
-#
-# A companion app, one that extends a host app rather than standing on its own, says so with
-# `mount_on` on that same record, and its entries are appended to the host's rail. Mounting keeps
-# the companion off the apps screen, so it takes precedence over any add_to_apps_screen above.
+# Frappe's dock, the rail of an app's modules down the left of the desk, is a
+# document an app ships as `<app>/dock/<app>/<app>.json`, not a hook. This app
+# ships none yet, so Frappe gives its modules a switcher in the sidebar header.
+# With Commons Settings' navigation rail on, the rail shows apps instead and
+# draws itself over the dock (see `commons.better_navigation`).
 
 # Includes in <head>
 # ------------------
@@ -120,11 +113,13 @@ before_migrate = [
 # include js, css files in header of desk.html
 #
 # One bundle, loaded after core's own `app_include_js`, so the classes it patches
-# already exist. It holds the desk halves of Better Navigation -- the sidebar's
-# user menu, the "Website" button's target and sidebar memory, all under
-# `commons/better_navigation/js/` -- and the Bikram Sambat readout that
-# `commons/public/js/bikram_sambat/` puts on Date and Datetime fields, which
-# draws itself only where Commons Settings switches it on.
+# already exist. `commons/public/js/commons.bundle.js` lists what is in it: the
+# desk halves of Better Navigation (the rail, its Manage Rail and Manage Modules
+# editors, and the user menu's extra rows, under `commons/better_navigation/js/`),
+# Desk To Do, the Bikram Sambat readout on Date and Datetime fields, the Email
+# menu and composer, print templates, derived fields, hiding cancelled documents
+# and internal accounts, and the desk islands. Each draws itself only where its
+# setting or its data says so.
 app_include_js = "commons.bundle.js"
 app_include_css = "commons.bundle.css"
 
@@ -213,7 +208,7 @@ jinja = {
 # Installation
 # ------------
 
-# before_install = "commons.commons_core.install.before_install"
+# before_install = "commons.install.before_install"
 
 # Uninstallation
 # ------------
@@ -233,8 +228,8 @@ before_uninstall = "commons.commons_core.uninstall.before_uninstall"
 
 # before_disable = "commons.uninstall.before_disable"
 # after_disable = "commons.uninstall.after_disable"
-# before_enable = "commons.commons_core.install.before_enable"
-# after_enable = "commons.commons_core.install.after_enable"
+# before_enable = "commons.install.before_enable"
+# after_enable = "commons.install.after_enable"
 
 # Integration Setup
 # ------------------
@@ -306,11 +301,6 @@ has_permission = {
 # ---------------
 # Hook on document methods and events
 
-# A Material Request raised from a Procurement Request is what makes that request
-# "ordered", but nothing is written back to the request when it happens: how much
-# has been ordered is counted live from the submitted Material Requests that point
-# at it. What a hook does check is that those links point at an approved request
-# of the same company -- see `commons.requests.material_request`.
 doc_events = {
 	# Who lands where is cached per user, and both ends of the rule can move it:
 	# a Role's home page or priority, and a User's own list of roles.
@@ -335,15 +325,18 @@ doc_events = {
 		"on_update": "commons.derived_docfields.registry.clear",
 		# Not `on_trash`, which runs while the row is still there to be re-read.
 		"after_delete": "commons.derived_docfields.registry.clear",
-		# Notification.email_template is skipped as a fixture on a Frappe that has
-		# the field itself. See `commons.email_extensions.notification`.
-		"before_import": "commons.email_extensions.notification.skip_field_fixture",
 	},
-	# A journal entry that moves no money at the bank is cleared on its own date.
-	# See `commons.banking.internal_transfers`.
+	# A journal entry that moves no money at the bank is cleared on its own date,
+	# where Commons Settings switches it on. See `commons.banking.internal_transfers`.
 	"Journal Entry": {
 		"on_submit": "commons.banking.internal_transfers.clear_on_submit",
 	},
+	# A Material Request raised from a Procurement Request is what makes that
+	# request "ordered", but nothing is written back to the request when it
+	# happens: how much has been ordered is counted live from the submitted
+	# Material Requests that point at it. What this checks is that those links
+	# point at an approved request of the same company -- see
+	# `commons.requests.material_request`.
 	"Material Request": {
 		"validate": "commons.requests.material_request.validate_procurement_links",
 	},
@@ -403,15 +396,7 @@ doc_events = {
 # Testing
 # -------
 
-# before_tests = "commons.commons_core.install.before_tests"
-
-# Extend DocType Class
-# ------------------------------
-#
-# Specify custom mixins to extend the standard doctype controller.
-# extend_doctype_class = {
-# 	"Task": "commons.custom.task.CustomTaskMixin"
-# }
+# before_tests = "commons.install.before_tests"
 
 # Overriding Methods
 # ------------------------------
@@ -545,10 +530,16 @@ require_type_annotated_api_methods = True
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
-
+# Extend DocType Class
+# ------------------------------
+# Mixins over another app's controller, applied on top of whatever class that
+# doctype already has, `override_doctype_class` included. The banking ones each
+# do nothing until their Commons Settings switch is on.
 extend_doctype_class = {
-	# A Notification may send an Email Template's content in place of its own
-	# message. See `commons.email_extensions.notification`.
+	# A Notification's Email Template is rendered with `doc`, `alert` and
+	# `comments`, as its own message is, and a Notification set to Once Across
+	# Amendments skips a document amended from one it already emailed about. See
+	# `commons.email_extensions.notification`.
 	"Notification": ["commons.email_extensions.notification.TemplateNotificationMixin"],
 	# An Auto Email Report runs its report without the endpoints the permission
 	# gate stands in front of. See `commons.safer_permissions.auto_email_report`.
@@ -577,16 +568,13 @@ extend_doctype_class = {
 page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
 
 
-# The desk's "Website" button reads its target from the boot, so the sidebar does
-# not have to fetch a setting before it can render. See
-# `commons/better_navigation/website_link.py` for why this is not simply the home page.
 extend_bootinfo = [
-	"commons.better_navigation.website_link.extend_bootinfo",
 	# The navigation rail's apps, when Commons Settings switches it on.
 	"commons.better_navigation.navigation_apps.extend_bootinfo",
 	# Frappe's Apps screen arranged from the same apps, when Commons Settings says so.
 	# After the rail's, whose answer it reuses.
 	"commons.better_navigation.apps_screen.extend_bootinfo",
+	# Which of the desk patches Commons Settings switches on.
 	"commons.commons_core.settings.extend_bootinfo",
 	# Which Email Templates each doctype's forms offer, so a form can draw its
 	# Email menu without asking. See `commons.email_extensions`.

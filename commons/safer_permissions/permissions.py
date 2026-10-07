@@ -161,9 +161,9 @@ def gate_scope(user: str, doctype: str) -> str | None:
 		return None
 
 	# Not switched on in Commons Settings. Everything the gate enforces asks here
-	# first -- the list condition, the document check, the report refusals and
-	# self-service -- so this one answer stands the whole module down, and the
-	# ticks stay where they are for when it is switched on.
+	# first -- the list condition, the document check and the report refusals --
+	# so this one answer stands the whole module down, and the ticks stay where
+	# they are for when it is switched on.
 	if not gate_switched_on():
 		return None
 
@@ -345,8 +345,8 @@ def has_permission(doc=None, ptype: str | None = None, user: str | None = None, 
 #       after every upgrade.
 #
 # All three are a bare `@frappe.whitelist()`, so all three answer a GET -- and
-# `make_prepared_report` inserts a document on one, which is the shape
-# `commons_core.cache` shuts with `methods=["POST"]` for exactly this reason.
+# `make_prepared_report` inserts a document on one, which is the shape an
+# endpoint of this app's own would shut with `methods=["POST"]`.
 # That is inherited rather than chosen: standing in for core at core's own
 # address, they have to accept what core accepts, and a narrower `methods` here
 # would refuse desk traffic that core sends as a GET. Said out loud so the next

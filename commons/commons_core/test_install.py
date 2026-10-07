@@ -1,7 +1,7 @@
 """That every module this app declares is one migrate can actually import.
 
-`sync_module_defs` writes a `Module Def` for each line of `modules.txt`, and
-`frappe.model.sync.sync_for` then resolves each of those names by importing
+Core's `sync_module_defs` writes a `Module Def` for each line of `modules.txt`,
+and `frappe.model.sync.sync_for` then resolves each of those names by importing
 `commons.<scrubbed module>` with no existence guard. A line with no package
 under it therefore does not degrade -- it fails migrate outright, for the whole
 site, at a point that names the module rather than the file that is missing.
@@ -67,9 +67,7 @@ class TestRetiredAppIsGone(TestCase):
 	The app was retired, its two modules were taken over so that uninstalling it
 	would not delete the site's own records, and both halves of that have now
 	been settled: `Education Extensions` kept its name and is now the site's
-	own custom module, and `NepalERP` was emptied -- `Prize` and `Prize
-	Submission` moved to `Education Extensions`, `Approval` and `User Link` to
-	`Commons Core` -- and then deleted.
+	own custom module, and `NepalERP` was emptied and then deleted.
 
 	This is the one thing that would not be obvious from the tree if it came
 	back: a `modules.txt` line reintroducing an empty module named after

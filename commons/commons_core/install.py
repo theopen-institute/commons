@@ -1,15 +1,16 @@
-"""App-level migrate hook: registering this app's modules.
+"""App-level migrate hook: making the doctype sync see this app's modules.
 
 Most of what this app adds to other apps' doctypes is declared rather than
-created. Every Custom Field it adds -- to Frappe's doctypes, to ERPNext's and
-Education's, and the derived fields on its own -- is under `commons/fixtures/`,
-written by Frappe's fixture sync on install and every migrate; the fields for
-an app a site may not have are in a file of that app's own, which a site
-without it skips (`commons/fixtures/README.md`). The Apps screen tile is the
-`add_to_apps_screen` hook. None of that needs a hook of its own. The hooks
-left in `hooks.py` do only what no sync can: this module registers the app's
-modules, and `commons.safer_permissions.install` gets a changed `page_js` in
-front of admins whose desks still hold the last copy of it. None of them creates a document a site would think of as its own.
+created. Every Custom Field it adds -- to Frappe's doctypes, to ERPNext's, and
+the derived fields on its own -- is under `commons/fixtures/`, written by
+Frappe's fixture sync on install and every migrate; the ERPNext fields are in a
+file of their own, which a site without ERPNext skips
+(`commons/fixtures/README.md`). The Apps screen tile is the
+`add_to_apps_screen` hook. None of that needs a hook of its own. The hooks left
+in `hooks.py` do only what no sync can: this module makes sure the doctype sync
+walks every module in `modules.txt`, and `commons.safer_permissions.install`
+gets a changed `page_js` in front of admins whose desks still hold the last copy
+of it. None of them creates a document a site would think of as its own.
 
 Workflows, self-service configuration and statement print formats are a System
 Manager's to set up on a new site, and the app ships none of them -- not as a
@@ -19,138 +20,54 @@ belong to something else the app ships, in `commons/fixtures/property_setter.jso
 * two on Frappe's `Email Template`, hiding the compiled HTML and making
   `use_html` read-only while a template is written in MJML -- the other half of
   the MJML Custom Fields;
-* three on Frappe's `Notification`, hiding Message and relaxing Subject while an
-  Email Template is named -- the other half of `Notification.email_template`.
-
+* one on Frappe's `Notification`, hiding the message examples while an Email
+  Template is named -- the other half of `Notification.email_template`;
 * one on Frappe's `Web Template Field`, adding the fieldtypes a print
   template's inputs may have.
 
-The first five change Frappe's own forms, and only in ways that follow from a
-field this app adds: each is inert until that field is set.
+The first three change Frappe's own forms only in ways that follow from a field
+this app adds: each is inert until that field is set. The last applies
+whenever a Web Template Field is edited.
 
-`Commons Core` is the reason the function below is not merely a precaution. It
-was a plain directory until `Commons Settings` moved into it, and a module that
-gains its first doctype after the app is already installed somewhere is exactly
-the case core's own `add_module_defs` does not cover: `frappe.installer` calls
-it from `install_app` and from nowhere else, so the record is written at install
-and never again, and a module added to `modules.txt` afterwards would be named
-by a doctype the site has never heard of. That is what runs here, from
-`before_migrate`, ahead of the sync that would trip over it -- and it is a
-standing need rather than a one-off, because the next module this app adds
-meets the same gap on every site that already has the app.
-
-It runs unfiltered: every name in `modules.txt` is one this app answers for,
-and every one of them gets a record. None is somebody else's any more --
-`Education Extensions`, a site's module this app once claimed, is that site's
-own custom module now.
+`Module Def` records are core's business now: since 16.50,
+`frappe.installer.sync_module_defs` runs at the start of every migrate, ahead
+of the `before_migrate` hooks, and gives any module an app has added to
+`modules.txt` since install its row. This module once did that itself, and
+removed the rows of modules it had dropped; both are gone.
 
 Why this is in `commons_core` and not at the app root
 -----------------------------------------------------
-It is the second of the two exceptions that module's own membership test admits,
-and it is admitted on the same grounds as the first. `Commons Settings` is there
-because a fact about *the app* belongs in the module named after the app; so is
-this. Everything else under `commons_core` is an extension to Frappe and would
-make sense in an app with none of this one's sections, which this would not.
-
-The other direction
--------------------
-`drop_stale_module_defs` is the second half, and it runs from `after_migrate`
-rather than this one's `before_migrate`. Modules get renamed and merged --
-`Auth0` and `Google Workspace` became `API Integrations` -- and core has no
-notion of that at all, because `add_module_defs` runs at install, when there is
-nothing yet to remove. Its own docstring argues the hook it is on.
+`APP` is a fact about *the app*, and so is the hook below, and the module named
+after the app is where facts about the app go. `commons.commons_core.uninstall`
+reads `APP` from here.
 """
 
 APP = "commons"
 
 
-def sync_module_defs() -> None:
-	"""Register this app's modules before migrate imports doctypes into them.
+def refresh_module_map() -> None:
+	"""Rebuild the module map before the doctype sync walks it.
 
-	`Module Def` records are created by `add_module_defs` when an app is
-	*installed* and never again, so a module added to `modules.txt` afterwards
-	has none -- and importing a doctype that names it fails. This runs from
-	`before_migrate`, ahead of the doctype sync that would trip over it.
+	Which modules an app has is cached -- `frappe.setup_module_map` keeps the
+	whole bench's map in Redis under `app_modules`, and the site's own under
+	`installed_app_modules` -- and `frappe.model.sync.sync_all` walks
+	`frappe.local.app_modules`, the copy `frappe.init` read from that cache,
+	rather than `modules.txt`. A map cached before a new line was pulled into
+	`modules.txt` therefore leaves the new module's `doctype/` folder unlooked
+	in: the first migrate after the upgrade syncs everything except it,
+	silently, and a second migrate puts it right.
 
-	The record is only half of it. Which modules an app has is itself cached --
-	`frappe.setup_module_map` keeps the whole bench's map under `app_modules`,
-	and the site's own under `installed_app_modules` -- and the doctype sync
-	walks that map rather than the file. A module added to `modules.txt` and
-	left to the cache is therefore not merely unregistered: its `doctype/`
-	folder is not looked in at all, and the first migrate after the upgrade
-	syncs everything except the new module, silently, with a second migrate
-	putting it right. Dropping both keys and rebuilding the map here is what
-	makes the first one enough.
-
-	Migrate's own `setUp` calls `frappe.clear_cache()` before this hook, which
-	drops both keys from `frappe.cache` -- but `installed_app_modules` is
-	written through `frappe.client_cache`, whose local copy invalidates across
-	processes on its own schedule rather than at once, and the rebuild is what
-	puts the new module in front of the sync that follows in *this* process.
-	Neither line is redundant with that call.
+	Migrate's own `setUp` calls `frappe.clear_cache()`, which deletes both keys
+	from Redis but leaves `frappe.local.app_modules` as `frappe.init` built it,
+	and nothing between there and the sync rebuilds it -- core's
+	`sync_module_defs` writes the missing `Module Def` row but leaves the map
+	alone. Dropping both keys and rebuilding here is what makes the first
+	migrate enough. The deletes are not redundant with that `clear_cache`:
+	`installed_app_modules` is written through `frappe.client_cache`, whose
+	local copy invalidates on its own schedule.
 	"""
 	import frappe
 
 	frappe.cache.delete_value("app_modules")
 	frappe.client_cache.delete_value("installed_app_modules")
 	frappe.setup_module_map(include_all_apps=True)
-
-	# `add_module_defs`, which core exposes only through `install_app`. The
-	# whole of its body is the loop below, and this is it unfiltered: there is
-	# no module in `modules.txt` this app does not answer for.
-	for module in frappe.get_module_list(APP):
-		record = frappe.new_doc("Module Def")
-		record.app_name = APP
-		record.module_name = module
-		record.insert(ignore_permissions=True, ignore_if_duplicate=True)
-
-
-def drop_stale_module_defs() -> None:
-	"""Remove `Module Def` records for modules this app no longer has.
-
-	The other half of `sync_module_defs`, and the one core has never needed:
-	`add_module_defs` runs at install, when there is nothing to remove. A module
-	that is renamed, merged into another or dropped outright leaves its record
-	behind on every site that already had the app -- and a `Module Def` with
-	nothing in it is not inert, it is a name in the doctype dropdown and an
-	empty module in the desk's module list, for as long as nobody goes and
-	deletes it by hand on each site.
-
-	`API Integrations` is what made this a standing need rather than a tidy-up.
-	`Auth0` was a module of its own before the integrations were gathered under
-	one, so every site carrying this app has a record for a module that no
-	longer exists.
-
-	Deliberately in `after_migrate` while its counterpart is in
-	`before_migrate`. Addition has to happen before the doctype sync, or the
-	sync cannot import a doctype naming a module the site has never heard of.
-	Removal has to happen after it, because until the sync has run the doctype
-	still names the *old* module -- so a removal running first would find the
-	record still in use, skip it, and leave the site needing a second migrate to
-	converge. That is the shape this module's own docstring complains about
-	elsewhere, and it is avoidable here by picking the right hook.
-
-	`app_name` is the guard that keeps this to this app's own records: another
-	app's modules are not this one's to reconcile, and neither are the ones a
-	site made by hand.
-
-	`LinkExistsError` is the other guard, and it is the one that matters. A
-	module is still named by anything that lives in it -- a doctype, a report, a
-	page, a workspace -- and Frappe's own link check is a better answer to
-	"is this really unused" than any list of tables that would have to be kept
-	up to date here. Something still pointing at it means it is not stale, so it
-	is left exactly where it is rather than removed with a flag that would
-	silently break whatever was pointing.
-	"""
-	import frappe
-
-	current = set(frappe.get_module_list(APP))
-	for name in frappe.get_all("Module Def", filters={"app_name": APP}, pluck="name"):
-		if name in current:
-			continue
-		try:
-			frappe.delete_doc("Module Def", name, ignore_permissions=True)
-		except frappe.LinkExistsError:
-			# Still in use, so not stale. Left alone, and reconsidered on the
-			# next migrate once whatever names it has moved or gone.
-			pass

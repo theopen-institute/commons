@@ -1,10 +1,11 @@
 """Which of the apps this one can use are actually on this site.
 
-This app requires nothing but Frappe. It *uses* ERPNext and HRMS where they are
-there -- procurement spends against Companies and hands over to Material
-Requests, leave and expenses are HRMS doctypes end to end -- and every one of
-those features takes itself away where they are not. This module is the question
-each of them asks first.
+This app requires nothing but Frappe. It *uses* ERPNext, HRMS, Lending and
+Education where they are there -- procurement spends against Companies and hands
+over to Material Requests, leave and expenses are HRMS doctypes end to end, loan
+matching reads Lending's loans, the attendance register writes Education's
+Student Attendance -- and every one of those features takes itself away where
+they are not. This module is the question each of them asks first.
 
 Two forms of it, and which one to ask is not a style choice.
 

@@ -10,7 +10,7 @@
   "fieldtype": "Data",
   "options": "URL",
   "insert_after": "home_page",
-  "description": "Where the <b>Website</b> button in the desk sidebar and the Commons sidebar opens. An absolute URL (<code>https://example.org</code>) or a path on this site (<code>/about</code>). Leave blank to open the site root. This does <b>not</b> change where anyone lands after logging in — that is Home Page above, together with the Home Page on each Role.",
+  "description": "Where the <b>Website</b> button in the Commons sidebar opens. An absolute URL (<code>https://example.org</code>) or a path on this site (<code>/about</code>). Leave blank to open the site root. This does <b>not</b> change where anyone lands after logging in — that is Home Page above, together with the Home Page on each Role.",
   "module": "Better Navigation"
  },
  {
@@ -36,7 +36,7 @@
   "fieldname": "require_user_permission",
   "label": "Require User Permission",
   "fieldtype": "Check",
-  "insert_after": "append",
+  "insert_after": "if_owner",
   "description": "A role ticked here sees no records until a User Permission aimed at this doctype narrows it. <b>Has no effect unless Enable Require User Permission Gate is ticked in Commons Settings.</b>",
   "module": "Safer Permissions"
  },
@@ -49,7 +49,7 @@
   "fieldname": "require_user_permission",
   "label": "Require User Permission",
   "fieldtype": "Check",
-  "insert_after": "append",
+  "insert_after": "if_owner",
   "description": "A role ticked here sees no records until a User Permission aimed at this doctype narrows it. <b>Has no effect unless Enable Require User Permission Gate is ticked in Commons Settings.</b>",
   "module": "Safer Permissions"
  },

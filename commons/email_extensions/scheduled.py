@@ -78,8 +78,6 @@ def mark_sent(notification, doc, since) -> None:
 
 def waiting(doctype: str, name: str) -> list[dict]:
 	"""The emails `doctype`/`name`'s Notifications still have in the queue, soonest first."""
-	if not frappe.get_meta("Communication").has_field(MARK_FIELD):
-		return []
 	communications = frappe.get_all(
 		"Communication",
 		filters={
@@ -188,8 +186,6 @@ def delayed_doctypes() -> list[str]:
 	On every desk boot, and the same for everyone, so cached until a
 	Notification changes (`forget_delayed_doctypes`).
 	"""
-	if not frappe.get_meta(NOTIFICATION).has_field(DELAY_FIELD):
-		return []
 	return frappe.client_cache.get_value(
 		DELAYED_CACHE_KEY,
 		generator=lambda: sorted(

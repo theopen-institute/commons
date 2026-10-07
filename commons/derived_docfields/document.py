@@ -65,7 +65,7 @@ import frappe
 from frappe.model import base_document
 
 from commons.derived_docfields import registry
-from commons.derived_docfields.registry import BrokenPath, Column, Hop
+from commons.derived_docfields.registry import BrokenPath, Column
 
 # Instance-dict keys this module keeps on a document, none of them pickled.
 MEMO = "_commons_derived"

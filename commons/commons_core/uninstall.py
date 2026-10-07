@@ -49,7 +49,9 @@ Dry run
 -------
 `remove_app` runs `before_uninstall` on a dry run too, and passes it nothing
 to tell one from the real thing. So everything here runs, and prints what it
-removes; `remove_app` does not commit on a dry run, so none of it is kept.
+removes; `remove_app` does not commit on a dry run, so none of this hook's
+writes are kept. Frappe's own dry run is not wholly dry, though: in developer
+mode it deletes the app's desktop icon file on disk.
 """
 
 import json

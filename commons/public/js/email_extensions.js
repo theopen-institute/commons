@@ -110,8 +110,8 @@
 				if (draft.sender && (this.user_email_accounts || []).includes(draft.sender)) {
 					this.sender = draft.sender;
 				}
-				// Chosen before core's own values go in: since 16.50 core offers
-				// the doctype's default template in a banner whenever none is.
+				// Chosen before core's own values go in: core offers the
+				// doctype's default template in a banner whenever none is.
 				await choose(this.dialog, template.name);
 				await base.call(this);
 				await finish(this, draft, template.name);
@@ -119,9 +119,9 @@
 		});
 	};
 
-	// Recorded on the Communication. `set_model_value`, not `set_value`, so a
-	// composer that applies a template when its field changes (core's did,
-	// before 16.50) doesn't add it to the message a second time.
+	// Recorded on the Communication. `set_model_value`, not `set_value`, so
+	// anything that applies a template when the field changes doesn't add it
+	// to the message a second time.
 	const choose = async (dialog, template_name) => {
 		const field = dialog.fields_dict.email_template;
 		if (field) await field.set_model_value(template_name);
@@ -135,33 +135,26 @@
 
 		// An HTML template goes into the HTML editor as written. Through the
 		// rich-text editor first, its markup would not survive. Core keeps its
-		// Use HTML switch hidden until an HTML template is applied: before
-		// 16.50 `check_email_template_html` showed it, since then
-		// `apply_email_template` does, which would fetch and insert the
-		// template a second time -- so the switch is shown here instead.
+		// Use HTML switch hidden until an HTML template is applied, and it is
+		// `apply_email_template` that shows it, which would fetch and insert
+		// the template a second time -- so the switch is shown here instead.
 		// A complete document's own CSS is kept at sending (`send_email`
 		// above).
 		if (draft.use_html) {
-			if (typeof composer.check_email_template_html === "function") {
-				await composer.check_email_template_html(template_name);
-			} else if (dialog.fields_dict.use_html) {
-				dialog.set_df_property("use_html", "hidden", 0);
-			}
+			if (dialog.fields_dict.use_html) dialog.set_df_property("use_html", "hidden", 0);
 			await dialog.set_value("use_html", 1);
 			await dialog.set_value("html_content", draft.message);
 		}
 
-		// The print format is picked in a hidden select; since 16.50 core shows
-		// the choice on a card and in its printer menu, redrawn here.
+		// The print format is picked in a hidden select; core shows the choice
+		// on a card and in its printer menu, redrawn here.
 		const print_field = dialog.fields_dict.select_print_format;
 		if (draft.print_format && print_field) {
 			const $select = $(print_field.input);
 			if ($select.find(`option[value="${CSS.escape(draft.print_format)}"]`).length) {
 				$select.val(draft.print_format).trigger("change");
-				if (typeof composer.render_print_card_meta === "function") {
-					composer.render_print_card_meta();
-				}
-				if (typeof composer.sync_print_menu === "function") composer.sync_print_menu();
+				composer.render_print_card_meta();
+				composer.sync_print_menu();
 			}
 		}
 	};

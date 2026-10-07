@@ -30,6 +30,8 @@
   "accounting_section",
   "enable_party_on_payable_payment_lines",
   "enable_payroll_lines_per_employee",
+  "payroll_payment_mode_of_payment",
+  "payroll_payment_reference",
   "enable_clearing_internal_transfers",
   "enable_loan_vouchers_on_own_dates",
   "reports_section",
@@ -167,7 +169,7 @@
   },
   {
    "default": "0",
-   "description": "Lets desk pages show screens from this app's own frontend, such as Bank Reconciliation at <b>/app/commons-banking</b>, Document Capture at <b>/app/commons-capture</b> and the attendance register at <b>/app/commons-attendance</b>. It installs, on this version of Frappe, the way of doing this that the next version of Frappe will ship (desk islands). Nothing is stored, so switching this off loses nothing; the pages then point to the same screens under <b>/commons</b>. Suspect this first if a desk page drawn by this app is blank or its dialogs misbehave.",
+   "description": "Lets desk pages show screens from this app's own frontend, such as Bank Reconciliation at <b>/desk/commons-banking</b>, Document Capture at <b>/desk/commons-capture</b> and the attendance register at <b>/desk/commons-attendance</b>. It installs, on this version of Frappe, the way of doing this that the next version of Frappe will ship (desk islands). Nothing is stored, so switching this off loses nothing; the pages then point to the same screens under <b>/commons</b>. Suspect this first if a desk page drawn by this app is blank or its dialogs misbehave.",
    "fieldname": "enable_pseudo_islands",
    "fieldtype": "Check",
    "label": "Enable Desk Islands"
@@ -218,10 +220,23 @@
   },
   {
    "default": "0",
-   "description": "Splits a payroll run's accrual journal into one line per employee for each earnings and deduction account, each with the employee's department from their salary slip, and with the employee as party on Payable accounts such as TDS. HRMS's own totals are kept: a line whose employees' parts do not add up to HRMS's total is posted as HRMS's single line and an error is logged. Payroll Payable is split per employee by Payroll Settings' <b>Process Payroll Accounting Entry Based on Employee</b>, which should be on as well; this adds the department to those lines. Only the accrual journal is changed, and only for runs whose accrual is made while this is on. It also lets an employee's Payment Entry settle their salary on a payroll run, and adds <b>Create Payment Entries</b> to a submitted Payroll Entry: a draft Payment Entry for each employee the run still owes. Suspect this first if a payroll run will not submit, its journal's lines look wrong, or a salary payment is refused.",
+   "description": "Splits a payroll run's accrual journal into one line per employee for each earnings and deduction account, each with the employee's department from their salary slip, and with the employee as party on Payable accounts such as TDS. HRMS's own totals are kept: a line whose employees' parts do not add up to HRMS's total is posted as HRMS's single line and an error is logged. Payroll Payable is split per employee by Payroll Settings' <b>Process Payroll Accounting Entry Based on Employee</b>, which should be on as well; this adds the department to those lines. Only the accrual journal is changed, and only for runs whose accrual is made while this is on. Suspect this first if a payroll run will not submit or its journal's lines look wrong.",
    "fieldname": "enable_payroll_lines_per_employee",
    "fieldtype": "Check",
    "label": "Enable Payroll Lines per Employee"
+  },
+  {
+   "description": "With Payroll Settings' <b>Process Payroll Accounting Entry Based on Employee</b> on, an employee's Payment Entry may settle their salary on a payroll run, and a submitted Payroll Entry gets <b>Create Payment Entries</b>: a draft Payment Entry for each employee the run still owes. This is the Mode of Payment that dialog starts on, and whose default account for the company it pays from when the run names no payment account. Blank starts it on none.",
+   "fieldname": "payroll_payment_mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Payroll Payment Mode of Payment",
+   "options": "Mode of Payment"
+  },
+  {
+   "description": "The Reference No the <b>Create Payment Entries</b> dialog starts on, for a site that pays every run under one reference. Blank starts it empty. ERPNext requires a Reference No on a payment from a bank account, so the dialog asks for one when it pays from a Bank account.",
+   "fieldname": "payroll_payment_reference",
+   "fieldtype": "Data",
+   "label": "Payroll Payment Reference"
   },
   {
    "default": "0",
@@ -300,7 +315,6 @@
    "label": "Procurement Requests"
   },
   {
-   "default": "department",
    "description": "A Link or Data field of <b>Procurement Request</b> the approvals queue is grouped by, each group with its estimated total. Blank: one list.",
    "fieldname": "procurement_group_by",
    "fieldtype": "Data",
@@ -416,7 +430,7 @@
    "label": "Data Sync"
   },
   {
-   "description": "The <b>Data Sync</b> page (<b>/app/commons-data-sync</b>) compares this site's configuration with a source site, usually a development copy of it, and copies changes here one record at a time. Your browser reads the source, so it only has to be reachable from where you open the page.",
+   "description": "The <b>Data Sync</b> page (<b>/desk/commons-data-sync</b>) compares this site's configuration with a source site, usually a development copy of it, and copies changes here one record at a time. Your browser reads the source, so it only has to be reachable from where you open the page.",
    "fieldname": "data_sync_source_section",
    "fieldtype": "Section Break",
    "label": "Source"
@@ -448,7 +462,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-06 21:11:37.141474",
+ "modified": "2026-10-07 12:30:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

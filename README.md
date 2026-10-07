@@ -36,10 +36,12 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 - ⚙ **Party on payable payment lines**: a Payment Entry's party is put on its tax and deduction lines to payable accounts, such as TDS.
 - ⚙ **Payroll lines per employee** (needs `hrms`): a payroll run's accrual journal gets one line per employee, with their party, and their department where the company has a Department accounting dimension.
 - ⚙ **Loan vouchers on their own dates** (needs `lending`): Loan Repayment, Write Off and Disbursement post on their own dates, not the date they were saved.
+- ⚙ **Fiscal year columns**: ERPNext's financial statements, filtered by Fiscal Year, cut their columns inside each fiscal year, so years that are not exactly twelve calendar months (such as Bikram Sambat years) come out one column each.
+- ⚙ **Hiding internal accounts**: Profit and Loss and the Gross and Net Profit Report offer "Hide Internal Accounts", which leaves out accounts marked Internal Account (money moving between the organisation's own departments).
 
 #### Document capture
 
-- **Captured Documents** (`/commons/capture`): scans come in by upload or email. Claude reads them, but only when someone presses Read, in a background job. The prompts follow the company's country and currency and the Bikram Sambat setting, and Claude Settings' **Additional Instructions** and tax-term names add a site's own conventions. **Document Capture Settings** choose which kinds are captured and extra legal-suffix words for matching suppliers; who sees which captures is the role permissions'.
+- **Captured Documents** (`/commons/capture`): scans come in by upload or email. Claude reads them, but only when someone presses Read, in a background job. The prompts follow the company's country and currency and the Bikram Sambat setting. **Document Capture Settings** choose which kinds are captured, how many reads a person may start per hour, extra legal-suffix words for matching suppliers, and the Additional Instructions and tax-term names that add a site's own conventions; who sees which captures is the role permissions'.
 - Drafts a **Purchase Invoice** from a supplier invoice (visible to the accounts team) or an **Expense Claim** from receipts (visible to the sender), with the scan attached.
 
 #### Education (needs `education`)
@@ -61,24 +63,29 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 
 #### Desk navigation ⚙
 
-- **Navigation rail**: a narrow rail of apps (Navigation Apps) beside the sidebar, plus Search, Notifications, To Do and Website.
-- **User menu**: account, display, session defaults, site tools, help and logout, opened from your name in the sidebar.
-- **Sidebar memory**: a reloaded page keeps the sidebar it was reached from.
+Built on Frappe 16.50's own sidebar, dock and Apps screen.
+
+- **Navigation rail**: a narrow rail of apps (Navigation Apps) beside the sidebar, in place of Frappe's per-app dock of modules, with Search, Notifications and To Do at its foot. Picking an app lists its modules in the sidebar. **Manage Rail** and **Manage Modules** in the user menu arrange it for the site.
+- **Apps screen from Navigation Apps**: Frappe's Apps screen (`/desk`) arranged from the same apps, one icon per app or per module.
+- **User menu rows**: Help and the Navbar Settings rows move into Frappe's user menu. The same switch gives the Commons frontend its user menu.
 - **Home page priority**: when a user holds several roles, the role with the lowest Home Page Priority decides where they land after login.
-- **Desk To Do**: your open ToDos, next to the notification bell.
-- **Desk islands**: shows Bank Reconciliation, Document Capture and the attendance register as desk pages (`/app/commons-banking`, `/app/commons-capture`, `/app/commons-attendance`) on Frappe v16.
+- **Desk To Do**: your open ToDos, in a sidebar panel next to Notifications.
 
 #### Desk conveniences
 
-- **Hide cancelled documents**: a per-browser toggle in the Display menu that hides cancelled records from every list-type view.
+- **Hide cancelled documents**: a per-browser toggle in the user menu that hides cancelled records from every list-type view.
 - ⚙ **Bikram Sambat calendar**: shows Date and Datetime fields in Bikram Sambat as well and adds a BS date picker, in the desk and in the Commons frontend. Values are still stored in Gregorian.
 - ⚙ **Literal @ in desk URLs**: `/desk/member/name@example.org` instead of `%40`.
-- **Clear site cache** without a terminal.
+- ⚙ **Desk islands**: shows Bank Reconciliation, Document Capture and the attendance register as desk pages (`/desk/commons-banking`, `/desk/commons-capture`, `/desk/commons-attendance`), until Frappe v17 brings islands of its own.
 
 #### Data model and permissions
 
 - ⚙ **Derived Docfields**: a Custom Field can show a value read live through a link (**Derived From**), as a real join in list, report and query views. Nothing is stored. Paths are checked on save and on migrate.
 - ⚙ **Require User Permission gate**: a checkbox in the Role Permission Manager makes a role see no records until a User Permission narrows it. It applies to lists, documents, query reports, exports, prepared reports and Auto Email Reports.
+
+#### Site configuration
+
+- **Data Sync** (`/desk/commons-data-sync`, System Manager): compares this site's configuration records (scripts, permissions, report queries, navigation and the rest the Data Sync tab of Commons Settings lists) with another site's, through the browser, and copies chosen records across one at a time, child tables and attached files included.
 
 #### Integrations
 
@@ -98,17 +105,20 @@ bench install-app commons
 
 #### Optional apps
 
-This app requires nothing but Frappe. Two of its sections need another app, and
-a site without that app gets this one without the section rather than not at
-all — the endpoints behind it refuse and its rows leave the navigation.
+This app requires nothing but Frappe. Sections that need another app are left
+out on a site without it, rather than the app refusing to install: the
+endpoints behind them refuse, and their rows leave the navigation.
 
 | Section | Needs |
 | --- | --- |
-| Leave, Expense Claims | `hrms` |
-| Procurement | `erpnext` |
+| Leave, Expense Claims, receipt capture, payroll lines and payments | `hrms` |
+| Procurement, Bank Reconciliation, account statement, financial statement overrides, invoice capture, the banking reports | `erpnext` |
+| Loan matching in reconciliation, Loan Date Audit, loan vouchers on their own dates | `lending` |
+| Attendance register | `education` |
 
-Install either alongside, in any order, and run `bench --site <site> migrate`.
-Self-service, announcements, workspaces and the permission gate need neither.
+Install any of them alongside, in any order, and run `bench --site <site> migrate`.
+Self-service, workspaces and navigation, the permission gate, derived fields,
+email, print templates and Data Sync need none of them.
 
 ### Contributing
 

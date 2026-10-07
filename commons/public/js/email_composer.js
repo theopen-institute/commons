@@ -166,10 +166,6 @@
 					body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 						font-size: 14px; line-height: 1.5; color: #171717; margin: 16px; }
 				</style></head><body>${html || ""}</body></html>`;
-			// Frappe's email CSS is kept off a complete document when it is
-			// sent (`send_email` in email_extensions.js); before 16.50 the
-			// composer's own "Add CSS" box did that, and is unticked here.
-			if (whole && dialog.fields_dict.add_css) dialog.set_value("add_css", 0);
 		};
 
 		iframe.addEventListener("load", () => {

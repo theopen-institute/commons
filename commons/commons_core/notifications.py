@@ -1,12 +1,13 @@
 # Copyright (c) 2026, Peter and contributors
 # For license information, please see license.txt
 
-"""The desk's notification list, shaped for a sidebar that has no boot.
+"""The desk's notification list, shaped for this app's own sidebar.
 
 The desk widget reads two different things: `get_notification_logs` for the
-rows and `frappe.boot.notification_unread_count` for the badge. This app has no
-boot, and the badge decides whether its sidebar row is drawn at all, so both
-have to come back from one call.
+rows and `frappe.boot.notification_unread_count` for the badge. This app's
+frontend has a boot of its own (`commons/www/commons.py`), but the unread count
+is not in it, and the badge decides whether its sidebar row is drawn at all, so
+both have to come back from one call.
 
 It is not a thin wrapper over `get_notification_logs`, for two reasons:
 
@@ -45,10 +46,11 @@ FEED_FIELDS = (
 )
 
 
-def _as_text(value: str | None) -> str:
+def as_text(value: str | None) -> str:
 	"""One line of plain text from a field that may carry markup.
 
-	`title` is written with markup in it -- core wraps the subject in
+	Also what `commons.commons_core.todos` makes of a ToDo's Text Editor
+	description. `title` is written with markup in it -- core wraps the subject in
 	`<b class="subject-title">` -- and the desk renders that as HTML. Here it is
 	flattened on the way out instead: the panel interpolates it as text, so
 	stripping server-side keeps every caller from having to remember to.
@@ -83,7 +85,7 @@ def get_notification_feed(limit: int = 20) -> dict:
 	for log in logs:
 		# `title` is the canonical field; `subject` is the legacy one, which is
 		# still all some rows have. Same fallback the desk widget makes.
-		log.text = _as_text(log.title) or _as_text(log.subject)
+		log.text = as_text(log.title) or as_text(log.subject)
 		log.read = bool(log.read)
 		# "2 hours ago", worked out here rather than in the browser: `creation`
 		# is a naive datetime in the site's timezone, and the browser has no way
