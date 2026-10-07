@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-10-06 21:30:53.777123",
+ "modified": "2026-10-07 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -31,7 +31,7 @@
   "logo",
   "sidebars_section",
   "sidebar_mode",
-  "desktop_display",
+  "apps_screen",
   "sidebars",
   "frontend_section",
   "frontend_url",
@@ -59,7 +59,7 @@
    "fieldtype": "Check",
    "label": "Enabled",
    "in_list_view": 1,
-   "description": "A disabled record changes nothing: it claims none of its sidebars, and an installed app it stands for is drawn as if it had no record. To take an app off the rail, use Hide from Rail."
+   "description": "A disabled record changes nothing: it claims none of its modules, and an installed app it stands for is drawn as if it had no record. To take an app off the rail, use Hide from Rail."
   },
   {
    "default": "0",
@@ -95,7 +95,7 @@
    "fieldtype": "Table",
    "label": "Sidebars",
    "options": "Navigation App Sidebar",
-   "description": "The modules this app offers, in the order the rail and the sidebar's top menu list them: drag rows to reorder. For an installed app in Add mode, these come first and the app's other sidebars follow in the default order (Home, or the one named after the app, first; then alphabetical). Listing one of its own sidebars here relabels it. A sidebar can belong to only one enabled app. A Category row is a heading over the modules after it, and a Spacer row a gap; a Category left last heads the app's other sidebars."
+   "description": "The modules this app offers, in the order the rail's menus list them: drag rows to reorder. For an installed app in Add mode, these come first and the app's other modules follow in the default order (Home, or the one named after the app, first; then alphabetical). Listing one of its own modules here relabels it. A module can belong to only one enabled app. A Category row is a heading over the modules after it, and a Spacer row a gap; a Category left last heads the app's other modules."
   },
   {
    "collapsible": 1,
@@ -127,7 +127,7 @@
    "fieldtype": "Table",
    "label": "Roles",
    "options": "Has Role",
-   "description": "Only people with one of these roles see the app on the rail. Left empty, everyone does. Either way, a sidebar a person cannot open is not offered to them."
+   "description": "Only people with one of these roles see the app on the rail. Left empty, everyone does. Either way, a module a person cannot open is not offered to them."
   },
   {
    "fieldname": "installed_app",
@@ -141,7 +141,7 @@
    "fieldtype": "Check",
    "label": "Hide from Rail",
    "in_list_view": 1,
-   "description": "Takes the app off the rail for everyone. Its sidebars go with it rather than back to an installed app; they can still be opened by address."
+   "description": "Takes the app off the rail for everyone. Its modules go with it rather than back to an installed app; they can still be opened by address."
   },
   {
    "default": "Add",
@@ -150,15 +150,15 @@
    "label": "Sidebars Mode",
    "options": "Add\nReplace",
    "depends_on": "installed_app",
-   "description": "Add: the app keeps the sidebars it already has, after any listed below. Replace: only the sidebars listed below, in their order; the rest go to Other."
+   "description": "Add: the app keeps the modules it already has, after any listed below. Replace: only the modules listed below, in their order; the rest go to Other."
   },
   {
-   "default": "Default",
-   "fieldname": "desktop_display",
+   "default": "One Icon",
+   "fieldname": "apps_screen",
    "fieldtype": "Select",
-   "label": "Desktop",
-   "options": "Default\nSeparate Icons\nOne Icon",
-   "description": "How the Desktop shows this app, when Commons Settings builds the Desktop from Navigation Apps. Separate Icons: each of its modules (and its frontend) is an icon of its own. One Icon: one icon that opens a window of them. Default: separate icons when no Installed App is picked, one icon when one is. An app with a single module or frontend goes straight there either way."
+   "label": "Apps Screen",
+   "options": "One Icon\nIcon per Module\nHidden",
+   "description": "How the Apps screen (/desk) shows this app, when Commons Settings arranges it from the Navigation Apps. One Icon: a single tile, opening the app. Icon per Module: a tile for each of its modules (and its frontend), in the order of its modules. Hidden: not on the Apps screen; it stays on the rail. Apps without a record show as one icon. An app taken off the rail is off the Apps screen too."
   }
  ],
  "permissions": [

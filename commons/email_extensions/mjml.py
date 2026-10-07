@@ -100,8 +100,8 @@ def compile_template(doc, method=None) -> None:
 
 
 @frappe.whitelist(methods=["POST"])
-def preview(source: str, email_doctype: str | None = None, document: str | None = None) -> dict:
-	"""The template compiled, and rendered against a document of `email_doctype` if one can be read.
+def preview(source: str, reference_doctype: str | None = None, document: str | None = None) -> dict:
+	"""The template compiled, and rendered against a document of `reference_doctype` if one can be read.
 
 	`document` when the form names one, otherwise the most recently modified the
 	user may read. The rendering is only as good as that document: a field it
@@ -114,19 +114,19 @@ def preview(source: str, email_doctype: str | None = None, document: str | None 
 		return {"error": str(e)}
 
 	result = {"html": compiled, "warnings": warnings, "document": None}
-	if not email_doctype or not frappe.db.exists("DocType", email_doctype):
+	if not reference_doctype or not frappe.db.exists("DocType", reference_doctype):
 		return result
 
 	if document:
-		if not frappe.has_permission(email_doctype, "read", doc=document):
+		if not frappe.has_permission(reference_doctype, "read", doc=document):
 			document = None
 	else:
-		latest = frappe.get_list(email_doctype, pluck="name", order_by="modified desc", limit=1)
+		latest = frappe.get_list(reference_doctype, pluck="name", order_by="modified desc", limit=1)
 		document = latest[0] if latest else None
 	if not document:
 		return result
 
-	record = frappe.get_doc(email_doctype, document)
+	record = frappe.get_doc(reference_doctype, document)
 	context = frappe.parse_json(frappe.as_json(record.as_dict()))
 	template = frappe.get_doc({"doctype": TEMPLATE, "subject": "", "use_html": 1, "response_html": compiled})
 	try:

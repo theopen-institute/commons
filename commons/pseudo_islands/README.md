@@ -25,8 +25,8 @@ The shims, all in this folder:
 | `scss/island_page.scss` | develop's `frappe/public/scss/desk/island_page.scss` | Nothing |
 
 `js/island_page.js` differs from develop's page host in three ways: it draws a pointer to
-`/commons/...` when the setting is off; its error state draws its own markup, because v16 has
-no `frappe.ui.empty_state`; and it passes `onReplaceQuery`, so a screen that keeps its view in the
+`/commons/...` when the setting is off; its error state draws its own markup, written when v16
+had no `frappe.ui.empty_state` (Frappe 16.50 has one); and it passes `onReplaceQuery`, so a screen that keeps its view in the
 query string can write it back (develop's host has no such event).
 
 Outside this folder, each shim is a line or two that names it:

@@ -201,21 +201,27 @@ def with_letter_head(body: str, letter_head: str, doc=None) -> str:
 	"""`body` between a Letter Head and its footer, marked up as Frappe's standard format does.
 
 	The same Jinja rendering of the letter head's content and footer, against
-	`doc` where there is one, and the same `header-html`/`footer-html` markers
-	when Print Settings repeats them, which is what makes wkhtmltopdf put them
-	on every page (`templates/print_formats/standard.html`,
+	`doc` where there is one, its custom CSS and scripts appended the same way,
+	and the same `header-html`/`footer-html` markers when Print Settings
+	repeats them, which is what makes wkhtmltopdf put them on every page
+	(`templates/print_formats/standard.html`,
 	`frappe.www.printview.get_rendered_template`).
 	"""
 	from frappe.utils.jinja import render_template
 
 	head = frappe.db.get_value(
-		"Letter Head", letter_head, ["content", "footer", "header_script", "footer_script"], as_dict=True
+		"Letter Head",
+		letter_head,
+		["content", "footer", "header_script", "footer_script", "custom_css"],
+		as_dict=True,
 	)
 	if not head:
 		frappe.throw(_("Letter Head {0} not found.").format(frappe.bold(letter_head)))
 	context = {"doc": doc.as_dict() if doc else {}}
 	content = render_template(head.content or "", context)
 	footer = render_template(head.footer or "", context)
+	if content and head.custom_css:
+		content += f"<style>{head.custom_css}</style>"
 	if content and head.header_script:
 		content += f"<script>{head.header_script}</script>"
 	if footer and head.footer_script:

@@ -4,13 +4,19 @@ app_publisher = "Peter"
 app_description = "Shared tools for Frappe"
 app_email = "pgraif@gmail.com"
 app_license = "none"
-# The same mark as the Desktop Icon in `desktop_icon/commons.json`. The rail and
-# the sidebar header read an app's logo from this hook, not from its desk icon.
+# The rail and the sidebar header read an app's logo from this hook.
 app_logo_url = "/assets/commons/images/commons-logo.svg"
-# The rail's "Commons app" row. Not an `add_to_apps_screen` entry, which would
-# also put a second Commons tile on the Desktop beside `desktop_icon/commons.json`.
-# See `commons.better_navigation.navigation_apps._frontends`.
-navigation_frontend_url = "/commons"
+# Commons' tile on Frappe's Apps screen (/desk), opening its own frontend. The
+# rail offers the same address as the app's "Commons app" row, read from `route`
+# here (see `commons.better_navigation.navigation_apps._frontends`).
+add_to_apps_screen = [
+	{
+		"name": "commons",
+		"logo": "/assets/commons/images/commons-logo.svg",
+		"title": "Commons",
+		"route": "/commons",
+	}
+]
 
 # Send non-GET requests for this app's endpoints as native `application/json`
 # bodies instead of form-encoded, per-key JSON-stringified values.
@@ -58,8 +64,8 @@ website_route_rules = [
 	{"from_route": "/commons/<path:app_path>", "to_route": "commons"},
 ]
 
-# Almost nothing is left here, and that is the point. The desk icon ships as a
-# file under `commons/desktop_icon/`; every Custom Field this app adds, to
+# Almost nothing is left here, and that is the point. The Apps screen tile is
+# the `add_to_apps_screen` hook above; every Custom Field this app adds, to
 # Frappe's doctypes, to ERPNext's and Education's, and the derived fields on its
 # own, ships under `commons/fixtures/`, as do the Property Setters that go with
 # them (`commons/fixtures/README.md` lists both). All of it is written by
@@ -352,13 +358,7 @@ doc_events = {
 			"on_update": "commons.better_navigation.navigation_apps.clear_cache",
 			"after_delete": "commons.better_navigation.navigation_apps.clear_cache",
 		}
-		for doctype in ("Navigation App", "Workspace Sidebar", "Module Def")
-	},
-	# So does the Desktop built from it, and how the site's Desktop Icons look.
-	# See `commons.better_navigation.desktop`.
-	"Desktop Icon": {
-		"on_update": "commons.better_navigation.desktop.clear_cache",
-		"after_delete": "commons.better_navigation.desktop.clear_cache",
+		for doctype in ("Navigation App", "Module Def")
 	},
 	# A cancelled document's Notification emails that are still waiting in the
 	# queue are not sent. See `commons.email_extensions.scheduled`.
@@ -584,8 +584,9 @@ extend_bootinfo = [
 	"commons.better_navigation.website_link.extend_bootinfo",
 	# The navigation rail's apps, when Commons Settings switches it on.
 	"commons.better_navigation.navigation_apps.extend_bootinfo",
-	# The Desktop laid out from the same apps, when Commons Settings says so.
-	"commons.better_navigation.desktop.extend_bootinfo",
+	# Frappe's Apps screen arranged from the same apps, when Commons Settings says so.
+	# After the rail's, whose answer it reuses.
+	"commons.better_navigation.apps_screen.extend_bootinfo",
 	"commons.commons_core.settings.extend_bootinfo",
 	# Which Email Templates each doctype's forms offer, so a form can draw its
 	# Email menu without asking. See `commons.email_extensions`.

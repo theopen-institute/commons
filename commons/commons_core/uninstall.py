@@ -2,8 +2,11 @@
 
 `frappe.installer.remove_app` deletes by module. Every record whose `module`
 links to one of this app's `Module Def`s is deleted, and so is every DocType in
-one, with its table. That sweep is right for what this app ships and wrong in
-both directions for the rest, which is what this hook is for.
+one, with its table. Those are the modules the app brought with it
+(`get_app_owned_modules`, `custom = 0`): a site's own module placed under
+Commons is left alone, and so is everything in it, here as there. That sweep
+is right for what this app ships and wrong in both directions for the rest,
+which is what this hook is for.
 
 Too little, on its own
 ----------------------
@@ -30,11 +33,6 @@ Too much, on its own
   and would delete them, a custom DocType with its table. So the uninstall is
   refused while there are any (`refuse_while_site_records`), naming each, and
   goes ahead once they have been moved to a module of the site's own.
-* **Workspace Sidebars that name this app.** Frappe's own `after_app_uninstall`
-  deletes every sidebar whose `app` is the one leaving. This app ships none, so
-  each one is a site's -- the Education workspaces' sidebars on the register
-  were tagged with it so the navigation rail kept them under Commons. Their
-  `app` is cleared instead (`keep_workspace_sidebars`).
 
 Said, not done
 --------------
@@ -79,13 +77,13 @@ JINJA_SOURCES = (
 
 
 def before_uninstall() -> None:
-	modules = frappe.get_all("Module Def", filters={"app_name": APP}, pluck="name")
+	# The modules `remove_app` sweeps: the app's own, not a site's custom ones placed under it.
+	modules = frappe.get_all("Module Def", filters={"app_name": APP, "custom": 0}, pluck="name")
 	doctypes = frappe.get_all("DocType", filters={"module": ("in", modules)}, pluck="name") if modules else []
 
 	# First, so a refusal leaves the site exactly as it was.
 	refuse_while_site_records(modules, doctypes)
 
-	keep_workspace_sidebars()
 	drop_configuration(doctypes)
 	drop_derived_fields()
 	report_kept_columns()
@@ -157,15 +155,6 @@ def refuse_while_site_records(modules: list[str], doctypes: list[str]) -> None:
 		"and uninstall again. A custom DocType keeps its rows when its module changes. "
 		"Nothing has been changed."
 	)
-
-
-def keep_workspace_sidebars() -> None:
-	"""Clear `app` on sidebars naming this app, which ships none, so Frappe does not delete them."""
-	names = frappe.get_all("Workspace Sidebar", filters={"app": APP}, pluck="name")
-	for name in names:
-		frappe.db.set_value("Workspace Sidebar", name, "app", None, update_modified=False)
-	if names:
-		print(f"Kept {len(names)} Workspace Sidebar(s) by clearing their app: {', '.join(names)}.")
 
 
 def drop_configuration(doctypes: list[str]) -> None:

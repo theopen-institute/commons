@@ -24,9 +24,20 @@ SETTINGS = "Commons Settings"
 TABLE = "Data Sync Doctype"
 
 # Site-made customisation, in the order it depends on itself. App-shipped
-# records (standard reports, print formats, workspaces with a module) are left
+# records (standard reports, print formats, workspaces and sidebars) are left
 # out: they arrive with the app and its migrate, not through this.
+#
+# The navigation (Frappe 16.50's): a custom Module Def is a module the site made,
+# and comes first, since custom doctypes, workspaces and sidebars name it. A
+# workspace is site-made when it is not `standard` -- every workspace has a
+# module since 16.50, so a module is no longer the sign. A site's `Sidebar` is
+# not `standard` either. `Custom Sidebar` (a module's sidebar as the site edits
+# it) and the site's `Dock` arrangements are named by a hash, different on every
+# site, so they are recognised by what they are for: the module or the app, and
+# no user -- each person's own layer stays theirs. Navigation Apps come last:
+# their rows name modules.
 DEFAULT_RULES = [
+	{"doctype": "Module Def", "filters": {"custom": 1}},
 	{"doctype": "DocType", "filters": {"custom": 1}, "ignored_fields": ["migration_hash"]},
 	{"doctype": "Custom Field"},
 	{"doctype": "Property Setter"},
@@ -43,7 +54,15 @@ DEFAULT_RULES = [
 	{"doctype": "Notification", "filters": {"is_standard": 0}},
 	{"doctype": "Dashboard Chart", "filters": {"is_standard": 0}, "ignored_fields": ["last_synced_on"]},
 	{"doctype": "Number Card", "filters": {"is_standard": 0}},
-	{"doctype": "Workspace", "filters": {"module": ["is", "not set"], "for_user": ["is", "not set"]}},
+	{"doctype": "Workspace", "filters": {"standard": 0, "for_user": ["is", "not set"]}},
+	{"doctype": "Sidebar", "filters": {"standard": 0}},
+	{"doctype": "Custom Sidebar", "filters": {"user": ["is", "not set"]}, "key_fields": ["module", "user"]},
+	{
+		"doctype": "Dock",
+		"filters": {"standard": 0, "user": ["is", "not set"]},
+		"key_fields": ["app", "user"],
+	},
+	{"doctype": "Navigation App"},
 ]
 
 

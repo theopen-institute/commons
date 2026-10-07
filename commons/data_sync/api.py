@@ -26,6 +26,9 @@ from frappe.permissions import setup_custom_perms
 from commons.data_sync import records
 from commons.data_sync import rules as sync_rules
 
+# Doctypes whose records are written as an import (`frappe.flags.in_import`): see `apply`.
+IMPORTED = {"Sidebar"}
+
 
 def _guard():
 	frappe.only_for("System Manager")
@@ -161,10 +164,21 @@ def apply(rule, key: str, doc, expected: str | None = None) -> dict:
 		elif df.fieldtype not in no_value_fields:
 			target.set(df.fieldname, doc.get(df.fieldname))
 
-	if target.is_new() and not meta.issingle:
-		target.insert(set_name=None if rule["key_fields"] else key)
-	else:
-		target.save()
+	# A site's own `Sidebar` can only be saved in developer mode, because Frappe
+	# counts a sidebar as its app's content -- except when it arrives by import,
+	# which a copy from another site is. Only for this doctype: elsewhere the
+	# flag relaxes checks a copy should still pass.
+	importing = doctype in IMPORTED and not frappe.flags.in_import
+	if importing:
+		frappe.flags.in_import = True
+	try:
+		if target.is_new() and not meta.issingle:
+			target.insert(set_name=None if rule["key_fields"] else key)
+		else:
+			target.save()
+	finally:
+		if importing:
+			frappe.flags.in_import = False
 
 	if doctype == "Custom DocPerm":
 		frappe.clear_cache(doctype=target.parent)

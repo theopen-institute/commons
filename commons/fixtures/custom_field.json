@@ -150,20 +150,6 @@
  },
  {
   "doctype": "Custom Field",
-  "name": "Email Template-email_doctype",
-  "owner": "Administrator",
-  "is_system_generated": 1,
-  "dt": "Email Template",
-  "fieldname": "email_doctype",
-  "label": "Document Type",
-  "fieldtype": "Link",
-  "options": "DocType",
-  "insert_after": "custom_tab_break_ybjfo",
-  "description": "Every saved document of this type offers the template under <b>Email</b> in its toolbar, opening the composer already filled in. Leave blank for a template that is only picked from inside the composer.",
-  "module": "Email Extensions"
- },
- {
-  "doctype": "Custom Field",
   "name": "Email Template-email_condition",
   "owner": "Administrator",
   "is_system_generated": 1,
@@ -171,8 +157,8 @@
   "fieldname": "email_condition",
   "label": "Show When",
   "fieldtype": "Data",
-  "insert_after": "email_doctype",
-  "depends_on": "email_doctype",
+  "insert_after": "custom_tab_break_ybjfo",
+  "depends_on": "reference_doctype",
   "description": "Offer the template only on documents for which this is true: an expression over <code>doc</code>, written the way a field's Depends On is, e.g. <code>doc.docstatus == 1</code> or <code>doc.application_status == \"Approved\"</code>. Blank offers it on every saved document.",
   "module": "Email Extensions"
  },
@@ -186,7 +172,7 @@
   "label": "Recipient Field",
   "fieldtype": "Autocomplete",
   "insert_after": "email_condition",
-  "depends_on": "email_doctype",
+  "depends_on": "reference_doctype",
   "description": "The field of the document holding who the email goes to. An address is used as it stands; a Link, such as a Payment Entry's Party, is followed to the linked record's address, or its primary Contact's. Several fields can be given, separated by commas.",
   "module": "Email Extensions"
  },
@@ -201,7 +187,7 @@
   "fieldtype": "Link",
   "options": "Email Account",
   "insert_after": "custom_recipient_fieldname",
-  "depends_on": "email_doctype",
+  "depends_on": "reference_doctype",
   "description": "Preselected as the sender, when the user has access to this account. Otherwise the user's own default is kept.",
   "module": "Email Extensions"
  },
@@ -226,7 +212,7 @@
   "label": "Attach Document Print",
   "fieldtype": "Check",
   "insert_after": "column_break_9",
-  "depends_on": "email_doctype",
+  "depends_on": "reference_doctype",
   "module": "Email Extensions"
  },
  {

@@ -79,13 +79,12 @@
 	}
 }
 
-/* Beside the rail, running the full height of the screen. */
-.commons-todo-panel--sidebar {
-	position: absolute;
-	top: 0;
-	left: 100%;
-	height: 100vh;
-	box-shadow: rgba(0, 0, 0, 0.1) 8px 0 8px;
+/* Inside Frappe's own drawer (`frappe.ui.SidebarPanel`), which owns the frame:
+ * position, size, edge and heading. Only its surface is put back, since the
+ * panel's own is the modal one the navbar host floats on. */
+.commons-todo-panel--host {
+	width: min(360px, 100vw);
+	background-color: var(--surface-base);
 }
 
 /* Hanging under the navbar icon, capped so it cannot run off the bottom. */
@@ -386,7 +385,6 @@
  * drawer (1020), its overlay (1021) and the sidebar chrome (1022-1023).
  */
 @media (max-width: 767.98px) {
-	.commons-todo-panel--sidebar,
 	.commons-todo-panel--navbar {
 		position: fixed;
 		inset: 0;

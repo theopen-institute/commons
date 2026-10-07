@@ -1,6 +1,8 @@
 // Hide cancelled documents (docstatus 2) from every list-type view, as a
-// setting of this browser rather than of the user -- kept in localStorage
-// beside core's `container_fullwidth`, and toggled from the same Display menu.
+// setting of this browser rather than of the user -- kept in localStorage, and
+// toggled from the user menu (your avatar), after Settings. Frappe 16.50 took
+// away the Display menu it used to sit in; display settings are in Settings'
+// Appearance tab now, which has no room for an app's own row.
 //
 // Every list-type view (list, report, kanban, image, the record count, the
 // sidebar's group-by counts and the form's prev/next buttons) asks
@@ -19,7 +21,7 @@
 (() => {
 	const KEY = "hide_cancelled_documents";
 	const ListView = frappe.views && frappe.views.ListView;
-	const Header = frappe.ui && frappe.ui.SidebarHeader;
+	const Sidebar = frappe.ui && frappe.ui.Sidebar;
 	if (!ListView || typeof ListView.prototype.get_filters_for_args !== "function") return;
 
 	const is_on = () => {
@@ -128,26 +130,69 @@
 			);
 	}
 
-	// Display menu: beside Toggle Theme and Toggle Full Width. The menu redraws
-	// from its items on every show, so the label is kept current by changing it.
-	if (Header && typeof Header.prototype.get_display_siblings === "function") {
-		const label = () =>
-			is_on() ? __("Show Cancelled Documents") : __("Hide Cancelled Documents");
-
-		const get_display_siblings = Header.prototype.get_display_siblings;
-		Header.prototype.get_display_siblings = function () {
-			const items = get_display_siblings.apply(this, arguments);
-			const item = {
-				name: "toggle-cancelled",
-				label: label(),
+	// The user menu, after Settings. It is a Dropdown that `create_user_menu`
+	// makes and does not hand back, so the Dropdown it makes is given these rows
+	// for as long as the call runs, extending whatever Dropdown is current (the
+	// rail and the user menu change it the same way). The menu re-reads each
+	// row's condition on every open but not its label, so the two states are two
+	// rows, of which one shows.
+	if (
+		Sidebar &&
+		typeof Sidebar.prototype.create_user_menu === "function" &&
+		frappe.ui.Dropdown
+	) {
+		const toggle = () => {
+			set_on(!is_on());
+			if (window.cur_list instanceof ListView) cur_list.refresh();
+		};
+		const rows = [
+			{
+				name: "hide-cancelled",
+				label: __("Hide Cancelled Documents"),
 				icon: "eye-off",
-				onClick: () => {
-					set_on(!is_on());
-					item.label = label();
-					if (cur_list instanceof ListView) cur_list.refresh();
-				},
+				condition: () => !is_on(),
+				onclick: toggle,
+			},
+			{
+				name: "show-cancelled",
+				label: __("Show Cancelled Documents"),
+				icon: "eye",
+				condition: () => is_on(),
+				onclick: toggle,
+			},
+		];
+		const add_rows = (options) => {
+			let placed = false;
+			const result = options.map((entry) => {
+				if (placed || !entry || !Array.isArray(entry.options)) return entry;
+				const at = entry.options.findIndex((row) => row && row.name === "settings");
+				if (at < 0) return entry;
+				placed = true;
+				const own = [...entry.options];
+				own.splice(at + 1, 0, ...rows);
+				return { ...entry, options: own };
+			});
+			// No Settings row to follow: a group of their own, ahead of the rest.
+			return placed ? result : [{ group: "", options: rows }, ...result];
+		};
+
+		const create_user_menu = Sidebar.prototype.create_user_menu;
+		Sidebar.prototype.create_user_menu = function () {
+			const Current = frappe.ui.Dropdown;
+			frappe.ui.Dropdown = class extends Current {
+				constructor(opts = {}) {
+					super(
+						Array.isArray(opts.options)
+							? { ...opts, options: add_rows(opts.options) }
+							: opts
+					);
+				}
 			};
-			return [...items, item];
+			try {
+				return create_user_menu.apply(this, arguments);
+			} finally {
+				frappe.ui.Dropdown = Current;
+			}
 		};
 	}
 })();

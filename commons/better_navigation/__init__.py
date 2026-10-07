@@ -51,33 +51,38 @@ a row opens, whether this user may open it, and what the badge on it says.
 
 The rail
 --------
-`Navigation App` is the level above the sidebars: an entry on the rail, holding
-the modules its top menu offers, each of them a `Workspace Sidebar`. Frappe has
-no document for that level (upstream's v17 calls it a Dock), and a site's apps
-need not be installed apps -- "Finance" may hold sidebars from two of them.
-Nothing configured, the rail is the installed apps; configured, it is those
-apps first and every sidebar they leave unclaimed still under its installed
-app. `navigation_apps.py` resolves it and says why each rule is there.
+`Navigation App` is the level above the modules: an entry on the rail, holding
+the modules it offers. A site's apps need not be installed apps -- "Finance"
+may hold modules from two of them. Nothing configured, the rail is the
+installed apps; configured, it is those apps first and every module they leave
+unclaimed still under its installed app. `navigation_apps.py` resolves it and
+says why each rule is there.
+
+Frappe 16.50 replaced the desk's navigation: one `Sidebar` per module, a Dock
+of the open app's modules, an Apps screen. The rail is built on top of that --
+`js/navigation_rail.js` has the Dock list apps where it lists modules, and the
+sidebar's header menu list the open app's modules -- and `navigation_apps.py`
+reads the modules from Frappe's own boot. A module itself is overridden the way
+Frappe offers (a Custom Sidebar layer, or a custom Module Def for a synthetic
+one); this module only adds the level above.
 
 The desk's sidebar
 ------------------
-The desk halves patch Frappe's own sidebar from `commons.bundle.js`, which
-imports them from `js/` here. An entry file has to be under `public/` for
-esbuild to find it; what it imports does not.
+Frappe 16.50's sidebar has its own user menu, keeps the sidebar you came from
+in the URL, and has no Website entry, so the desk halves that used to patch
+those are gone. What is left:
 
-- `js/user_menu.js` and `user_menu.py`: the user badge at the foot of the
-  sidebar opens a menu of your account, display, session defaults, site tools,
-  help and logout, and the header menu keeps only navigation. The frontend's
-  badge is the same menu (`AppSidebar.vue`), and `user_menu.py` gives it the
-  Session Defaults fields and Navbar Settings rows the desk gets on boot.
-- `js/website_button.js` and `website_link.py`: where the "Website" entry goes,
-  in both sidebars.
-- `js/workspace_sidebar_memory.js`: which sidebar a refresh keeps you in.
+- `js/user_menu.js` and `user_menu.py`: in the desk, Help moves from the
+  sidebar's header menu into Frappe's user menu. In the frontend, the user
+  badge opens a menu of your account, display, session defaults, site tools,
+  help and logout (`AppSidebar.vue`); `user_menu.py` gives it the Session
+  Defaults fields and Navbar Settings rows.
+- `website_link.py`: where the frontend's "Website" entry goes.
 - `home_page.py`: where you land after logging in, when your roles name more
   than one home page. The other half of the cascade `website_link.py` splits.
 
-Each of these but the Website button has a switch in Commons Settings' Better
+The user menu and home page each have a switch in Commons Settings' Better
 Navigation section, off until ticked (`commons.commons_core.settings`); the
-button's switch is its own target field, which does nothing until it is filled
-in. The user menu's switch covers both sidebars.
+Website entry's switch is its own target field, which does nothing until it
+is filled in.
 """

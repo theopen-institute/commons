@@ -16,8 +16,8 @@
  * - the page draws a pointer to the same screen in the app's frontend when
  *   Commons Settings has desk islands off, or when the Frappe underneath has
  *   no loader at all;
- * - the error state draws its own message, because v16 has no
- *   `frappe.ui.empty_state`;
+ * - the error state draws its own message, written when v16 had no
+ *   `frappe.ui.empty_state` (16.50 has one);
  * - `onReplaceQuery`, so an island that keeps its view in the query string can
  *   write it back. develop's page host has no such event, and on v17 the
  *   island's filters simply stop reaching the URL.
@@ -112,9 +112,11 @@ function show_island(state) {
 /**
  * The page head, from what the island reported.
  *
- * The title goes to the last breadcrumb and to the browser tab, not to
- * `page.set_title`: that writes into the `.title-text` crumb, which the next
- * `breadcrumbs.update()` overwrites.
+ * The title is the page's one breadcrumb, as desk's own pages set it
+ * (`frappe.views.Page`), and the browser tab's. It goes through the page's
+ * own `set_breadcrumbs`, so it lands in this page's head whichever page is on
+ * screen. A desk without it -- before Frappe 16.50 -- gets the old
+ * `frappe.breadcrumbs.add`, which writes to the current page.
  *
  * An action is `{ label, icon? }` plus either an `onClick` or an `href`. An
  * `href` leads out of desk, so desk opens it in a new tab. A desk menu row is
@@ -123,14 +125,18 @@ function show_island(state) {
  */
 function set_island_chrome(state) {
 	const label = state.island_title || __(state.title);
-	frappe.breadcrumbs.add({
-		type: "Custom",
-		label: label,
-		route: frappe.get_route_str(),
-	});
+	const page = state.wrapper.page;
+	if (typeof page.set_breadcrumbs === "function") {
+		page.set_breadcrumbs([{ label }]);
+	} else {
+		frappe.breadcrumbs.add({
+			type: "Custom",
+			label: label,
+			route: frappe.get_route_str(),
+		});
+	}
 	frappe.utils.set_title(label);
 
-	const page = state.wrapper.page;
 	page.clear_menu();
 	state.island_actions.forEach((action) => {
 		const click = action.href ? () => window.open(action.href, "_blank") : action.onClick;
@@ -147,7 +153,7 @@ function set_island_chrome(state) {
 function show_island_error(state, error) {
 	console.error(`could not mount the "${state.island}" island`, error);
 
-	// Changed: develop calls `frappe.ui.empty_state`, which v16 lacks.
+	// Changed: develop calls `frappe.ui.empty_state`, which v16 lacked before 16.50.
 	state.container
 		.empty()
 		.append(

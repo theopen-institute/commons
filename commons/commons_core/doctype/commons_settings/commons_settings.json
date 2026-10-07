@@ -13,7 +13,6 @@
   "navigation_section",
   "enable_navigation_rail",
   "enable_user_menu",
-  "enable_sidebar_memory",
   "enable_home_page_priority",
   "enable_desk_todos",
   "enable_desktop_from_navigation_apps",
@@ -107,24 +106,17 @@
   },
   {
    "default": "0",
-   "description": "Adds a narrow rail down the left of the sidebar: Home, one icon per app, then Search, Notifications, To Do (with Desk To Do on) and Website. The apps are the Navigation Apps configured here, then every installed app for the sidebars those leave unclaimed. Picking an app opens its first module, and the menu at the top of the sidebar then lists that app's modules. Applies to the desk; the Commons frontend does not have the rail yet. Suspect this first if the rail or the sidebar's top menu are missing entries or open the wrong page.",
+   "description": "Turns Frappe's Dock, the column left of the desk's sidebar, into a rail of apps rather than the open app's modules: the Navigation Apps configured here, then every installed app for the modules those leave unclaimed. Picking an app shows its module list in the sidebar (its frontend first, then its modules under the Categories its Navigation App sets); picking it again from inside a module shows the list again. An app with one module opens it. The menu at the top of the sidebar also lists the open app's modules, the header names the module over its app, and the mark at the top of the rail opens the Apps screen. Search and Notifications move from the top of the sidebar to the foot of the rail. Applies to the desk; the Commons frontend does not have the rail yet. Suspect this first if the rail or the sidebar's top menu are missing entries or open the wrong page.",
    "fieldname": "enable_navigation_rail",
    "fieldtype": "Check",
    "label": "Enable Navigation Rail"
   },
   {
    "default": "0",
-   "description": "Opens a menu from your name at the foot of the sidebar, holding your account, display, session defaults, site tools, help and logout. The menu at the top of the sidebar then keeps only navigation. Applies to the desk and to Commons. Without it, clicking your name opens your User record and everything is in the top menu. Suspect this first if either menu is missing entries or does not open.",
+   "description": "In the desk, moves the site's tools (the Navbar Settings rows, such as System Console) and Help from the menu at the top of the sidebar into the user menu (your avatar at the foot of the rail, or of the sidebar), above Logout. In Commons, opens a menu from your name at the foot of the sidebar, holding your account, display, session defaults, site tools, help and logout. Suspect this first if either menu is missing entries or does not open.",
    "fieldname": "enable_user_menu",
    "fieldtype": "Check",
    "label": "Enable User Menu"
-  },
-  {
-   "default": "0",
-   "description": "Remembers which workspace sidebar each page was reached from, so reloading it keeps that sidebar rather than switching to the one for the page's module. Suspect this first if the workspace sidebar is missing, shows the wrong workspace, or stops changing when you navigate.",
-   "fieldname": "enable_sidebar_memory",
-   "fieldtype": "Check",
-   "label": "Enable Sidebar Memory"
   },
   {
    "default": "0",
@@ -135,17 +127,17 @@
   },
   {
    "default": "0",
-   "description": "Adds a To Do button beside the notification bell, in the workspace sidebar and on the Desktop, opening your open ToDos with a count of them. The navigation rail's To Do button needs this as well. The Commons frontend has its own To Do panel either way. Suspect this first if the desk sidebar is missing its standard rows or the To Do panel misbehaves.",
+   "description": "Adds a To Do button beside the notification bell, opening your open ToDos with a count of them in a drawer like the Notifications one: in the sidebar's top rows, or at the foot of the navigation rail when that is on (where both drawers open beside the rail). The Commons frontend has its own To Do panel either way. Suspect this first if the To Do button or its drawer misbehaves.",
    "fieldname": "enable_desk_todos",
    "fieldtype": "Check",
    "label": "Enable Desk To Do"
   },
   {
    "default": "0",
-   "description": "Replaces the Desktop's icons with the Navigation Apps, in rail order. A Navigation App that is not bound to an installed app puts each of its modules (and its frontend) on the Desktop as an icon of its own; every installed app, and Other, gets one icon that opens a window of its modules, or goes straight there when it has only one. Hidden and role-restricted apps are left out, as on the rail, and every other Desktop Icon is hidden. Nothing is written to Desktop Icons: turning this off brings back the standard Desktop. A user who has saved their own Desktop layout keeps it until they reset it. Suspect this first if the Desktop is missing an app or module.",
+   "description": "Arranges Frappe's Apps screen (/desk, with Desktop Settings on Apps) from the Navigation Apps, in rail order: each app as one icon, as an icon per module, or not at all, as its Apps Screen setting says. Apps with no Navigation App show as one icon, and apps taken off the rail are left off. Turning this off brings back Frappe's own Apps screen. Suspect this first if the Apps screen is missing an app or a module.",
    "fieldname": "enable_desktop_from_navigation_apps",
    "fieldtype": "Check",
-   "label": "Enable Desktop from Navigation Apps"
+   "label": "Enable Apps Screen from Navigation Apps"
   },
   {
    "fieldname": "core_overrides_tab",

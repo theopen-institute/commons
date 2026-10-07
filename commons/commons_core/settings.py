@@ -73,20 +73,19 @@ ENABLE_BIKRAM_SAMBAT = "enable_bikram_sambat"
 # own in the form because they are one design with this app's own sidebar
 # (`commons.better_navigation`).
 
-# `commons/better_navigation/js/navigation_rail.js`, from the apps
-# `commons.better_navigation.navigation_apps` resolves
+# `commons/better_navigation/js/navigation_rail.js`, Frappe's Dock listing the
+# apps `commons.better_navigation.navigation_apps` resolves
 ENABLE_NAVIGATION_RAIL = "enable_navigation_rail"
-# `commons/better_navigation/js/user_menu.js`, and the frontend's copy of the
-# same menu (`commons.better_navigation.user_menu.get_user_menu` says which)
+# `commons/better_navigation/js/user_menu.js`, which moves the site tools and Help into the desk's
+# user menu, and the frontend's user menu (`commons.better_navigation.user_menu.get_user_menu`)
 ENABLE_USER_MENU = "enable_user_menu"
-# `commons/better_navigation/js/workspace_sidebar_memory.js`
-ENABLE_SIDEBAR_MEMORY = "enable_sidebar_memory"
 # `commons.better_navigation.home_page`, which preempts core's `get_home_page`
 ENABLE_HOME_PAGE_PRIORITY = "enable_home_page_priority"
-# `commons/public/js/desk_todos/`, which wraps core's sidebar and Desktop to add
-# a To Do button beside the bell; the rail's own To Do button follows it
+# `commons/public/js/desk_todos/`, which adds a To Do button and drawer beside
+# Frappe's bell, in the sidebar or, with the rail on, on the rail
 ENABLE_DESK_TODOS = "enable_desk_todos"
-# `commons.better_navigation.desktop`, which replaces core's Desktop icons in the boot
+# `commons.better_navigation.apps_screen`, which arranges Frappe's Apps screen
+# from the Navigation Apps
 ENABLE_DESKTOP_FROM_NAVIGATION_APPS = "enable_desktop_from_navigation_apps"
 
 # The rest share the Core Overrides tab, a section per theme, in the order they
@@ -138,7 +137,6 @@ DESK_FEATURES = {
 	"bikram_sambat": ENABLE_BIKRAM_SAMBAT,
 	"unencoded_at_in_routes": ENABLE_UNENCODED_AT,
 	"user_permission_gate": ENABLE_PERMISSION_GATE,
-	"sidebar_memory": ENABLE_SIDEBAR_MEMORY,
 	"user_menu": ENABLE_USER_MENU,
 	"navigation_rail": ENABLE_NAVIGATION_RAIL,
 	"derived_docfields": ENABLE_DERIVED_DOCFIELDS,

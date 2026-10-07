@@ -21,8 +21,9 @@ from frappe.utils import validate_email_address
 
 TEMPLATE = "Email Template"
 
-# The fields a template holds for this module. Their definitions are fixtures.
-DOCTYPE_FIELD = "email_doctype"
+# The fields a template holds for this module. Their definitions are fixtures,
+# but for the doctype, which is core's own field.
+DOCTYPE_FIELD = "reference_doctype"
 RECIPIENT_FIELD = "custom_recipient_fieldname"
 SENDER_FIELD = "custom_sending_account"
 ATTACH_FIELD = "attach_document_print"

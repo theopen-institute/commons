@@ -96,7 +96,7 @@ class TestOverrideEnabled(TestCase):
 	def test_the_desk_is_told_each_browser_feature(self):
 		bootinfo = settings.frappe._dict()
 		with patch.object(
-			settings, "feature_enabled", side_effect=lambda field: field == settings.ENABLE_SIDEBAR_MEMORY
+			settings, "feature_enabled", side_effect=lambda field: field == settings.ENABLE_NAVIGATION_RAIL
 		):
 			settings.extend_bootinfo(bootinfo)
 		self.assertEqual(
@@ -105,9 +105,8 @@ class TestOverrideEnabled(TestCase):
 				"bikram_sambat": False,
 				"unencoded_at_in_routes": False,
 				"user_permission_gate": False,
-				"sidebar_memory": True,
 				"user_menu": False,
-				"navigation_rail": False,
+				"navigation_rail": True,
 				"derived_docfields": False,
 				"visual_email_editor": False,
 				"pseudo_islands": False,

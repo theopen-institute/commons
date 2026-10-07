@@ -9,10 +9,14 @@ toolbar, one item per template, and picking one opens Frappe's own composer
 already filled in.
 
 The fields (`commons/fixtures/custom_field.json`, and the README beside it says
-why each exists):
+why each exists), all but the first of them ours:
 
-* `email_doctype` -- the doctype whose forms offer the template. A template
-  without one is an ordinary template and this module ignores it.
+* `reference_doctype` -- the doctype whose forms offer the template. Core's own
+  field since 16.50, on the template's first tab, where core reads it too: the
+  composer's template picker offers a template only on forms of that doctype.
+  Commons had a field of its own for this, `email_doctype`, until core's
+  arrived and said the same thing. A template without one is an ordinary
+  template and this module ignores it.
 * `custom_recipient_fieldname` -- the field, or comma-separated fields, of the
   document holding its recipient. See `api.recipients` for what a value may be.
 * `custom_sending_account` -- the Email Account it is sent from.

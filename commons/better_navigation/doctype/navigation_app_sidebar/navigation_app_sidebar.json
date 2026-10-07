@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-10-06 21:51:22.960670",
+ "modified": "2026-10-07 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -20,31 +20,30 @@
  "name": "Navigation App Sidebar",
  "field_order": [
   "type",
-  "sidebar",
+  "module",
   "label",
   "desktop_image"
  ],
  "fields": [
   {
    "columns": 2,
-   "default": "Sidebar",
+   "default": "Module",
    "fieldname": "type",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Type",
-   "options": "Sidebar\nCategory\nSpacer",
+   "options": "Module\nCategory\nSpacer",
    "description": "A Category is a heading over the modules after it; a Spacer is a gap."
   },
   {
    "columns": 4,
-   "fieldname": "sidebar",
+   "fieldname": "module",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Sidebar",
-   "options": "Workspace Sidebar",
-   "link_filters": "[[\"Workspace Sidebar\",\"for_user\",\"is\",\"not set\"]]",
-   "mandatory_depends_on": "eval:(doc.type || \"Sidebar\") == \"Sidebar\"",
-   "read_only_depends_on": "eval:doc.type && doc.type != \"Sidebar\""
+   "label": "Module",
+   "options": "Module Def",
+   "mandatory_depends_on": "eval:!doc.type || doc.type == \"Module\" || doc.type == \"Sidebar\"",
+   "read_only_depends_on": "eval:doc.type == \"Category\" || doc.type == \"Spacer\""
   },
   {
    "columns": 4,
@@ -52,15 +51,15 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Label",
-   "description": "What the top menu calls this module, or a category's heading. Left blank on a module, the sidebar's own title.",
+   "description": "What the menus call this module, or a category's heading. Left blank on a module, its sidebar's own title.",
    "mandatory_depends_on": "eval:doc.type == \"Category\""
   },
   {
    "fieldname": "desktop_image",
    "fieldtype": "Attach Image",
-   "label": "Desktop Image",
-   "depends_on": "eval:(doc.type || \"Sidebar\") == \"Sidebar\"",
-   "description": "The picture on this module's Desktop icon, when Commons Settings builds the Desktop from Navigation Apps. Upload it as a public file: the Desktop cannot show a private one. Left blank, the module keeps its Desktop Icon's picture, else artwork an app ships under its name, else its first letter."
+   "label": "Apps Screen Image",
+   "depends_on": "eval:doc.type != \"Category\" && doc.type != \"Spacer\"",
+   "description": "This module's tile on the Apps screen, when its app shows an icon per module. Upload it as a public file: a private one cannot show. Left blank, artwork this app ships under the module's name, else its first letter."
   }
  ],
  "permissions": []

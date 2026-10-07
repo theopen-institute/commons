@@ -105,20 +105,27 @@ doctypes, so a derived field can only ever be a Custom Field. Each description
 says the property is inert unless "Enable Derived Docfields" is ticked in
 Commons Settings.
 
-**The Form Button tab on `Email Template`** — `email_doctype`,
-`email_condition`, `custom_recipient_fieldname`, `custom_sending_account`,
+**The Form Button tab on `Email Template`** — `email_condition`,
+`custom_recipient_fieldname`, `custom_sending_account`,
 `attach_document_print` and `custom_print_format`, with a tab break and a
 column break for the layout. What a template needs to say for a form to send
-it in one step: which doctype's forms offer it, when, to whom, from which
-account and with which print. Read by `commons.email_extensions`, which draws
-the Email menu on those forms and fills the composer from them. Every one but
-`email_condition` was first added by hand on the site the module was written
-for, where the templates already carry values in them, and they keep the names
-they were given there, `custom_` prefix and `custom_tab_break_ybjfo` included:
-a fixture replaces a record by name, so a tidier name would have left the old
-field standing beside the new one rather than replacing it. The recipient
-field is an Autocomplete rather than the Data it started as, so the form can
-offer the doctype's address and link fields; both are the same column.
+it in one step: when, to whom, from which account and with which print. Which
+doctype's forms offer it is core's own `reference_doctype`, on the template's
+first tab; each of these is shown only once it is set. Commons had its own
+field for that, `email_doctype`, until Frappe 16.50 added `reference_doctype`
+and began filtering the composer's template picker on it: two fields saying
+the same thing would only ever drift apart. A fixture never deletes a field,
+so on a site that had `email_doctype` its values were copied across and the
+field deleted by a one-time script, not by migrate. Read by
+`commons.email_extensions`, which draws the Email menu on those forms and
+fills the composer from them. Every one but `email_condition` was first added
+by hand on the site the module was written for, where the templates already
+carry values in them, and they keep the names they were given there,
+`custom_` prefix and `custom_tab_break_ybjfo` included: a fixture replaces a
+record by name, so a tidier name would have left the old field standing beside
+the new one rather than replacing it. The recipient field is an Autocomplete
+rather than the Data it started as, so the form can offer the doctype's
+address and link fields; both are the same column.
 
 **`use_mjml`, `mjml_source` and `mjml_preview` on `Email Template`** — a
 template designed in MJML: the switch, the source, and the place its live

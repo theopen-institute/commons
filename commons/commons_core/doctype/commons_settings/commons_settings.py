@@ -57,7 +57,6 @@ class CommonsSettings(Document):
 		enable_party_on_payable_payment_lines: DF.Check
 		enable_payroll_lines_per_employee: DF.Check
 		enable_pseudo_islands: DF.Check
-		enable_sidebar_memory: DF.Check
 		enable_unencoded_at_in_routes: DF.Check
 		enable_user_menu: DF.Check
 		enable_user_permission_gate: DF.Check

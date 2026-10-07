@@ -13,14 +13,13 @@ button without moving where people arrive when they log in.
 
 This module adds the second setting the cascade never had: a Website Settings
 field holding an arbitrary URL for the button alone. Login is untouched, because
-nothing here is read by `get_home_page` -- it is read by the two sidebars and
-nowhere else. Left empty, both buttons keep opening the site root exactly as
-before.
+nothing here is read by `get_home_page` -- it is read by this app's sidebar and
+nowhere else. Left empty, the button keeps opening the site root exactly as
+before. (The desk had a Website entry too until Frappe 16.50 dropped it.)
 
-The browser half is `js/website_button.js` beside this file, which rewrites the
-desk's sidebar entry from `frappe.boot`; `commons.bundle.js` imports it. This
-app's own sidebar reads the same value, from boot data in a production build and
-from the endpoint below in the dev server.
+This app's sidebar reads the value from boot data in a production build and
+from the endpoint below in the dev server. The desk boot still carries it, for
+a desk Website entry to read if one comes back.
 
 Not to be confused with [home_page.py] next door, which is where people *land*.
 That is the other half of the cascade this separates.

@@ -19,8 +19,43 @@
 // the time.
 (() => {
 	const COMPOSE = "commons.email_extensions.api.compose";
+	const MAKE = "frappe.core.doctype.communication.email.make";
 	const TEMPLATE = "Email Template";
 	const GROUP = __("Email");
+
+	// A complete document -- an MJML template, compiled -- carries its own CSS.
+	const is_document = (html) => /^\s*(<!doctype|<html[\s>])/i.test(html || "");
+
+	// The server inlines Frappe's email CSS into every HTML email unless told not
+	// to (`add_css` on `communication.email.make`), and over a complete document
+	// that restyles it. Core's composer once had an "Add CSS" box for this; since
+	// 16.50 it has none and never sends the argument, so the server's default
+	// always wins. So here, whichever composer sends it -- ours, a reply, core's
+	// own "Use template" -- a complete HTML document goes with `add_css` off.
+	// `send_email` builds its arguments inline and hands them to `frappe.call`
+	// at once, so for that one synchronous call `frappe.call` is wrapped to add
+	// the flag to that one request, and put back straight after. If core stops
+	// sending through `send_email` or `make`, nothing is added and the server's
+	// default applies, as it would without this.
+	const Composer = frappe.views && frappe.views.CommunicationComposer;
+	if (Composer && typeof Composer.prototype.send_email === "function") {
+		const send_email = Composer.prototype.send_email;
+		Composer.prototype.send_email = function (btn, form_values) {
+			if (!form_values || !form_values.use_html || !is_document(form_values.html_content)) {
+				return send_email.apply(this, arguments);
+			}
+			const call = frappe.call;
+			frappe.call = function (opts) {
+				if (opts && opts.method === MAKE && opts.args) opts.args.add_css = 0;
+				return call.apply(this, arguments);
+			};
+			try {
+				return send_email.apply(this, arguments);
+			} finally {
+				frappe.call = call;
+			}
+		};
+	}
 
 	const templates = () => frappe.boot.commons_email_templates || [];
 
@@ -38,7 +73,7 @@
 
 	const offered = (frm) =>
 		templates().filter(
-			(t) => t.email_doctype === frm.doctype && applies(t.email_condition, frm.doc)
+			(t) => t.reference_doctype === frm.doctype && applies(t.email_condition, frm.doc)
 		);
 
 	const open = async (frm, template) => {
@@ -75,36 +110,58 @@
 				if (draft.sender && (this.user_email_accounts || []).includes(draft.sender)) {
 					this.sender = draft.sender;
 				}
+				// Chosen before core's own values go in: since 16.50 core offers
+				// the doctype's default template in a banner whenever none is.
+				await choose(this.dialog, template.name);
 				await base.call(this);
 				await finish(this, draft, template.name);
 			},
 		});
 	};
 
+	// Recorded on the Communication. `set_model_value`, not `set_value`, so a
+	// composer that applies a template when its field changes (core's did,
+	// before 16.50) doesn't add it to the message a second time.
+	const choose = async (dialog, template_name) => {
+		const field = dialog.fields_dict.email_template;
+		if (field) await field.set_model_value(template_name);
+	};
+
 	const finish = async (composer, draft, template_name) => {
 		const dialog = composer.dialog;
 
-		// Recorded on the Communication. `set_model_value`, as core does, so
-		// the template isn't added to the message a second time.
-		await dialog.fields_dict.email_template.set_model_value(template_name);
-		await composer.check_email_template_html(template_name);
+		// Again, in case core's restored draft of this email named another.
+		await choose(dialog, template_name);
 
 		// An HTML template goes into the HTML editor as written. Through the
-		// rich-text editor first, its markup would not survive.
+		// rich-text editor first, its markup would not survive. Core keeps its
+		// Use HTML switch hidden until an HTML template is applied: before
+		// 16.50 `check_email_template_html` showed it, since then
+		// `apply_email_template` does, which would fetch and insert the
+		// template a second time -- so the switch is shown here instead.
+		// A complete document's own CSS is kept at sending (`send_email`
+		// above).
 		if (draft.use_html) {
+			if (typeof composer.check_email_template_html === "function") {
+				await composer.check_email_template_html(template_name);
+			} else if (dialog.fields_dict.use_html) {
+				dialog.set_df_property("use_html", "hidden", 0);
+			}
 			await dialog.set_value("use_html", 1);
 			await dialog.set_value("html_content", draft.message);
-			// A complete document -- an MJML template -- carries its own CSS,
-			// and Frappe's would be inlined over it.
-			if (/^\s*(<!doctype|<html[\s>])/i.test(draft.message || "")) {
-				await dialog.set_value("add_css", 0);
-			}
 		}
 
-		if (draft.print_format) {
-			const $select = $(dialog.fields_dict.select_print_format.input);
+		// The print format is picked in a hidden select; since 16.50 core shows
+		// the choice on a card and in its printer menu, redrawn here.
+		const print_field = dialog.fields_dict.select_print_format;
+		if (draft.print_format && print_field) {
+			const $select = $(print_field.input);
 			if ($select.find(`option[value="${CSS.escape(draft.print_format)}"]`).length) {
 				$select.val(draft.print_format).trigger("change");
+				if (typeof composer.render_print_card_meta === "function") {
+					composer.render_print_card_meta();
+				}
+				if (typeof composer.sync_print_menu === "function") composer.sync_print_menu();
 			}
 		}
 	};
@@ -144,7 +201,7 @@
 	};
 
 	const refresh_template_form = (frm) => {
-		const doctype = frm.doc.email_doctype;
+		const doctype = frm.doc.reference_doctype;
 		const field = frm.fields_dict.custom_recipient_fieldname;
 		if (field) field.df.ignore_validation = 1; // several fields, comma-separated
 
@@ -161,27 +218,31 @@
 			"blue"
 		);
 		frappe.model.with_doctype(doctype, () =>
-			frm.set_df_property("custom_recipient_fieldname", "options", recipient_options(doctype))
+			frm.set_df_property(
+				"custom_recipient_fieldname",
+				"options",
+				recipient_options(doctype)
+			)
 		);
 	};
 
 	frappe.ui.form.on(TEMPLATE, {
 		setup(frm) {
 			frm.set_query("custom_print_format", () => ({
-				filters: { doc_type: frm.doc.email_doctype, disabled: 0 },
+				filters: { doc_type: frm.doc.reference_doctype, disabled: 0 },
 			}));
 			frm.set_query("custom_sending_account", () => ({ filters: { enable_outgoing: 1 } }));
 		},
 		refresh: refresh_template_form,
-		email_doctype: refresh_template_form,
+		reference_doctype: refresh_template_form,
 		email_condition: refresh_template_form,
 		// Keeps this tab's menus current without a reload.
 		after_save(frm) {
 			const list = templates().filter((t) => t.name !== frm.doc.name);
-			if (frm.doc.email_doctype) {
+			if (frm.doc.reference_doctype) {
 				list.push({
 					name: frm.doc.name,
-					email_doctype: frm.doc.email_doctype,
+					reference_doctype: frm.doc.reference_doctype,
 					email_condition: frm.doc.email_condition,
 				});
 				list.sort((a, b) => a.name.localeCompare(b.name));
@@ -200,7 +261,11 @@
 		const delayed = frappe.boot.commons_delayed_doctypes || [];
 		if (frm.is_new() || !delayed.includes(frm.doctype)) return;
 		const asked_for = frm.docname;
-		const rows = await frappe.xcall(`${SCHEDULED}.scheduled`, { doctype: frm.doctype, name: asked_for }, "GET");
+		const rows = await frappe.xcall(
+			`${SCHEDULED}.scheduled`,
+			{ doctype: frm.doctype, name: asked_for },
+			"GET"
+		);
 		if (frm.docname !== asked_for) return; // the form has moved on to another record meanwhile
 		// The layout's message area appends a block per call, so a refresh
 		// replaces the one drawn last time rather than adding another beside it.
@@ -215,8 +280,12 @@
 					frappe.utils.escape_html(frappe.datetime.str_to_user(row.send_after)),
 				])}</span>
 				<span style="margin-left:auto;display:flex;gap:var(--padding-xs)">
-					<button type="button" class="btn btn-xs btn-default" data-action="send-now">${__("Send Now")}</button>
-					<button type="button" class="btn btn-xs btn-default" data-action="dont-send">${__("Don't Send")}</button>
+					<button type="button" class="btn btn-xs btn-default" data-action="send-now">${__(
+						"Send Now"
+					)}</button>
+					<button type="button" class="btn btn-xs btn-default" data-action="dont-send">${__(
+						"Don't Send"
+					)}</button>
 				</span>
 			</div>`
 		);
@@ -230,11 +299,21 @@
 				const [question, method] =
 					action === "send-now"
 						? [__("Send this email now?"), "send_now"]
-						: [__("Don't send this email? It will be removed from the queue."), "dont_send"];
+						: [
+								__("Don't send this email? It will be removed from the queue."),
+								"dont_send",
+						  ];
 				frappe.confirm(question, async () => {
-					await frappe.xcall(`${SCHEDULED}.${method}`, { doctype: frm.doctype, name: frm.docname, queue });
+					await frappe.xcall(`${SCHEDULED}.${method}`, {
+						doctype: frm.doctype,
+						name: frm.docname,
+						queue,
+					});
 					frappe.show_alert({
-						message: action === "send-now" ? __("Sending within a minute or so.") : __("Not sent."),
+						message:
+							action === "send-now"
+								? __("Sending within a minute or so.")
+								: __("Not sent."),
 						indicator: "green",
 					});
 					frm.reload_doc();
@@ -263,7 +342,7 @@
 		setup(frm) {
 			frm.set_query("email_template", () => ({
 				filters: frm.doc.document_type
-					? { email_doctype: ["in", [frm.doc.document_type, ""]] }
+					? { reference_doctype: ["in", [frm.doc.document_type, ""]] }
 					: {},
 			}));
 		},

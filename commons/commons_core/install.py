@@ -5,8 +5,8 @@ created. Every Custom Field it adds -- to Frappe's doctypes, to ERPNext's and
 Education's, and the derived fields on its own -- is under `commons/fixtures/`,
 written by Frappe's fixture sync on install and every migrate; the fields for
 an app a site may not have are in a file of that app's own, which a site
-without it skips (`commons/fixtures/README.md`). The desk icon is a file under
-`desktop_icon/`, written by the model sync. None of that needs a hook. The hooks
+without it skips (`commons/fixtures/README.md`). The Apps screen tile is the
+`add_to_apps_screen` hook. None of that needs a hook of its own. The hooks
 left in `hooks.py` do only what no sync can: this module registers the app's
 modules, and `commons.safer_permissions.install` gets a changed `page_js` in
 front of admins whose desks still hold the last copy of it. None of them creates a document a site would think of as its own.
@@ -27,12 +27,6 @@ belong to something else the app ships, in `commons/fixtures/property_setter.jso
 
 The first five change Frappe's own forms, and only in ways that follow from a
 field this app adds: each is inert until that field is set.
-
-About that desk icon. It ships as a file in `commons/desktop_icon/`,
-which `frappe.model.sync` imports on every migrate -- `desktop_icon` is one of its
-`app_level_folders`. Keeping it as a record built at runtime meant migrate's orphan
-sweep deleted it (it drops any `standard` icon with no backing file) and
-`after_migrate` put it straight back, once per migrate.
 
 `Commons Core` is the reason the function below is not merely a precaution. It
 was a plain directory until `Commons Settings` moved into it, and a module that

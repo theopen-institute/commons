@@ -135,8 +135,7 @@
 			<!-- Who you are, and -- with Commons Settings' "Enable User Menu" -- the
            menu of everything that is yours rather than the workspace's: your
            User record, display, session defaults, the site's tools, help,
-           logout. The desk's badge opens the same menu, built by
-           `commons/better_navigation/js/user_menu.js`, from the same switch.
+           logout. Modelled on the desk's own user menu.
 
            It opens upward -- the badge is at the foot of the column -- and as
            wide as the badge while there is a badge's width to match, like the
@@ -250,7 +249,7 @@ const shellClass = computed(() => {
 // The expanded width only: `collapsed-width` is the other half, and Sidebar
 // picks between the two.
 const shellWidth = computed(() =>
-	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)',
+	isMobile.value && !sidebarOpen.value ? '0px' : 'var(--sidebar-width)'
 )
 
 // Never collapsed below `md`, whatever the stored preference says: down there
@@ -423,7 +422,7 @@ function navbarLinks(links: NavbarLink[]) {
 		}))
 }
 
-// The desk badge's menu (`commons/better_navigation/js/user_menu.js`), section for
+// Modelled on the menu Commons used to give the desk's badge, section for
 // section: you (your record, how the app looks to you, this session's
 // defaults); the site (the Navbar Settings rows, Reload); Help; Logout. What
 // the desk has and this app cannot carry is left out rather than stubbed --
@@ -444,13 +443,15 @@ function accountMenu(onBadge: boolean) {
 		[
 			// Your own User record, which is what the badge did before it had a
 			// menu. "My Settings" is Frappe's own name for that destination.
-			...(onBadge ? deskOnly({
-				label: 'My Settings',
-				icon: 'lucide-user',
-				onClick: () => {
-					window.location.href = userDeskUrl.value
-				},
-			}) : []),
+			...(onBadge
+				? deskOnly({
+						label: 'My Settings',
+						icon: 'lucide-user',
+						onClick: () => {
+							window.location.href = userDeskUrl.value
+						},
+				  })
+				: []),
 			{
 				// The desk tucks its appearance controls behind Display; the scheme
 				// is the one choice this app has. `selected` marks the preference,
@@ -483,7 +484,7 @@ function accountMenu(onBadge: boolean) {
 								sessionDefaultsOpen.value = true
 							},
 						},
-					]
+				  ]
 				: []),
 		],
 		[

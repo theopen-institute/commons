@@ -4,7 +4,6 @@ Nothing here uninstalls. Each test works inside a savepoint it rolls back, on
 records it made itself, and calls the hook's parts rather than the hook.
 """
 
-import contextlib
 import io
 import unittest
 from unittest import TestCase
@@ -24,7 +23,9 @@ class TestUninstall(TestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
 		frappe.db.savepoint("uninstall_test")
-		self.modules = frappe.get_all("Module Def", filters={"app_name": "commons"}, pluck="name")
+		self.modules = frappe.get_all(
+			"Module Def", filters={"app_name": "commons", "custom": 0}, pluck="name"
+		)
 		self.doctypes = frappe.get_all("DocType", filters={"module": ("in", self.modules)}, pluck="name")
 
 	def tearDown(self):
@@ -58,15 +59,6 @@ class TestUninstall(TestCase):
 		with self.assertRaises(click.ClickException) as raised:
 			uninstall.refuse_while_site_records(self.modules, self.doctypes)
 		self.assertIn(MARK, raised.exception.message)
-
-	def test_sidebars_naming_the_app_lose_the_app_not_the_sidebar(self):
-		frappe.get_doc({"doctype": "Workspace Sidebar", "title": MARK, "app": "commons"}).insert()
-
-		with contextlib.redirect_stdout(io.StringIO()):
-			uninstall.keep_workspace_sidebars()
-
-		self.assertTrue(frappe.db.exists("Workspace Sidebar", MARK))
-		self.assertFalse(frappe.db.get_value("Workspace Sidebar", MARK, "app"))
 
 	def tick(self) -> None:
 		frappe.get_doc(

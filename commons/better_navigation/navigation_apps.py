@@ -1,68 +1,70 @@
-"""The rail: which apps it lists, and which sidebars each one offers.
+"""The rail: which apps it lists, and which modules each one offers.
 
 Three levels, in this app's terms rather than Frappe's:
 
     Navigation App   an entry on the rail
-      Sidebar        a module, picked from the app's top menu (a `Workspace Sidebar`)
-        Item         a row in the sidebar (a `Workspace Sidebar Item`)
+      Module         a Module Def, as Frappe 16.50 shows it: its `Sidebar`
+        Item         a row in that sidebar (a `Sidebar Item`)
 
-Only the top level is new. The bottom two are v16's own Workspace Sidebar and its
-items, which already render, filter by permission and have an editor; this adds
-the grouping above them that Frappe has no document for. (Upstream's v17 draws
-the same three levels as Dock, Sidebar and Sidebar Item, so a `Navigation App`
-maps onto a Dock when that arrives.)
+Only the top level is this app's. The bottom two are Frappe's own: since 16.50
+every module has a sidebar (shipped, made on the site, or worked out from what
+the module holds), resolved per user into `frappe.boot.module_sidebars` with
+the site's and the user's Custom Sidebar layers applied. That is also where a
+site overrides a module -- relabel it, change its icon, add or hide its rows --
+and a custom Module Def is a synthetic module. This adds the level above, which
+Frappe has only for installed apps: its Dock lists the open app's modules, and
+its Apps screen lists installed apps, neither of which a site can regroup.
 
 "App" here is not an installed app. A `Navigation App` is whatever grouping a
-site wants on its rail -- "Finance" holding sidebars from ERPNext and from this
+site wants on its rail -- "Finance" holding modules from ERPNext and from this
 app, say -- and a site may add as many as it likes.
 
 One can also stand for an installed app, or for "Other", by naming it in
 `installed_app`. It then takes that app's place on the rail rather than
 appearing beside it: in its own Rail Order, under its own title, roles and
 mark, falling back to the app's hooks for the logo and the frontend. Its
-sidebars table either adds to what the app already holds (and relabels
+modules table either adds to what the app already holds (and relabels
 anything it lists) or, set to Replace, is the whole list, and what the app
 would have held goes to Other. The table's row order is the order the rail
 lists them in; only what nobody has put in order is sorted, landing module
 first (see `_default_order`). The table can also hold Category rows, a heading
-over the modules after it, and Spacer rows, a gap; see `_layout`. Hidden takes it off the rail, and its sidebars
+over the modules after it, and Spacer rows, a gap; see `_layout`. Hidden takes it off the rail, and its modules
 with it. "Other" is bindable like any installed app: the one group no hooks
 describe, but as much the site's to rename, restrict or hide.
 
 The fallback is the installed apps
 ----------------------------------
 A site that has configured nothing still gets a rail: one entry per installed
-app, holding the sidebars that belong to it. And a site that has configured some
-apps loses nothing it did not mention -- every sidebar no `Navigation App`
+app, holding the modules that belong to it. And a site that has configured some
+apps loses nothing it did not mention -- every module no `Navigation App`
 claims is still grouped under its installed app, after the configured ones. So
 installing an app puts it on the rail without anybody touching this, and
 configuring is only ever a matter of claiming what should move.
 
-Which installed app a sidebar belongs to is not one field. A standard sidebar
-names its app; one made on the site usually does not (the form only offers the
-field for standard ones). So it is asked in turn: the sidebar's own `app`, then
-the app of its `module` -- the sidebar's own fields and nothing else, the same
-order core's header follows when it names the app. A sidebar neither places is
-grouped under "Other", which is the honest answer and a hint that it wants a
-module or claiming.
+Which installed app a module belongs to is Frappe's answer, already in the
+boot: each `module_sidebars` entry's `app` (its sidebar's own, else where the
+module is placed -- `modules.txt`, or a custom module's `app_name`). The Module
+Def's `app_name` is asked again only for the endpoint, which has no boot. A
+module neither places is grouped under "Other", which is the honest answer and
+a hint that it wants an app or claiming.
+
+A module is one or more shells in the boot: usually one sidebar named after
+it, but a renamed sidebar keeps its own name (ERPNext's "Quality" is module
+"Quality Management") and a module may have two. A row claims the module, so
+it claims all of them.
 
 Two rules
 ---------
-*A sidebar is in one app.* The header has to say which app and module the page
-you are on belongs to, and a sidebar in two apps has no answer. Enforced when a
+*A module is in one app.* The header has to say which app and module the page
+you are on belongs to, and a module in two apps has no answer. Enforced when a
 `Navigation App` is saved; here the first to claim one keeps it, so a conflict
 that got past the form still resolves the same way every time.
 
-*A role-restricted app still claims its sidebars.* Otherwise somebody without
-the role would find the same sidebars back under their installed app, and the
+*A role-restricted app still claims its modules.* Otherwise somebody without
+the role would find the same modules back under their installed app, and the
 restriction would only have moved them. Roles decide who sees the app on the
-rail; they are not permission, and a sidebar a person cannot open is filtered
-by the browser against what the boot already allows them, the same split
-`workspaces.py` makes for the frontend's rows.
-
-Personal sidebars (`for_user`) are left out of the fallback for everyone but
-their owner, and cannot be claimed at all: a rail shared by a site is no place
-for one person's sidebar.
+rail; they are not permission. A module a person cannot open is not in their
+`module_sidebars` to begin with.
 """
 
 import frappe
@@ -70,20 +72,19 @@ from frappe import _
 
 APP = "Navigation App"
 APP_SIDEBAR = "Navigation App Sidebar"
-SIDEBAR = "Workspace Sidebar"
 
-# Where a sidebar goes when nothing says which app it belongs to.
+# Where a module goes when nothing says which app it belongs to.
 OTHER = "Other"
 OTHER_LOGO = "/assets/commons/images/commons-other-logo.svg"
 
-# A Navigation App bound to an installed app either adds its sidebars table to
+# A Navigation App bound to an installed app either adds its modules table to
 # what the app already holds, or replaces it.
 ADD = "Add"
 REPLACE = "Replace"
 
-# What a row of a Navigation App's sidebars table is. Rows saved before the
-# column existed are modules.
-MODULE = "Sidebar"
+# What a row of a Navigation App's modules table is. Anything else -- unset, or
+# "Sidebar" from before rows named modules -- is a module.
+MODULE = "Module"
 CATEGORY = "Category"
 SPACER = "Spacer"
 
@@ -112,17 +113,94 @@ def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 	On the boot rather than behind a call, so the rail draws with the sidebar
 	instead of after it. Left off entirely while the switch is off: the rail's
 	script checks the same flag and installs nothing.
+
+	Runs after Frappe has built `module_sidebars` for this user, and reads the
+	modules from there, so the rail offers exactly what the desk would. Then it
+	tells the desk which rail app each module is in (`place_modules`), so
+	Frappe's own header names the app the rail has lit.
 	"""
 	from commons.commons_core import settings
 
-	if settings.feature_enabled(settings.ENABLE_NAVIGATION_RAIL):
-		bootinfo.navigation_apps = navigation_apps()
+	if not settings.feature_enabled(settings.ENABLE_NAVIGATION_RAIL):
+		return
+	module_sidebars = bootinfo.get("module_sidebars")
+	if module_sidebars is None:
+		return
+	try:
+		bootinfo.navigation_apps = navigation_apps(module_sidebars=module_sidebars)
+		place_modules(bootinfo)
+	except Exception:
+		# The boot is every page load: a broken rail must not take the desk with it.
+		# Without `navigation_apps` the browser half installs nothing.
+		bootinfo.pop("navigation_apps", None)
+		frappe.log_error(title="Navigation rail: kept Frappe's Dock", defer_insert=True)
 
 
-def navigation_apps(user: str | None = None) -> list[dict]:
-	"""The rail for `user` (the session user by default), read from the site."""
+def navigation_apps(
+	user: str | None = None, module_sidebars: dict | None = None, everything: bool = False
+) -> list[dict]:
+	"""The rail for `user` (the session user by default), read from the site.
+
+	`module_sidebars` is the boot's, when there is a boot; otherwise Frappe
+	builds it again for the session user.
+	"""
 	user = user or frappe.session.user
-	return resolve(**_site_inputs(), user=user, user_roles=set(frappe.get_roles(user)))
+	if module_sidebars is None:
+		from frappe.boot import get_module_sidebars
+
+		module_sidebars = get_module_sidebars()
+	return resolve(
+		**_site_inputs(),
+		sidebars=_shells(module_sidebars),
+		user=user,
+		user_roles=set(frappe.get_roles(user)),
+		everything=everything,
+	)
+
+
+def place_modules(bootinfo: "frappe._dict") -> None:
+	"""Put each module the rail shows into its rail app, in Frappe's own boot.
+
+	Frappe's desk reads a module's app from `module_sidebars[shell].app` and
+	looks that up in `app_data`: the header's logo and subtitle, and which app
+	is open, all come from there. So a module a Navigation App claims has its
+	`app` rewritten to that rail app, and a rail app Frappe does not know (one
+	not bound to an installed app, or Other) gets an `app_data` entry of its
+	own, kept off the Apps screen. A bound app's entry takes the record's title
+	and logo.
+
+	Only the boot is changed. Calls that hand the desk a fresh `module_sidebars`
+	(saving a Custom Sidebar, say) carry Frappe's placement until the next
+	reload.
+	"""
+	module_sidebars = bootinfo.module_sidebars
+	app_data = bootinfo.setdefault("app_data", [])
+	known = {app.get("app_name"): app for app in app_data}
+	for rail_app in bootinfo.navigation_apps:
+		app_name = rail_app["app_name"]
+		logo = rail_app.get("logo")
+		if app_name in known:
+			entry = known[app_name]
+			if rail_app.get("configured"):
+				entry["app_title"] = rail_app["title"]
+				if logo:
+					entry["app_logo_url"] = logo
+		else:
+			entry = {
+				"app_name": app_name,
+				"app_title": rail_app["title"],
+				"app_logo_url": logo,
+				"app_route": "",
+				"desk_route": "",
+				"on_apps_screen": False,
+				"sequence_id": 100,
+				"dock": [],
+			}
+			app_data.append(entry)
+			known[app_name] = entry
+		for module in rail_app["sidebars"]:
+			if module["sidebar"] in module_sidebars:
+				module_sidebars[module["sidebar"]]["app"] = app_name
 
 
 def _site_inputs() -> dict:
@@ -140,7 +218,6 @@ def _site_inputs() -> dict:
 		CACHE_KEY,
 		generator=lambda: {
 			"configured": _configured(),
-			"sidebars": _sidebars(),
 			"installed_apps": frappe.get_installed_apps(),
 			"app_meta": _app_meta(),
 			"module_apps": dict(frappe.get_all("Module Def", fields=["name", "app_name"], as_list=True)),
@@ -176,30 +253,39 @@ def resolve(
 	user: str,
 	user_roles: set[str],
 	frontends: dict[str, str] | None = None,
+	everything: bool = False,
 ) -> list[dict]:
 	"""The rail, from plain data: configured apps first, then the installed ones.
 
 	`configured` is the enabled Navigation Apps in rail order, each with its
-	`sidebars` rows (`type`, `sidebar`, `label`), `roles`, and optionally the
+	`sidebars` rows (`type`, `module`, `label`), `roles`, and optionally the
 	`installed_app` it stands for, its `sidebar_mode`, whether it is `hidden`
-	and its `desktop_display`.
-	`sidebars` is every Workspace Sidebar (`name`, `header_icon`, `app`,
-	`module`, `for_user`). The rest say what an installed app is called and
-	which app a module belongs to, and `frontends` where an installed app's own
-	frontend is, outside the desk.
+	and its `apps_screen`.
+	`sidebars` is the shells this user may open, from `module_sidebars`
+	(`name`, `module`, `app`, `label`, `header_icon`; see `_shells`). The rest
+	say what an installed app is called and which app a module belongs to, and
+	`frontends` where an installed app's own frontend is, outside the desk.
 
 	Every entry carries `frontend` -- `{label, url}` or None -- beside its
-	`sidebars`, which are modules only: a module may carry a `category` or
-	`space_before` to draw above it (see `_layout`). An app is on the rail if it has either: a frontend with no desk
-	sidebars (Frappe Builder, say) is somewhere to go too.
+	`sidebars`, which are modules only, one per shell: a module may carry a
+	`category` or `space_before` to draw above it (see `_layout`). An app is on
+	the rail if it has either: a frontend with no desk modules (Frappe Builder,
+	say) is somewhere to go too. `app_name` is what `place_modules` writes into
+	the boot for its modules; a configured entry also names its `record`.
+
+	`everything` is the rail as an editor needs it (`arrange.py`): hidden and
+	role-restricted apps stay in, at their place, marked `hidden`, and so do
+	apps with nothing to offer.
 	"""
 	frontends = frontends or {}
-	by_name = {sidebar["name"]: sidebar for sidebar in sidebars}
+	by_module: dict[str, list[dict]] = {}
+	for sidebar in sidebars:
+		by_module.setdefault(sidebar.get("module") or sidebar["name"], []).append(sidebar)
 	claimed: set[str] = set()
 
 	# Claims first, all of them, so what is left for the installed apps is known
 	# before any entry is drawn: a bound app early on the rail still gets the
-	# sidebars no later app claims.
+	# modules no later app claims.
 	claims: list[list[dict]] = []
 	for app in configured:
 		entries = []
@@ -207,19 +293,18 @@ def resolve(
 			if row_type(row) != MODULE:
 				entries.append(_marker(row))
 				continue
-			sidebar = by_name.get(row["sidebar"])
-			# Deleted since, personal, or already claimed by an earlier app.
-			if not sidebar or sidebar.get("for_user") or sidebar["name"] in claimed:
-				continue
-			claimed.add(sidebar["name"])
-			entries.append(_entry(sidebar, row.get("label"), row.get("desktop_image")))
+			shells = [s for s in by_module.get(row.get("module") or "", []) if s["name"] not in claimed]
+			# Gone since, out of this user's reach, or already claimed by an
+			# earlier app. A module of two shells keeps their own labels.
+			for sidebar in shells:
+				claimed.add(sidebar["name"])
+				label = row.get("label") if len(shells) == 1 else None
+				entries.append(_entry(sidebar, label, row.get("desktop_image")))
 		claims.append(entries)
 
 	grouped: dict[str, list[dict]] = {}
 	for sidebar in sidebars:
 		if sidebar["name"] in claimed:
-			continue
-		if sidebar.get("for_user") and sidebar["for_user"] != user:
 			continue
 		owner = installed_app_of(sidebar, module_apps)
 		if owner not in installed_apps:
@@ -256,11 +341,12 @@ def resolve(
 
 		# Hidden, or restricted to roles this user lacks: off the rail, and what it
 		# holds goes with it rather than back to an installed app.
-		if app.get("hidden"):
-			continue
 		roles = set(app.get("roles") or ())
-		if roles and not roles & user_roles:
-			continue
+		if not everything:
+			if app.get("hidden"):
+				continue
+			if roles and not roles & user_roles:
+				continue
 
 		own_mark = app.get("logo") or app.get("icon")
 		frontend = _frontend(
@@ -268,20 +354,24 @@ def resolve(
 			app.get("frontend_url") or (frontends.get(target) if target else None),
 			app.get("frontend_label"),
 		)
-		if entries or frontend:
+		if entries or frontend or everything:
 			rail.append(
 				{
 					# A bound app keeps its installed app's key: the browser finds an
 					# app by it and remembers each app's last module under it.
 					"key": f"app:{target}" if target else f"navigation-app:{app['name']}",
+					"app_name": _app_name(target) if target else f"navigation-app:{app['name']}",
+					"record": app["name"],
+					"installed_app": target,
+					**({"hidden": bool(app.get("hidden")), "roles": sorted(roles)} if everything else {}),
 					"title": app["title"],
 					"icon": app.get("icon") or None,
 					"logo": app.get("logo") or (None if own_mark else _default_logo(target, meta)),
 					"configured": True,
 					"sidebars": entries,
 					"frontend": frontend,
-					# How the Desktop shows it; see `commons.better_navigation.desktop`.
-					"desktop": app.get("desktop_display") or None,
+					# How the Apps screen shows it; see `apps_screen.py`.
+					"apps_screen": app.get("apps_screen") or None,
 				}
 			)
 
@@ -292,11 +382,14 @@ def resolve(
 		meta = app_meta.get(app_name) or {}
 		title = meta.get("title") or (OTHER if app_name == OTHER else app_name)
 		frontend = _frontend(title, frontends.get(app_name))
-		if not entries and not frontend:
+		if not entries and not frontend and not everything:
 			continue
 		rail.append(
 			{
 				"key": f"app:{app_name}",
+				"app_name": _app_name(app_name),
+				"installed_app": app_name,
+				**({"hidden": False, "roles": []} if everything else {}),
 				"title": title,
 				"icon": None,
 				"logo": _default_logo(app_name, meta),
@@ -306,6 +399,11 @@ def resolve(
 			}
 		)
 	return rail
+
+
+def _app_name(app_name: str) -> str:
+	"""The name Frappe's boot knows a rail app by: the installed app's own, or one for Other."""
+	return "commons-other" if app_name == OTHER else app_name
 
 
 def _default_logo(app_name: str | None, meta: dict) -> str | None:
@@ -333,7 +431,7 @@ def is_desk_route(url: str) -> bool:
 
 
 def installed_app_of(sidebar: dict, module_apps: dict[str, str]) -> str | None:
-	"""Which installed app a sidebar belongs to, asked in the order the module docstring gives."""
+	"""Which installed app a module belongs to, asked in the order the module docstring gives."""
 	if sidebar.get("app"):
 		return sidebar["app"]
 	module = (sidebar.get("module") or "").strip()
@@ -343,8 +441,8 @@ def installed_app_of(sidebar: dict, module_apps: dict[str, str]) -> str | None:
 def _default_order(entries: list[dict], app_names: set[str]) -> list[dict]:
 	"""Modules nobody has put in order: the app's landing module, then the rest.
 
-	Workspace Sidebar has no order of its own, and the only one core has, the
-	Desktop Icons' `idx`, is a rail's worth of ties. So alphabetical, by what
+	Modules have no order of their own across an app (a Dock is an order only
+	for the apps that ship one). So alphabetical, by what
 	the menus call them -- except that a module called "Home", or called what
 	the app is (Education's "Education", Lending's "Lending"), is where the app
 	starts, and goes first. Home before the app-named one if an app has both.
@@ -406,11 +504,11 @@ def _layout(rows: list[dict]) -> list[dict]:
 def _entry(sidebar: dict, label: str | None = None, desktop_image: str | None = None) -> dict:
 	entry = {
 		"sidebar": sidebar["name"],
-		"label": (label or "").strip() or sidebar["name"],
+		"label": (label or "").strip() or sidebar.get("label") or sidebar["name"],
 		"icon": sidebar.get("header_icon") or None,
 	}
-	# Only the Desktop draws it (`commons.better_navigation.desktop`), so it is
-	# carried only when a row sets one.
+	# Only the Apps screen draws it (`apps_screen.py`), so it is carried only
+	# when a row sets one.
 	if desktop_image:
 		entry["desktop_image"] = desktop_image
 	return entry
@@ -443,7 +541,7 @@ def _configured() -> list[dict]:
 			"sidebar_mode",
 			"hidden",
 			# Arrives with a migrate; until then every app shows the default way.
-			*(["desktop_display"] if frappe.db.has_column(APP, "desktop_display") else []),
+			*(["apps_screen"] if frappe.db.has_column(APP, "apps_screen") else []),
 		],
 		order_by="rail_order asc, title asc",
 	)
@@ -451,20 +549,24 @@ def _configured() -> list[dict]:
 		return []
 
 	names = [app.name for app in apps]
-	# `type` arrives with a migrate; until then every row is a module.
-	fields = ["parent", "sidebar", "label"]
-	if frappe.db.has_column(APP_SIDEBAR, "type"):
-		fields.append("type")
-	# So does `desktop_image`, which only the Desktop reads.
-	if frappe.db.has_column(APP_SIDEBAR, "desktop_image"):
-		fields.append("desktop_image")
-	rows = frappe.get_all(
-		APP_SIDEBAR,
-		filters={"parent": ["in", names], "parenttype": APP},
-		fields=fields,
-		order_by="parent asc, idx asc",
-		parent_doctype=APP,
-	)
+	rows = []
+	# `module` arrives with a migrate (rows named a Workspace Sidebar before it);
+	# until then the rows claim nothing.
+	if frappe.db.has_column(APP_SIDEBAR, "module"):
+		# `type` arrives with a migrate; until then every row is a module.
+		fields = ["parent", "module", "label"]
+		if frappe.db.has_column(APP_SIDEBAR, "type"):
+			fields.append("type")
+		# So does `desktop_image`, which only the Apps screen reads.
+		if frappe.db.has_column(APP_SIDEBAR, "desktop_image"):
+			fields.append("desktop_image")
+		rows = frappe.get_all(
+			APP_SIDEBAR,
+			filters={"parent": ["in", names], "parenttype": APP},
+			fields=fields,
+			order_by="parent asc, idx asc",
+			parent_doctype=APP,
+		)
 	roles = frappe.get_all(
 		"Has Role",
 		filters={"parent": ["in", names], "parenttype": APP},
@@ -478,17 +580,26 @@ def _configured() -> list[dict]:
 	return apps
 
 
-def _sidebars() -> list[dict]:
-	return frappe.get_all(SIDEBAR, fields=["name", "header_icon", "app", "module", "for_user"])
+def _shells(module_sidebars: dict) -> list[dict]:
+	"""The shells in Frappe's `module_sidebars`, as `resolve` reads them, in the boot's order."""
+	return [
+		{
+			"name": name,
+			"module": sidebar.get("module") or name,
+			"app": sidebar.get("app"),
+			"label": sidebar.get("label") or name,
+			"header_icon": sidebar.get("header_icon"),
+		}
+		for name, sidebar in module_sidebars.items()
+	]
 
 
 def _frontends() -> dict[str, str]:
 	"""Each installed app's own frontend, outside the desk, as its hooks declare it.
 
 	`navigation_frontend_url` first, for an app whose frontend is not on the
-	apps screen (this one: an `add_to_apps_screen` entry would also put a
-	second Commons tile on the Desktop), then the apps screen's `route`, the
-	hook the title and logo already come from. Code, not site data, so the rail
+	apps screen, then the apps screen's `route`, the hook the title and logo
+	already come from. Code, not site data, so the rail
 	describes an installed app the same way on every site; a site that wants a
 	different link sets it on a Navigation App. Routes that only open a desk
 	page are not frontends.

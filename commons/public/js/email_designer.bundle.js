@@ -263,9 +263,7 @@ const add_field_action = (editor, doctype) => {
 		result(rte) {
 			if (!doctype) {
 				frappe.msgprint(
-					__(
-						"Set a Document Type on the template's Form Button tab to insert its fields."
-					)
+					__("Set a Reference DocType on the template to insert its fields.")
 				);
 				return;
 			}

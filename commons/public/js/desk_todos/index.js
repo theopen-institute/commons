@@ -1,5 +1,13 @@
-// A To Do widget for the desk, beside the notification bell, in both the places
-// the desk puts that bell: the workspace sidebar and the desktop navbar.
+// A To Do widget for the desk, beside the notification bell, in the places the
+// desk puts that bell: the sidebar's band of standard rows (Search, Notification),
+// the navigation rail's foot when Better Navigation's rail is on, and the desktop
+// navbar.
+//
+// Beside the sidebar it is Frappe's own kind of panel, as Notifications is: a
+// `frappe.ui.SidebarPanel` named `commons-todos`, opened through
+// `frappe.ui.sidebar_panels` by any element carrying `commons-todo-trigger` --
+// the sidebar row here, the rail's tile in `better_navigation/js/navigation_rail.js`.
+// Every `.commons-todo-badge` on the page shows the open count.
 //
 // Written entirely from this app. An earlier version of this widget edited
 // `frappe/`'s own sidebar template, stylesheet and bundle, and a bump from
@@ -14,6 +22,26 @@
 
 import { ToDoPanel } from "./panel";
 
+frappe.provide("commons.desk_todos");
+
+const PANEL = "commons-todos";
+commons.desk_todos.PANEL = PANEL;
+commons.desk_todos.TRIGGER = "commons-todo-trigger";
+// The last count, for a badge drawn after it arrived (the rail is built later).
+commons.desk_todos.count = 0;
+
+function show_count(count) {
+	commons.desk_todos.count = count;
+	const $badges = $(".commons-todo-badge");
+	count
+		? $badges
+				.text(count > 99 ? "99+" : count)
+				.attr("aria-label", __("{0} open to-dos", [count]))
+				.removeClass("hidden")
+		: $badges.removeAttr("aria-label").addClass("hidden");
+}
+commons.desk_todos.show_count = show_count;
+
 function may_use_todos() {
 	return (
 		frappe.session.user !== "Guest" &&
@@ -23,51 +51,37 @@ function may_use_todos() {
 	);
 }
 
+commons.desk_todos.may_use = may_use_todos;
+
 /* --------------------------------------------------------------------------
- * Host 1: the workspace sidebar
+ * Host 1: the sidebar's band of standard rows, and the drawer beside it
  * ----------------------------------------------------------------------- */
 
 function mount_in_sidebar(sidebar) {
-	const $section = sidebar.$standard_items_sections;
-	if (!$section || !$section.length) return;
-	if ($section.find(".commons-todo-panel").length) return;
+	const $band = sidebar.$standard_items_band;
+	if (!$band || !$band.length) return;
+	if (frappe.ui.sidebar_panels.get(PANEL)) return;
 
-	let panel;
-	const $trigger = () => sidebar.wrapper.find(".commons-todo-sidebar-item");
-
-	sidebar.add_item($section, {
+	sidebar.add_item($band, {
 		label: __("To Do"),
 		icon: "list-todo",
 		standard: true,
 		type: "Button",
 		// TypeButton assigns this to the wrapper's class attribute wholesale,
 		// so it is the only hook available on the row.
-		class: "commons-todo-sidebar-item",
+		class: `commons-todo-sidebar-item ${commons.desk_todos.TRIGGER}`,
 		suffix: "<span class='commons-todo-badge hidden' aria-live='polite'></span>",
-		onClick: () => {
-			panel.toggle();
-			// The drawer is over the page below 768px, and the row just pressed
-			// is inside it. Core closes its own drawer on the same press.
-			if (frappe.is_mobile()) sidebar.wrapper.removeClass("expanded");
-		},
+		onClick: () => frappe.ui.sidebar_panels.toggle(PANEL),
 	});
 
-	panel = new ToDoPanel({
-		container: $section,
-		placement: "sidebar",
-		trigger: $trigger,
-		onCount: (count) => {
-			const $badge = $trigger().find(".commons-todo-badge");
-			if (!$badge.length) return;
-			count
-				? $badge
-						.text(count > 99 ? "99+" : count)
-						.attr("aria-label", __("{0} open to-dos", [count]))
-						.removeClass("hidden")
-				: $badge.removeAttr("aria-label").addClass("hidden");
-		},
+	let panel;
+	const host = new frappe.ui.SidebarPanel({
+		name: PANEL,
+		title: __("To Do"),
+		trigger_selector: `.${commons.desk_todos.TRIGGER}`,
+		on_open: () => panel && panel.refresh(),
 	});
-
+	panel = new ToDoPanel({ host, onCount: show_count });
 	sidebar.commons_todos = panel;
 }
 
@@ -76,6 +90,7 @@ function patch_sidebar() {
 	const required = ["add_standard_items", "add_item", "make_sidebar_item"];
 	if (!Sidebar || required.some((m) => typeof Sidebar.prototype[m] !== "function")) return;
 	if (!frappe.ui.sidebar_item || !frappe.ui.sidebar_item.TypeButton) return;
+	if (!frappe.ui.SidebarPanel || !frappe.ui.sidebar_panels) return;
 
 	const add_standard_items = Sidebar.prototype.add_standard_items;
 	Sidebar.prototype.add_standard_items = function (items) {
@@ -156,8 +171,8 @@ function patch_desktop() {
 }
 
 // Opt-in: "Enable Desk To Do" in Commons Settings. Off, neither seam is
-// wrapped, and the navigation rail's To Do button, which follows the sidebar
-// row, is not drawn either.
+// wrapped, and the navigation rail's To Do tile, which opens the sidebar's
+// drawer, is not drawn either.
 const features = (frappe.boot && frappe.boot.commons_features) || {};
 if (features.desk_todos) {
 	patch_sidebar();

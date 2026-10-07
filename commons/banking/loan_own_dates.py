@@ -7,6 +7,12 @@ on the day it happened is off by its amount.
 
 - Loan Repayment: `validate` sets `posting_date` to now. The posting date as
   entered is put back afterwards, as a pair of site server scripts would.
+- Loan Repayment, from the desk Bank Reconciliation Tool: lending's
+  `create_loan_repayment_bts` enters `posting_date` as now and the bank
+  transaction's date (or the date picked in its dialog) as `value_date`, and
+  leaves nothing on the repayment that names the transaction. A new repayment
+  saved by that call is put on its value date. Edit in Full Page hands the
+  form back unsaved, so there the posting date is whatever is entered on it.
 - Loan Repayment, reposted: a backdated repayment makes lending repost every
   repayment after it, and `get_gl_map` dates their GL
   `getdate() if self.flags.from_repost`. `get_gl_dict` is given the
@@ -26,14 +32,28 @@ interest and demands, is left as it was. Vouchers already booked are not
 touched: the Loan Date Audit lists them, and re-books repayments.
 """
 
+import frappe
 from frappe.utils import get_datetime, getdate
 
 from commons.commons_core.settings import ENABLE_LOAN_OWN_DATES, feature_enabled
+
+# Lending's whitelisted method behind the desk Bank Reconciliation Tool's
+# "Loan Repayment" voucher. /commons/banking makes its own repayments, already
+# entered on the transaction's date, and does not come through here.
+FROM_BANK_TRANSACTION = (
+	"lending.loan_management.doctype.loan_repayment.loan_repayment.create_loan_repayment_bts"
+)
+
+
+def from_bank_transaction(doc):
+	return doc.is_new() and frappe.form_dict.get("cmd") == FROM_BANK_TRANSACTION
 
 
 class OwnDateLoanRepaymentMixin:
 	def validate(self):
 		entered = self.posting_date
+		if self.value_date and from_bank_transaction(self):
+			entered = self.value_date
 		super().validate()
 		if entered and feature_enabled(ENABLE_LOAN_OWN_DATES):
 			self.posting_date = get_datetime(entered)

@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Peter and contributors
 # For license information, please see license.txt
 
-"""One row of a Navigation App's top menu: a module (a Workspace Sidebar, and what to call
+"""One row of a Navigation App's module list: a module (a Module Def, and what to call
 it), or a Category heading or a Spacer between them."""
 
 from frappe.model.document import Document
@@ -18,11 +18,11 @@ class NavigationAppSidebar(Document):
 
 		desktop_image: DF.AttachImage | None
 		label: DF.Data | None
+		module: DF.Link | None
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data
-		sidebar: DF.Link | None
-		type: DF.Literal["Sidebar", "Category", "Spacer"]
+		type: DF.Literal["Module", "Category", "Spacer"]
 	# end: auto-generated types
 
 	pass

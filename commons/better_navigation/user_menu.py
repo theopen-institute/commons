@@ -3,10 +3,9 @@
 
 """What the SPA's user menu lists beyond its own entries.
 
-The desk sidebar's user badge opens a menu of the account and maintenance entries
-that used to sit in its header menu (`commons/better_navigation/js/user_menu.js`). The SPA's
-sidebar has the same menu, and two parts of it come from site configuration
-rather than code:
+The SPA sidebar's user badge opens a menu of the account and maintenance entries,
+modelled on the desk's, and two parts of it come from site configuration rather
+than code:
 
 - Session Defaults: the Link fields Session Default Settings lists, each with this
   user's current value. The desk gets them on `frappe.boot.session_defaults`.

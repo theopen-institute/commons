@@ -1,6 +1,11 @@
-// The panel both hosts open: header, scrolling list, footer. It owns its own
-// markup, because the desk's sidebar template is frappe's and this app does not
-// edit it.
+// The panel both hosts open: header, scrolling list, footer.
+//
+// Beside the sidebar (or the rail) it is drawn inside a `frappe.ui.SidebarPanel`, the
+// frame Frappe's own notifications panel uses: Frappe gives it the full-height
+// drawer, the heading and its close button, and `frappe.ui.sidebar_panels` keeps
+// one panel open at a time and closes it on a click away, Escape or a page change.
+// This fills in the rest. Under the desktop's navbar icon it still draws a frame
+// of its own.
 //
 // Every class here is prefixed `commons-todo-`. Nothing is borrowed from core's
 // notification widget, which is the nearest thing on screen: sharing its classes
@@ -35,8 +40,10 @@ export class ToDoPanel {
 	/**
 	 * @param {object} opts
 	 * @param {JQuery}  opts.container  where the panel element is appended
-	 * @param {string}  opts.placement  "sidebar" (full height, beside the rail)
-	 *                                  or "navbar" (hanging under an icon)
+	 * @param {frappe.ui.SidebarPanel} [opts.host] the drawer to draw into; with
+	 *                                  one, `container`, `placement` and `trigger`
+	 *                                  are not used
+	 * @param {string}  opts.placement  "navbar" (hanging under an icon)
 	 * @param {function(number)} opts.onCount  called with every fresh count
 	 * @param {function():JQuery} opts.trigger the element that toggles us, so a
 	 *                                  click on it is not read as a click away
@@ -71,6 +78,7 @@ export class ToDoPanel {
 	}
 
 	build() {
+		if (this.opts.host) return this.build_in_host();
 		this.$panel = $(`
 			<div class="commons-todo-panel commons-todo-panel--${this.opts.placement} hidden" role="dialog"
 				aria-label="${__("To Do")}">
@@ -131,6 +139,46 @@ export class ToDoPanel {
 		frappe.realtime && frappe.realtime.on("notification", this.on_notification);
 	}
 
+	build_in_host() {
+		const host = this.opts.host;
+		this.$panel = host.$panel.addClass("commons-todo-panel commons-todo-panel--host");
+
+		host.$title.html(`
+			<span>${__("To Do")}</span>
+			<span class="commons-todo-title-count hidden" aria-live="polite"></span>
+		`);
+		// A <div>, not the <span> the navbar host uses: Frappe's panel heading makes every
+		// span in its actions a 24px icon button.
+		$(`
+			<div class="commons-todo-sort">
+				<select aria-label="${__("Sort by")}" title="${__("Sort by")}">
+					${SORTS.map(
+						(s) =>
+							`<option value="${s.value}">${frappe.utils.escape_html(
+								s.label()
+							)}</option>`
+					).join("")}
+				</select>
+				${frappe.utils.icon("chevron-down", "xs")}
+			</div>
+		`).appendTo(host.$actions);
+
+		this.$body = $('<div class="commons-todo-body"></div>').appendTo(host.$body);
+		// After the scrolling body rather than in it, so it stays at the foot.
+		this.$footer = $(`<a class="commons-todo-footer" href="${listUrl()}"></a>`).appendTo(
+			this.$panel
+		);
+		this.$sort = this.$panel.find(".commons-todo-sort select").val(this.sort_by);
+		this.$sort.on("change", (e) => {
+			this.sort_by = e.currentTarget.value;
+			this.remember_sort();
+			this.refresh();
+		});
+
+		this.on_notification = () => (this.detached() ? this.destroy() : this.refresh());
+		frappe.realtime && frappe.realtime.on("notification", this.on_notification);
+	}
+
 	// Core rebuilds the desktop's markup from scratch (`DesktopPage.make`), which
 	// takes a navbar panel out of the page without telling it. Such a panel would
 	// otherwise go on answering every notification with a fetch nobody sees --
@@ -153,10 +201,13 @@ export class ToDoPanel {
 	}
 
 	hide() {
+		if (this.opts.host) return this.opts.host.hide();
 		this.$panel.addClass("hidden");
 	}
 
+	// A hosted panel refreshes from the host's `on_open`, however it was opened.
 	toggle() {
+		if (this.opts.host) return this.opts.host.toggle();
 		this.$panel.toggleClass("hidden");
 		if (!this.is_hidden()) this.refresh();
 	}
@@ -237,9 +288,7 @@ export class ToDoPanel {
 		// redundant once the list is grouped by it
 		if (todo.priority && this.sort_by !== "urgency") {
 			const tone = PRIORITY_TONE[todo.priority] || "gray";
-			bits.push(
-				`<span class="commons-todo-priority ${tone}">${__(todo.priority)}</span>`
-			);
+			bits.push(`<span class="commons-todo-priority ${tone}">${__(todo.priority)}</span>`);
 		}
 
 		return bits.length ? `<div class="commons-todo-meta">${bits.join("")}</div>` : "";

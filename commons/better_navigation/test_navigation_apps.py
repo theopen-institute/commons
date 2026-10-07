@@ -5,16 +5,18 @@
 
 `resolve` takes everything it reads as arguments, so each rule in the module
 docstring is one small table here: the fallback, the one-app rule, roles that
-hide without releasing, and personal sidebars.
+hide without releasing, and a module of more than one shell.
 """
 
 from types import SimpleNamespace
 from unittest import TestCase
 
 from commons.better_navigation.navigation_apps import (
+	MODULE,
 	OTHER,
 	installed_app_of,
 	is_desk_route,
+	place_modules,
 	resolve,
 	row_type,
 )
@@ -28,8 +30,15 @@ META = {
 }
 
 
-def sidebar(name, app=None, module=None, for_user=None, header_icon=None):
-	return {"name": name, "app": app, "module": module, "for_user": for_user, "header_icon": header_icon}
+def sidebar(name, app=None, module=None, header_icon=None, label=None):
+	"""A shell as `_shells` hands it over: named after its module unless said otherwise."""
+	return {
+		"name": name,
+		"app": app,
+		"module": module or name,
+		"label": label or name,
+		"header_icon": header_icon,
+	}
 
 
 SIDEBARS = [
@@ -37,13 +46,12 @@ SIDEBARS = [
 	sidebar("Stock", app="erpnext", header_icon="package"),
 	sidebar("Accounting", app="erpnext"),
 	sidebar("Education", app="education"),
-	# Made on the site: no app, so its module has to say.
-	sidebar("Students", module="Education"),
-	sidebar("Assessments", module="Education Extensions"),
+	# A custom module with no app on its sidebar: its Module Def has to say.
+	sidebar("Students"),
+	sidebar("Assessments"),
 	sidebar("Helpdesk"),
-	sidebar("Mine", for_user="peter@example.com"),
 ]
-MODULES = {"Education": "education", "Education Extensions": "commons"}
+MODULES = {"Students": "education", "Assessments": "commons"}
 
 
 def rail(configured=(), user="someone@example.com", roles=("Desk User",), sidebars=SIDEBARS, frontends=None):
@@ -67,16 +75,16 @@ def app(name, *sidebars, roles=(), icon=None, labels=None):
 		"icon": icon,
 		"logo": None,
 		"roles": list(roles),
-		# A sidebar's name, or a row as it is (a Category or Spacer).
-		"sidebars": [s if isinstance(s, dict) else {"sidebar": s, "label": labels.get(s)} for s in sidebars],
+		# A module's name, or a row as it is (a Category or Spacer).
+		"sidebars": [s if isinstance(s, dict) else {"module": s, "label": labels.get(s)} for s in sidebars],
 	}
 
 
 def category(label):
-	return {"type": "Category", "sidebar": None, "label": label}
+	return {"type": "Category", "module": None, "label": label}
 
 
-SPACER = {"type": "Spacer", "sidebar": None, "label": None}
+SPACER = {"type": "Spacer", "module": None, "label": None}
 
 
 def layout(entry):
@@ -111,11 +119,9 @@ class TestFallback(TestCase):
 		self.assertFalse(entry["configured"])
 		self.assertEqual(entry["logo"], "/erpnext.svg")
 
-	def test_which_app_a_sidebar_belongs_to(self):
-		self.assertEqual(
-			installed_app_of(sidebar("A", app="erpnext", module="Education"), MODULES), "erpnext"
-		)
-		self.assertEqual(installed_app_of(sidebar("A", module=" Education "), MODULES), "education")
+	def test_which_app_a_module_belongs_to(self):
+		self.assertEqual(installed_app_of(sidebar("A", app="erpnext", module="Students"), MODULES), "erpnext")
+		self.assertEqual(installed_app_of(sidebar("A", module=" Students "), MODULES), "education")
 		self.assertIsNone(installed_app_of(sidebar("A", module="Nowhere"), MODULES))
 		self.assertIsNone(installed_app_of(sidebar("Nowhere"), MODULES))
 
@@ -137,20 +143,20 @@ class TestConfigured(TestCase):
 		self.assertEqual(result[0]["key"], "navigation-app:Finance")
 		self.assertTrue(result[0]["configured"])
 
-	def test_desktop_display_is_passed_on(self):
+	def test_apps_screen_is_passed_on(self):
 		configured = app("Finance", "Accounting")
-		configured["desktop_display"] = "One Icon"
-		self.assertEqual(rail([configured])[0]["desktop"], "One Icon")
-		self.assertIsNone(rail([app("Finance", "Accounting")])[0]["desktop"])
+		configured["apps_screen"] = "Icon per Module"
+		self.assertEqual(rail([configured])[0]["apps_screen"], "Icon per Module")
+		self.assertIsNone(rail([app("Finance", "Accounting")])[0]["apps_screen"])
 
 	def test_desktop_image_is_carried_only_when_set(self):
-		row = {"sidebar": "Accounting", "label": None, "desktop_image": "/files/books.png"}
+		row = {"module": "Accounting", "label": None, "desktop_image": "/files/books.png"}
 		entry = rail([app("Finance", row, "Stock")])[0]
 		by_name = {s["sidebar"]: s for s in entry["sidebars"]}
 		self.assertEqual(by_name["Accounting"]["desktop_image"], "/files/books.png")
 		self.assertNotIn("desktop_image", by_name["Stock"])
 
-	def test_label_overrides_the_sidebar_title(self):
+	def test_label_overrides_the_sidebars_own(self):
 		entry = rail([app("Finance", "Accounting", labels={"Accounting": "Books"})])[0]
 		self.assertEqual(entry["sidebars"][0], {"sidebar": "Accounting", "label": "Books", "icon": None})
 
@@ -163,7 +169,7 @@ class TestConfigured(TestCase):
 		self.assertEqual(shape(result)[:2], [("Finance", ["Stock"]), ("Warehouse", ["Accounting"])])
 
 	def test_an_app_with_nothing_left_is_dropped(self):
-		result = rail([app("Gone", "Deleted Sidebar")])
+		result = rail([app("Gone", "Deleted Module")])
 		self.assertNotIn("Gone", [entry["title"] for entry in result])
 
 	def test_roles_hide_the_app_without_releasing_its_sidebars(self):
@@ -176,19 +182,79 @@ class TestConfigured(TestCase):
 		self.assertEqual(allowed[0]["title"], "Finance")
 
 
-class TestPersonal(TestCase):
-	def test_personal_sidebar_only_for_its_owner(self):
-		def other_entry(result):
-			return next(entry for entry in result if entry["title"] == OTHER)["sidebars"]
+# Two shells of one module, one renamed away from it, as Frappe's boot has them.
+SHELLS = [
+	*SIDEBARS,
+	sidebar("Quality", app="erpnext", module="Quality Management", label="Quality"),
+	sidebar("Audits", app="erpnext", module="Quality Management", label="Audits"),
+]
 
-		self.assertEqual([s["sidebar"] for s in other_entry(rail())], ["Helpdesk"])
-		self.assertEqual(
-			[s["sidebar"] for s in other_entry(rail(user="peter@example.com"))], ["Helpdesk", "Mine"]
+
+class TestModules(TestCase):
+	"""A row claims a module, which is every shell the boot has for it."""
+
+	def test_a_row_claims_every_shell_of_its_module(self):
+		result = rail([app("QA", "Quality Management")], sidebars=SHELLS)
+		self.assertEqual(shape(result)[0], ("QA", ["Quality", "Audits"]))
+		self.assertNotIn("Quality", shape(result)[2][1])
+
+	def test_a_label_relabels_only_a_module_of_one_shell(self):
+		entry = rail([app("QA", "Quality Management", labels={"Quality Management": "QA"})], sidebars=SHELLS)[
+			0
+		]
+		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Quality", "Audits"])
+
+	def test_a_renamed_shell_is_claimed_by_its_module_not_its_name(self):
+		result = rail([app("QA", "Quality")], sidebars=SHELLS)
+		self.assertNotIn("QA", [entry["title"] for entry in result])
+
+	def test_unlabelled_modules_take_the_sidebars_label(self):
+		shells = [sidebar("Loan Management", app="erpnext", label="Lending")]
+		self.assertEqual(rail(sidebars=shells)[0]["sidebars"][0]["label"], "Lending")
+
+
+class TestPlaceModules(TestCase):
+	"""Frappe's boot is told which rail app each module is in."""
+
+	def boot(self, rail_apps):
+		return SimpleNamespace(
+			module_sidebars={
+				name: {"app": app_name} for name, app_name in (("Stock", "erpnext"), ("Helpdesk", None))
+			},
+			app_data=[{"app_name": "erpnext", "app_title": "ERPNext", "app_logo_url": "/erpnext.svg"}],
+			navigation_apps=rail_apps,
+			setdefault=lambda key, default: getattr(self._boot, key),
 		)
 
-	def test_personal_sidebar_cannot_be_claimed(self):
-		result = rail([app("Mine Too", "Mine")], user="peter@example.com")
-		self.assertNotIn("Mine Too", [entry["title"] for entry in result])
+	def place(self, configured=(), sidebars=None):
+		rail_apps = rail(
+			configured, sidebars=sidebars or [sidebar("Stock", app="erpnext"), sidebar("Helpdesk")]
+		)
+		self._boot = self.boot(rail_apps)
+		place_modules(self._boot)
+		return self._boot
+
+	def test_a_synthetic_app_gets_an_app_data_entry_off_the_apps_screen(self):
+		boot = self.place([app("Stores", "Stock")])
+		self.assertEqual(boot.module_sidebars["Stock"]["app"], "navigation-app:Stores")
+		entry = next(a for a in boot.app_data if a["app_name"] == "navigation-app:Stores")
+		self.assertEqual((entry["app_title"], entry["on_apps_screen"]), ("Stores", False))
+
+	def test_other_becomes_an_app_of_its_own(self):
+		boot = self.place()
+		self.assertEqual(boot.module_sidebars["Helpdesk"]["app"], "commons-other")
+		self.assertIn("commons-other", [a["app_name"] for a in boot.app_data])
+
+	def test_a_bound_app_retitles_frappes_entry(self):
+		boot = self.place([{**bound("Books", "erpnext"), "logo": "/books.svg"}])
+		erpnext = next(a for a in boot.app_data if a["app_name"] == "erpnext")
+		self.assertEqual((erpnext["app_title"], erpnext["app_logo_url"]), ("Books", "/books.svg"))
+		self.assertEqual(boot.module_sidebars["Stock"]["app"], "erpnext")
+
+	def test_an_unconfigured_app_keeps_frappes_entry(self):
+		boot = self.place()
+		erpnext = next(a for a in boot.app_data if a["app_name"] == "erpnext")
+		self.assertEqual(erpnext["app_title"], "ERPNext")
 
 
 class FakeClientCache:
@@ -218,7 +284,6 @@ class SiteInputsAreCached(TestCase):
 			patch.object(nav.frappe, "client_cache", cache),
 			patch.object(nav.frappe, "local", SimpleNamespace(db=None)),
 			patch.object(nav, "_configured", side_effect=lambda: reads.append("configured") or []),
-			patch.object(nav, "_sidebars", return_value=[]),
 			patch.object(nav, "_app_meta", return_value={}),
 			patch.object(nav, "_frontends", return_value={}),
 			patch.object(nav.frappe, "get_installed_apps", return_value=["frappe"]),
@@ -260,7 +325,7 @@ def bound(name, installed_app, *sidebars, mode="Add", hidden=0, **kwargs):
 class TestBoundApps(TestCase):
 	"""A Navigation App standing for an installed app, or for Other."""
 
-	def test_takes_the_installed_apps_place_and_keeps_its_sidebars(self):
+	def test_takes_the_installed_apps_place_and_keeps_its_modules(self):
 		result = rail([bound("Books", "erpnext")])
 		self.assertEqual(shape(result)[0], ("Books", ["Accounting", "Stock"]))
 		# Not drawn a second time among the installed apps.
@@ -476,6 +541,35 @@ class TestCategoriesAndSpacers(TestCase):
 		entry = rail([app("Finance", "Accounting", category("  "), "Stock")])[0]
 		self.assertEqual(layout(entry), [("Accounting", None), ("Stock", "gap")])
 
-	def test_rows_from_before_the_column_are_modules(self):
-		self.assertEqual(row_type({"sidebar": "Stock"}), "Sidebar")
-		self.assertEqual(row_type({"type": "", "sidebar": "Stock"}), "Sidebar")
+	def test_rows_from_before_the_column_and_sidebar_rows_are_modules(self):
+		self.assertEqual(row_type({"module": "Stock"}), MODULE)
+		self.assertEqual(row_type({"type": "", "module": "Stock"}), MODULE)
+		self.assertEqual(row_type({"type": "Sidebar", "module": "Stock"}), MODULE)
+
+
+class TestKeepUnseen(TestCase):
+	"""Manage Modules keeps rows for modules the person editing was not shown."""
+
+	def row(self, module, label=None):
+		return SimpleNamespace(
+			module=module,
+			label=label,
+			get=lambda key, m=module: f"/files/{m}.png" if key == "desktop_image" else None,
+		)
+
+	def test_an_unseen_row_goes_back_after_the_row_it_followed(self):
+		from commons.better_navigation.arrange import _keep_unseen
+
+		old = [self.row("Stock"), self.row("Secret", "Hush"), self.row("Accounts")]
+		new = [{"module": "Accounts"}, {"module": "Stock"}]
+		result = _keep_unseen(new, old, visible={"Stock", "Accounts"})
+		self.assertEqual([r["module"] for r in result], ["Accounts", "Stock", "Secret"])
+		self.assertEqual((result[2]["label"], result[2]["desktop_image"]), ("Hush", "/files/Secret.png"))
+
+	def test_an_unseen_first_row_stays_first(self):
+		from commons.better_navigation.arrange import _keep_unseen
+
+		result = _keep_unseen(
+			[{"module": "Stock"}], [self.row("Secret"), self.row("Stock")], visible={"Stock"}
+		)
+		self.assertEqual([r["module"] for r in result], ["Secret", "Stock"])

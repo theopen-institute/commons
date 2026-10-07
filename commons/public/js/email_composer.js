@@ -16,6 +16,11 @@
 // Wired in at two seams: `get_fields` (one more field, beside core's HTML one)
 // and `prepare` (drawing it once the dialog exists). If core renames either,
 // or the HTML field, the feature-detect quietly leaves the composer as it is.
+// Since 16.50 core draws its composer in a layout of its own
+// (`render_composer_layout`), moves the fields it knows into it by name and
+// hides the dialog's form with every other field in it; a third seam there
+// moves this one in too, just above the HTML editor. A composer without that
+// method keeps it where `get_fields` put it, which is already in place.
 // Opt-in: "Enable Visual HTML Email Editor" in Commons Settings.
 (() => {
 	const features = (frappe.boot && frappe.boot.commons_features) || {};
@@ -72,8 +77,32 @@
 		return result;
 	};
 
+	// Into the slot core's HTML editor was moved to, ahead of it. Moving an
+	// iframe reloads it from its `srcdoc`, which is what was last loaded, and
+	// the load handler switches editing back on, so nothing is lost by drawing
+	// it first and moving it after.
+	const render_composer_layout = Composer.prototype.render_composer_layout;
+	if (typeof render_composer_layout === "function") {
+		Composer.prototype.render_composer_layout = function () {
+			const result = render_composer_layout.apply(this, arguments);
+			try {
+				const holder = this.dialog.fields_dict[FIELD];
+				const code = this.dialog.fields_dict.html_content;
+				const $code = code && code.$wrapper;
+				if (holder && $code && $code.closest(this.$composer || []).length) {
+					holder.$wrapper.insertBefore($code);
+				}
+			} catch (e) {
+				console.warn("Visual HTML email editor could not be placed", e);
+			}
+			return result;
+		};
+	}
+
 	const button = (attrs, content, title) =>
-		`<button type="button" class="btn btn-xs btn-default" ${attrs} title="${title || ""}">${content}</button>`;
+		`<button type="button" class="btn btn-xs btn-default" ${attrs} title="${
+			title || ""
+		}">${content}</button>`;
 
 	const setup = (composer) => {
 		const dialog = composer.dialog;
@@ -94,7 +123,11 @@
 					${button('data-cmd="underline"', "<u>U</u>", __("Underline"))}
 					${button('data-cmd="createLink"', frappe.utils.icon("link", "xs"), __("Link"))}
 					${button('data-cmd="unlink"', frappe.utils.icon("unlink", "xs"), __("Remove link"))}
-					${button('data-cmd="removeFormat"', frappe.utils.icon("remove-formatting", "xs"), __("Clear formatting"))}
+					${button(
+						'data-cmd="removeFormat"',
+						frappe.utils.icon("remove-formatting", "xs"),
+						__("Clear formatting")
+					)}
 					${button('data-cmd="undo"', frappe.utils.icon("undo-2", "xs"), __("Undo"))}
 				</div>
 				<span class="cm-spacer"></span>
@@ -103,7 +136,9 @@
 					${button('data-width="phone"', frappe.utils.icon("smartphone", "xs"), __("Phone"))}
 				</div>
 			</div>
-			<div class="cm-visual-stage"><iframe sandbox="allow-same-origin" title="${__("Email")}"></iframe></div>
+			<div class="cm-visual-stage"><iframe sandbox="allow-same-origin" title="${__(
+				"Email"
+			)}"></iframe></div>
 		</div>`).appendTo(holder.$wrapper.empty());
 		const iframe = $box.find("iframe").get(0);
 
@@ -131,7 +166,9 @@
 					body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 						font-size: 14px; line-height: 1.5; color: #171717; margin: 16px; }
 				</style></head><body>${html || ""}</body></html>`;
-			// Frappe's email CSS would be inlined over a complete document's own.
+			// Frappe's email CSS is kept off a complete document when it is
+			// sent (`send_email` in email_extensions.js); before 16.50 the
+			// composer's own "Add CSS" box did that, and is unticked here.
 			if (whole && dialog.fields_dict.add_css) dialog.set_value("add_css", 0);
 		};
 
@@ -177,7 +214,13 @@
 			const selection = doc.getSelection();
 			const range = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
 			frappe.prompt(
-				{ label: __("Link address"), fieldname: "url", fieldtype: "Data", reqd: 1, default: "https://" },
+				{
+					label: __("Link address"),
+					fieldname: "url",
+					fieldtype: "Data",
+					reqd: 1,
+					default: "https://",
+				},
 				({ url }) => {
 					if (range) {
 						selection.removeAllRanges();

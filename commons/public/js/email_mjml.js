@@ -14,7 +14,8 @@
 	// What ticking "Design with MJML" starts from: the template's current text in
 	// a plain one-column layout, with the account's signature and footer.
 	const starter = (frm) => {
-		const body = (frm.doc.use_html ? frm.doc.response_html : frm.doc.response) || "<p>Dear …,</p>";
+		const body =
+			(frm.doc.use_html ? frm.doc.response_html : frm.doc.response) || "<p>Dear …,</p>";
 		const text = /<html[\s>]/i.test(body) ? "<p>Dear …,</p>" : body;
 		return `<mjml>
   <mj-head>
@@ -117,7 +118,7 @@ ${text}
 		const ticket = (asked.get(frm) || 0) + 1;
 		asked.set(frm, ticket);
 		frappe
-			.xcall(PREVIEW, { source, email_doctype: frm.doc.email_doctype || null })
+			.xcall(PREVIEW, { source, reference_doctype: frm.doc.reference_doctype || null })
 			.then((r) => {
 				if (asked.get(frm) !== ticket) return;
 				if (r.error) {
@@ -126,24 +127,37 @@ ${text}
 				}
 				$box.find("iframe").attr("srcdoc", r.html);
 				if (r.render_error) {
-					$status.addClass("cm-error").text(__("Compiles, but Jinja failed: {0}", [r.render_error]));
+					$status
+						.addClass("cm-error")
+						.text(__("Compiles, but Jinja failed: {0}", [r.render_error]));
 				} else if (r.document) {
-					$status.text(__("Filled in from {0} {1}", [__(frm.doc.email_doctype), r.document]));
+					$status.text(
+						__("Filled in from {0} {1}", [__(frm.doc.reference_doctype), r.document])
+					);
 				} else {
 					$status.text(
-						frm.doc.email_doctype
-							? __("No {0} to fill it in from; Jinja shown as written.", [__(frm.doc.email_doctype)])
-							: __("Set a Document Type on the Form Button tab to fill in the Jinja.")
+						frm.doc.reference_doctype
+							? __("No {0} to fill it in from; Jinja shown as written.", [
+									__(frm.doc.reference_doctype),
+							  ])
+							: __("Set a Reference DocType to fill in the Jinja.")
 					);
 				}
 			})
-			.catch(() => asked.get(frm) === ticket && $status.addClass("cm-error").text(__("Preview failed.")));
+			.catch(
+				() =>
+					asked.get(frm) === ticket &&
+					$status.addClass("cm-error").text(__("Preview failed."))
+			);
 	};
 
 	const later = new WeakMap();
 	const refresh_soon = (frm) => {
 		clearTimeout(later.get(frm));
-		later.set(frm, setTimeout(() => refresh_preview(frm), 500));
+		later.set(
+			frm,
+			setTimeout(() => refresh_preview(frm), 500)
+		);
 	};
 
 	// The drag-and-drop designer (`email_designer.bundle.js`), loaded the first
@@ -155,7 +169,7 @@ ${text}
 			commons.email_designer.open({
 				title: frm.is_new() ? __("New Email Template") : frm.doc.name,
 				source: frm.doc.mjml_source || starter(frm),
-				doctype: frm.doc.email_doctype || null,
+				doctype: frm.doc.reference_doctype || null,
 				on_save: async (mjml) => {
 					await frm.set_value("mjml_source", mjml);
 					await frm.save();
@@ -177,7 +191,7 @@ ${text}
 			add_designer_button(frm);
 		},
 		mjml_source: refresh_soon,
-		email_doctype: refresh_soon,
+		reference_doctype: refresh_soon,
 		use_mjml(frm) {
 			if (!frm.doc.use_mjml) return;
 			frm.set_value("use_html", 1);
