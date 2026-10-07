@@ -9,9 +9,8 @@
 // `navbar_items`, and the same Help submenu, read afresh on every open from its
 // `get_help_siblings`, so the page's help links still follow the page.
 //
-// The user menu is built by `Sidebar.create_user_menu` for both the sidebar's user button and the
-// Dock's avatar, as a `frappe.ui.Dropdown` it does not hand back. So the Dropdown it makes is
-// given one more group, just above Logout, for as long as that call runs.
+// They go in as one more group, just above Logout, through `commons.user_menu`
+// (`public/js/user_menu_rows.js`), which says how a row gets into Frappe's user menu.
 //
 // Off unless Commons Settings' "Enable User Menu" is ticked, and off too if Frappe has moved what
 // this hangs on: then both stay where Frappe puts them.
@@ -19,14 +18,10 @@
 	const features = (frappe.boot && frappe.boot.commons_features) || {};
 	if (!features.user_menu) return;
 
-	const Sidebar = frappe.ui && frappe.ui.Sidebar;
 	const Header = frappe.ui && frappe.ui.SidebarHeader;
-	const Dropdown = frappe.ui && frappe.ui.Dropdown;
 	if (
-		!Sidebar ||
 		!Header ||
-		!Dropdown ||
-		typeof Sidebar.prototype.create_user_menu !== "function" ||
+		!(window.commons && commons.user_menu && commons.user_menu.add) ||
 		typeof Header.prototype.system_items !== "function" ||
 		typeof Header.prototype.navbar_items !== "function" ||
 		typeof Header.prototype.get_help_siblings !== "function"
@@ -34,15 +29,9 @@
 		return;
 	}
 
-	// Off the header menu: that whole block is the Navbar Settings rows and Help.
-	Header.prototype.system_items = function () {
-		return [];
-	};
-
-	// Into the user menu, over Logout.
-	const create_user_menu = Sidebar.prototype.create_user_menu;
-	Sidebar.prototype.create_user_menu = function () {
-		const sidebar = this;
+	// Into the user menu, over Logout -- and then, only once they are there, off the header menu,
+	// where that whole block is the Navbar Settings rows and Help.
+	const added = commons.user_menu.add((groups, sidebar) => {
 		// Navbar Settings rows read only the boot, so the prototype builds them as well as a
 		// header would; the sidebar's header may not exist yet when the menu is made.
 		const site_rows = Header.prototype.navbar_items.call(
@@ -69,21 +58,13 @@
 			],
 		};
 
-		// Whatever Dropdown is current is extended, so another change made the same way (the
-		// rail's editors, in `js/navigation_rail.js`) still applies.
-		const Current = frappe.ui.Dropdown;
-		frappe.ui.Dropdown = class extends Current {
-			constructor(opts = {}) {
-				const options = Array.isArray(opts.options) ? [...opts.options] : opts.options;
-				if (Array.isArray(options))
-					options.splice(Math.max(options.length - 1, 0), 0, help);
-				super({ ...opts, options });
-			}
+		const changed = [...groups];
+		changed.splice(Math.max(changed.length - 1, 0), 0, help);
+		return changed;
+	});
+	if (added) {
+		Header.prototype.system_items = function () {
+			return [];
 		};
-		try {
-			return create_user_menu.apply(this, arguments);
-		} finally {
-			frappe.ui.Dropdown = Current;
-		}
-	};
+	}
 })();

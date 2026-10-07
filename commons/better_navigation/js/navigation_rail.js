@@ -74,7 +74,7 @@
 		) ||
 		typeof Header.prototype.menu_items !== "function" ||
 		typeof Sidebar.prototype.refresh_header !== "function" ||
-		typeof Sidebar.prototype.create_user_menu !== "function"
+		!(window.commons && commons.user_menu && commons.user_menu.add)
 	) {
 		return;
 	}
@@ -320,48 +320,27 @@
 		return !!(editors && editors.can_manage && editors.can_manage());
 	}
 
-	// The user menu: Manage Dock out, Manage Rail in, where it was. Manage Modules opens from the
-	// module list's header (`draw_list_header`).
-	const create_user_menu = Sidebar.prototype.create_user_menu;
-	Sidebar.prototype.create_user_menu = function () {
-		const rows = [
-			{
-				name: "commons-manage-rail",
-				label: __("Manage Rail"),
-				icon: "monitor",
-				condition: can_manage,
-				onclick: () => commons.navigation_rail.manage_rail(),
-			},
-		];
-		const swap = (options) =>
-			options.map((entry) =>
-				entry && Array.isArray(entry.options)
-					? {
-							...entry,
-							options: entry.options.flatMap((row) =>
-								row && row.name === "workspace-selector" ? rows : [row]
-							),
-					  }
-					: entry
-			);
-
-		// The menu is a Dropdown the call makes and does not hand back, so the Dropdown it makes
-		// is given these rows for as long as the call runs. Whatever Dropdown is current is
-		// extended, so another change made the same way (`js/user_menu.js`) still applies.
-		const Current = frappe.ui.Dropdown;
-		frappe.ui.Dropdown = class extends Current {
-			constructor(opts = {}) {
-				super(
-					Array.isArray(opts.options) ? { ...opts, options: swap(opts.options) } : opts
-				);
-			}
-		};
-		try {
-			return create_user_menu.apply(this, arguments);
-		} finally {
-			frappe.ui.Dropdown = Current;
-		}
+	// The user menu: Manage Dock out, Manage Rail in, where it was (`public/js/user_menu_rows.js`).
+	// Manage Modules opens from the module list's header (`draw_list_header`).
+	const manage_rail = {
+		name: "commons-manage-rail",
+		label: __("Manage Rail"),
+		icon: "monitor",
+		condition: can_manage,
+		onclick: () => commons.navigation_rail.manage_rail(),
 	};
+	commons.user_menu.add((groups) =>
+		groups.map((group) =>
+			group && Array.isArray(group.options)
+				? {
+						...group,
+						options: group.options.map((row) =>
+							row && row.name === "workspace-selector" ? manage_rail : row
+						),
+				  }
+				: group
+		)
+	);
 
 	// After an editor saves: the rail, each module's rail app, and the app entries Frappe's header
 	// reads, as the server now resolves them -- then everything drawn from them.
@@ -514,9 +493,18 @@
 		return [
 			...module_groups(this.sidebar, app),
 			...app_switcher(this, this.sidebar),
-			...items.slice(1),
+			...items.filter((group) => !is_switcher(group)),
 		];
 	};
+
+	// Frappe's switcher group, known by its rows rather than by where it sits: Modules, Apps, and
+	// the way out to the Apps screen (`SidebarHeader.switcher_items`). A group that holds nothing
+	// else is the switcher, whatever else Frappe puts in the menu or in what order.
+	const SWITCHER_ROWS = new Set(["switch-module", "switch-app", "all-apps"]);
+	function is_switcher(group) {
+		const rows = (group && Array.isArray(group.options) && group.options) || [];
+		return rows.length > 0 && rows.every((row) => row && SWITCHER_ROWS.has(row.name));
+	}
 
 	// Where the rail cannot be reached -- below 768px, where the sidebar is a drawer and the
 	// rail is not drawn, or a touch screen with the rail floating out of reach -- the header

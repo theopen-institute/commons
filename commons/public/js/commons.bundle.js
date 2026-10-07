@@ -1,4 +1,6 @@
 import "./unencoded_at_in_routes";
+// Before anything that adds to the user menu: see the file.
+import "./user_menu_rows";
 // Better Navigation keeps its browser halves beside its server halves. Only entry
 // files have to be under public/ -- esbuild globs there for `*.bundle.js` --
 // and an entry may import from anywhere in the app.

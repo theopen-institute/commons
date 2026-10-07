@@ -18,10 +18,6 @@ add_to_apps_screen = [
 	}
 ]
 
-# Send non-GET requests for this app's endpoints as native `application/json`
-# bodies instead of form-encoded, per-key JSON-stringified values.
-use_json_request_body = True
-
 # Apps
 # ------------------
 
@@ -441,6 +437,10 @@ override_whitelisted_methods = {
 	# `<Island>` host calls on frappe develop, so it keeps working when v17
 	# brings the real one and this line goes. See `commons/pseudo_islands/`.
 	"frappe.utils.island.get_island_assets": "commons.pseudo_islands.registry.get_island_assets",
+	# TEMPORARY: Frappe 16.50 cannot save a workspace from its editor (it rejects its
+	# own request). Hands Frappe's function what it expects; delete the line, and
+	# `commons.commons_core.frappe_fixes.save_page`, once Frappe fixes it.
+	"frappe.desk.doctype.workspace.workspace.save_page": "commons.commons_core.frappe_fixes.save_page",
 }
 #
 # each overriding function accepts a `data` argument;

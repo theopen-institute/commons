@@ -21,7 +21,6 @@
 (() => {
 	const KEY = "hide_cancelled_documents";
 	const ListView = frappe.views && frappe.views.ListView;
-	const Sidebar = frappe.ui && frappe.ui.Sidebar;
 	if (!ListView || typeof ListView.prototype.get_filters_for_args !== "function") return;
 
 	const is_on = () => {
@@ -130,17 +129,10 @@
 			);
 	}
 
-	// The user menu, after Settings. It is a Dropdown that `create_user_menu`
-	// makes and does not hand back, so the Dropdown it makes is given these rows
-	// for as long as the call runs, extending whatever Dropdown is current (the
-	// rail and the user menu change it the same way). The menu re-reads each
-	// row's condition on every open but not its label, so the two states are two
-	// rows, of which one shows.
-	if (
-		Sidebar &&
-		typeof Sidebar.prototype.create_user_menu === "function" &&
-		frappe.ui.Dropdown
-	) {
+	// The user menu, after Settings (`commons.user_menu`, in `user_menu_rows.js`).
+	// The menu re-reads each row's condition on every open but not its label, so
+	// the two states are two rows, of which one shows.
+	if (window.commons && commons.user_menu && commons.user_menu.add) {
 		const toggle = () => {
 			set_on(!is_on());
 			if (window.cur_list instanceof ListView) cur_list.refresh();
@@ -176,23 +168,6 @@
 			return placed ? result : [{ group: "", options: rows }, ...result];
 		};
 
-		const create_user_menu = Sidebar.prototype.create_user_menu;
-		Sidebar.prototype.create_user_menu = function () {
-			const Current = frappe.ui.Dropdown;
-			frappe.ui.Dropdown = class extends Current {
-				constructor(opts = {}) {
-					super(
-						Array.isArray(opts.options)
-							? { ...opts, options: add_rows(opts.options) }
-							: opts
-					);
-				}
-			};
-			try {
-				return create_user_menu.apply(this, arguments);
-			} finally {
-				frappe.ui.Dropdown = Current;
-			}
-		};
+		commons.user_menu.add(add_rows);
 	}
 })();

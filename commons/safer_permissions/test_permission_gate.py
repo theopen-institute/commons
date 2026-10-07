@@ -472,10 +472,12 @@ class CoreStillLooksTheSame(TestCase):
 		permissions.CORE_MAKE_PREPARED: "commons.safer_permissions.permissions.make_prepared_report",
 	}
 
-	# The hook's one entry that is not a report override: a name v16 lacks,
-	# served by `commons.pseudo_islands` until v17 brings it.
+	# The hook's entries that are not report overrides: a name v16 lacks, served
+	# by `commons.pseudo_islands` until v17 brings it, and a stand-in for a broken
+	# core endpoint (`commons.commons_core.frappe_fixes`).
 	NOT_REPORTS: ClassVar[dict[str, str]] = {
 		"frappe.utils.island.get_island_assets": "commons.pseudo_islands.registry.get_island_assets",
+		"frappe.desk.doctype.workspace.workspace.save_page": "commons.commons_core.frappe_fixes.save_page",
 	}
 
 	def test_hooks_override_exactly_these_paths(self):
