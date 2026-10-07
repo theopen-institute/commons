@@ -24,6 +24,20 @@ payment's party account.
 The Payroll Entry form gets a "Create Payment Entries" button, once the run's
 accrual is submitted and as long as somebody on it is unpaid. It makes draft
 Payment Entries for the employees picked, each for what the run still owes them.
+
+All of it rides on HRMS's own Payroll Settings switch, because that is the
+only thing that leaves a run's salaries open per employee against the Payroll
+Entry. Commons Settings' "Enable Payroll Lines per Employee"
+(`commons.banking.payroll_lines`) does not: it splits the earnings and
+deduction lines, and names the employee only on Payable accounts such as TDS,
+without a reference to the run; the Payroll Payable line it leaves to HRMS. So
+with HRMS's switch off, an employee's payment cannot reference a Payroll Entry
+and the button does not appear, whatever Commons Settings says. A run accrued
+while it was on and paid after it was turned off is paid from the desk.
+
+What the dialog starts on, a Mode of Payment and a Reference No, is Commons
+Settings' "Payroll Payment Mode of Payment" and "Payroll Payment Reference",
+blank for none.
 """
 
 import frappe
@@ -31,9 +45,26 @@ from frappe import _
 from frappe.query_builder.functions import Sum
 from frappe.utils import flt, getdate, nowdate
 
-from commons.commons_core.settings import ENABLE_PAYROLL_LINES, feature_enabled
+from commons.commons_core import apps
+from commons.commons_core.settings import (
+	PAYROLL_PAYMENT_MODE_OF_PAYMENT,
+	PAYROLL_PAYMENT_REFERENCE,
+)
+from commons.commons_core.settings import value as setting
 
 PAYROLL_ENTRY = "Payroll Entry"
+PAYROLL_SETTINGS = "Payroll Settings"
+# HRMS's "Process Payroll Accounting Entry Based on Employee".
+EMPLOYEE_WISE_ACCOUNTING = "process_payroll_accounting_entry_based_on_employee"
+
+
+def payments_enabled() -> bool:
+	"""Whether HRMS posts each employee's net pay to Payroll Payable against the
+	run, with the employee as party -- the ledger rows `owed_by_run` reads."""
+	return bool(
+		apps.has_doctype(PAYROLL_SETTINGS)
+		and frappe.db.get_single_value(PAYROLL_SETTINGS, EMPLOYEE_WISE_ACCOUNTING)
+	)
 
 
 def owed_by_run(payroll_entry: str, account: str, employee: str | None = None) -> dict:
@@ -72,7 +103,7 @@ def owed_by_run(payroll_entry: str, account: str, employee: str | None = None) -
 class PayrollPaymentEntryMixin:
 	def get_valid_reference_doctypes(self):
 		doctypes = super().get_valid_reference_doctypes()
-		if self.party_type == "Employee" and doctypes and feature_enabled(ENABLE_PAYROLL_LINES):
+		if self.party_type == "Employee" and doctypes and payments_enabled():
 			doctypes = (*doctypes, PAYROLL_ENTRY)
 		return doctypes
 
@@ -136,7 +167,9 @@ class PayrollPaymentEntryMixin:
 		if PAYROLL_ENTRY not in valid_doctypes:
 			frappe.throw(
 				_("Row #{0}: a {1} can only be paid here by an employee's payment, with {2} on.").format(
-					d.idx, _(PAYROLL_ENTRY), _("Enable Payroll Lines per Employee")
+					d.idx,
+					_(PAYROLL_ENTRY),
+					_("Payroll Settings: Process Payroll Accounting Entry Based on Employee"),
 				)
 			)
 		run = frappe.db.get_value(
@@ -196,10 +229,11 @@ def get_unpaid_salaries(payroll_entry: str) -> dict:
 	"""Who the run still owes, and the defaults the payment dialog starts from.
 
 	Empty `employees` -- the button stays hidden -- until the run's accrual is
-	submitted, once everybody is paid, and while the feature is off.
+	submitted, once everybody is paid, and while HRMS's employee-wise payroll
+	accounting is off.
 	"""
 	run = _run_for_payments(payroll_entry)
-	if run.docstatus != 1 or not feature_enabled(ENABLE_PAYROLL_LINES):
+	if run.docstatus != 1 or not payments_enabled():
 		return {"employees": []}
 
 	owed = owed_by_run(run.name, run.payroll_payable_account)
@@ -224,9 +258,9 @@ def get_unpaid_salaries(payroll_entry: str) -> dict:
 		if flt(outstanding, precision) > 0
 	]
 
-	mode_of_payment = (
-		"Electronic Deposit" if frappe.db.exists("Mode of Payment", "Electronic Deposit") else None
-	)
+	mode_of_payment = setting(PAYROLL_PAYMENT_MODE_OF_PAYMENT)
+	if mode_of_payment and not frappe.db.exists("Mode of Payment", mode_of_payment):
+		mode_of_payment = None
 	paid_from = run.payment_account or (
 		mode_of_payment
 		and frappe.db.get_value(
@@ -238,6 +272,7 @@ def get_unpaid_salaries(payroll_entry: str) -> dict:
 		"company": run.company,
 		"mode_of_payment": mode_of_payment,
 		"paid_from": paid_from,
+		"reference_no": setting(PAYROLL_PAYMENT_REFERENCE),
 	}
 
 

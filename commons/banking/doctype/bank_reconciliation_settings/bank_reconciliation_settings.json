@@ -99,7 +99,7 @@
   },
   {
    "default": "Normal Repayment",
-   "description": "The <b>Repayment Type</b> of a Loan Repayment the page books from a deposit. One of Lending's own types.",
+   "description": "The <b>Repayment Type</b> of a Loan Repayment the page books from a deposit. One of the types Lending itself books from a bank statement, each of which posts to the statement's bank account.",
    "fieldname": "default_repayment_type",
    "fieldtype": "Autocomplete",
    "label": "Repayment Type",
@@ -108,7 +108,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-01 20:00:00.000000",
+ "modified": "2026-10-07 12:30:00.000000",
  "modified_by": "Administrator",
  "module": "Banking",
  "name": "Bank Reconciliation Settings",

@@ -11,8 +11,11 @@ tuned with, so a site that never opens this form keeps them.
 Read by `commons.banking.reconciliation`: the loan-matching weights travel to
 the page in `loan_matching_settings`, and the repayment type is used by
 `create_loan_repayments`. The rules themselves are the frontend's
-(`frontend/src/data/reconciliationRules.ts`), which has the same defaults as
-its fallbacks.
+(`frontend/src/data/reconciliationRules.ts`).
+
+The defaults live in one place, this doctype's JSON: the form opens on them,
+`loan_matching` reads them from the meta for a field with nothing stored, and
+the frontend's fallback is read from the same JSON when it is built.
 """
 
 import frappe
@@ -24,19 +27,18 @@ from commons.commons_core import apps
 
 SETTINGS = "Bank Reconciliation Settings"
 
-# Each field's own default as well, so the form opens on these. Here too
-# because a site between this app landing and its migrate has no doctype to
-# read them from.
-LOAN_MATCHING_DEFAULTS = {
-	"party_match_score": 8,
-	"repeated_identifier_score": 6,
-	"single_identifier_score": 2,
-	"name_in_description_score": 5,
-	"exact_payoff_score": 2,
-	"usual_amount_score": 1,
-	"min_identifier_digits": 6,
-	"min_name_length": 5,
-}
+# The weights and thresholds the page scores loans by. Their defaults are the
+# fields' own, in the JSON.
+LOAN_MATCHING_FIELDS = (
+	"party_match_score",
+	"repeated_identifier_score",
+	"single_identifier_score",
+	"name_in_description_score",
+	"exact_payoff_score",
+	"usual_amount_score",
+	"min_identifier_digits",
+	"min_name_length",
+)
 DEFAULT_REPAYMENT_TYPE = "Normal Repayment"
 
 LOAN_REPAYMENT = "Loan Repayment"
@@ -63,7 +65,7 @@ class BankReconciliationSettings(Document):
 	# end: auto-generated types
 
 	def onload(self):
-		"""Lending's own repayment types, for the form to offer.
+		"""The repayment types lending books from a bank statement, for the form to offer.
 
 		The field is an Autocomplete rather than a Select because Lending is
 		optional: on a site without it there is nothing to choose from, and the
@@ -79,54 +81,69 @@ class BankReconciliationSettings(Document):
 		types = repayment_types()
 		if types and self.default_repayment_type not in types:
 			frappe.throw(
-				_("{0} is not one of Lending's repayment types: {1}").format(
+				_("{0} is not a repayment type Lending books from a bank statement: {1}").format(
 					self.default_repayment_type, ", ".join(types)
 				)
 			)
 
 
 def repayment_types() -> list[str]:
-	"""`Loan Repayment.repayment_type`'s options, or none on a site without Lending."""
+	"""The repayment types Lending itself books from a bank statement
+	(`BANK_RECONCILIATION_REPAYMENT_TYPES`, what its own `create_loan_repayment_bts`
+	accepts), or none on a site without Lending.
+
+	Each of them posts to the repayment's own `payment_account`, which is what
+	lets `create_loan_repayments` post to the statement's bank. The other types --
+	waivers, adjustments, capitalisations -- post to accounts of the Loan
+	Product's instead.
+	"""
 	if not apps.has_doctype(LOAN_REPAYMENT):
 		return []
-	field = frappe.get_meta(LOAN_REPAYMENT).get_field("repayment_type")
-	return [option for option in (field.options or "").split("\n") if option] if field else []
+	try:
+		from lending.loan_management.doctype.loan_repayment.loan_repayment import (
+			BANK_RECONCILIATION_REPAYMENT_TYPES,
+		)
+	except ImportError:
+		return []
+	return list(BANK_RECONCILIATION_REPAYMENT_TYPES)
 
 
 def loan_matching() -> dict[str, int]:
-	"""The weights and thresholds, each the stored value or, with none, the default.
+	"""The weights and thresholds, each the stored value or, with none, the field's default.
 
-	A Single that has never been saved still reads as its fields' defaults, so
-	the fallback here is for the window before migrate, when there is no
-	doctype at all.
+	A Single never saved loads its fields' defaults, but one saved before a field
+	existed reads that field blank; the default then comes from the meta, so the
+	JSON stays the only place it is kept.
 	"""
 	stored = _settings()
+	meta = frappe.get_meta(SETTINGS)
 	values = {}
-	for field, default in LOAN_MATCHING_DEFAULTS.items():
-		value = stored.get(field) if stored else None
-		values[field] = default if value is None else max(0, cint(value))
+	for field in LOAN_MATCHING_FIELDS:
+		value = stored.get(field)
+		if value is None or value == "":
+			value = meta.get_field(field).default
+		values[field] = max(0, cint(value))
 	values["min_identifier_digits"] = max(1, values["min_identifier_digits"])
 	return values
 
 
 def default_repayment_type() -> str:
-	"""The repayment type the page books, `Normal Repayment` unless the site says otherwise."""
-	stored = _settings()
-	return (
-		(stored.get("default_repayment_type") if stored else None) or ""
-	).strip() or DEFAULT_REPAYMENT_TYPE
+	"""The repayment type the page books, `Normal Repayment` unless the site says otherwise.
+
+	Checked again here, not only when the form is saved, for a value saved before
+	the list was narrowed to the types Lending books from a statement.
+	"""
+	repayment_type = (_settings().get("default_repayment_type") or "").strip() or DEFAULT_REPAYMENT_TYPE
+	types = repayment_types()
+	if types and repayment_type not in types:
+		frappe.throw(
+			_(
+				"Bank Reconciliation Settings' Repayment Type {0} is not one Lending books from a bank statement: {1}"
+			).format(repayment_type, ", ".join(types))
+		)
+	return repayment_type
 
 
 def _settings():
-	"""The cached settings document, or None between this app landing and its migrate.
-
-	The same guard as `commons.commons_core.settings._settings`: a Single whose
-	doctype is not there yet raises `ImportError`, and that is an answer here
-	rather than a fault -- unless the doctype is there, which makes it one.
-	"""
-	try:
-		return frappe.get_cached_doc(SETTINGS)
-	except (ImportError, frappe.DoesNotExistError):
-		if frappe.db.exists("DocType", SETTINGS):
-			raise
-		return None
+	"""The cached settings document."""
+	return frappe.get_cached_doc(SETTINGS)

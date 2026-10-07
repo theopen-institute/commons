@@ -21,8 +21,8 @@ their own dates, reposts included (`commons.banking.loan_own_dates`).
 
 `find_discrepancies` asks whether the books agree with the documents, whatever
 keeps them there, so it also judges anything a site does on its own.
-`safeguards` asks whether the app's setting is on, and whether each doctype's
-class carries its extension.
+`setting_warning` says, when the setting is off, that nothing in this app keeps
+new vouchers on their dates.
 
 The repair touches Loan Repayments only. It cancels the repayment's live GL
 and books it again from the document, as a repost does with the setting on,
@@ -51,9 +51,6 @@ VOUCHERS = {
 
 GL_DATE = "GL not on the voucher's date"
 DOC_DATE = "Posting date is not the value date"
-
-OK = "OK"
-MISSING = "Missing"
 
 
 def _gl_dates(voucher_type: str, names: list[str]) -> dict:
@@ -133,61 +130,26 @@ def find_discrepancies(filters) -> list[dict]:
 	return rows
 
 
-# Safeguards
+# The setting
 
 
-def _extended(doctype: str) -> bool:
-	"""Whether this site's class for `doctype` carries the commons extension."""
-	from commons.banking.loan_own_dates import MIXINS
+def setting_warning() -> str | None:
+	"""A warning when Commons Settings' "Enable Loan Vouchers on Their Own Dates"
+	is off, else None.
 
-	return issubclass(frappe.get_doc({"doctype": doctype}).__class__, MIXINS[doctype])
-
-
-def safeguards() -> list[dict]:
-	"""What keeps lending's GL on the voucher's date, and whether it is in place.
-
-	The app's safeguard is Commons Settings' "Enable Loan Vouchers on Their Own
-	Dates". With it on, each doctype's class must carry its extension. With it
-	off, nothing in the app keeps the dates, and each check says so. A site may
-	keep them some other way; the GL dates check shows whether it does.
+	With it off, lending dates every voucher saved from now on, and every
+	repayment a repost re-books, on the day it happens. A site may keep the
+	dates some other way; the GL dates check shows whether it does.
 	"""
 	from commons.commons_core.settings import ENABLE_LOAN_OWN_DATES, feature_enabled
 
-	rows = []
-
-	def add(check, ok, detail):
-		rows.append(frappe._dict(check=check, status=OK if ok else MISSING, detail=detail))
-
-	on = feature_enabled(ENABLE_LOAN_OWN_DATES)
-	setting = _("Commons Settings: Enable Loan Vouchers on Their Own Dates")
-	checks = (
-		("Loan Repayment", _("Loan Repayment keeps the posting date entered")),
-		("Loan Repayment Repost", _("Repost books repayments on their own dates")),
-		("Loan Write Off", _("Loan Write Off: GL on the Value Date")),
-		("Loan Disbursement", _("Loan Disbursement: GL on the Disbursement Date")),
+	if feature_enabled(ENABLE_LOAN_OWN_DATES):
+		return None
+	return _(
+		"Commons Settings' Enable Loan Vouchers on Their Own Dates is off, so lending books "
+		"repayments, write-offs and disbursements saved or reposted from now on on the day "
+		"that happens, not on their own dates."
 	)
-
-	for doctype, check in checks:
-		if not apps.has_doctype(doctype):
-			continue
-		if not on:
-			add(
-				check,
-				False,
-				_("Lending dates a {0}'s GL on the day it is saved. Tick {1}.").format(doctype, setting),
-			)
-			continue
-		extended = _extended("Loan Repayment" if doctype == "Loan Repayment Repost" else doctype)
-		add(
-			check,
-			extended,
-			_("{0} is on").format(setting)
-			if extended
-			else _("{0} is on, but the {1} class does not carry the extension. Restart the bench.").format(
-				setting, doctype
-			),
-		)
-	return rows
 
 
 # Repair

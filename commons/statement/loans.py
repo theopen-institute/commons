@@ -113,9 +113,6 @@ class LedgerExclusion:
 	shared: frozenset[str] = frozenset()
 	voucher_types: tuple[str, ...] = ()
 
-	def __bool__(self) -> bool:
-		return bool(self.dedicated or self.shared)
-
 
 def ledger_exclusion(parties: list[Party]) -> LedgerExclusion:
 	"""Which ledger entries are loans', for the trade ledger to skip.

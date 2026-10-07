@@ -4,10 +4,10 @@ makes in a single step.
 The questions are the same two the attendance register answers: does this site
 have the page at all, and is this reader somebody it is for.
 
-The write is `create_loan_repayments`, and it adds no capability. A repayment
-made the ordinary way is already reconcilable: nothing names an account on it,
-so `LoanRepayment.set_repayment_account` falls back to the Loan Product's
-`payment_account`, which is the GL account of the bank the borrowers pay into.
+The write is `create_loan_repayments`, and it adds no capability. It books a
+repayment the way lending's own `create_loan_repayment_bts` does: naming the
+statement's Bank Account and its GL account as the repayment's `bank_account`
+and `payment_account`, which `LoanRepayment.set_repayment_account` then keeps.
 The repayment is then matched to the deposit, as a `Matched` row.
 
 The endpoint does those same two steps, making the same documents, in one
@@ -22,10 +22,11 @@ request. There are two reasons for that:
   `check_matching`'s sort raises `KeyError` whenever an uncleared repayment
   exists. The page reads uncleared repayments through the document API instead.
 
-The repayment is refused before submit if it would not post to this
-statement's bank account. That happens for a deposit into an account the Loan
-Product does not name, and ERPNext would reject the match anyway, but only
-after the repayment had been submitted.
+Every repayment type Bank Reconciliation Settings allows is one lending books
+from a statement (`BANK_RECONCILIATION_REPAYMENT_TYPES`), and each of those
+posts to the repayment's own `payment_account`, so the repayment posts to this
+statement's bank. A Bank Account with no GL account is refused up front,
+because lending would then fall back to the Loan Product's account.
 """
 
 import json
@@ -88,9 +89,10 @@ def create_loan_repayments(
 
 	`repayments` is `[{"loan": ..., "amount": ...}]`. There is more than one
 	when a borrower pays two loans with one transfer, or somebody pays for a
-	sibling. Each becomes a submitted repayment of the type Bank Reconciliation
-	Settings names (`Normal Repayment` unless a site says otherwise), dated
-	(`value_date`) when the money arrived, and is then matched to the deposit.
+	sibling. Each becomes a repayment of the type Bank Reconciliation Settings
+	names (`Normal Repayment` unless a site says otherwise), dated
+	(`value_date`) when the money arrived, and is then submitted and matched to
+	the deposit -- or, with `draft`, left as a draft as above.
 
 	The permission checks are the documents' own. Inserting and submitting a
 	repayment checks `create` and `submit` on `Loan Repayment`, and
@@ -108,20 +110,26 @@ def create_loan_repayments(
 	lines = _validated_lines(transaction, repayments)
 
 	gl_account = frappe.db.get_value(BANK_ACCOUNT, transaction.bank_account, "account")
+	if not gl_account:
+		frappe.throw(
+			_("Bank Account {0} has no GL account to post repayments to.").format(transaction.bank_account)
+		)
 	reference = (reference_number or "").strip()[:REFERENCE_LENGTH]
 	repayment_type = settings.default_repayment_type()
 
 	created = []
 	for line in lines:
-		# Only what a person fills in by hand: the loan, the amount, the date
-		# the money arrived and, if they typed one, a reference. The account
-		# is left to the Loan Product, exactly as it is when the form is used.
+		# The loan, the amount, the date the money arrived, a reference if one
+		# was typed, and the statement's bank, as lending's own
+		# `create_loan_repayment_bts` names it.
 		repayment = frappe.get_doc(
 			{
 				"doctype": LOAN_REPAYMENT,
 				"against_loan": line["loan"],
 				"repayment_type": repayment_type,
 				"amount_paid": line["amount"],
+				"bank_account": transaction.bank_account,
+				"payment_account": gl_account,
 				# Both dates are the day the money arrived. Lending's `validate`
 				# replaces `posting_date` with the current time on every save;
 				# Commons Settings' "Enable Loan Vouchers on Their Own Dates"
@@ -136,13 +144,6 @@ def create_loan_repayments(
 		)
 		repayment.insert()
 		_require_statement_date(repayment, transaction)
-		if repayment.payment_account != gl_account:
-			frappe.throw(
-				_(
-					"{0} would post to {1}, but this statement is for {2} ({3}). "
-					"Set the Loan Product's repayment account, or book it from the desk."
-				).format(line["loan"], repayment.payment_account, transaction.bank_account, gl_account)
-			)
 		if not draft:
 			repayment.submit()
 			_require_statement_date(repayment, transaction)
@@ -304,8 +305,7 @@ def loan_matching_settings() -> dict[str, int]:
 	Bank Reconciliation Settings is readable only by System Managers, and the
 	bookkeeper the suggestions are for is usually an Accounts User, so the page
 	reads it here. Tuning, not data: the same answer for everybody who may use
-	the page. Read with the fallbacks `loan_matching` explains, so a site
-	between deploy and migrate gets the defaults rather than an error.
+	the page, each value falling back to its default as `loan_matching` explains.
 	"""
 	if not can_reconcile():
 		frappe.throw(_("You are not allowed to reconcile bank transactions."), frappe.PermissionError)

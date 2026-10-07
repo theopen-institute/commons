@@ -1,18 +1,15 @@
-// Where a lending voucher's GL is not on the voucher's own date, whether the
-// setting that keeps it there is on, and the repair for repayments. Both
-// checks run by default and share one list; the Check filter narrows it to one.
-// Every repair opens a dialog that shows what will change and writes only on
-// its button; nothing on the report itself writes.
+// Where a lending voucher's GL is not on the voucher's own date, and the
+// repair for repayments. With "Enable Loan Vouchers on Their Own Dates" off,
+// the server's message above the rows says so. Every repair opens a dialog
+// that shows what will change and writes only on its button; nothing on the
+// report itself writes.
 
-const ALL = "All";
-const DATES = "GL dates";
-const SAFEGUARDS = "Safeguards";
 const GL_DATE = "GL not on the voucher's date";
 const API = "commons.banking.loan_dates.";
 // The server's `ledger_audit.can_repair`: write on Period Closing Voucher, which
 // a stock site grants Accounts Manager and System Manager.
 const CAN_REPAIR = () => frappe.model.can_write("Period Closing Voucher");
-const STATUS_COLOR = { OK: "green", Missing: "red", "Wrong date": "red" };
+const STATUS_COLOR = { "Wrong date": "red" };
 
 frappe.query_reports["Loan Date Audit"] = {
 	filters: [
@@ -23,14 +20,6 @@ frappe.query_reports["Loan Date Audit"] = {
 			options: "Company",
 			reqd: 1,
 			default: frappe.defaults.get_user_default("Company"),
-		},
-		{
-			fieldname: "view",
-			label: __("Check"),
-			fieldtype: "Select",
-			options: [ALL, DATES, SAFEGUARDS].join("\n"),
-			default: ALL,
-			reqd: 1,
 		},
 		{ fieldname: "from_date", label: __("From Date"), fieldtype: "Date" },
 		{ fieldname: "to_date", label: __("To Date"), fieldtype: "Date" },
@@ -83,9 +72,7 @@ frappe.query_reports["Loan Date Audit"] = {
 const esc = (v) => frappe.utils.escape_html(v == null ? "" : String(v));
 const money = (v) => format_number(v || 0, null, 2);
 const link = (doctype, name) =>
-	`<a href="/app/${frappe.router.slug(doctype)}/${encodeURIComponent(
-		name
-	)}" target="_blank">${esc(name)}</a>`;
+	`<a href="${frappe.utils.get_form_link(doctype, name)}" target="_blank">${esc(name)}</a>`;
 
 function table(headers, rows) {
 	if (!rows.length) return `<p class="text-muted">${__("None")}</p>`;
@@ -168,7 +155,7 @@ function explain(voucher_type, voucher_no, issue) {
 
 function repair_all(report) {
 	const rows = (frappe.query_report.data || []).filter(
-		(r) => r.check === DATES && r.voucher_type === "Loan Repayment" && r.issue === GL_DATE
+		(r) => r.voucher_type === "Loan Repayment" && r.issue === GL_DATE
 	);
 	if (!rows.length) {
 		frappe.msgprint(__("No repayments to re-book are shown."));

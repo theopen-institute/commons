@@ -4,6 +4,15 @@ payment ledger, and where Payment Reconciliation offers a journal entry line as
 a payment although its own entry already netted it. The checks and the fixes
 are in `commons.banking.ledger_audit` and `commons.banking.netted_payments`.
 
+ERPNext's own "General and Payment Ledger Comparison" makes the basic first
+check: live GL against live payment ledger, per voucher, account and party.
+It looks only at accounts that are Receivable or Payable now, so it cannot see
+rows left on an account whose type has since changed, which is how the two
+ledgers usually part. This one reads the payment ledger on every account, says
+why each row disagrees (a cancelled voucher still in the payment ledger, an
+account no longer Receivable/Payable, a line missing or extra), and offers the
+repair for each. The other two checks have no ERPNext counterpart.
+
 Every check runs by default and their problems share one list, so a clean
 report means all three are clean. Each row says which check found it, in the
 same columns: what the amount should be, what it is, and the difference.

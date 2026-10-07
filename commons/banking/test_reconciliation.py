@@ -12,7 +12,10 @@ ERPNext's to get right. It was checked by hand against a site's real data
 """
 
 import datetime
+import json
 import logging
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
@@ -21,6 +24,30 @@ import frappe
 
 from commons.banking import reconciliation
 from commons.banking.doctype.bank_reconciliation_settings import bank_reconciliation_settings as settings
+
+# Lending's `BANK_RECONCILIATION_REPAYMENT_TYPES`, as the settings read them.
+LENDING_TYPES = (
+	"Normal Repayment",
+	"Advance Payment",
+	"Pre Payment",
+	"Loan Closure",
+	"Partial Settlement",
+	"Full Settlement",
+	"Write Off Recovery",
+	"Charge Payment",
+)
+
+# Bank Reconciliation Settings' JSON defaults, the original tuning.
+JSON_DEFAULTS = {
+	"party_match_score": 8,
+	"repeated_identifier_score": 6,
+	"single_identifier_score": 2,
+	"name_in_description_score": 5,
+	"exact_payoff_score": 2,
+	"usual_amount_score": 1,
+	"min_identifier_digits": 6,
+	"min_name_length": 5,
+}
 
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
 
@@ -228,32 +255,27 @@ class TestBookingRepaymentsLocksTheLine(TestCase):
 class TestTheSettingsAndTheirDefaults(TestCase):
 	"""Bank Reconciliation Settings, read the way the page and the booking read it.
 
-	The defaults are the values the page was first tuned with, and a site that
-	never opens the form, or has not yet migrated the doctype in, must keep them.
+	The defaults are the doctype's own, in its JSON, and a site that never opens
+	the form, or saved it before a field existed, must get them.
 	"""
+
+	def setUp(self):
+		with open(
+			Path(settings.__file__).with_name("bank_reconciliation_settings.json"), encoding="utf-8"
+		) as f:
+			fields = {d["fieldname"]: d for d in json.load(f)["fields"]}
+
+		meta = SimpleNamespace(get_field=lambda name: frappe._dict(fields[name]))
+		self.enterContext(patch.object(settings.frappe, "get_meta", return_value=meta))
+		self.enterContext(patch.object(settings, "repayment_types", return_value=list(LENDING_TYPES)))
 
 	def stored(self, values):
 		return patch.object(settings, "_settings", return_value=values)
 
-	def test_before_migrate_everything_is_the_default(self):
-		with self.stored(None):
-			self.assertEqual(settings.loan_matching(), settings.LOAN_MATCHING_DEFAULTS)
+	def test_nothing_stored_is_everything_the_json_default(self):
+		with self.stored(frappe._dict()):
+			self.assertEqual(settings.loan_matching(), JSON_DEFAULTS)
 			self.assertEqual(settings.default_repayment_type(), "Normal Repayment")
-
-	def test_the_defaults_are_the_original_tuning(self):
-		self.assertEqual(
-			settings.LOAN_MATCHING_DEFAULTS,
-			{
-				"party_match_score": 8,
-				"repeated_identifier_score": 6,
-				"single_identifier_score": 2,
-				"name_in_description_score": 5,
-				"exact_payoff_score": 2,
-				"usual_amount_score": 1,
-				"min_identifier_digits": 6,
-				"min_name_length": 5,
-			},
-		)
 
 	def test_stored_values_win_and_missing_ones_default(self):
 		with self.stored(
@@ -270,6 +292,14 @@ class TestTheSettingsAndTheirDefaults(TestCase):
 			self.assertEqual(settings.default_repayment_type(), "Normal Repayment")
 		with self.stored(frappe._dict(default_repayment_type="Pre Payment")):
 			self.assertEqual(settings.default_repayment_type(), "Pre Payment")
+
+	def test_a_type_lending_does_not_book_from_a_statement_is_refused(self):
+		with (
+			self.stored(frappe._dict(default_repayment_type="Interest Waiver")),
+			patch.object(settings.frappe, "throw", side_effect=_raise),
+			self.assertRaisesRegex(ValueError, "Interest Waiver"),
+		):
+			settings.default_repayment_type()
 
 	def test_the_page_must_reconcile_to_read_them(self):
 		with (
@@ -306,6 +336,33 @@ class TestTheSettingsAndTheirDefaults(TestCase):
 		):
 			reconciliation.create_loan_repayments("BT-1", [{"loan": "LOAN-A", "amount": 100}])
 		self.assertEqual(made[0]["repayment_type"], "Pre Payment")
+		# Named as lending's own `create_loan_repayment_bts` names them, so the
+		# repayment posts to this statement's bank.
+		self.assertEqual(made[0]["bank_account"], "Checking")
+		self.assertEqual(made[0]["payment_account"], "Bank - EX")
+
+
+class TestRepaymentTypes(TestCase):
+	def test_lendings_statement_types_when_lending_is_there(self):
+		try:
+			from lending.loan_management.doctype.loan_repayment.loan_repayment import (
+				BANK_RECONCILIATION_REPAYMENT_TYPES,
+			)
+		except ImportError:
+			self.skipTest("lending is not on this bench")
+		with patch.object(settings.apps, "has_doctype", return_value=True):
+			self.assertEqual(settings.repayment_types(), list(BANK_RECONCILIATION_REPAYMENT_TYPES))
+
+	def test_none_without_lending(self):
+		with patch.object(settings.apps, "has_doctype", return_value=False):
+			self.assertEqual(settings.repayment_types(), [])
+
+	def test_none_when_lending_will_not_import(self):
+		with (
+			patch.object(settings.apps, "has_doctype", return_value=True),
+			patch.dict(sys.modules, {"lending.loan_management.doctype.loan_repayment.loan_repayment": None}),
+		):
+			self.assertEqual(settings.repayment_types(), [])
 
 
 class TestWhatAMatchMustLeaveBehind(TestCase):

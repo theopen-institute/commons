@@ -182,7 +182,7 @@ def download_statement(party_type: str, party: str) -> None:
 	"""The same statement, as a PDF, through the same print format.
 
 	For a reader who cannot open the desk, which is most of the people this
-	section was written for: a student or a supplier has no `/app`, so the
+	section was written for: a student or a supplier has no desk (`/desk`), so the
 	desk's own print view is not a route they have. This is that route.
 
 	`ignore_print_permissions` is set deliberately and is narrower than it

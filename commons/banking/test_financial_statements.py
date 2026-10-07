@@ -170,16 +170,10 @@ ACCOUNTS = [
 ]
 
 
-class FakeMeta:
-	def has_field(self, fieldname):
-		return True
-
-
 class TestHiddenAccounts(TestCase):
 	def hidden(self, accounts=ACCOUNTS):
 		with (
 			patch.object(fs, "feature_enabled", return_value=True),
-			patch.object(fs.frappe, "get_meta", return_value=FakeMeta()),
 			patch.object(fs.frappe, "get_all", return_value=accounts),
 		):
 			return fs.hidden_accounts("Co", "Income", frappe._dict(hide_internal_accounts=1))

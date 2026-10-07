@@ -7,14 +7,14 @@ lay periods out as columns. Each has its own switch in Commons Settings.
 Fiscal year columns
 -------------------
 ERPNext cuts the columns by stepping whole calendar months from the first
-year's start date, and never asks where each fiscal year ends. Bikram Sambat
-years start mid-July on a date that moves by a day or two, so Nepal 2082/83
-(16 July 2025 to 16 July 2026) and Nepal 2083/84 (17 July 2026 to 16 July 2027)
-come out as three "years": 16 July to 15 July twice, then 16 July 2027 alone,
-labelled "2027". A column's key is its end date's month, so the second and
-third columns share `jul_2027`; both show the sum of the two, which is the
-second column's figures twice. Each column but the last is also off by a day
-from the year it stands for.
+year's start date, and never asks where each fiscal year ends. Where a year
+is not exactly twelve calendar months -- Bikram Sambat years, say, start on a
+date that moves by a day or two -- the columns drift off the years. Two years
+of 366 and 365 days starting 16 July come out as three "years": 16 July to 15
+July twice, then the final day alone, labelled with its calendar year. A
+column's key is its end date's month, so the second and third columns share a
+key; both show the sum of the two, which is the second column's figures twice.
+Each column but the last is also off by a day from the year it stands for.
 
 With "Enable Fiscal Year Columns", a report filtered by Fiscal Year has its
 periods cut inside each fiscal year instead: a Yearly column is exactly one
@@ -388,9 +388,6 @@ def hidden_accounts(company, root_type, filters) -> frozenset | None:
 	if not (filters and filters.get(HIDE_INTERNAL_ACCOUNTS)):
 		return None
 	if not feature_enabled(ENABLE_HIDING_INTERNAL_ACCOUNTS):
-		return None
-	# Code lands before the migrate that adds the field.
-	if not frappe.get_meta("Account").has_field(INTERNAL_ACCOUNT):
 		return None
 
 	accounts = frappe.get_all(

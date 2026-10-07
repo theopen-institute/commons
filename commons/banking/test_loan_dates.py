@@ -1,7 +1,7 @@
 """The loan date audit's judgements, site-less.
 
 What is pinned here is what would mislead quietly if it drifted: which dates
-count as wrong, that the safeguards are the app's setting and nothing else,
+count as wrong, that the report warns exactly when the app's setting is off,
 who may repair, and that the repair refuses a repayment lending would book on
 the wrong day again.
 
@@ -42,32 +42,18 @@ class TestWhichIssue(TestCase):
 		self.assertEqual(found, [])
 
 
-class TestSafeguards(TestCase):
-	"""The app's setting is the only safeguard looked for."""
+class TestSettingWarning(TestCase):
+	"""One warning, when the app's setting is off, and nothing when it is on."""
 
-	def safeguards(self, on, extended=True):
-		with (
-			patch("commons.commons_core.settings.feature_enabled", return_value=on),
-			patch.object(ld.apps, "has_doctype", return_value=True),
-			patch.object(ld, "_extended", return_value=extended),
-			patch.object(ld.frappe, "get_all", side_effect=AssertionError("no server script probe")),
-		):
-			return ld.safeguards()
+	def warning(self, on):
+		with patch("commons.commons_core.settings.feature_enabled", return_value=on):
+			return ld.setting_warning()
 
-	def test_setting_on_and_classes_extended(self):
-		rows = self.safeguards(on=True)
-		self.assertEqual(len(rows), 4)
-		self.assertEqual({r.status for r in rows}, {ld.OK})
+	def test_setting_on_says_nothing(self):
+		self.assertIsNone(self.warning(on=True))
 
-	def test_setting_on_but_a_class_not_extended(self):
-		rows = self.safeguards(on=True, extended=False)
-		self.assertEqual({r.status for r in rows}, {ld.MISSING})
-		self.assertIn("Restart the bench", rows[0].detail)
-
-	def test_setting_off_is_missing_everywhere(self):
-		rows = self.safeguards(on=False)
-		self.assertEqual({r.status for r in rows}, {ld.MISSING})
-		self.assertTrue(all("Enable Loan Vouchers on Their Own Dates" in r.detail for r in rows))
+	def test_setting_off_names_it(self):
+		self.assertIn("Enable Loan Vouchers on Their Own Dates", self.warning(on=False))
 
 
 def _raise(msg, exc=frappe.ValidationError, *a, **k):

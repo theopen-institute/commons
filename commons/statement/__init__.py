@@ -1,8 +1,6 @@
 """What a person owes the organisation, and what it owes them.
 
-The one section of this app that is not about a request. Everything else here
-is something a member of staff raises and waits on an approver for; this is a
-statement -- read-only, historical, and about money that has already moved.
+A statement -- read-only, historical, and about money that has already moved.
 
 It is one page and three questions, and the three are separate on purpose.
 
@@ -91,14 +89,7 @@ def print_format_name(party_type: str) -> str:
 
 
 def configured_print_format(party_type: str) -> str | None:
-	"""The print format the party type's Statement Print Format field names, if any.
-
-	None where it is blank, and also where the field is not there yet -- this
-	app's code lands before the migrate that adds it, and reading a column that
-	does not exist would fail the download rather than fall back.
-	"""
-	if not frappe.get_meta("Party Type").has_field(PRINT_FORMAT_FIELD):
-		return None
+	"""The print format the party type's Statement Print Format field names, or None where it is blank."""
 	return (frappe.db.get_value("Party Type", party_type, PRINT_FORMAT_FIELD) or "").strip() or None
 
 

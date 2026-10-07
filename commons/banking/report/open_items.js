@@ -107,9 +107,7 @@ commons.open_items.register = function (report_name, account_type) {
 commons.open_items.label = function (data) {
 	const esc = frappe.utils.escape_html;
 	const link = (doctype, name, text) =>
-		`<a href="/app/${frappe.router.slug(doctype)}/${encodeURIComponent(name)}">${esc(
-			text
-		)}</a>`;
+		`<a href="${frappe.utils.get_form_link(doctype, name)}">${esc(text)}</a>`;
 	if (data.row_type === "voucher") {
 		return link(data.voucher_type, data.voucher_no, data.voucher_no);
 	}

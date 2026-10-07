@@ -161,7 +161,8 @@ function voucher_body(voucher_type, voucher_no, plan) {
 	if (!plan.issues.length) {
 		return `<p>${__("The payment ledger and the GL agree for this voucher now.")}</p>`;
 	}
-	const link = `<a href="/app/${frappe.router.slug(voucher_type)}/${encodeURIComponent(
+	const link = `<a href="${frappe.utils.get_form_link(
+		voucher_type,
 		voucher_no
 	)}" target="_blank">${esc(voucher_no)}</a>`;
 	return `
@@ -264,7 +265,8 @@ function review_netted(report, voucher_no) {
 					.catch(() => d.enable_primary_action());
 			},
 		});
-		const link = `<a href="/app/journal-entry/${encodeURIComponent(
+		const link = `<a href="${frappe.utils.get_form_link(
+			"Journal Entry",
 			voucher_no
 		)}" target="_blank">${esc(voucher_no)}</a>`;
 		d.fields_dict.body.$wrapper.html(

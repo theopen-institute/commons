@@ -1,7 +1,9 @@
 // "Create Payment Entries" on a submitted payroll run: a draft Payment Entry
 // for each employee picked, for what the run still owes them. Shown only once
-// the run's accrual journal is submitted and while somebody is unpaid -- the
-// server answers with nobody otherwise. See `commons.banking.payroll_payments`.
+// the run's accrual journal is submitted, while somebody is unpaid and with
+// Payroll Settings' "Process Payroll Accounting Entry Based on Employee" on --
+// the server answers with nobody otherwise. The Mode of Payment and Reference
+// No it starts on are Commons Settings'. See `commons.banking.payroll_payments`.
 
 frappe.ui.form.on("Payroll Entry", {
 	refresh(frm) {
@@ -63,6 +65,11 @@ function open_payments_dialog(frm, unpaid) {
 				options: "Account",
 				default: unpaid.paid_from,
 				reqd: 1,
+				// `this` is the control; its layout is the dialog, which may
+				// not be assigned yet when a default first fires this.
+				onchange() {
+					require_reference_for_bank(this.layout);
+				},
 				get_query: () => ({
 					filters: {
 						company: unpaid.company,
@@ -75,7 +82,7 @@ function open_payments_dialog(frm, unpaid) {
 				fieldtype: "Data",
 				fieldname: "reference_no",
 				label: __("Reference No"),
-				default: "---",
+				default: unpaid.reference_no,
 			},
 			{ fieldtype: "Section Break" },
 			{
@@ -122,4 +129,18 @@ function open_payments_dialog(frm, unpaid) {
 		},
 	});
 	dialog.show();
+	require_reference_for_bank(dialog);
+}
+
+// ERPNext refuses a payment from a Bank account without a Reference No
+// (`PaymentEntry.validate_transaction_reference`), so the dialog asks for one
+// before the drafts are made rather than failing on the first of them.
+function require_reference_for_bank(dialog) {
+	if (!dialog?.get_value) return;
+	const account = dialog.get_value("paid_from");
+	const set = (is_bank) => dialog.set_df_property("reference_no", "reqd", is_bank ? 1 : 0);
+	if (!account) return set(false);
+	frappe.db
+		.get_value("Account", account, "account_type")
+		.then(({ message }) => set(message?.account_type === "Bank"));
 }

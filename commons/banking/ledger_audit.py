@@ -9,10 +9,9 @@ invoice's `outstanding_amount` read. The copy is made at submit and undone at
 cancel by `erpnext.accounts.utils.create_payment_ledger_entry`, and it only
 copies lines on accounts whose Account Type is Receivable or Payable *at that
 moment*. Change an account's type between a voucher's submit and its cancel and
-the two ledgers part: on one site, a TDS account's type was blank for five
-days, eight payroll JEs were cancelled in between, and their lines on that
-account stayed live in the Payment Ledger (and in Accounts Payable) with
-nothing in the GL behind them.
+the two ledgers part: blank a TDS account's type, cancel a payroll journal
+entry while it is blank, and its lines on that account stay live in the Payment
+Ledger (and in Accounts Payable) with nothing in the GL behind them.
 
 `find_discrepancies` asks the question the copy should always answer yes to.
 For every voucher, account and party, the live Payment Ledger amount (rows with

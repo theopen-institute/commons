@@ -1,13 +1,29 @@
-"""Bank reconciliation: statement lines, and the vouchers that account for them.
+"""Banking and the books behind it: the reconciliation page, and the accounting
+fixes and audits that grew up around it.
 
-The page is `frontend/src/pages/BankReconciliation.vue`. Nearly everything it
-does is ERPNext's own: it lists `Bank Transaction`s through the document API
-and it matches, creates payment and journal entries, updates and unlinks through
-the whitelisted functions `bank_reconciliation_tool.py` and `bank_transaction.py`
-already ship. The desk tool's *functions* were never the problem; the form they
-hang off was.
+The page is `frontend/src/pages/BankReconciliation.vue` in the SPA and, through
+`frontend/src/screens/BankReconciliationScreen.vue`, the desk island the
+`commons_banking` Page draws. Nearly everything it does is ERPNext's own
+whitelisted functions; what it adds is here:
 
-What this package adds is booking a deposit as a loan repayment from the page.
-It makes the `Loan Repayment` a person would make in the desk and matches it to
-the deposit in the same request. See `reconciliation.create_loan_repayments`.
+- `reconciliation` -- the page's own calls: booking a deposit as loan
+  repayments, submitting and matching a draft voucher in one step.
+- `statement_import` -- a bank statement read into Bank Transaction rows.
+
+Around the books:
+
+- `payroll_lines` and `payroll_payments` -- a payroll accrual one line per
+  employee, and one Payment Entry per employee against the run.
+- `payable_party` -- a payment's party on its tax and deduction lines.
+- `internal_transfers` -- journal entries that move no money at the bank,
+  cleared on their own date.
+- `loan_own_dates` -- lending vouchers posted on their own dates.
+- `financial_statements` -- fiscal-year columns and hidden internal accounts on
+  ERPNext's financial statements.
+
+Reports (`report/`):
+
+- `ledger_audit` and `netted_payments` -- the Payment Ledger Audit.
+- `loan_dates` -- the Loan Date Audit.
+- `open_items` -- Open Receivables and Open Payables.
 """

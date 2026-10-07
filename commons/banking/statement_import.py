@@ -31,7 +31,7 @@ because where Commons Settings switches Bikram Sambat on, a statement may be
 dated in it. The browser converts them with the tables Document Capture uses.
 Elsewhere the only calendar offered is the Gregorian one. What the prompts say
 about where the statement comes from (the company's country and currency, and
-the site's Additional Instructions) is `commons.api_integrations.claude.locale`.
+the site's Additional Instructions) is `commons.document_capture.locale`.
 
 Why a background job
 --------------------
@@ -62,8 +62,9 @@ import frappe
 from frappe import _
 
 from commons.api_integrations.claude import client as claude
-from commons.api_integrations.claude import documents, jobs, locale
+from commons.api_integrations.claude import documents, jobs
 from commons.commons_core import apps
+from commons.document_capture import locale
 
 BANK_TRANSACTION = "Bank Transaction"
 
@@ -380,14 +381,6 @@ def read_statement(content: bytes, progress=lambda **changes: None) -> dict:
 
 # Counts a copied statement's rows as they stream in: each has a description.
 RowCounter = jobs.RowCounter
-
-
-def _state_key(token: str) -> str:
-	return READING.state_key(token)
-
-
-def _file_key(token: str) -> str:
-	return READING.file_key(token)
 
 
 def _count_read() -> None:

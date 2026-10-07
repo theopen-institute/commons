@@ -352,18 +352,22 @@ class TestTheBackgroundJob(TestCase):
 		self.enterContext(patch.object(si.frappe, "cache", cache))
 		self.enterContext(patch.object(si.frappe, "session", SimpleNamespace(user="accounts@example.org")))
 		self.enterContext(patch.object(si.frappe, "log_error"))
-		self.store[si._state_key("T")] = {"status": "queued", "user": "accounts@example.org", "rows": 0}
-		self.store[si._file_key("T")] = b"%PDF-1.7"
+		self.store[si.READING.state_key("T")] = {
+			"status": "queued",
+			"user": "accounts@example.org",
+			"rows": 0,
+		}
+		self.store[si.READING.file_key("T")] = b"%PDF-1.7"
 
 	def state(self):
-		return self.store[si._state_key("T")]
+		return self.store[si.READING.state_key("T")]
 
 	def test_a_finished_reading_carries_its_result_and_drops_the_file(self):
 		with patch.object(si, "read_statement", return_value={"rows": [1, 2]}):
 			si.run_reading("T")
 		self.assertEqual(self.state()["status"], "done")
 		self.assertEqual(self.state()["result"], {"rows": [1, 2]})
-		self.assertNotIn(si._file_key("T"), self.store)
+		self.assertNotIn(si.READING.file_key("T"), self.store)
 
 	def test_a_refusal_is_reported_in_its_own_words(self):
 		import frappe
