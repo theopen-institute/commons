@@ -3,6 +3,10 @@
 
 """Every name in Frappe that Better Navigation hangs on, still there.
 
+Four kinds: the sidebar classes the rail patches and reads, the arrangement
+editor `js/arrange.js` extends, the classes `scss/navigation_rail.scss` styles,
+and the order of calls the home page priority (`home_page.py`) slips into.
+
 The desk half (`js/navigation_rail.js`, `js/user_menu.js`, `js/arrange.js`,
 `js/boot_arrangement.js`, `public/js/user_menu_rows.js`) patches Frappe's
 sidebar classes and reads their properties, markup and menu rows. In the
@@ -102,10 +106,43 @@ SEAMS = {
 	("ui", "sidebar", "sidebar_panel.js"): {
 		"strings": ["frappe.ui.SidebarPanel =", "frappe.ui.sidebar_panels =", "toggle(name)"],
 	},
-	("ui", "sidebar", "arrangement_editor.js"): {"strings": ["frappe.ui.ArrangementEditor ="]},
+	# `js/arrange.js` subclasses it: the methods it overrides or calls, and the fields it reads.
+	("ui", "sidebar", "arrangement_editor.js"): {
+		"methods": [
+			"layers",
+			"prepare",
+			"title",
+			"save_args",
+			"can_add",
+			"add",
+			"apply",
+			"copy",
+			"reset",
+			"is_own_add",
+			"item_extras",
+			"item_classes",
+			"decorate_item",
+			"entry_icon",
+			"preview_item",
+			"visibility_button",
+			"hide_tooltip",
+			"arranged_rows",
+			"arrange",
+			"render_panes",
+		],
+		"properties": ["entries", "order", "hidden", "can_curate_site", "layer_config", "loaded", "dialog"],
+		"strings": ["frappe.ui.ArrangementEditor ="],
+	},
 	("ui", "components", "dropdown.js"): {"strings": ["frappe.ui.Dropdown ="]},
-	("utils", "utils.js"): {"methods": ["app_logo", "desktop_icon"]},
+	("utils", "utils.js"): {"methods": ["app_logo", "desktop_icon", "sidebar_for_module"]},
 }
+
+# The rail's drawers open over the sidebar, one above its z-index.
+SCSS_SEAMS = {("desk", "sidebar.scss"): ["z-index: 1020"]}
+
+# Where Frappe's own classes may be defined or drawn: its stylesheets and the sidebar's scripts
+# and templates.
+CLASS_SOURCES = [("public", "scss"), ("public", "js", "frappe", "ui", "sidebar")]
 
 # What the server half calls in `frappe.boot`, and the boot keys the desk half reads.
 BOOT_FUNCTIONS = ["get_module_sidebars", "get_app_data", "get_app_rail_host_map"]
@@ -125,7 +162,7 @@ class TestFrappeSeams(TestCase):
 			# Asserted as booleans: a failure names the seam, not the whole file.
 			for method in seams.get("methods", ()):
 				with self.subTest(path=path, method=method):
-					pattern = rf"(?m)^\s*(static\s+)?{re.escape(method)}\s*\(.*\)\s*\{{\s*$"
+					pattern = rf"(?m)^\s*(static\s+|get\s+)?{re.escape(method)}\s*\(.*\)\s*\{{\s*\}}?\s*$"
 					self.assertTrue(re.search(pattern, source), f"{method}() is not defined in {path}")
 			for prop in seams.get("properties", ()):
 				with self.subTest(path=path, property=prop):
@@ -145,3 +182,55 @@ class TestFrappeSeams(TestCase):
 		for key in BOOT_KEYS:
 			with self.subTest(key=key):
 				self.assertIn(f"bootinfo.{key} =", source)
+
+	def test_every_frappe_class_the_rail_styles_is_still_frappes(self):
+		"""A renamed class throws nothing: the rail only looks wrong. So each is looked for here."""
+		with open(frappe.get_app_path("commons", "better_navigation", "scss", "navigation_rail.scss")) as f:
+			stylesheet = re.sub(r"//[^\n]*|/\*[\s\S]*?\*/", "", f.read())
+		classes = {
+			name for name in re.findall(r"\.([a-z][\w-]*)", stylesheet) if not name.startswith("commons-")
+		}
+		self.assertTrue(classes, "read no classes from navigation_rail.scss")
+
+		frappe_source = []
+		for parts in CLASS_SOURCES:
+			for root, _dirs, files in os.walk(frappe.get_app_path("frappe", *parts)):
+				for name in files:
+					if name.endswith((".scss", ".js", ".html")):
+						with open(os.path.join(root, name), encoding="utf-8") as f:
+							frappe_source.append(f.read())
+		frappe_source = "\n".join(frappe_source)
+
+		for name in sorted(classes):
+			with self.subTest(css_class=name):
+				found = re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", frappe_source)
+				self.assertTrue(found, f".{name} is styled by navigation_rail.scss but is not in Frappe")
+		for parts, texts in SCSS_SEAMS.items():
+			source = _source("public", "scss", *parts)
+			for text in texts:
+				with self.subTest(path=os.path.join(*parts), string=text):
+					self.assertTrue(text in source, f"{text!r} is not in {os.path.join(*parts)}")
+
+	def test_the_home_page_flag_still_comes_first(self):
+		"""`home_page.py` sets `frappe.local.flags.home_page`; Frappe has to read it, and in time.
+
+		`get_home_page` returns the flag before looking at any Role, and at login the
+		`on_login` hooks run before the response's home page is asked for.
+		"""
+		import inspect
+
+		from frappe.auth import LoginManager
+		from frappe.website.utils import get_home_page
+
+		self.assertTrue(
+			re.search(
+				r"if frappe\.local\.flags\.home_page\b[^\n]*:\s*\n\s*return frappe\.local\.flags\.home_page",
+				inspect.getsource(get_home_page),
+			),
+			"get_home_page no longer returns frappe.local.flags.home_page first",
+		)
+		post_login = inspect.getsource(LoginManager.post_login)
+		trigger, info = post_login.find('run_trigger("on_login")'), post_login.find("set_user_info(")
+		self.assertTrue(0 <= trigger < info, "on_login no longer runs before set_user_info")
+		self.assertIn("get_home_page()", inspect.getsource(LoginManager.set_user_info))
+		self.assertIn('get_hooks("before_request")', _source("app.py"))

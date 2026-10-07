@@ -60,10 +60,6 @@ def candidates(user: str) -> list[frappe._dict]:
 	point: a stable priority, then role name so that equal priorities -- which is
 	every role until someone sets a number -- still resolve the same way twice.
 	"""
-	if not frappe.db.has_column("Role", FIELDNAME):
-		# Installed but not yet migrated.
-		return []
-
 	roles = frappe.get_roles(user)
 	if not roles:
 		return []

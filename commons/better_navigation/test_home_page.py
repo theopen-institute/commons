@@ -59,9 +59,7 @@ class TestCandidates(TestCase):
 
 	def test_a_disabled_role_decides_nothing(self):
 		asked = {}
-		database = SimpleNamespace(has_column=lambda *a: True)
 		with (
-			patch.object(home_page.frappe, "db", database),
 			patch.object(home_page.frappe, "get_roles", return_value=["Employee"]),
 			patch.object(home_page.frappe, "get_all", side_effect=lambda *a, **kw: asked.update(kw) or []),
 		):
