@@ -145,6 +145,7 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 			label: base,
 			manifest: (rules) => call("manifest", { rules: JSON.stringify(rules) }),
 			record: (rule, key) => call("record", { rule: JSON.stringify(rule), key }),
+			file: (url) => call("file", { url }),
 		};
 	}
 
@@ -163,6 +164,8 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 					modified: entry?.[2] ?? null,
 				};
 			},
+			// Snapshots taken before files travelled have none.
+			file: async (url) => data.files?.[url] ?? null,
 		};
 	}
 
@@ -1032,6 +1035,22 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 			};
 			if (copying) args.doc = JSON.stringify(this.src.doc);
 			this.dialog.disable_primary_action();
+			let unavailable = [];
+			try {
+				if (copying) {
+					const files = await this.files_to_copy();
+					args.files = JSON.stringify(files.found);
+					unavailable = files.unavailable;
+				}
+			} catch (e) {
+				frappe.msgprint({
+					title: __("Could Not Read Files"),
+					message: esc(e.message || e),
+					indicator: "red",
+				});
+				this.dialog.enable_primary_action();
+				return;
+			}
 			try {
 				const state = await frappe.xcall(`${API}.${copying ? "apply" : "delete"}`, args);
 				this.dialog.hide();
@@ -1046,11 +1065,38 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 						: __("Deleted."),
 					indicator: still ? "orange" : "green",
 				});
+				if (unavailable.length) {
+					frappe.msgprint({
+						title: __("Files Not Copied"),
+						message: `${esc(
+							__(
+								"The source has no file at these addresses, so they will not show here:"
+							)
+						)}<ul>${unavailable.map((url) => `<li>${esc(url)}</li>`).join("")}</ul>`,
+						indicator: "orange",
+					});
+				}
 				this.owner.update(this.row, state, this.src);
 			} catch {
 				// frappe.xcall has shown the server's message
 				this.dialog.enable_primary_action();
 			}
+		}
+
+		// The files the record attaches that this site lacks, read from the source.
+		async files_to_copy() {
+			const urls = await frappe.xcall(`${API}.missing_files`, {
+				rule: JSON.stringify(this.row.rule),
+				doc: JSON.stringify(this.src.doc),
+			});
+			const found = [];
+			const unavailable = [];
+			for (const url of urls) {
+				const file = await this.owner.source.file(url);
+				if (file) found.push(file);
+				else unavailable.push(url);
+			}
+			return { found, unavailable };
 		}
 	};
 })();

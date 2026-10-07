@@ -7,6 +7,10 @@ both sides -- `manifest`, `record`, `snapshot` -- and the source is called
 cross-origin with an API key, which needs the page's origin in the source's
 `allow_cors`. Nothing here ever connects from one site to the other.
 
+A record's attached files travel with it: the page asks this site which it
+lacks (`missing_files`), reads them from the source (`file`) and passes them to
+`apply`. See `files.py`.
+
 `apply` and `delete` are the only writes, and they run on the site the page is
 on, one record at a time, from the page's details modal. Each carries the hash
 the page saw for this site's copy and refuses if the record has changed since,
@@ -23,6 +27,7 @@ from frappe import _
 from frappe.model import no_value_fields, table_fields
 from frappe.permissions import setup_custom_perms
 
+from commons.data_sync import files as sync_files
 from commons.data_sync import records
 from commons.data_sync import rules as sync_rules
 
@@ -110,15 +115,37 @@ def snapshot(rules=None) -> dict:
 	selected = _rules(rules)
 	out = manifest(rules=selected)
 	out["records"] = {}
+	out["files"] = {}
 	for rule in selected:
 		if rule["doctype"] in out["errors"]:
 			continue
-		out["records"][rule["doctype"]] = {key: r["doc"] for key, r in records.load(rule).items()}
+		loaded = {key: r["doc"] for key, r in records.load(rule).items()}
+		out["records"][rule["doctype"]] = loaded
+		for doc in loaded.values():
+			for url in sync_files.urls_in(rule["doctype"], doc):
+				if url not in out["files"]:
+					out["files"][url] = sync_files.export(url)
 	return out
 
 
+@frappe.whitelist()
+def file(url: str) -> dict | None:
+	"""One of this site's files, for the site a record is being copied to."""
+	_guard()
+	return sync_files.export(url)
+
+
+@frappe.whitelist()
+def missing_files(rule, doc) -> list[str]:
+	"""The files `doc`, the source's content, attaches that this site lacks."""
+	_guard()
+	rule = sync_rules.parse(rule)[0]
+	doc = json.loads(doc) if isinstance(doc, str) else doc
+	return sync_files.missing(sync_files.urls_in(rule["doctype"], doc))
+
+
 @frappe.whitelist(methods=["POST"])
-def apply(rule, key: str, doc, expected: str | None = None) -> dict:
+def apply(rule, key: str, doc, expected: str | None = None, files=None) -> dict:
 	"""Make this site's record match `doc`, the source's content. Returns the new state.
 
 	Inserts when this site has no record with the key, otherwise updates it.
@@ -129,6 +156,10 @@ def apply(rule, key: str, doc, expected: str | None = None) -> dict:
 	Goes through `insert` and `save` with permissions checked, so the doctype's
 	own validation runs: a link to something this site lacks fails with Frappe's
 	message naming it, and copying what it depends on first is the fix.
+
+	`files` are the source's files the record attaches and this site lacked, as
+	`missing_files` listed and the source's `file` returned. They are written
+	first, the record is pointed at them, and they are attached to it once saved.
 	"""
 	_guard()
 	rule = sync_rules.parse(rule)[0]
@@ -137,6 +168,10 @@ def apply(rule, key: str, doc, expected: str | None = None) -> dict:
 	meta = frappe.get_meta(doctype)
 
 	current = _check_unchanged(rule, key, expected)
+
+	files = json.loads(files) if isinstance(files, str) else files
+	written = sync_files.restore(files)
+	sync_files.rewrite(doctype, doc, written)
 
 	# A doctype's first Custom DocPerm replaces all of its standard permissions,
 	# so one copied row alone would lock every other role out. Copy the standard
@@ -182,6 +217,8 @@ def apply(rule, key: str, doc, expected: str | None = None) -> dict:
 
 	if doctype == "Custom DocPerm":
 		frappe.clear_cache(doctype=target.parent)
+
+	sync_files.attach(list(written.values()), doctype, target.name)
 
 	return _state(rule, key)
 
