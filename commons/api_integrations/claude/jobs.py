@@ -4,8 +4,10 @@ A read by Claude can outlast a web request: a long statement takes minutes, and
 even one invoice can take a worker's full minute and a half. So the endpoint
 that takes the file answers at once with a token, a job in the `long` queue does
 the reading, and the browser asks after the token every few seconds. `Job` is
-the plumbing both callers share, Document Capture's invoices and the bank
-statement import, so that neither has its own copy of the rules below.
+that plumbing, so that a caller -- the bank statement import, so far -- does
+not keep its own copy of the rules below. `RowCounter` is the other half, the
+progress a streamed reading reports, and Document Capture's invoices and
+expense receipts use it too.
 
 The state lives in the cache
 ----------------------------

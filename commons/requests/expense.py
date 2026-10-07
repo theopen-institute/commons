@@ -29,17 +29,16 @@ is genuinely not leave's:
 import frappe
 from frappe.utils import flt
 
-from commons.api import session_employee, session_employee_filters
+from commons.api import session_employee
 from commons.commons_core.settings import feature_enabled
 from commons.requests import approvals
-from commons.requests.approvers import default_expense_approver
+from commons.requests.approvers import default_expense_approver, session_employee_name
 
 EXPENSE_CLAIM = "Expense Claim"
 
 # The Commons Settings switch that lets a claim naming no approver be decided by
 # anyone who may submit claims. Off by default, which is HRMS's own behaviour:
-# such a claim waits until somebody names its approver. Sites that ran this app
-# before it was a setting had it switched on when it arrived.
+# such a claim waits until somebody names its approver.
 UNASSIGNED_OPEN = "expense_unassigned_open"
 EXPENSE_CLAIM_DETAIL = "Expense Claim Detail"
 
@@ -185,7 +184,7 @@ class Expenses(approvals.RequestType):
 
 		filters[self.decision_field] = "Draft"
 		if frappe.db.get_single_value("HR Settings", self.self_approval_setting):
-			mine = _session_employee_name()
+			mine = session_employee_name()
 			if mine:
 				filters["employee"] = ["!=", mine]
 
@@ -265,20 +264,6 @@ EXPENSES = Expenses()
 def _unassigned_open() -> bool:
 	"""Whether a claim naming no approver is anyone's to decide -- see `UNASSIGNED_OPEN`."""
 	return feature_enabled(UNASSIGNED_OPEN)
-
-
-def _session_employee_name() -> str | None:
-	"""The employee record behind this session, as the queue needs to exclude it.
-
-	A raw read rather than `session_employee`, and deliberately so. What it
-	returns is the caller's own employee id and nothing else -- the same bounded
-	disclosure `session_employee_access` makes -- whereas the permission-checked
-	read answers `None` for a user whose `Employee` access is gated, which here
-	would quietly put their own claims back into their own queue. The row it
-	looks for is `session_employee_filters`', so this and `session_employee`
-	agree on which record is the caller's.
-	"""
-	return frappe.db.get_value("Employee", session_employee_filters(), "name")
 
 
 @frappe.whitelist()

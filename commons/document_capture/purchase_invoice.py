@@ -46,7 +46,7 @@ them.
 
 What the reading is told about where the scans come from (the company's
 country and currency, and whether dates may be in Bikram Sambat) is
-`commons.api_integrations.claude.locale`, with Claude Settings' Additional
+`commons.document_capture.locale`, with Document Capture Settings' Additional
 Instructions after the rules here.
 
 Every date arrives Gregorian. Where Bikram Sambat is switched on, the scan's
@@ -75,8 +75,9 @@ from frappe import _
 from frappe.utils import flt, today
 
 from commons.api_integrations.claude import client as claude
-from commons.api_integrations.claude import documents, jobs, locale
+from commons.api_integrations.claude import documents, jobs
 from commons.commons_core import apps
+from commons.document_capture import locale
 from commons.document_capture import settings as capture_settings
 
 PURCHASE_INVOICE = "Purchase Invoice"

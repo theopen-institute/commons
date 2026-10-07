@@ -8,8 +8,8 @@ always been a Workflow from the start. What it shares with leave and expenses
 is `approvals.RequestType` -- reading the active Workflow, naming the state
 column, counting a badge, and vetting the parent names behind a child-table
 read. What it does not share is the queue itself: a procurement queue is
-grouped by the field Commons Settings names (department unless a site says
-otherwise, or nothing at all), each group with its estimated total, so
+grouped by the field Commons Settings names, each group with its estimated
+total, or is one flat list when it names none -- so
 `get_procurement_workflow_queue` answers a shape of its own rather than the
 flat list the other two return.
 """
@@ -34,11 +34,10 @@ from commons.requests.procurement_workflow import approver_roles as _approver_ro
 
 DEPARTMENT_FIELD = "department"
 
-# The Commons Settings field naming what the approvals queue is grouped by, and
-# what it reads as on a site that has never stored it -- which is what the queue
-# was grouped by before it was a setting.
+# The Commons Settings field naming what the approvals queue is grouped by. No
+# default: which field (if any) a site's approvers work through their queue by
+# is the site's to say, so unset and blank both mean one flat list.
 GROUP_BY_SETTING = "procurement_group_by"
-DEFAULT_GROUP_BY = DEPARTMENT_FIELD
 
 
 class Procurement(approvals.RequestType):
@@ -86,7 +85,6 @@ class Procurement(approvals.RequestType):
 		"department",
 		"approver",
 		"justification",
-		"rejection_reason",
 		"status",
 		"docstatus",
 		"modified",
@@ -108,10 +106,9 @@ def _list_fields(state_field: str, *extra: str) -> list[str]:
 def get_procurement_permissions() -> dict:
 	"""What the session user may do with procurement, plus their backlog.
 
-	Capabilities only. The blank-request defaults used to ride along here, which
-	meant every page load resolved a company, an employee, a department approver
-	and a stock UOM for a form most visits never open -- see
-	`get_procurement_request_defaults`, which answers that when the form asks.
+	Capabilities only. What a blank request opens with is not here, because
+	most visits never open the form -- see `get_procurement_request_defaults`,
+	which answers that when the form asks.
 
 	`workflow` does ride along, because it is not form state: every page that
 	reads it also reads this, and refreshed one without the other after acting on
@@ -192,8 +189,8 @@ def get_procurement_request_defaults() -> dict:
 	Asked by the form rather than sent with the permissions, because that is what
 	it is: form state, wanted by the one page that draws a blank request and by
 	none of the pages that merely list them. Three queries -- a company, the
-	employee behind the session, the stock UOM -- that used to run on every
-	visit to the section.
+	employee behind the session, the stock UOM -- that a visit which never
+	opens the form should not pay for.
 
 	No approver. Who decides a request is the site's Workflow, and a default
 	here would be this app's guess at it; the picker offers everyone who could
@@ -227,12 +224,7 @@ def get_procurement_request_defaults() -> dict:
 @frappe.whitelist(methods=["POST"])
 def save_procurement_request(doc: str | dict, action: str | None = None) -> dict:
 	"""Insert or edit a request, optionally applying a Workflow action atomically."""
-	PROCUREMENT.require_available()
-	values = frappe.parse_json(doc) or {}
-	if not isinstance(values, dict):
-		frappe.throw(frappe._("A Procurement Request document is required."))
-	if values.get("doctype") not in (None, PROCUREMENT_REQUEST):
-		frappe.throw(frappe._("Only Procurement Requests can be created here."))
+	values = PROCUREMENT.parse_request(doc)
 
 	name = values.pop("name", None)
 	values["doctype"] = PROCUREMENT_REQUEST
@@ -432,15 +424,13 @@ def _procurement_workflow_queue(decided: bool) -> dict:
 def group_by_field():
 	"""The Procurement Request field the approvals queue is grouped by, or None for one list.
 
-	Commons Settings names it (`procurement_group_by`). A site that has never
-	stored the setting reads the default, department, which is what the queue
-	was always grouped by; one that cleared it gets a single flat list. So does
-	a name the doctype does not have, or one that holds no value to group by --
-	a section break, a table -- rather than an error on a page that has nothing
-	to do with the mistake.
+	Commons Settings names it (`procurement_group_by`). Nothing is assumed: a
+	site that has never stored the setting, or cleared it, gets a single flat
+	list. So does a name the doctype does not have, or one that holds no value
+	to group by -- a section break, a table -- rather than an error on a page
+	that has nothing to do with the mistake.
 	"""
-	stored = (_settings() or {}).get(GROUP_BY_SETTING)
-	fieldname = (DEFAULT_GROUP_BY if stored is None else stored).strip()
+	fieldname = ((_settings() or {}).get(GROUP_BY_SETTING) or "").strip()
 	if not fieldname:
 		return None
 	field = frappe.get_meta(PROCUREMENT_REQUEST).get_field(fieldname)

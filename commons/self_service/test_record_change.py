@@ -487,23 +487,7 @@ class TestRecordChangeRequest(unittest.TestCase):
 		with self.assertRaises(frappe.ValidationError):
 			config.save()
 
-	# -- the queues ---------------------------------------------------------
-
-	def test_an_open_request_is_in_the_pending_queue_and_a_settled_one_is_not(self):
-		name = self.propose(cell_number="0799 999 999")
-		frappe.set_user("Administrator")
-		self.assertIn(name, [row["name"] for row in api.get_change_queue()])
-		self.assertNotIn(name, [row["name"] for row in api.get_change_queue(decided=1)])
-
-		api.decide_change(name, "Reject", note="No.")
-		self.assertNotIn(name, [row["name"] for row in api.get_change_queue()])
-		self.assertIn(name, [row["name"] for row in api.get_change_queue(decided=1)])
-
-	def test_the_queue_can_be_narrowed_to_one_record_type(self):
-		name = self.propose(cell_number="0799 999 999")
-		frappe.set_user("Administrator")
-		self.assertIn(name, [row["name"] for row in api.get_change_queue(doctype=RECORD)])
-		self.assertNotIn(name, [row["name"] for row in api.get_change_queue(doctype="Company")])
+	# -- the owner's lists ---------------------------------------------------
 
 	def test_the_owner_sees_their_own_request_and_its_diff(self):
 		name = self.propose(cell_number="0799 999 999")
@@ -524,8 +508,7 @@ class TestRecordChangeRequest(unittest.TestCase):
 
 		An approved request is already the record above it and a refused one is
 		raised again rather than revisited, so neither is something the owner can
-		act on. The reviewer's own history is `get_change_queue(decided=1)`,
-		which is where who decided what still matters.
+		act on. The reviewer's record of who decided what is the desk's.
 
 		Each outcome separately, because they settle differently: approving
 		submits the request (docstatus 1) while rejecting and withdrawing leave
@@ -553,8 +536,8 @@ class TestRecordChangeRequest(unittest.TestCase):
 	def test_a_settled_request_is_in_the_owners_history(self):
 		"""The other half of the split: gone from the list, not gone.
 
-		The owner's own history, which is not the reviewer's -- `get_change_queue`
-		needs submit on the doctype, and this needs nothing but owning the record.
+		The owner's own history, which is not the reviewer's -- that is the desk's,
+		and this needs nothing but owning the record.
 		A refused request and the reason it was refused are the requester's to
 		read.
 		"""
@@ -645,15 +628,14 @@ class TestRecordChangeRequest(unittest.TestCase):
 		self.assertFalse(permissions["request"])
 		self.assertIsNone(registry.session_record(RECORD))
 
-	def test_a_reviewer_who_owns_no_record_keeps_their_queue(self):
+	def test_a_reviewer_who_owns_no_record_keeps_the_section(self):
 		"""The bug the split above fixes: HR staff who are not themselves
-		employees were losing the review queue with the section."""
-		name = self.propose(cell_number="0799 999 999")
+		employees were losing the section along with the record they lack."""
+		self.propose(cell_number="0799 999 999")
 		frappe.set_user("Administrator")
 		permissions = api.get_change_permissions(RECORD)
 		self.assertFalse(permissions["has_record"])
-		self.assertTrue(permissions["review"])
-		self.assertIn(name, [row["name"] for row in api.get_change_queue()])
+		self.assertTrue(permissions["read"])
 
 
 @testing.site_suite()

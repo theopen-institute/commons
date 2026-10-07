@@ -9,14 +9,9 @@ fixture exports. The one place that reads it is
 `commons.api_integrations.claude.client.settings`, and nothing whitelisted
 returns it.
 
-`additional_instructions` is this site's own word to every prompt that reads a
-document, added after the app's own rules by
-`commons.api_integrations.claude.locale.finish`: the conventions of the
-documents this site receives, which no app could know.
-
-`tax_id_name` and `withholding_tax_name` name the local tax terms in every
-prompt, over what `locale.TAX_TERMS` knows of the company's country, which is
-only a few countries.
+What a prompt is told about this site's documents (Additional Instructions, the
+tax terms) is not here: it is about reading invoices and statements, not about
+the account, and is Document Capture Settings' (`commons.document_capture.locale`).
 """
 
 from frappe.model.document import Document
@@ -31,11 +26,8 @@ class ClaudeSettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
-		additional_instructions: DF.SmallText | None
 		api_key: DF.Password | None
 		model: DF.Data | None
-		tax_id_name: DF.Data | None
-		withholding_tax_name: DF.Data | None
 	# end: auto-generated types
 
 	pass

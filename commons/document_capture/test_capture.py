@@ -10,6 +10,7 @@ scan away instead of keeping it with the reason.
 import datetime
 import json
 import logging
+import os
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -20,9 +21,32 @@ from commons.document_capture import capture, expense_claim
 from commons.document_capture import settings as capture_settings
 
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
-# Site-less: Document Capture Settings reads as a site without the doctype,
-# which is its defaults. `with_settings` changes them for one test.
-_no_settings = patch.object(capture_settings, "_settings", return_value=None)
+
+
+def doctype_defaults() -> frappe._dict:
+	"""Document Capture Settings as a never-saved Single loads: the JSON's own defaults."""
+	path = os.path.join(
+		os.path.dirname(capture.__file__),
+		"doctype",
+		"document_capture_settings",
+		"document_capture_settings.json",
+	)
+	with open(path) as file:
+		fields = json.load(file)["fields"]
+	return frappe._dict(
+		{
+			field["fieldname"]: int(field.get("default") or 0)
+			if field["fieldtype"] in ("Check", "Int")
+			else field.get("default")
+			for field in fields
+			if field["fieldtype"] not in ("Section Break", "Column Break")
+		}
+	)
+
+
+# Site-less: Document Capture Settings reads as a never-saved Single, which is
+# its defaults. `with_settings` changes them for one test.
+_no_settings = patch.object(capture_settings, "_settings", return_value=doctype_defaults())
 
 
 def setUpModule():
@@ -38,7 +62,7 @@ def tearDownModule():
 def with_settings(**changes):
 	"""Document Capture Settings as the defaults with `changes`."""
 	return patch.object(
-		capture_settings, "_settings", return_value=frappe._dict({**capture_settings.DEFAULTS, **changes})
+		capture_settings, "_settings", return_value=frappe._dict({**doctype_defaults(), **changes})
 	)
 
 
@@ -175,8 +199,19 @@ class TestReadingIsAskedFor(TestCase):
 
 	def test_past_the_hourly_limit_no_read(self):
 		with self.assertRaises(frappe.RateLimitExceededError):
-			self.read(FakeCapture(), count=capture.HOURLY_LIMIT + 1)
+			self.read(FakeCapture(), count=capture_settings.hourly_limit() + 1)
 		self.queued.assert_not_called()
+
+	def test_the_hourly_limit_is_the_sites(self):
+		with with_settings(hourly_limit=5), self.assertRaises(frappe.RateLimitExceededError):
+			self.read(FakeCapture(), count=6)
+		self.queued.assert_not_called()
+
+	def test_a_limit_of_nought_is_no_limit(self):
+		stored = FakeCapture()
+		with with_settings(hourly_limit=0):
+			self.assertEqual(self.read(stored, count=10_000), {"name": "CAP-1"})
+		self.queued.assert_called_once_with(stored)
 
 	def test_one_being_read_is_not_read_twice(self):
 		stored = FakeCapture(status="Reading", read_started=frappe.utils.now_datetime())
@@ -459,24 +494,17 @@ class TestADisabledKind(TestCase):
 
 
 class TestTheSettingsDoctype(TestCase):
-	def test_its_defaults_are_the_codes(self):
-		"""What answers before migrate is what the form opens with after it."""
-		import os
-
-		path = os.path.join(
-			os.path.dirname(capture.__file__),
-			"doctype",
-			"document_capture_settings",
-			"document_capture_settings.json",
-		)
-		with open(path) as file:
-			fields = {field["fieldname"]: field for field in json.load(file)["fields"]}
-		for fieldname, default in capture_settings.DEFAULTS.items():
-			with self.subTest(fieldname=fieldname):
-				stored = fields[fieldname].get("default", "")
-				self.assertEqual(stored, str(default))
+	def test_each_kind_has_a_switch_on_by_default(self):
+		"""What a site that never opened the form captures is every kind."""
+		defaults = doctype_defaults()
 		for kind in capture.KINDS.values():
-			self.assertEqual(fields[kind.ENABLE_FIELD]["fieldtype"], "Check")
+			with self.subTest(kind=kind.ENABLE_FIELD):
+				self.assertEqual(defaults[kind.ENABLE_FIELD], 1)
+
+	def test_the_hourly_limit_is_sixty_by_default(self):
+		"""The limit as it was hard-coded, for a site that never opened the form."""
+		self.assertEqual(doctype_defaults().hourly_limit, 60)
+		self.assertEqual(capture_settings.hourly_limit(), 60)
 
 
 @patch.object(capture.frappe, "throw", _raise)

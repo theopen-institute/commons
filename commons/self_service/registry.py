@@ -181,21 +181,6 @@ def registered() -> list[str]:
 	]
 
 
-def by_slug(slug: str) -> dict:
-	"""The configuration a page address refers to, or a refusal.
-
-	Throwing rather than returning None: a slug nobody configured is not a page,
-	and every caller needs the answer rather than a `None` to check for.
-	"""
-	for current in policies().values():
-		if current["slug"] == slug:
-			return current
-	frappe.throw(
-		frappe._("There is no self-service page at {0}.").format(slug),
-		frappe.DoesNotExistError,
-	)
-
-
 def field_definitions(doctype: str) -> list[dict]:
 	"""Every viewable field, grouped into sections, as the page should draw it.
 

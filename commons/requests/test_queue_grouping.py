@@ -5,8 +5,8 @@ money, so it is arrived at once, on the server; these pin what a group's
 `estimate` is allowed to claim.
 
 What a queue is grouped *by* is the site's (`procurement_group_by` in Commons
-Settings): department where it never said, nothing where it cleared it or named
-a field the doctype does not have. The approver picker is pinned here too,
+Settings): nothing where it never said, cleared it or named a field the doctype
+does not have. The approver picker is pinned here too,
 since it is the other place this section used to carry one organisation's idea
 of who decides a request.
 """
@@ -97,8 +97,13 @@ class TestGroupByField(TestCase):
 		):
 			return api.group_by_field()
 
-	def test_a_site_that_never_said_groups_by_department(self):
-		self.assertIs(self.field(...), DEPARTMENT)
+	def test_a_site_that_never_said_has_one_list(self):
+		# No default field: a never-stored setting is not this app's guess.
+		self.assertIsNone(self.field(...))
+		self.assertIsNone(self.field(None))
+
+	def test_department_only_when_the_site_names_it(self):
+		self.assertIs(self.field("department"), DEPARTMENT)
 
 	def test_a_site_that_cleared_it_has_one_list(self):
 		self.assertIsNone(self.field(""))

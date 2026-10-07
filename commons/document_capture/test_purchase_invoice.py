@@ -8,7 +8,7 @@ is `test_capture`'s.
 
 That the draft inserts, and that ERPNext's totals come out right, was checked
 against a site's own invoices, and is not restated with mocks here. What the
-prompt says for which site is `api_integrations.claude.test_locale`'s.
+prompt says for which site is `test_locale`'s.
 """
 
 import logging
@@ -21,10 +21,11 @@ import frappe
 
 from commons.document_capture import purchase_invoice as capture
 from commons.document_capture import settings as capture_settings
+from commons.document_capture.test_capture import doctype_defaults
 
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
 # Site-less: Document Capture Settings reads as its defaults, no extra words.
-_no_settings = patch.object(capture_settings, "_settings", return_value=None)
+_no_settings = patch.object(capture_settings, "_settings", return_value=doctype_defaults())
 
 
 def setUpModule():
@@ -210,7 +211,7 @@ class TestLegalWords(TestCase):
 		)
 
 	def test_a_sites_own_words_count_for_names(self):
-		settings = frappe._dict(capture_settings.DEFAULTS, supplier_legal_words="Kft\nZrt.\n")
+		settings = frappe._dict(doctype_defaults(), supplier_legal_words="Kft\nZrt.\n")
 		suppliers = [row(name="Duna Print Kft", supplier_name="Duna Print Kft", tax_id=None)]
 		with patch.object(capture.frappe, "get_list", return_value=suppliers):
 			before = capture._match_suppliers({"name": "Duna Print Zrt", "tax_id": None})

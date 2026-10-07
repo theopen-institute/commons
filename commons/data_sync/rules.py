@@ -36,6 +36,11 @@ TABLE = "Data Sync Doctype"
 # site, so they are recognised by what they are for: the module or the app, and
 # no user -- each person's own layer stays theirs. Navigation Apps come last:
 # their rows name modules.
+#
+# `Custom Role` is who may open a page or report, over the roles it ships with
+# (the app's own pages ship System Manager only). Named by a hash, so recognised
+# by its page or report; its roles are a child table (`Has Role`) and travel
+# with it. After `Report`, since a site-made report must land before its roles.
 DEFAULT_RULES = [
 	{"doctype": "Module Def", "filters": {"custom": 1}},
 	{"doctype": "DocType", "filters": {"custom": 1}, "ignored_fields": ["migration_hash"]},
@@ -48,6 +53,7 @@ DEFAULT_RULES = [
 	{"doctype": "Client Script"},
 	{"doctype": "Server Script"},
 	{"doctype": "Report", "filters": {"is_standard": "No"}},
+	{"doctype": "Custom Role", "key_fields": ["page", "report"]},
 	{"doctype": "Print Format", "filters": {"standard": "No"}},
 	{"doctype": "Web Template", "filters": {"standard": 0}},
 	{"doctype": "Email Template"},
@@ -67,18 +73,13 @@ DEFAULT_RULES = [
 
 
 def configured() -> list[dict]:
-	"""This site's rules: the settings table, or the defaults when it is empty.
-
-	Also answers between this code landing and the migrate that creates the table.
-	"""
-	rows = []
-	if frappe.db.table_exists(TABLE):
-		rows = frappe.get_all(
-			TABLE,
-			filters={"parenttype": SETTINGS, "parentfield": "data_sync_doctypes"},
-			fields=["document_type", "filters", "key_fields", "ignored_fields"],
-			order_by="idx asc",
-		)
+	"""This site's rules: the settings table, or the defaults when it is empty."""
+	rows = frappe.get_all(
+		TABLE,
+		filters={"parenttype": SETTINGS, "parentfield": "data_sync_doctypes"},
+		fields=["document_type", "filters", "key_fields", "ignored_fields"],
+		order_by="idx asc",
+	)
 	if not rows:
 		return [normalise(rule) for rule in DEFAULT_RULES]
 	return [
@@ -95,8 +96,6 @@ def configured() -> list[dict]:
 
 
 def source_url() -> str:
-	if not frappe.db.table_exists(TABLE):
-		return ""
 	return (frappe.db.get_single_value(SETTINGS, "data_sync_source_url") or "").strip().rstrip("/")
 
 

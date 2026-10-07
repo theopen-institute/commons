@@ -60,11 +60,6 @@ from commons.self_service import registry
 DOCTYPE = "Record Change Request"
 SETTINGS = "Commons Settings"
 
-# The state a request starts in, and the only one a decision moves it out of.
-# `on_submit` overwrites it with the applying outcome when a site runs no
-# Workflow at all, so an applied request never reads as still pending.
-PENDING = "Pending"
-
 # The Commons Settings fields that decide a request on a site with no Workflow,
 # and what each reads as where a site has never stored it.
 APPLYING_OUTCOME_SETTING = "change_request_applying_outcome"
@@ -76,6 +71,21 @@ def status_options() -> list[str]:
 	"""The `status` field's own options, as the site has customised them."""
 	field = frappe.get_meta(DOCTYPE).get_field("status")
 	return [option.strip() for option in (field.options or "").split("\n") if option.strip()]
+
+
+def default_status() -> str | None:
+	"""The status a request starts in on a site with no Workflow -- the only one a decision moves it out of.
+
+	The field's own default, as the site has customised it; its first option
+	where it has none. Never spelled here: with a Workflow the starting state is
+	the Workflow's (see `commons.self_service.api.initial_state`), and without
+	one it is whatever the doctype says a new request carries.
+	"""
+	field = frappe.get_meta(DOCTYPE).get_field("status")
+	default = (field.default or "").strip()
+	if default:
+		return default
+	return next(iter(status_options()), None)
 
 
 def applying_outcome(strict: bool = True) -> str | None:
@@ -92,7 +102,8 @@ def applying_outcome(strict: bool = True) -> str | None:
 	stored = (_settings() or {}).get(APPLYING_OUTCOME_SETTING)
 	outcome = (DEFAULT_APPLYING_OUTCOME if stored is None else stored).strip()
 	options = status_options()
-	if outcome and outcome in options and outcome != PENDING:
+	start = default_status()
+	if outcome and outcome in options and outcome != start:
 		return outcome
 	if not strict:
 		return None
@@ -100,7 +111,7 @@ def applying_outcome(strict: bool = True) -> str | None:
 		_(
 			"Commons Settings names {0} as the outcome that applies a Record Change Request, "
 			"but it is not one of the request's Status options ({1}). Set it to one of them."
-		).format(frappe.bold(outcome or _("nothing")), ", ".join(o for o in options if o != PENDING)),
+		).format(frappe.bold(outcome or _("nothing")), ", ".join(o for o in options if o != start)),
 		frappe.ValidationError,
 		title=_("Change requests are misconfigured"),
 	)
@@ -602,11 +613,13 @@ class RecordChangeRequest(Document):
 
 		# Who settled it, and -- for a site running no Workflow, where submitting
 		# *is* applying -- a status that says so: the applying outcome the site
-		# names, not one spelled here. `db_set` because the document has already
-		# been written by the time `on_submit` runs; a second `save()` here would
-		# recurse through submit.
+		# names, not one spelled here. Only without a Workflow: with one, the
+		# state is the Workflow's to set (and `status` may not even be its
+		# field), and the no-workflow setting has nothing to say about it.
+		# `db_set` because the document has already been written by the time
+		# `on_submit` runs; a second `save()` here would recurse through submit.
 		self.db_set("reviewed_by", frappe.session.user, update_modified=False)
-		if self.status == PENDING:
+		if not wf.active_workflow(DOCTYPE) and self.status == default_status():
 			self.db_set("status", applying_outcome(), update_modified=False)
 
 	def insert_record(self) -> None:

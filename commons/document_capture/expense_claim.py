@@ -26,7 +26,7 @@ the dialog offers only the types the claimant's company can book to, so a
 suggestion outside those is dropped there.
 
 The prompt is written for the claimant's company, through
-`commons.api_integrations.claude.locale`: its country and currency, and
+`commons.document_capture.locale`: its country and currency, and
 Bikram Sambat dates only where the site has switched them on.
 """
 
@@ -34,8 +34,9 @@ import frappe
 from frappe import _
 
 from commons.api_integrations.claude import client as claude
-from commons.api_integrations.claude import documents, jobs, locale
+from commons.api_integrations.claude import documents, jobs
 from commons.commons_core import apps
+from commons.document_capture import locale
 from commons.document_capture.purchase_invoice import STRING, _nullable, _object
 
 EXPENSE_CLAIM = "Expense Claim"

@@ -95,10 +95,6 @@ KINDS = {
 }
 DEFAULT_KIND = next(iter(KINDS))
 
-# Reads per person per hour. A person working through a pile of scans needs
-# one a minute at most, and a read costs a few cents.
-HOURLY_LIMIT = 60
-
 # Seconds. How long Claude may take over one scan, and a margin over it for the
 # job as a whole. A scan is usually read in under a minute; a photographed
 # ten-page invoice can take several.
@@ -186,7 +182,7 @@ def kind_label(kind) -> str:
 @frappe.whitelist()
 def context() -> dict:
 	"""What the page offers this person: which kinds of scan it takes from them."""
-	return {"kinds": kinds(), "hourly_limit": HOURLY_LIMIT}
+	return {"kinds": kinds(), "hourly_limit": capture_settings.hourly_limit()}
 
 
 # --------------------------------------------------------------------------- #
@@ -523,17 +519,19 @@ def _failed() -> str:
 
 
 def _count_read(user: str) -> None:
-	"""Count a read against this person's hourly limit, in a rolling hour that
-	starts at their first, and refuse one past it."""
+	"""Count a read against this person's hourly limit (Document Capture
+	Settings), in a rolling hour that starts at their first, and refuse one
+	past it. A limit of 0 counts nothing."""
+	limit = capture_settings.hourly_limit()
+	if not limit:
+		return
 	key = frappe.cache.make_key(f"commons:document_capture:reads:{user}")
 	count = frappe.cache.incrby(key, 1)
 	if count == 1:
 		frappe.cache.expire(key, 3600)
-	if count > HOURLY_LIMIT:
+	if count > limit:
 		frappe.throw(
-			_("That is {0} scans in the last hour, which is the limit. Try again later.").format(
-				HOURLY_LIMIT
-			),
+			_("That is {0} scans in the last hour, which is the limit. Try again later.").format(limit),
 			frappe.RateLimitExceededError,
 		)
 

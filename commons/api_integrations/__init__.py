@@ -18,9 +18,7 @@ which are bodies of work. It is not a fair price for the eighty lines it takes
 to talk to an SMS gateway, and an app that expected a dozen of those would pay
 it a dozen times for nothing.
 
-What actually earns a module is owning a doctype -- `commons.commons_core` says
-so in as many words -- and every integration owns exactly one: its settings
-Single. Those all live in this module's `doctype/` folder, which is the one
+Every integration owns exactly one doctype: its settings Single. Those all live in this module's `doctype/` folder, which is the one
 place Frappe will look for them, and the code that uses each one lives in a
 plain package beside it. One module, one line, one `Module Def`, and the next
 integration is a directory rather than a migration.
@@ -36,19 +34,24 @@ The layout
 	api_integrations/
 		<service>/                     the code: client, operations, endpoints
 		doctype/<service>_settings/    the credentials, as a Single
+		http.py                        the HTTP session policy the clients share
 
-Nothing at the root but this file. There is no shared client, no base class and
-no common error type, and that is not an omission waiting to be corrected --
-`auth0` and `google_workspace` are the same *shape* and share no *code*, because
-the interesting part of each is exactly where they differ: one asks for a token
-on its own behalf, the other signs an assertion to impersonate an
-administrator. A base class over those two would be a place to put an `if`.
+`http` is the one thing at the root besides this file: one timeout and one
+retry policy, which `auth0` and `google_workspace` both make their calls
+through, because a host that has stopped answering should cost every
+integration the same short wait. Beyond that there is no shared client, no base
+class and no common error type, and that is not an omission waiting to be
+corrected -- `auth0` and `google_workspace` are the same *shape* and share no
+*code*, because the interesting part of each is exactly where they differ: one
+asks for a token on its own behalf, the other signs an assertion to impersonate
+an administrator. A base class over those two would be a place to put an `if`.
+`claude` makes its calls through Anthropic's SDK instead.
 
-What would earn a place at the root is something every integration genuinely
-needs and none of them should answer twice -- a registry of which services this
-site has configured, say, for a page deciding what to draw. When there is a
-third integration and two of them want the same thing, that is the moment; not
-before, and not on the strength of two things looking alike.
+What else would earn a place at the root is something every integration
+genuinely needs and none of them should answer twice -- a registry of which
+services this site has configured, say, for a page deciding what to draw. When
+two of them want the same thing, that is the moment; not before, and not on the
+strength of two things looking alike.
 
 What belongs in here
 --------------------
@@ -64,12 +67,18 @@ The inverse is the useful half of the test. Something that reads this site's
 doctypes and calls out to a service is not an integration in this sense, it is a
 feature that happens to make a call, and it belongs with the section whose
 doctypes it reads. `commons.statement` would not move in here if it learned to
-email a statement.
+email a statement. Nor do the words a Claude prompt is told about this site's
+documents (country, currency, calendar, tax terms, the site's own
+instructions): they read Company and the site's settings, so they are
+`commons.document_capture.locale`, and the settings they read are Document
+Capture Settings', not `Claude Settings`'. An integration's Single holds the
+credential and how to call, never what to say.
 
 The shape each one takes
 ------------------------
-Not enforced, and worth following anyway, because it is the shape both of these
-arrived at independently and every reader of the second one gets it for free:
+Not enforced, and worth following anyway, because it is the shape `auth0` and
+`google_workspace` arrived at independently and every reader of the second one
+gets it for free:
 
 ``client``
 	The way in. The credentials off the Single, the token and its cache, and one
@@ -80,8 +89,8 @@ arrived at independently and every reader of the second one gets it for free:
 	rather than offer one that explains itself after being pressed.
 
 ``<operations>``
-	The verbs, as plain functions over addresses and ids. `users` in both of the
-	current two. No permission checks, no session assumed, callable from a patch
+	The verbs, as plain functions over addresses and ids. `users` in `auth0` and
+	`google_workspace`, `documents` in `claude`. No permission checks, no session assumed, callable from a patch
 	or a scheduled job.
 
 ``api``

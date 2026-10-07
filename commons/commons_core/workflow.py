@@ -1,20 +1,22 @@
-"""What an active Frappe Workflow says, read the same way by both sections.
+"""What an active Frappe Workflow says, read the same way by every section.
 
 Procurement was written around a Workflow from the start and leave was not.
 Adding one to leave meant either a second copy of this or one module every
-section reads, and a second copy is the thing that drifts: the two would have
+section reads, and a second copy is the thing that drifts: the copies would have
 started out agreeing on what an action is and ended up disagreeing about which
-ones a user may take.
+ones a user may take. Leave, expenses, procurement and self-service's change
+requests all read it now.
 
-It is here rather than in `commons.requests` with its three callers because
-nothing in it is about a request: it is what an active Workflow says, for any
-doctype, and it would read the same in an app that had no requests in it at all.
-`requests.approvals` is the layer above that does know what a request is.
+It is here rather than in `commons.requests` because nothing in it is about a
+request: it is what an active Workflow says, for any doctype, and self-service
+reads it as well. `requests.approvals` is the layer above that does know what a
+request is.
 
 Nothing here decides anything. `get_transitions` is Frappe's own answer to "what
-may this user do to this document, right now", asked in that user's session --
-what is here is the shapes around it that the sections needed, and none of them
-names a state, a role or an action.
+may this user do to this document, right now", asked in that user's session, and
+`has_approval_access` is the self-approval rule `apply_workflow` adds to it --
+what is here is the shapes around the two that the sections needed, and none of
+them names a state, a role or an action.
 """
 
 import frappe
@@ -49,6 +51,26 @@ def unique_actions(transitions) -> list[dict]:
 		seen.add(row.action)
 		actions.append({"action": row.action, "next_state": row.next_state})
 	return actions
+
+
+def approvable_actions(doc, transitions) -> list[dict]:
+	"""The buttons `apply_workflow` would actually accept on `doc`, one per action.
+
+	`get_transitions` does not ask about self-approval; only `apply_workflow`
+	does, through `has_approval_access`, so a document this user owns under a
+	transition that forbids it would be offered a button the write then refuses.
+	Asked here, once, so every queue, badge and button agrees with the write.
+
+	Per action it is the *last* matching row that counts, because that is the
+	one `apply_workflow` picks when parallel rows grant the same action.
+	"""
+	from frappe.model.workflow import has_approval_access
+
+	user = frappe.session.user
+	effective = {}
+	for row in transitions:
+		effective[row.action] = row
+	return unique_actions(row for row in effective.values() if has_approval_access(user, doc, row))
 
 
 def state_styles(workflow) -> dict[str, str | None]:
@@ -120,7 +142,8 @@ def permitted_transitions(doctype: str, names: list[str], workflow=None) -> dict
 
 	Asked in this user's session on purpose. A transition condition that names
 	the session user -- the usual way a workflow routes a document to one person
-	rather than to a role -- only means what it says here.
+	rather than to a role -- only means what it says here. So does self-approval,
+	which `approvable_actions` applies on top.
 
 	Every caller reaches this with names a `get_list` has already settled, and
 	each of them says so where it calls. The check below is not a second opinion
@@ -141,7 +164,7 @@ def permitted_transitions(doctype: str, names: list[str], workflow=None) -> dict
 		doc = frappe.get_doc(doctype, name)
 		if not doc.has_permission("read"):
 			continue
-		permitted[name] = unique_actions(get_transitions(doc, workflow))
+		permitted[name] = approvable_actions(doc, get_transitions(doc, workflow))
 	return permitted
 
 

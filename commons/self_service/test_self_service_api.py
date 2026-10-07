@@ -64,11 +64,14 @@ def with_status(test, **kwargs):
 	test.enterContext(patch.object(api.frappe, "get_meta", return_value=meta))
 
 
-def workflow(states, transitions, state_field="status"):
+def workflow(states, transitions, state_field="status", submitted=()):
+	"""A Workflow; `submitted` names the states the site gives docstatus 1."""
 	return SimpleNamespace(
 		name="Changes",
 		workflow_state_field=state_field,
-		states=[SimpleNamespace(state=state) for state in states],
+		states=[
+			SimpleNamespace(state=state, doc_status="1" if state in submitted else "0") for state in states
+		],
 		transitions=[SimpleNamespace(**row) for row in transitions],
 	)
 
@@ -220,6 +223,12 @@ class TestInitialState(TestCase):
 		with patch.object(api.frappe, "get_meta", return_value=meta):
 			self.assertEqual(api.initial_state(None), "Raised")
 
+	def test_a_status_field_with_no_default_starts_at_its_first_option(self):
+		"""Nothing spelled as a fallback: the doctype's own first option."""
+		meta = SimpleNamespace(get_field=lambda _: status_field(options="\nOpen\nDone", default=None))
+		with patch.object(api.frappe, "get_meta", return_value=meta):
+			self.assertEqual(api.initial_state(None), "Open")
+
 
 class TestQueueFilters(TestCase):
 	"""The badge and the page ask one question, and it is this one."""
@@ -249,6 +258,14 @@ class TestQueueFilters(TestCase):
 		with patch.object(api.frappe, "get_meta", return_value=meta):
 			self.assertEqual(api._queue_filters(decided=False), {"status": "Raised"})
 			self.assertEqual(api._queue_filters(decided=True), {"status": ["!=", "Raised"]})
+
+	def test_under_a_workflow_it_is_the_workflows_state_in_the_workflows_field(self):
+		"""A Workflow keeping its state in its own column is asked about that column,
+		and its own first state -- never the doctype's `status` default."""
+		active = workflow(["Awaiting HR", "Applied"], [], state_field="workflow_state")
+		with patch.object(api, "change_workflow", return_value=active):
+			self.assertEqual(api._queue_filters(decided=False), {"workflow_state": "Awaiting HR"})
+			self.assertEqual(api._queue_filters(decided=True), {"workflow_state": ["!=", "Awaiting HR"]})
 
 
 class TestDecisionVocabulary(TestCase):
@@ -283,11 +300,12 @@ class TestDecisionVocabulary(TestCase):
 	def test_with_a_workflow_the_outcomes_are_its_actions(self):
 		"""And the styling is the site's -- an action reads as the state it leads to."""
 		active = workflow(
-			["Pending"],
+			["Pending", "Applied", "Declined"],
 			[
 				{"state": "Pending", "action": "Apply", "next_state": "Applied"},
 				{"state": "Pending", "action": "Turn down", "next_state": "Declined"},
 			],
+			submitted=("Applied",),
 		)
 		with patch.object(api.wf, "state_styles", return_value={"Applied": "Success", "Declined": "Danger"}):
 			offered = api.decision_vocabulary(active)
@@ -298,6 +316,21 @@ class TestDecisionVocabulary(TestCase):
 				{"value": "Turn down", "style": "Danger", "confirm": True},
 			],
 		)
+
+	def test_under_a_workflow_the_affirmative_one_is_the_one_that_submits_not_the_one_styled_so(self):
+		"""Approval is the submission, so the action into a docstatus 1 state is the
+		one asked once -- whatever the site called it or coloured it."""
+		active = workflow(
+			["Waiting", "Done", "Taken back"],
+			[
+				{"state": "Waiting", "action": "Sign off", "next_state": "Done"},
+				{"state": "Waiting", "action": "Take back", "next_state": "Taken back"},
+			],
+			submitted=("Done",),
+		)
+		with patch.object(api.wf, "state_styles", return_value={"Done": "Primary", "Taken back": "Success"}):
+			confirm = {row["value"]: row["confirm"] for row in api.decision_vocabulary(active)}
+		self.assertEqual(confirm, {"Sign off": False, "Take back": True})
 
 	def test_one_button_per_action_however_many_roles_it_is_granted_to(self):
 		"""Parallel transition rows are how a Workflow grants one action to several
@@ -472,9 +505,9 @@ class TestStatusDisplay(TestCase):
 		row = SimpleNamespace(status="Approved", docstatus=2, get=lambda _field: None)
 		self.assertEqual(api.status_display(row, None, {}), ("Reversed", None))
 
-	def test_without_a_workflow_the_status_is_styled_from_the_default_map(self):
+	def test_without_a_workflow_the_status_is_styled_from_the_styles_given(self):
 		row = SimpleNamespace(status="Rejected", docstatus=0, get=lambda _field: None)
-		self.assertEqual(api.status_display(row, None, {}), ("Rejected", "Danger"))
+		self.assertEqual(api.status_display(row, None, {"Rejected": "Danger"}), ("Rejected", "Danger"))
 
 	def test_with_a_workflow_the_state_and_the_sites_own_style_win(self):
 		active = workflow(["Awaiting HR"], [], state_field="workflow_state")
@@ -484,6 +517,23 @@ class TestStatusDisplay(TestCase):
 		self.assertEqual(
 			api.status_display(row, active, {"Awaiting HR": "Warning"}), ("Awaiting HR", "Warning")
 		)
+
+
+class TestOutcomeStyles(TestCase):
+	"""Without a Workflow, an option is coloured by what it does, not by its name."""
+
+	def test_the_shipped_options(self):
+		with_status(self)
+		with_settings(self)
+		self.assertEqual(
+			api.outcome_styles(),
+			{"Pending": None, "Approved": "Success", "Rejected": "Danger", "Withdrawn": "Inverse"},
+		)
+
+	def test_a_sites_own_vocabulary_by_the_same_rule(self):
+		with_status(self, options="\nRaised\nAccepted\nDeclined", default="Raised")
+		with_settings(self, change_request_applying_outcome="Accepted")
+		self.assertEqual(api.outcome_styles(), {"Raised": None, "Accepted": "Success", "Declined": "Danger"})
 
 
 class TestNormalized(TestCase):

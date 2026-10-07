@@ -13,17 +13,23 @@ takes them from a `Locale`, built by `for_company` from this site's data:
 * Commons Settings' Bikram Sambat switch. Only where it is on does the schema
   offer `"BS"` as a calendar and the prompt explain it; elsewhere every date is
   asked for in the Gregorian calendar, and `"AD"` is the only answer allowed.
-* Claude Settings' Additional Instructions, which `finish` puts after the
-  app's own rules, for whatever this site's documents do that no app could
-  know.
+* Document Capture Settings' Additional Instructions, which `finish` puts
+  after the app's own rules, for whatever this site's documents do that no app
+  could know.
 
-The tax terms are Claude Settings' Tax ID Name and Withholding Tax Name where
-the site has set them, and otherwise derived from the country (`TAX_TERMS`),
+The tax terms are Document Capture Settings' Tax ID Name and Withholding Tax
+Name where the site has set them, and otherwise derived from the country (`TAX_TERMS`),
 which knows only a few; anywhere else the prompt says "tax registration
 number" and "withholding tax", which read correctly anywhere.
 
 Every function that writes prompt text is pure: it takes a `Locale` and returns
 a string or a schema, so the prompts are tested without a site.
+
+It lives here rather than beside the Claude client because it reads this site's
+doctypes (Company, Commons Settings, Document Capture Settings), which an
+integration never does (`commons.api_integrations`). Bank statement import
+(`commons.banking.statement_import`) borrows it, as it borrows Document
+Capture's way of reading a scan.
 """
 
 import datetime
@@ -31,7 +37,7 @@ from dataclasses import dataclass
 
 import frappe
 
-from commons.api_integrations.claude import client
+from commons.document_capture import settings as capture_settings
 
 COMPANY = "Company"
 
@@ -42,8 +48,8 @@ NEPAL = "Nepal"
 
 # What a country calls its tax registration number and the tax a buyer
 # withholds from a payment, where that is well known. Only these are named in a
-# prompt, and only for a company in that country, unless Claude Settings names
-# the site's own (`tax_id_name`, `withholding_tax_name`), which win.
+# prompt, and only for a company in that country, unless Document Capture
+# Settings names the site's own (`tax_id_name`, `withholding_tax_name`), which win.
 TAX_TERMS = {
 	NEPAL: {"tax_id": "PAN or VAT number", "withholding": "TDS"},
 	"India": {"tax_id": "GSTIN or PAN", "withholding": "TDS"},
@@ -68,7 +74,7 @@ class Locale:
 	currency: str | None = None
 	bikram_sambat: bool = False
 	additional_instructions: str = ""
-	# Claude Settings' names for the tax terms, over the country's.
+	# Document Capture Settings' names for the tax terms, over the country's.
 	tax_id_name: str = ""
 	withholding_tax_name: str = ""
 
@@ -79,7 +85,7 @@ class Locale:
 	@property
 	def tax_terms(self) -> dict:
 		"""The country's terms from `TAX_TERMS`, each replaced by the site's own
-		where Claude Settings names one."""
+		where Document Capture Settings names one."""
 		terms = dict(TAX_TERMS.get(self.country or "", {}))
 		if self.tax_id_name.strip():
 			terms["tax_id"] = self.tax_id_name.strip()
@@ -106,9 +112,15 @@ def for_company(company: str | None = None) -> Locale:
 		country=values.get("country") or None,
 		currency=values.get("default_currency") or None,
 		bikram_sambat=settings.feature_enabled(settings.ENABLE_BIKRAM_SAMBAT),
-		additional_instructions=client.additional_instructions(),
-		**client.tax_terms(),
+		additional_instructions=_setting("additional_instructions"),
+		tax_id_name=_setting("tax_id_name"),
+		withholding_tax_name=_setting("withholding_tax_name"),
 	)
+
+
+def _setting(fieldname: str) -> str:
+	"""A Document Capture Settings text, trimmed; empty where unset."""
+	return (capture_settings.value(fieldname) or "").strip()
 
 
 def default_company() -> str | None:

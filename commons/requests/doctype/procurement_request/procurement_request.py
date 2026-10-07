@@ -83,7 +83,6 @@ class ProcurementRequest(Document):
 		items: DF.Table[ProcurementRequestItem]
 		justification: DF.SmallText | None
 		naming_series: DF.Literal["PRQ-.YYYY.-"]
-		rejection_reason: DF.SmallText | None
 		requested_by: DF.Link
 		requester_name: DF.Data | None
 		schedule_date: DF.Date

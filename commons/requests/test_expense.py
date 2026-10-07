@@ -20,9 +20,12 @@ something HRMS does to expense claims and not to leave:
 
 import json
 import logging
+from datetime import datetime
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
+
+import frappe
 
 from commons.requests import expense as api
 
@@ -78,8 +81,7 @@ class TestQueuePredicate(TestCase):
 		)
 		self.db.start()
 		self.addCleanup(self.db.stop)
-		# Opened up, as on the sites that ran this before it was a setting; the
-		# closed case patches over this.
+		# Opened up; the closed case patches over this.
 		self.open = patch.object(api, "_unassigned_open", return_value=True)
 		self.open.start()
 		self.addCleanup(self.open.stop)
@@ -174,6 +176,52 @@ class TestQueuePredicate(TestCase):
 			),
 		):
 			self.assertEqual(api.EXPENSES.pending_count(workflow([]), admin=False), 2)
+
+
+class TestHistory(TestCase):
+	"""What this user has already decided, which the History tab lists."""
+
+	def history(self, actions, comments):
+		"""`completed_by_session` with the two tables it reads stubbed, newest first."""
+
+		def get_all(doctype, **kwargs):
+			return [
+				frappe._dict(reference_name=name, at=datetime(2026, 1, day))
+				for name, day in (actions if doctype == "Workflow Action" else comments)
+			]
+
+		with (
+			patch.object(api.approvals.frappe, "get_all", side_effect=get_all) as read,
+			patch.object(
+				api.approvals.frappe, "session", SimpleNamespace(user="me@example.com"), create=True
+			),
+		):
+			return api.approvals.completed_by_session(api.EXPENSE_CLAIM), read
+
+	def test_a_decision_taken_as_the_named_approver_is_in_history(self):
+		"""The bug: no Workflow Action was ever completed for it, only a comment written."""
+		names, _read = self.history(actions=[], comments=[("HR-EXP-1", 3)])
+		self.assertEqual(names, ["HR-EXP-1"])
+
+	def test_both_records_are_merged_newest_first_and_once_each(self):
+		names, _read = self.history(
+			actions=[("HR-EXP-2", 5), ("HR-EXP-1", 1)],
+			comments=[("HR-EXP-3", 4), ("HR-EXP-2", 2)],
+		)
+		self.assertEqual(names, ["HR-EXP-2", "HR-EXP-3", "HR-EXP-1"])
+
+	def test_only_this_users_workflow_comments_on_this_doctype_are_read(self):
+		_names, read = self.history(actions=[], comments=[])
+		comment = next(call for call in read.call_args_list if call.args[0] == "Comment")
+		self.assertEqual(
+			comment.kwargs["filters"],
+			{
+				"reference_doctype": api.EXPENSE_CLAIM,
+				"comment_type": "Workflow",
+				"comment_email": "me@example.com",
+			},
+		)
+		self.assertEqual(comment.kwargs["limit_page_length"], api.approvals.HISTORY_SCAN)
 
 
 class TestDecisionVocabulary(TestCase):

@@ -1,58 +1,46 @@
-"""Document Capture Settings, read safely.
+"""Document Capture Settings, as the capture code reads them.
 
-The rules a site chooses for its captures: which kinds it takes in, and the
-extra words a supplier's name is matched without. Who sees a capture is the
+The rules a site chooses for its captures: which kinds it takes in, the extra
+words a supplier's name is matched without, and how many reads one person may
+have in an hour (`hourly_limit`), since every read is billed. Its Additional
+Instructions and tax terms are read by `commons.document_capture.locale`, for
+every document-reading prompt, bank statements included. Who sees a capture is the
 role permissions' (`commons.document_capture.capture`). Each kind's switch is
 named by the kind's own module (`ENABLE_FIELD`), and the kinds themselves are
 `capture.KINDS`; nothing here lists them.
 
-Read the way `commons.commons_core.settings._settings` reads Commons Settings:
-from the document cache, and as the defaults below between this app landing
-and the migrate that creates the doctype. The defaults are the rules as they
-were hard-coded, so a site that never opens the form behaves as it did.
+Read from the document cache. A never-saved Single loads with the doctype's
+own defaults (`Document.load_from_db`), so a site that never opens the form
+gets them without anything here restating them.
 """
 
 import re
 from functools import lru_cache
 
 import frappe
+from frappe.utils import cint
 
 SETTINGS = "Document Capture Settings"
 
-# The doctype's own defaults, for a site that has no doctype to read them from.
-# `test_capture` holds these equal to the JSON.
-DEFAULTS = {
-	"enable_purchase_invoices": 1,
-	"enable_expense_claims": 1,
-	"supplier_legal_words": "",
-}
-
 
 def _settings():
-	"""The cached settings document, or None between this app landing and its
-	migrate. See `commons.commons_core.settings._settings`, whose reasoning this
-	follows."""
-	try:
-		return frappe.get_cached_doc(SETTINGS)
-	except (ImportError, frappe.DoesNotExistError):
-		if frappe.db.exists("DocType", SETTINGS):
-			raise
-		return None
+	"""The cached settings document."""
+	return frappe.get_cached_doc(SETTINGS)
 
 
 def value(fieldname: str):
-	"""A setting, or its default where the site has no doctype yet.
-
-	A never-saved Single loads with its defaults already (`Document.load_from_db`),
-	so only the missing doctype needs `DEFAULTS`.
-	"""
-	doc = _settings()
-	return DEFAULTS.get(fieldname) if doc is None else doc.get(fieldname)
+	"""One setting."""
+	return _settings().get(fieldname)
 
 
 def enabled(kind) -> bool:
 	"""Whether this site captures `kind`, a module of `capture.KINDS`."""
 	return bool(value(kind.ENABLE_FIELD))
+
+
+def hourly_limit() -> int:
+	"""Reads one person may have in an hour; 0 for no limit."""
+	return max(cint(value("hourly_limit")), 0)
 
 
 def legal_words() -> frozenset[str]:

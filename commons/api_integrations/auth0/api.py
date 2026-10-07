@@ -1,4 +1,5 @@
-"""The ways in from outside: a Server Script, a desk button, the SPA.
+"""The ways in from outside: today a Server Script, and anything a site wires up
+over HTTP.
 
 Thin wrappers over `users`, and the reason they are separate from it is the
 first line of each: a permission check. `users` is the library -- callable from

@@ -199,13 +199,6 @@ class TestWhichFieldsTheRegisterUses(TestCase):
 			},
 		)
 
-	def test_before_migrate_there_are_no_settings_to_read(self):
-		self.assertIsNone(self.fields(None)["late_field"])
-		self.assertEqual(self.fields(None)["late_credit"], 1.0)
-		self.assertEqual(self.fields(None)["group_resolution"], "Programme")
-		self.assertEqual(self.fields(None)["leave_counts_as"], "Absent")
-		self.assertIsNone(self.fields(None)["course_plan"])
-
 	def test_a_field_the_doctype_lacks_is_blank(self):
 		"""A typo would otherwise be in the filter of every read the page makes."""
 		settings = configured(CONFIGURED, inactive_term_field="custom_retired")

@@ -70,34 +70,55 @@ def decision(value: str, style: str | None) -> dict:
 	return {"value": value, "style": style, "confirm": style != AFFIRMATIVE_STYLE}
 
 
-# How many of an approver's completed Workflow Actions the History tab reads. A
-# page is `PAGE_LENGTH` documents; several actions can name the same one.
+# How many of an approver's recorded decisions the History tab reads, from each
+# source. A page is `PAGE_LENGTH` documents; several decisions can name the same one.
 HISTORY_SCAN = 200
 
 
 def completed_by_session(doctype: str) -> list[str]:
-	"""Documents of `doctype` this user has already acted on through a Workflow.
+	"""Documents of `doctype` this user has already moved through a Workflow, newest first.
 
-	What somebody did is recorded nowhere else, and `completed_by` names them,
-	so a Workflow Action answers a History tab exactly. Deduplicated in order:
-	one document collects an action per transition, and a queue wants it once.
+	Two records of it, and neither is whole on its own. `apply_workflow` writes a
+	`Workflow` comment in the actor's session on every transition, which is the
+	one that names a decision taken as a document's own approver: a
+	`Workflow Action` is only marked `completed_by` when an open one was waiting
+	on one of the actor's roles, and a transition conditioned on the approver
+	field never left one (see `commons_core.workflow.names_in_movable_states`).
+	The Workflow Action is what still covers a transition `apply_workflow` handed
+	to the submission queue, which returns before the comment is written.
 
-	The most recent `HISTORY_SCAN` actions only. The table only grows, the
+	Merged by when each was recorded, and deduplicated in that order: one
+	document collects a decision per transition, and a queue wants it once.
+
+	The most recent `HISTORY_SCAN` of each only. Both tables only grow, the
 	History tab shows a page, and every name read here goes on into an `in`
 	filter -- a long-serving approver's whole record was read on every visit.
 	"""
+	user = frappe.session.user
 	actions = frappe.get_all(
 		"Workflow Action",
 		filters={
 			"reference_doctype": doctype,
 			"status": "Completed",
-			"completed_by": frappe.session.user,
+			"completed_by": user,
 		},
-		fields=["reference_name"],
+		fields=["reference_name", "modified as at"],
 		order_by="modified desc",
 		limit_page_length=HISTORY_SCAN,
 	)
-	return list(dict.fromkeys(row.reference_name for row in actions if row.reference_name))
+	comments = frappe.get_all(
+		"Comment",
+		filters={
+			"reference_doctype": doctype,
+			"comment_type": "Workflow",
+			"comment_email": user,
+		},
+		fields=["reference_name", "creation as at"],
+		order_by="creation desc",
+		limit_page_length=HISTORY_SCAN,
+	)
+	rows = sorted(actions + comments, key=lambda row: row.at, reverse=True)
+	return list(dict.fromkeys(row.reference_name for row in rows if row.reference_name))[:HISTORY_SCAN]
 
 
 class RequestType:
@@ -454,8 +475,7 @@ class RequestType:
 		Candidates are the requests parked in a state one of this user's roles
 		can move; which of them they may actually act on is `get_transitions` in
 		their own session, and a row it offers nothing for is not waiting on
-		them. History is what they have completed, which only a Workflow Action
-		records.
+		them. History is what they have moved -- see `completed_by_session`.
 		"""
 		state_field = self.state_field(workflow)
 		# Pending: the first page of what this user may actually move, found

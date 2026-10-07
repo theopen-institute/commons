@@ -14,9 +14,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
-from commons.api_integrations.claude import locale
 from commons.banking import statement_import
-from commons.document_capture import expense_claim, purchase_invoice
+from commons.document_capture import expense_claim, locale, purchase_invoice
 
 _logger = patch("frappe.logger", return_value=logging.getLogger(__name__))
 
@@ -216,11 +215,10 @@ class TestForCompany(TestCase):
 			patch.object(locale.frappe, "db", SimpleNamespace(exists=lambda doctype, name: name in values)),
 			patch.object(locale.frappe, "get_all", return_value=list(companies)),
 			patch("commons.commons_core.settings.feature_enabled", return_value=bs),
-			patch.object(locale.client, "additional_instructions", return_value=extra),
 			patch.object(
-				locale.client,
-				"tax_terms",
-				return_value=terms or {"tax_id_name": "", "withholding_tax_name": ""},
+				locale.capture_settings,
+				"value",
+				lambda field: {"additional_instructions": extra, **(terms or {})}.get(field),
 			),
 		):
 			return locale.for_company(company)
@@ -248,13 +246,14 @@ class TestForCompany(TestCase):
 		found = self.locale_of(default=None, companies=["A", "B"], bs=False)
 		self.assertEqual(found, locale.Locale())
 
-	def test_the_sites_tax_terms_come_from_claude_settings(self):
+	def test_the_sites_tax_terms_come_from_document_capture_settings(self):
 		found = self.locale_of(terms={"tax_id_name": "ABN", "withholding_tax_name": "PAYG"})
 		self.assertEqual((found.tax_id_name, found.withholding_tax_name), ("ABN", "PAYG"))
 
 
 class TestTheSitesTaxTerms(TestCase):
-	"""Claude Settings' Tax ID Name and Withholding Tax Name, over `TAX_TERMS`."""
+	"""Document Capture Settings' Tax ID Name and Withholding Tax Name, over
+	`TAX_TERMS`."""
 
 	def test_they_name_the_terms_where_the_country_has_none(self):
 		where = locale.Locale(country="Australia", tax_id_name="ABN", withholding_tax_name="PAYG withholding")
@@ -275,28 +274,47 @@ class TestTheSitesTaxTerms(TestCase):
 		self.assertEqual(locale.tax_id_name(USA), "tax registration number")
 		self.assertEqual(locale.tax_id_name(NEPAL), "PAN or VAT number (or other tax registration number)")
 
-	def test_claude_settings_has_the_fields(self):
+	def test_document_capture_settings_has_the_fields(self):
+		"""Theirs, and no longer Claude Settings': an integration reads no doctype
+		of the site's (`commons.api_integrations`)."""
 		import json
 		import os
 
 		from commons.api_integrations.doctype import claude_settings
+		from commons.document_capture.doctype import document_capture_settings
 
-		path = os.path.join(os.path.dirname(claude_settings.__file__), "claude_settings.json")
-		with open(path) as file:
-			fields = {field["fieldname"]: field["fieldtype"] for field in json.load(file)["fields"]}
-		self.assertEqual((fields["tax_id_name"], fields["withholding_tax_name"]), ("Data", "Data"))
+		def fieldtypes(module, name):
+			path = os.path.join(os.path.dirname(module.__file__), f"{name}.json")
+			with open(path) as file:
+				return {field["fieldname"]: field["fieldtype"] for field in json.load(file)["fields"]}
 
-	def test_the_client_reads_them_trimmed(self):
-		document = SimpleNamespace(
-			model="",
-			get_password=lambda *args, **kwargs: "",
-			get=lambda field: {"tax_id_name": " ABN ", "withholding_tax_name": None}.get(field),
+		capture = fieldtypes(document_capture_settings, "document_capture_settings")
+		self.assertEqual(
+			[capture[name] for name in ("additional_instructions", "tax_id_name", "withholding_tax_name")],
+			["Small Text", "Data", "Data"],
 		)
+		claude = fieldtypes(claude_settings, "claude_settings")
+		self.assertFalse({"additional_instructions", "tax_id_name", "withholding_tax_name"} & set(claude))
+
+	def test_they_are_read_trimmed(self):
+		stored = {
+			"additional_instructions": "  Bills are in NPR.\n",
+			"tax_id_name": " ABN ",
+			"withholding_tax_name": None,
+		}
 		with (
-			patch.object(locale.client.frappe, "db", SimpleNamespace(exists=lambda *args, **kwargs: True)),
-			patch.object(locale.client.frappe, "get_cached_doc", return_value=document),
+			patch.object(locale.capture_settings, "value", stored.get),
+			patch.object(
+				locale.frappe, "defaults", SimpleNamespace(get_user_default=lambda key: None), create=True
+			),
+			patch.object(locale.frappe, "get_all", return_value=[]),
+			patch("commons.commons_core.settings.feature_enabled", return_value=False),
 		):
-			self.assertEqual(locale.client.tax_terms(), {"tax_id_name": "ABN", "withholding_tax_name": ""})
+			found = locale.for_company()
+		self.assertEqual(
+			(found.additional_instructions, found.tax_id_name, found.withholding_tax_name),
+			("Bills are in NPR.", "ABN", ""),
+		)
 
 
 class TestANewSupplier(TestCase):

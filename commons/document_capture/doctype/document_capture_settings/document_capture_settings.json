@@ -10,7 +10,15 @@
   "column_break_kinds",
   "enable_expense_claims",
   "matching_section",
-  "supplier_legal_words"
+  "supplier_legal_words",
+  "reading_section",
+  "additional_instructions",
+  "tax_section",
+  "tax_id_name",
+  "column_break_tax",
+  "withholding_tax_name",
+  "limits_section",
+  "hourly_limit"
  ],
  "fields": [
   {
@@ -47,12 +55,58 @@
    "fieldname": "supplier_legal_words",
    "fieldtype": "Small Text",
    "label": "Extra Legal Words"
+  },
+  {
+   "fieldname": "reading_section",
+   "fieldtype": "Section Break",
+   "label": "Reading"
+  },
+  {
+   "description": "Added to the end of every prompt that reads a document (invoices, receipts, bank statements), for this site's own conventions: how its suppliers print their bills, a local tax or currency the reading should know about, a calendar or number format its documents use. Plain sentences, as you would tell a bookkeeper. Leave it empty if the documents read correctly without it.",
+   "fieldname": "additional_instructions",
+   "fieldtype": "Small Text",
+   "label": "Additional Instructions"
+  },
+  {
+   "description": "What this site's documents call the tax registration number and the tax a buyer withholds from a payment. Leave them empty to use the terms of the company's country where the app knows them (Nepal, India), and plain \"tax registration number\" and \"withholding tax\" elsewhere.",
+   "fieldname": "tax_section",
+   "fieldtype": "Section Break",
+   "label": "Tax Terms"
+  },
+  {
+   "description": "For example \"VAT number\", \"ABN\" or \"USt-IdNr.\".",
+   "fieldname": "tax_id_name",
+   "fieldtype": "Data",
+   "label": "Tax ID Name"
+  },
+  {
+   "fieldname": "column_break_tax",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "For example \"TDS\" or \"WHT\".",
+   "fieldname": "withholding_tax_name",
+   "fieldtype": "Data",
+   "label": "Withholding Tax Name"
+  },
+  {
+   "fieldname": "limits_section",
+   "fieldtype": "Section Break",
+   "label": "Limits"
+  },
+  {
+   "default": "60",
+   "description": "How many scans one person may have read in an hour. Every read is billed to the Claude key, at a few cents a page; a person working through a pile of scans needs about one a minute. 0 means no limit.",
+   "fieldname": "hourly_limit",
+   "fieldtype": "Int",
+   "label": "Reads per Person per Hour",
+   "non_negative": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-01 20:00:00.000000",
+ "modified": "2026-10-07 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Document Capture",
  "name": "Document Capture Settings",

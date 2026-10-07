@@ -20,7 +20,8 @@ token out.
 The scopes to grant the machine-to-machine application in the Auth0 dashboard
 are the ones the actions in use require -- `create:users` and `read:users` to
 make accounts (both, for the reason `commons.api_integrations.auth0.users.ensure` gives),
-`update:users` to change them, `delete:users` to remove them.
+`update:users` to change them, `delete:users` to remove them,
+`create:user_tickets` for password links.
 """
 
 from frappe.model.document import Document

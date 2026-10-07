@@ -93,3 +93,16 @@ class TestRules(TestCase):
 	def test_defaults_are_valid(self):
 		for r in rules.DEFAULT_RULES:
 			rules.normalise(r)
+
+	def test_a_custom_role_is_known_by_its_page_or_report(self):
+		"""Named by a hash, different on every site; one per page or report."""
+		r = next(rules.normalise(r) for r in rules.DEFAULT_RULES if r["doctype"] == "Custom Role")
+		here = records.record_key("a1b2c3", {"page": "commons-banking"}, r)
+		there = records.record_key("d4e5f6", {"page": "commons-banking"}, r)
+		self.assertEqual(here, there)
+		report = records.record_key("a1b2c3", {"report": "Contact Hours Audit"}, r)
+		self.assertNotEqual(here, report)
+
+	def test_a_custom_role_comes_after_reports(self):
+		order = [r["doctype"] for r in rules.DEFAULT_RULES]
+		self.assertLess(order.index("Report"), order.index("Custom Role"))

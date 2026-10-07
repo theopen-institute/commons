@@ -8,12 +8,7 @@ site's own fields the register stores what Education has no field for:
 `register_fields`, which is the page's to call.
 
 Its settings are the Attendance tab of `Commons Settings`, each field named
-with an `attendance_` prefix so it reads as the register's beside the rest. They
-were a Single of their own for a while, `Attendance Register Settings`; one
-settings form for the app's pages turned out easier to find than two. The code
-used to sit in a package called `education_extensions`, named after a module
-one site keeps its Custom DocTypes in, which is that site's own custom module
-now.
+with an `attendance_` prefix so it reads as the register's beside the rest.
 
 There was a good deal more here. An earlier version of the register assembled
 the whole page on the server: it resolved a term and a course into student
@@ -211,18 +206,17 @@ def choice(settings, setting: str, options: tuple, default: str) -> str:
 	form again, and nothing must mean what the register did before there was a
 	choice.
 	"""
-	stored = ((settings.get(setting) if settings else None) or "").strip()
+	stored = (settings.get(setting) or "").strip()
 	return stored if stored in options else default
 
 
 def valid_field(settings, setting: str, doctype: str, fieldtypes: frozenset) -> str | None:
 	"""The fieldname a setting names, or None if it names nothing usable on this site.
 
-	`settings` is None between this app landing and its migrate. A doctype the
-	site lacks -- no Education -- is None too, not an error: the register is not
-	offered there, and this must still answer.
+	A doctype the site lacks -- no Education -- is None, not an error: the
+	register is not offered there, and this must still answer.
 	"""
-	fieldname = ((settings.get(setting) if settings else None) or "").strip()
+	fieldname = (settings.get(setting) or "").strip()
 	if not fieldname or not apps.has_doctype(doctype):
 		return None
 	field = frappe.get_meta(doctype).get_field(fieldname)
@@ -238,7 +232,7 @@ def late_credit(settings) -> float:
 	which would quietly price every late arrival as an absence on a site that
 	never opened the form. A stored 0 is a school's real answer and is kept.
 	"""
-	stored = settings.get(LATE_CREDIT) if settings else None
+	stored = settings.get(LATE_CREDIT)
 	if stored is None or stored == "":
 		return DEFAULT_LATE_CREDIT
 	return min(max(flt(stored), 0.0), 1.0)

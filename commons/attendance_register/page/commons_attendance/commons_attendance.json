@@ -4,7 +4,7 @@
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-10-07 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Attendance Register",
  "name": "commons-attendance",
@@ -13,12 +13,6 @@
  "roles": [
   {
    "role": "System Manager"
-  },
-  {
-   "role": "Academics User"
-  },
-  {
-   "role": "Instructor"
   }
  ],
  "script": null,

@@ -38,19 +38,7 @@ PROCUREMENT_WORKFLOW = "Procurement Request Workflow"
 # when something submits a request without going through the workflow.
 WORKFLOW_STATES = (
 	{"state": "Draft", "style": "Primary", "doc_status": "0", "allow_edit": "Employee"},
-	{
-		"state": "Pending",
-		"style": "Warning",
-		"doc_status": "0",
-		"allow_edit": "Purchase User",
-		# Reopening brings a rejected request back here, so this is also where a
-		# rejection stops standing. Left alone, last time's reason would still be
-		# on the request the next time an approver turned it down. An empty
-		# `update_value` clears the field: `evaluate_workflow_value` reads any
-		# falsy value as None.
-		"update_field": "rejection_reason",
-		"update_value": "",
-	},
+	{"state": "Pending", "style": "Warning", "doc_status": "0", "allow_edit": "Purchase User"},
 	{"state": "Under Review", "style": "Info", "doc_status": "0", "allow_edit": "Expense Approver"},
 	{"state": "Approved", "style": "Success", "doc_status": "1", "allow_edit": "Purchase User"},
 	{"state": "Rejected", "style": "Danger", "doc_status": "0", "allow_edit": "Expense Approver"},
@@ -639,7 +627,7 @@ class TestProcurementApproval(ProcurementTestCase):
 			make_material_request(request.name)
 
 	def test_a_rejected_request_can_be_reopened(self):
-		"""Reopening clears the rejection, and the request is editable again.
+		"""Reopening brings a rejected request back, and it is editable again.
 
 		Skipped where the site's own chain has no such transition. This suite
 		runs against whatever workflow it finds -- `make_test_workflow` installs
@@ -652,7 +640,6 @@ class TestProcurementApproval(ProcurementTestCase):
 		self.require_transition("Rejected", "Reopen")
 		request = self.make_review_request()
 		frappe.set_user(self.approver)
-		request.db_set("rejection_reason", "Too expensive this quarter")
 		apply_workflow(request, "Reject")
 
 		frappe.set_user(self.procurement_user)
@@ -661,8 +648,6 @@ class TestProcurementApproval(ProcurementTestCase):
 		request.reload()
 		self.assertEqual(request.status, "Pending")
 		self.assertEqual(request.docstatus, 0)
-		# The rejection does not outlive the state it belongs to.
-		self.assertFalse(request.rejection_reason)
 
 		# And it can go round again.
 		apply_workflow(request, "Send for Review")

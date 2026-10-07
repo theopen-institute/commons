@@ -44,19 +44,20 @@ Neither path has a role name behind it here.
 """
 
 import frappe
+from frappe.utils import cint
 
 from commons.commons_core import workflow as wf
 from commons.self_service import registry
 from commons.self_service.doctype.record_change_request.record_change_request import (
 	DOCTYPE,
 	applying_outcome,
+	default_status,
 	requester_of,
 	self_approval_allowed,
 	status_options,
 )
 
-# How many rows a queue returns. The badge counts to the same ceiling, so it
-# never promises more than the page will show.
+# How many requests a list returns.
 PAGE_LENGTH = 20
 
 # What a request may set. Server-owned on purpose: `reference_name` is resolved
@@ -71,11 +72,11 @@ REQUEST_FIELDS = ("changes", "reason", "request_type", "reference_name")
 # state it could state a "before" that was never true.
 CHANGE_ROW_FIELDS = ("fieldname", "proposed_value")
 
-# What a queue row carries. Server-owned, so a field that turns out to need a
+# What a request row carries. Server-owned, so a field that turns out to need a
 # permlevel or a rename is changed in one place.
 LIST_FIELDS = [
 	"name",
-	# What the request asked for. Without it a queue cannot tell a deletion from
+	# What the request asked for. Without it a list cannot tell a deletion from
 	# a correction, and a page cannot mark the record somebody wants removed.
 	"request_type",
 	"reference_doctype",
@@ -91,26 +92,20 @@ LIST_FIELDS = [
 	"modified",
 ]
 
-# How an outcome reads when no Workflow is styling it -- its colour and nothing
-# else: which outcome applies a request is Commons Settings' to say, not a
-# style's. The names are Frappe's own Workflow State styles, so a badge or a
-# button is coloured from one vocabulary whether a workflow is running or not.
-DEFAULT_DECISION_STYLES = {
-	"Approved": "Success",
-	"Rejected": "Danger",
-	"Withdrawn": "Inverse",
-	"Reversed": "Inverse",
-}
+# How an outcome reads when no Workflow is styling it, by what it *does* rather
+# than what it is called: the applying outcome, the requester's own, or any
+# other decision. The values are Frappe's own Workflow State styles, so a badge
+# or a button is coloured from one vocabulary whether a workflow is running or
+# not. Under a Workflow the site's own state styles are the answer instead.
+APPLYING_STYLE = "Success"
+REQUESTER_STYLE = "Inverse"
+DECISION_STYLE = "Danger"
 
-# Under a Workflow, which outcome is the affirmative one, and so the only one a
-# page may apply without asking twice. Read off the style rather than the name,
-# so a workflow that calls its approval something else still gets one solid
-# button. Without a Workflow the affirmative one is the applying outcome.
-AFFIRMATIVE_STYLE = "Success"
-
-# Status options that are the requester's own to choose, not a reviewer's: a
-# withdrawal is somebody taking their own request back, so it is never offered
-# as a decision on someone else's.
+# Without a Workflow, the doctype's own Status options that are the requester's
+# to choose, not a reviewer's: a withdrawal is somebody taking their own request
+# back, so it is never offered as a decision on someone else's. The doctype's
+# vocabulary, used only where no Workflow runs -- with one, what a requester may
+# do is whatever transitions the Workflow lets them take.
 REQUESTER_OUTCOMES = ("Withdrawn",)
 
 
@@ -124,27 +119,22 @@ def initial_state(workflow) -> str:
 
 	Derived rather than named: a workflow's first state is the one Frappe assigns
 	a document that arrives without one, and without a workflow it is the `status`
-	field's own default. Both queues and the badge are predicated on this, so a
+	field's own default (its first option where it has none -- see
+	`default_status`). Both of the owner's lists are predicated on this, so a
 	site that renames the state renames it once.
 	"""
 	if workflow and workflow.states:
 		return workflow.states[0].state
-	return frappe.get_meta(DOCTYPE).get_field("status").default or "Pending"
+	return default_status()
 
 
 def _may_review() -> bool:
-	"""Whether this user has a review queue at all.
+	"""Whether this user may decide change requests at all, on a site with no Workflow.
 
-	The submit right, with or without a workflow -- which is where this
-	deliberately differs from leave. There, a workflow may route an application
-	back to its author without deciding it, so gating on submit would hide the
-	page from people a site added those states for. Here approval *is* the
-	submission by construction (see `RecordChangeRequest.on_submit`), so every
-	transition that settles anything needs submit, and the two answers coincide.
-
-	Gating on "holds a role some transition is open to" would be wrong here for a
-	further reason: `Withdraw` is open to `Employee`, so every employee on the
-	site would be told they have a review queue.
+	The submit right, because approval *is* the submission by construction (see
+	`RecordChangeRequest.on_submit`). Not "holds a role some transition is open
+	to": `Withdraw` is open to `Employee`, so every employee would read as a
+	reviewer.
 	"""
 	return bool(frappe.has_permission(DOCTYPE, "submit"))
 
@@ -155,45 +145,16 @@ def _queue_filters(decided: bool, doctype: str | None = None) -> dict:
 	`docstatus` alone will not do: an approved request is docstatus 1, but a
 	rejected or withdrawn one stays at 0 -- that is what makes it amendable rather
 	than dead. So the predicate is the state, and the state it compares against is
-	derived (see `initial_state`) rather than spelled.
+	derived (see `initial_state`) rather than spelled -- and so is the column it
+	is kept in, which under a Workflow is the Workflow's state field.
 	"""
-	state = initial_state(change_workflow())
-	filters = {"status": state} if not decided else {"status": ["!=", state]}
+	workflow = change_workflow()
+	field = wf.state_field(workflow)
+	state = initial_state(workflow)
+	filters = {field: state} if not decided else {field: ["!=", state]}
 	if doctype:
 		filters["reference_doctype"] = doctype
 	return filters
-
-
-def _pending_count(doctype: str | None = None) -> int:
-	"""The badge. Capped the way the queue is, so the two agree."""
-	workflow = change_workflow()
-	if workflow:
-		return len(_actionable(workflow, doctype))
-	return len(
-		frappe.get_list(
-			DOCTYPE,
-			filters=_queue_filters(decided=False, doctype=doctype),
-			pluck="name",
-			limit_page_length=PAGE_LENGTH,
-		)
-	)
-
-
-def _actionable(workflow, doctype: str | None = None) -> dict[str, list[dict]]:
-	"""The first page of open requests this reviewer may move, oldest first, with the moves.
-
-	Found before the page is cut, not after: a transition's own condition can put
-	most open requests out of this reviewer's reach, and filtering a cut page left
-	it empty while theirs sat further down. See `wf.first_actionable`.
-	"""
-	names = frappe.get_list(
-		DOCTYPE,
-		filters=_queue_filters(decided=False, doctype=doctype),
-		pluck="name",
-		order_by="creation asc",
-		limit_page_length=0,
-	)
-	return wf.first_actionable(DOCTYPE, names, workflow, PAGE_LENGTH)
 
 
 def decision_vocabulary(workflow) -> list[dict]:
@@ -202,31 +163,63 @@ def decision_vocabulary(workflow) -> list[dict]:
 	With a workflow the outcomes are its actions and the styling is the site's: an
 	action reads as the Workflow State it leads to. Without one they are the
 	`status` field's options less the state a request starts in and less the
-	requester's own (`REQUESTER_OUTCOMES`), coloured by
-	`DEFAULT_DECISION_STYLES`.
+	requester's own (`REQUESTER_OUTCOMES`), coloured by what each does (see
+	`outcome_styles`).
 
 	`confirm` travels with the outcome rather than being inferred from its colour
 	by whoever draws the button. Whether an irreversible choice deserves a second
 	look is policy, and a site that adds an outcome should not have to know that a
-	page somewhere decides that by reading a CSS variant. Without a workflow the
-	one outcome that needs no second look is the applying one -- and where the
-	setting naming it is wrong, none is, and deciding says why.
+	page somewhere decides that by reading a CSS variant. The one outcome that
+	needs no second look is the one that applies the request: under a workflow,
+	an action into a state the site gives docstatus 1 (approval is the
+	submission); without one, the applying outcome Commons Settings names --
+	and where the setting naming it is wrong, none is, and deciding says why.
 	"""
 	if workflow:
 		styles = wf.state_styles(workflow)
+		applying = _applying_states(workflow)
 		return [
-			_decision(row["action"], style, affirmative=style == AFFIRMATIVE_STYLE)
+			_decision(row["action"], styles.get(row["next_state"]), affirmative=row["next_state"] in applying)
 			for row in wf.unique_actions(workflow.transitions)
-			for style in [styles.get(row["next_state"])]
 		]
 
 	state = initial_state(None)
 	applying = applying_outcome(strict=False)
+	styles = outcome_styles(applying)
 	return [
-		_decision(option, DEFAULT_DECISION_STYLES.get(option), affirmative=option == applying)
+		_decision(option, styles.get(option), affirmative=option == applying)
 		for option in status_options()
 		if option != state and option not in REQUESTER_OUTCOMES
 	]
+
+
+def _applying_states(workflow) -> set[str]:
+	"""The workflow's states that submit a request -- and so apply it."""
+	return {row.state for row in workflow.states if cint(getattr(row, "doc_status", 0)) == 1}
+
+
+def outcome_styles(applying: str | None = None) -> dict[str, str | None]:
+	"""How each Status option reads on a site with no Workflow, by what it does.
+
+	The applying outcome reads as one, the requester's own as a step back, the
+	state a request starts in as nothing in particular, and any other option as
+	a decision against. Derived from the options and the setting rather than
+	keyed by name, so a site that renames or adds an option is coloured by the
+	same rule as the shipped ones.
+	"""
+	applying = applying if applying is not None else applying_outcome(strict=False)
+	start = initial_state(None)
+	styles: dict[str, str | None] = {}
+	for option in status_options():
+		if option == start:
+			styles[option] = None
+		elif option == applying:
+			styles[option] = APPLYING_STYLE
+		elif option in REQUESTER_OUTCOMES:
+			styles[option] = REQUESTER_STYLE
+		else:
+			styles[option] = DECISION_STYLE
+	return styles
 
 
 def _decision(value: str, style: str | None, *, affirmative: bool) -> dict:
@@ -246,13 +239,16 @@ def status_display(row, workflow, styles: dict) -> tuple[str, str | None]:
 	approved with (see `RecordChangeRequest.on_cancel`, which deliberately leaves
 	the field alone), so `docstatus` 2 has to be read first or a reversed change
 	would go on reading as an approved one.
+
+	`styles` is the caller's: the Workflow's state styles, or `outcome_styles`
+	without one.
 	"""
 	if workflow:
 		state = row.get(wf.state_field(workflow))
 		return state or row.status, styles.get(state)
 	if row.docstatus == 2:
 		return frappe._("Reversed"), None
-	return row.status, DEFAULT_DECISION_STYLES.get(row.status)
+	return row.status, styles.get(row.status)
 
 
 @frappe.whitelist()
@@ -288,7 +284,7 @@ def get_self_service_nav() -> list[dict]:
 
 @frappe.whitelist()
 def get_change_permissions(doctype: str | None = None) -> dict:
-	"""What the session user may do in this section, plus any review backlog.
+	"""What the session user may do in this section.
 
 	`read` and `has_record` are deliberately two answers rather than one, because
 	they drive two different things and conflating them hides the section from
@@ -298,15 +294,13 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 	way `leaveCan.read` is -- and so whether the navigation should offer it. It is
 	not conditioned on owning a record: a login with no employee record behind it
 	still needs to be told that, and a section that simply vanishes leaves them
-	unable to tell a missing feature from a missing permission. It also has to
-	stay true for a reviewer who is not themselves an employee, or the review
-	queue goes with it.
+	unable to tell a missing feature from a missing permission. It also stays true
+	for a reviewer who is not themselves an employee.
 
 	`has_record` is whether they actually own one, which is the page's question:
 	it decides between the profile and the "your login isn't linked" notice, and
 	it gates the button that raises a request. Asked only when a `doctype` is
-	named -- the review queue spans every registered doctype and needs no such
-	answer.
+	named; a call naming none is asking about the section, not a record.
 
 	`proposable` is the field allowlist for that doctype, sent so the form offers
 	exactly what the save would accept. `decisions` is here so a reviewer's
@@ -314,7 +308,6 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 	styles them.
 	"""
 	workflow = change_workflow()
-	can_review = _may_review()
 	# `session_records`, not `session_record`: a policy may be one-per-owner
 	# (an employee record) or many (their bank accounts), and this endpoint
 	# answers for both. "Do they have any" is the question either way.
@@ -345,8 +338,6 @@ def get_change_permissions(doctype: str | None = None) -> dict:
 			and bool(registry.proposable_fields(doctype) if doctype else [])
 			and bool(frappe.has_permission(DOCTYPE, "create"))
 		),
-		"review": can_review,
-		"pending_reviews": _pending_count() if can_review else 0,
 		"proposable": registry.proposable_fields(doctype) if doctype else [],
 		# The page's whole field layout: sections in order, each field with the
 		# label, control, options and mandatory flag read from the doctype's own
@@ -408,17 +399,12 @@ def _record_access(doctype: str) -> str:
 	return "forbidden" if registry.record_exists(doctype) else "missing"
 
 
-def _decorate(requests: list, workflow, moves: dict | None = None) -> list:
-	"""Give each row its label, its style, its diff and the outcomes this user may apply.
-
-	`moves` is the transitions already worked out for these rows, when the caller
-	has them; otherwise they are asked here.
-	"""
-	styles = wf.state_styles(workflow)
-	changes = get_change_rows_for([row.name for row in requests])
-	if moves is None:
-		names = [row.name for row in requests]
-		moves = wf.permitted_transitions(DOCTYPE, names, workflow) if workflow else {}
+def _decorate(requests: list, workflow) -> list:
+	"""Give each row its label, its style, its diff and the outcomes this user may apply."""
+	styles = wf.state_styles(workflow) if workflow else outcome_styles()
+	names = [row.name for row in requests]
+	changes = get_change_rows_for(names)
+	moves = wf.permitted_transitions(DOCTYPE, names, workflow) if workflow else {}
 	can_submit = _may_review()
 	state = initial_state(workflow)
 	own_allowed = workflow or self_approval_allowed()
@@ -445,34 +431,18 @@ def _decorate(requests: list, workflow, moves: dict | None = None) -> list:
 	return requests
 
 
-def get_change_rows(parent: str) -> list[dict]:
-	"""The proposed field changes on one request, in the order they were entered.
+def get_change_rows_for(parents: list[str]) -> dict[str, list[dict]]:
+	"""The proposed field changes on each of `parents`, in the order they were entered.
 
-	A child table, so `get_list` on the parent cannot bring it back -- and a queue
-	is unreadable without it: the whole content of a request is its diff.
+	A child table, so `get_list` on the parent cannot bring it back -- and a list
+	of requests is unreadable without it: the whole content of a request is its
+	diff. One query for a whole page rather than one per request.
 
 	`get_list` with `parent_doctype`, which is what applies the request's own
 	permissions to its rows: `frappe.database.query` inner-joins the child to
-	`Record Change Request` and puts the parent's conditions on the join.
-
-	This was a `frappe.get_all`, and the docstring claimed `parent_doctype` was
-	what made it inherit the parent's permissions. It was not -- `get_all` is
-	`ignore_permissions=True`, and the argument only names the parent for the
-	query builder. The read was nevertheless safe, because `_decorate` passes
-	only parents that came back from its own `get_list`; but that made it safe
-	by caller rather than by construction, and this is a module-level function.
-	Now it is neither, and the claim the old docstring made is true.
-
-	The redundant join costs nothing worth counting.
-	"""
-	return get_change_rows_for([parent]).get(parent, [])
-
-
-def get_change_rows_for(parents: list[str]) -> dict[str, list[dict]]:
-	"""`get_change_rows` for several requests at once, by request name.
-
-	One query for a whole queue page rather than one per request, under the same
-	`parent_doctype` permission join.
+	`Record Change Request` and puts the parent's conditions on the join. So the
+	read is safe by construction rather than because every caller happens to
+	pass only parents it has already read.
 	"""
 	if not parents:
 		return {}
@@ -504,15 +474,13 @@ def get_my_changes(doctype: str | None = None, decided: int = 0) -> list[dict]:
 	against them, so nobody raises the same correction twice. What is settled is
 	history: why a request was turned down, and what the reviewer said about it.
 
-	The owner's history, not the reviewer's. `get_change_queue(decided=1)` also
-	returns settled requests, but it is the reviewer's record of what *they*
-	decided and needs submit on the doctype; this is what happened to requests
-	about *your* records, and needs nothing but owning them.
+	The owner's history, not the reviewer's: reviewers decide requests in the
+	desk. This is what happened to requests about *your* records, and needs
+	nothing but owning them.
 
-	One predicate either way -- `_queue_filters`, which the review queue and the
-	badge also read, so "open" cannot come to mean one thing here and another
-	there. Open is the state a request starts in, derived rather than named; see
-	`initial_state`.
+	One predicate either way -- `_queue_filters` -- so "open" means the same in
+	both lists. Open is the state a request starts in, derived rather than
+	named; see `initial_state`.
 
 	Filtered in the query rather than after it. Settled requests outnumber open
 	ones over time, so a Python filter behind `limit_page_length` would let the
@@ -584,48 +552,6 @@ def _my_records(doctype: str | None) -> set[tuple[str, str]]:
 		for row in registry.session_records(name, ["name"]):
 			owned.add((name, row.name))
 	return owned
-
-
-@frappe.whitelist()
-def get_change_queue(decided: int = 0, doctype: str | None = None) -> list[dict]:
-	"""Requests waiting on a decision, or ones already settled.
-
-	Here rather than in a list query the frontend builds, so "waiting" means one
-	thing: the page's rows, the badge counting them and the endpoint that writes
-	the decision all read `_queue_filters`, and none of them can drift into a
-	slightly different idea of what is open.
-
-	Every reviewer sees every open request rather than only ones that name them.
-	Unlike leave, a correction has no named approver on it -- there is nothing on
-	an employee record that says who checks their address -- so the queue belongs
-	to the responsible team, and `get_list` is what settles which of it this user
-	may read.
-	"""
-	decided = bool(frappe.utils.cint(decided))
-	frappe.has_permission(DOCTYPE, "read", throw=True)
-	workflow = change_workflow()
-
-	filters = _queue_filters(decided, doctype)
-	moves = None
-	if not decided and workflow:
-		# A request nobody can act on is not waiting on this user. Only meaningful
-		# with a workflow, where a transition's own condition may rule them out --
-		# and settled before the page is cut, not after.
-		moves = _actionable(workflow, doctype)
-		if not moves:
-			return []
-		filters = {"name": ["in", list(moves)]}
-
-	requests = frappe.get_list(
-		DOCTYPE,
-		filters=filters,
-		fields=_with_state_field(workflow),
-		# Oldest first while they are still decisions to make -- somebody has been
-		# waiting longest; most recently touched first once they are history.
-		order_by="modified desc" if decided else "creation asc",
-		limit_page_length=PAGE_LENGTH,
-	)
-	return _decorate(requests, workflow, moves)
 
 
 @frappe.whitelist(methods=["POST"])

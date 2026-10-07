@@ -92,6 +92,35 @@ class TestApproverRoles(TestCase):
 		)
 		self.assertEqual(roles, {"Budget Holder"})
 
+	def test_a_field_that_merely_starts_with_approver_routes_nobody(self):
+		"""The bug: any condition containing "approver" read as naming one."""
+		roles = wf.approver_roles(
+			workflow(
+				[("Review", 0), ("Done", 1)],
+				[
+					("Review", "Done", "Reviewer", "doc.approver_level > 2"),
+					("Review", "Done", "Clerk", "doc.approver_name == 'Alice'"),
+				],
+			)
+		)
+		# Neither names the approver, so it is read as a workflow naming nobody.
+		self.assertEqual(roles, {"Reviewer", "Clerk"})
+
+	def test_every_way_of_reading_the_field_counts(self):
+		for condition in (
+			"doc.approver == frappe.session.user",
+			"frappe.session.user == doc.get('approver')",
+			'doc["approver"] == frappe.session.user',
+		):
+			with self.subTest(condition=condition):
+				roles = wf.approver_roles(
+					workflow(
+						[("Review", 0), ("Done", 1)],
+						[("Review", "Done", "Reviewer", condition), ("Review", "Done", "Overrider", None)],
+					)
+				)
+				self.assertEqual(roles, {"Reviewer"})
+
 	def test_a_workflow_that_names_nobody_is_the_roles_that_approve(self):
 		"""No role name of this app's: whoever may move a request into a submitted state."""
 		roles = wf.approver_roles(

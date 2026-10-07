@@ -13,9 +13,9 @@ department tree is not that.
 All of it is optional. The fields and tables read here -- `Department Approver`,
 and the `expense_approvers` table HRMS adds to ERPNext's `Department` -- ship
 with HRMS, which is not in `required_apps`. On a site without it every function
-here answers "nobody" rather than throwing, and the one caller that is not
-itself HRMS-only (procurement's approver picker, which sorts the requester's
-own expense approvers first) simply offers them in name order.
+here answers "nobody" rather than throwing. Procurement's approver picker does
+not read this module: it offers everyone who may decide a request, by name
+(`procurement.get_procurement_approvers`).
 """
 
 import frappe
@@ -50,11 +50,11 @@ def session_employee_name() -> str | None:
 	A raw read, and narrowly so: it returns the caller's own id and nothing
 	else, so the only thing it can disclose is that somebody has created an
 	Employee row against the caller's own login. That is the same bounded
-	disclosure `api.session_employee_access` and `expense._session_employee_name`
-	make, and it is the right shape here for the reason that one gives -- a
-	permission-checked read answers `None` for a user whose `Employee` access is
-	gated, which would hand them an empty approver picker on a form they were
-	nonetheless allowed to open.
+	disclosure `api.session_employee_access` makes. A permission-checked read
+	answers `None` for a user whose `Employee` access is gated, which would hand
+	them an empty approver picker on a form they were nonetheless allowed to
+	open -- and, in the expense queue (`expense.Expenses.queue_predicate`), would
+	quietly put their own claims back into their own queue.
 
 	`session_employee_filters` rather than a bare `user_id`, so an employee who
 	has left is not still picking approvers: one definition of what makes an

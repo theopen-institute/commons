@@ -16,6 +16,8 @@ Nothing falls back to a conventional answer, either. A site with no workflow
 has no approvals queue, and one shaped differently is read, not corrected.
 """
 
+import re
+
 from commons.commons_core import workflow as wf
 
 # Spelled out rather than imported from the controller, which `procurement`
@@ -25,6 +27,16 @@ PROCUREMENT_REQUEST = "Procurement Request"
 # The field a transition condition names when the workflow routes a request to
 # one *person* rather than to a role. See `approver_roles`.
 APPROVER_FIELD = "approver"
+
+# A condition reading that field off the document, in any of the ways a
+# transition condition can: `doc.approver`, `doc.get("approver")` or
+# `doc["approver"]`. Not the bare word, which `doc.approver_name` or a field
+# like `doc.approver_level` would match without routing anything to a person.
+NAMES_APPROVER = re.compile(
+	r"\bdoc\s*(?:\.\s*{0}\b|\.\s*get\(\s*['\"]{0}['\"]|\[\s*['\"]{0}['\"]\s*\])".format(
+		re.escape(APPROVER_FIELD)
+	)
+)
 
 
 def _states_by_doc_status(workflow, doc_status: int) -> set[str]:
@@ -55,7 +67,9 @@ def approver_roles(workflow=None) -> set[str]:
 	if not workflow:
 		return set()
 	roles = {
-		row.allowed for row in workflow.transitions if row.allowed and APPROVER_FIELD in (row.condition or "")
+		row.allowed
+		for row in workflow.transitions
+		if row.allowed and NAMES_APPROVER.search(row.condition or "")
 	}
 	if roles:
 		return roles
