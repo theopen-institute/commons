@@ -4,7 +4,9 @@
 """The Desktop laid out from the rail, over plain data."""
 
 from unittest import TestCase
+from unittest.mock import patch
 
+from commons.better_navigation import desktop
 from commons.better_navigation.desktop import _artwork, desktop_icons
 
 
@@ -148,3 +150,13 @@ class TestDesktop(TestCase):
 		)
 		self.assertEqual(result["Members"].logo_url, "/files/members.png")
 		self.assertIsNone(result["Members"].app)
+
+	def test_a_failure_keeps_cores_icons_and_is_logged(self):
+		bootinfo = {"desktop_icons": ["core's"]}
+		with (
+			patch.object(desktop, "_replace_desktop_icons", side_effect=KeyError("boom")),
+			patch.object(desktop.frappe, "log_error") as log_error,
+		):
+			desktop.extend_bootinfo(bootinfo)
+		self.assertEqual(bootinfo["desktop_icons"], ["core's"])
+		log_error.assert_called_once()

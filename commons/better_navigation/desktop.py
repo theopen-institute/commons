@@ -52,7 +52,22 @@ LOOKS = ("app", "icon", "logo_url", "icon_image", "bg_color")
 
 
 def extend_bootinfo(bootinfo: "frappe._dict") -> None:
-	"""Swap core's Desktop icons for the rail's, when the switch is on."""
+	"""Swap core's Desktop icons for the rail's, when the switch is on.
+
+	Never at the cost of the desk. Core calls `extend_bootinfo` hooks
+	unguarded, so anything raised here -- a bug, data this did not foresee --
+	would stop every desk page from loading for everyone. Instead the error is
+	logged and the boot keeps core's own icons, so a broken Desktop looks like
+	the switch being off rather than like a broken site.
+	"""
+	try:
+		_replace_desktop_icons(bootinfo)
+	except Exception:
+		# Deferred: the boot is read on a GET, and the log is not worth a write there.
+		frappe.log_error(title="Desktop from Navigation Apps: kept core's icons", defer_insert=True)
+
+
+def _replace_desktop_icons(bootinfo: "frappe._dict") -> None:
 	from commons.commons_core import settings
 
 	if not settings.feature_enabled(settings.ENABLE_DESKTOP_FROM_NAVIGATION_APPS):
