@@ -98,7 +98,14 @@ def with_documents(
 	absent = set(absent)
 	test.enterContext(patch.object(claude, "available", return_value=claude_key))
 	# Document Capture Settings, unsaved: every kind on, as on a site that never opened them.
-	test.enterContext(patch("commons.document_capture.settings._settings", return_value=None))
+	test.enterContext(
+		patch(
+			"commons.document_capture.settings._settings",
+			return_value=frappe._dict(
+				enable_purchase_invoices=1, enable_expense_claims=1, supplier_legal_words=None
+			),
+		)
+	)
 	test.enterContext(patch.object(workspaces.settings, "title", return_value=app_title))
 
 	# The doctype existence checks in front of the queries. Patched as a whole

@@ -320,7 +320,7 @@ def save_app_modules(key: str, items) -> dict:
 
 def _owner_of(module_sidebars: dict):
 	"""A function from a module to the installed app it belongs to by default, or Other."""
-	module_apps = dict(frappe.get_all("Module Def", fields=["name", "app_name"], as_list=True))
+	module_apps = nav.module_apps()
 	installed = set(frappe.get_installed_apps())
 	hosts = nav.app_hosts()
 	app_by_module = {}
@@ -377,9 +377,10 @@ def payload(module_sidebars: dict | None = None) -> dict:
 
 	if module_sidebars is None:
 		module_sidebars = get_module_sidebars()
-	rail = nav.navigation_apps(module_sidebars=module_sidebars)
 	app_data = get_app_data()
+	# Read before the Apps screen rewrites `app_data`, as in the boot.
+	rail = nav.navigation_apps(module_sidebars=module_sidebars, app_data=app_data)
 	# The Apps screen as the boot would arrange it, or the desk's copy would be Frappe's.
 	if settings.feature_enabled(settings.ENABLE_DESKTOP_FROM_NAVIGATION_APPS):
-		apps_screen.arrange(app_data, rail, apps_screen._artwork())
+		apps_screen.arrange(app_data, rail)
 	return {"navigation_apps": rail, "app_data": app_data}

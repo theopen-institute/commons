@@ -10,17 +10,18 @@
  *         commons.pseudo_islands.mount_page(wrapper, "commons.banking");
  *
  * The methods below are develop's at beeaa33c6b, as functions over a state
- * object rather than methods on the page view, with three additions, each
+ * object rather than methods on the page view, with two additions, each
  * marked:
  *
  * - the page draws a pointer to the same screen in the app's frontend when
  *   Commons Settings has desk islands off, or when the Frappe underneath has
  *   no loader at all;
- * - the error state draws its own message, written when v16 had no
- *   `frappe.ui.empty_state` (16.50 has one);
  * - `onReplaceQuery`, so an island that keeps its view in the query string can
  *   write it back. develop's page host has no such event, and on v17 the
  *   island's filters simply stop reaching the URL.
+ *
+ * Both states the page draws in place of the island are Frappe 16.50's
+ * `frappe.ui.empty_state`, as develop's are.
  *
  * On v17 the page's type becomes "Frappe UI" with this island in its `island`
  * field, its script goes, and so does this file. See
@@ -153,50 +154,40 @@ function set_island_chrome(state) {
 function show_island_error(state, error) {
 	console.error(`could not mount the "${state.island}" island`, error);
 
-	// Changed: develop calls `frappe.ui.empty_state`, which v16 lacked before 16.50.
-	state.container
-		.empty()
-		.append(
-			empty_state(
-				__("This page has not been built"),
-				frappe.boot.developer_mode
-					? error.message
-					: __("Its assets are missing. Build the app that ships this page.")
-			)
-		);
+	state.container.empty().append(
+		frappe.ui.empty_state({
+			title: __("This page has not been built"),
+			description: frappe.boot.developer_mode
+				? error.message
+				: __("Its assets are missing. Build the app that ships this page."),
+		})
+	);
 }
 
 // Added: the rest of this file.
 
-/** Desk islands are off on this site: the screen is still in the frontend. */
+/**
+ * Desk islands are off on this site: the screen is still in the frontend.
+ *
+ * The way there is a button rather than `empty_state`'s link, which would open
+ * it in a new tab: the frontend is this screen's other home, not a reference.
+ */
 function show_switched_off(state) {
+	const fallback = state.fallback;
 	state.container.append(
-		empty_state(
-			__("This page is switched off"),
-			__("Desk islands are off in Commons Settings."),
-			state.fallback && {
-				label: __("Open it in {0}", [state.fallback]),
-				href: state.fallback,
-			}
-		)
+		frappe.ui.empty_state({
+			title: __("This page is switched off"),
+			description: __("Desk islands are off in Commons Settings."),
+			actions: fallback
+				? [
+						{
+							label: __("Open it in {0}", [fallback]),
+							onclick: () => window.location.assign(fallback),
+						},
+				  ]
+				: [],
+		})
 	);
-}
-
-/** develop's empty state, pared to what these two pages say. Text, not HTML. */
-function empty_state(title, message, link) {
-	const $state = $(`<div class="msg-box no-border text-center">
-		<p class="text-medium"></p>
-		<p class="text-muted small"></p>
-	</div>`);
-	$state.find(".text-medium").text(title);
-	$state.find(".text-muted").text(message);
-	if (link) {
-		$(`<a class="btn btn-default btn-sm"></a>`)
-			.attr("href", link.href)
-			.text(link.label)
-			.appendTo($state);
-	}
-	return $state;
 }
 
 /**

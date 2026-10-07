@@ -50,7 +50,7 @@
   {
    "columns": 2,
    "depends_on": "eval:doc.item_type == 'Link'",
-   "description": "Where the row goes: a path on this site, such as <b>/app/todo</b>, or a full web address. It opens outside the Commons pages, so a site can put anything it has in a workspace without code.",
+   "description": "Where the row goes: a path on this site, such as <b>/desk/todo</b>, or a full web address. It opens outside the Commons pages, so a site can put anything it has in a workspace without code.",
    "fieldname": "url",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -88,7 +88,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-10-01 18:00:00.000000",
+ "modified": "2026-10-07 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "name": "Commons Workspace Item",

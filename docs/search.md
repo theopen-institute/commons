@@ -93,7 +93,7 @@ and a check on each document before it is returned.
 
 ## What is not here
 
-Reports, workspaces, dashboards and desktop icons. The desk's bar offers all
+Reports, desk pages, workspaces and dashboards. The desk's bar offers all
 four; this one stops at doctypes and documents, which are the ways to reach a
 *record*. The desk is one click away for the rest.
 

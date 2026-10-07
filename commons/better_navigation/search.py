@@ -24,7 +24,7 @@ a row or moved it to another workspace gets the renamed row here too, and a row
 nobody configured is offered nowhere.
 
 *Whether this user may open one* is this module's, and it is the half the
-sidebar leaves to the browser -- see `shell/workspaces.py` on why. A search
+sidebar leaves to the browser -- see `workspaces.py` on why. A search
 result is not a sidebar row: it is offered to somebody who is not looking at the
 page and cannot see that it would be empty, so the permission answer has to be
 in before the row is sent rather than after.
@@ -39,7 +39,7 @@ searched for.
 The inward side is `desk_doctypes`, and it exists because the SPA has no boot.
 The desk builds "Employee List" and "New ToDo" in the browser out of
 `frappe.boot.user.can_read`, `can_search` and `can_create`, which are four
-arrays a page outside `/app` never receives. This sends the same four, so that
+arrays a page outside the desk never receives. This sends the same four, so that
 bar can build the same rows.
 
 Why this is part of the shell
@@ -50,7 +50,7 @@ from `workspaces.py` and `pages.py`, and what it may offer comes from
 `PAGE_ACCESS` beside them. A search box is a second way into the sidebar rather
 than a thing of its own, so it belongs with the sidebar -- and the dependency
 already ran this way round, with `pages.py` naming `_page_row` as its one
-caller and nothing under `shell/` importing back into here.
+caller and nothing else in `better_navigation/` importing back into here.
 """
 
 import unicodedata
@@ -88,7 +88,7 @@ PAGE_PATHS: dict[str, str] = {
 # `PAGES` maps the wording a System Manager picks in the desk to the key the
 # frontend resolves, and inverted it is exactly that wording back again -- which
 # is the right label here even though the sidebar's default label lives in the
-# frontend (see `shell/pages.py`). A person searching the desk is searching for
+# frontend (see `pages.py`). A person searching the desk is searching for
 # the row they chose in the desk.
 PAGE_LABELS: dict[str, str] = {key: label for label, key in PAGES.items()}
 
@@ -229,7 +229,7 @@ def desk_doctypes() -> dict:
 	are a document rather than a list.
 
 	Refused to anyone whose roles do not open the desk, and refused rather than
-	filtered: every row built from this is a `/app` route, so for that person the
+	filtered: every row built from this is a `/desk` route, so for that person the
 	whole answer is dead ends. It is also the honest reading of a whitelisted
 	endpoint that would otherwise enumerate a site's schema for a website user
 	who can reach none of it.

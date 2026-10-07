@@ -14,8 +14,7 @@ Each app on the rail, in rail order, as its Navigation App's Apps Screen setting
 - One Icon (and every app with no record): its own tile, under its rail title and logo.
 - Icon per Module: a tile for each of its modules, in its order -- and one for its
   frontend, first, if it has one -- each opening that module. A module's picture is its
-  row's Apps Screen Image, else artwork this app ships under the module's name
-  (`public/icons/desktop_icons/solid/`), else the letter Frappe draws.
+  row's Apps Screen Image, else the letter Frappe draws.
 - Hidden: no tile; it stays on the rail.
 
 An app taken off the rail is off the Apps screen too, and every other entry is turned off.
@@ -28,8 +27,6 @@ its rail app everywhere else.
 Off unless Commons Settings' "Enable Apps Screen from Navigation Apps" is ticked.
 """
 
-import os
-
 import frappe
 
 from commons.better_navigation import navigation_apps as nav
@@ -37,8 +34,6 @@ from commons.better_navigation import navigation_apps as nav
 ONE_ICON = "One Icon"
 PER_MODULE = "Icon per Module"
 HIDDEN = "Hidden"
-
-ARTWORK = "public/icons/desktop_icons/solid"
 
 
 def extend_bootinfo(bootinfo: "frappe._dict") -> None:
@@ -52,14 +47,14 @@ def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 	try:
 		rail = bootinfo.get("navigation_apps")
 		if rail is None:
-			rail = nav.navigation_apps(module_sidebars=bootinfo.module_sidebars)
-		arrange(bootinfo.app_data, rail, _artwork())
+			rail = nav.navigation_apps(module_sidebars=bootinfo.module_sidebars, app_data=bootinfo.app_data)
+		arrange(bootinfo.app_data, rail)
 	except Exception:
 		# The boot is read on a GET; a broken arrangement leaves Frappe's own screen.
 		frappe.log_error(title="Apps screen from Navigation Apps: kept Frappe's", defer_insert=True)
 
 
-def arrange(app_data: list[dict], rail: list[dict], artwork: dict[str, str]) -> None:
+def arrange(app_data: list[dict], rail: list[dict]) -> None:
 	"""Rewrite `app_data` in place so the Apps screen shows `rail` as its settings say."""
 	by_name = {entry.get("app_name"): entry for entry in app_data}
 	for entry in app_data:
@@ -85,13 +80,11 @@ def arrange(app_data: list[dict], rail: list[dict], artwork: dict[str, str]) -> 
 				)
 			for module in app["sidebars"]:
 				sequence += 1
-				picture = module.get("desktop_image") or artwork.get(_artwork_key(module["label"]))
-				picture = picture or artwork.get(_artwork_key(module["sidebar"]))
 				app_data.append(
 					_tile(
 						f"commons-module:{module['sidebar']}",
 						module["label"],
-						picture,
+						module.get("desktop_image"),
 						sequence,
 						dock=[{"link_type": "Sidebar", "link_to": module["sidebar"]}],
 					)
@@ -130,19 +123,4 @@ def _tile(
 		"on_apps_screen": True,
 		"sequence_id": sequence,
 		"dock": dock or [],
-	}
-
-
-def _artwork_key(name: str) -> str:
-	return frappe.scrub(name or "")
-
-
-def _artwork() -> dict[str, str]:
-	"""This app's module artwork, by scrubbed module name, as URLs."""
-	folder = frappe.get_app_path("commons", *ARTWORK.split("/"))
-	if not os.path.isdir(folder):
-		return {}
-	url = "/assets/commons/" + ARTWORK.removeprefix("public/")
-	return {
-		os.path.splitext(name)[0]: f"{url}/{name}" for name in os.listdir(folder) if name.endswith(".svg")
 	}

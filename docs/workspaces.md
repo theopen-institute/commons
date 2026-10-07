@@ -8,12 +8,16 @@ documents rather than code.
 
 ## The name
 
-**Commons Settings** is a single record with one field, **Title**. It is the
-line under the workspace in the sidebar header, and the browser tab's title.
-Left blank it reads *Commons*.
+**Commons Settings**' **Title** field, on its General tab, is the line under
+the workspace in the sidebar header, and the browser tab's title. Left blank it
+reads *Commons*.
 
 It is the app's name, not a workspace's: it stays put as you move between
 workspaces, which is what makes the bold line above it mean something.
+
+**Landing Page**, beside it, names the page that bare `/commons` opens, for
+anyone who has that page in one of their workspaces. Everyone else, and everyone
+when it is blank, lands on the first row of the first workspace they have.
 
 ## The workspaces
 
@@ -29,17 +33,21 @@ and the rows under it, in order.
 | **Order** | Where it sits in the switcher. Ties fall back to the title. |
 | **Rows** | The navigation itself. |
 
-Each row is one of two things:
+Each row is one of three types:
 
-- a **Page** this app ships — Announcements, Leave Request, Expense Claim or
-  Procurement;
+- a **Page** this app ships — Announcements, Account Balance, Leave Request,
+  Expense Claim, Procurement, Attendance, Bank Reconciliation or Document
+  Capture;
 - a **Self Service Record**, which is a record type already configured under
   that doctype, and which already says what it is called and what it is drawn
-  with.
+  with;
+- a **Link**: a **Label** and an **Address**, either a path on this site
+  starting with `/` or a web address starting with `http://` or `https://`. It
+  opens outside the Commons pages.
 
-A row may also carry a **Heading** and, for a page, its own **Label** and
-**Icon**. Consecutive rows sharing a heading are drawn as one collapsible group;
-a row with no heading stands on its own, above the groups. Overriding the label
+A row may also carry a **Heading** and its own **Label** and **Icon**.
+Consecutive rows sharing a heading are drawn as one collapsible group; a row
+with no heading stands on its own, above the groups. Overriding the label
 is how a site renames *Leave Request* to *Time off* without touching the page
 behind it.
 
@@ -50,7 +58,8 @@ available.
 
 ## The one-workspace rule
 
-A page, and a record type, belongs to exactly one workspace. The second
+A page, and a record type, belongs to exactly one workspace. Links are not
+held to this. The second
 workspace to claim one is refused on save, and told which workspace has it
 already.
 
@@ -72,7 +81,13 @@ answers to:
 - a **self-service row** is shown to everyone, and the page behind it explains
   an account with no record of its own — which is far more use than a row that
   quietly is not there;
-- **Announcements** is ungated.
+- **Attendance** appears for someone who may mark attendance, **Bank
+  Reconciliation** for someone who could reconcile in the desk, and **Document
+  Capture** for someone who may make the drafts it makes;
+- **Announcements**, **Account Balance** and **Links** are ungated.
+
+A page whose doctypes the site does not have — leave and expenses without HRMS,
+say — is dropped from every workspace, whatever the rows say.
 
 A workspace with nothing in it for you is not offered to you at all, and the
 switcher only lists the ones you can open. Someone who can open nothing anywhere
@@ -80,9 +95,12 @@ lands on the "Nothing to show you" page.
 
 ## A site that configures none of this
 
-There is no need to create a workspace. A site with none gets the one this app
-has always had — **Staff Member**: announcements, then every self-service record
-type under *Profile*, then leave, expenses and procurement under *Requests*.
+There is no need to create a workspace. A site with none gets a default one,
+named with the app's title: every self-service record type and then Account
+Balance under *Profile*; leave, expenses and procurement under *Requests*;
+Attendance under *Education*; Bank Reconciliation and Document Capture under
+*Accounts*. Each page is there only where the site has what it needs, and
+Announcements is not in it.
 Create a single workspace and it replaces that default entirely, so the first
 one you write should say everything you want in the sidebar.
 

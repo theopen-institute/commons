@@ -196,9 +196,11 @@ def installed_app_names() -> list[str]:
 def installed_app_options() -> list[dict]:
 	"""What the Installed App field offers: each installed app by title, then Other."""
 	frappe.has_permission(APP, "read", throw=True)
-	from commons.better_navigation.navigation_apps import _app_meta
+	from frappe.boot import get_app_data
 
-	meta = _app_meta()
+	from commons.better_navigation.navigation_apps import apps_from_app_data
+
+	meta = apps_from_app_data(get_app_data())[0]
 	return [
 		{"value": name, "label": (meta.get(name) or {}).get("title") or name}
 		for name in installed_app_names()

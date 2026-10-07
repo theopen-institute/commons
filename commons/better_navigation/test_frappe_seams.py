@@ -3,9 +3,11 @@
 
 """Every name in Frappe that Better Navigation hangs on, still there.
 
-Four kinds: the sidebar classes the rail patches and reads, the arrangement
+Five kinds: the sidebar classes the rail patches and reads, the arrangement
 editor `js/arrange.js` extends, the classes `scss/navigation_rail.scss` styles,
-and the order of calls the home page priority (`home_page.py`) slips into.
+the order of calls the home page priority (`home_page.py`) slips into, and the
+sidebar method and desktop page the Desk To Do widget
+(`public/js/desk_todos/`) mounts on.
 
 The desk half (`js/navigation_rail.js`, `js/user_menu.js`, `js/arrange.js`,
 `js/boot_arrangement.js`, `public/js/user_menu_rows.js`) patches Frappe's
@@ -42,6 +44,9 @@ SEAMS = {
 			"refresh_header",
 			"refresh_dock",
 			"create_user_menu",
+			# Desk To Do wraps the first and calls the other two.
+			"add_standard_items",
+			"make_sidebar_item",
 		],
 		"properties": [
 			"$items_container",
@@ -49,6 +54,9 @@ SEAMS = {
 			"sidebar_expanded",
 			"sidebar_header",
 			"dock",
+			# Desk To Do reads the guard around the wrapped call, and the band it adds to.
+			"standard_items_setup",
+			"$standard_items_band",
 		],
 		"strings": [
 			"workspace-selector",
@@ -98,7 +106,12 @@ SEAMS = {
 	},
 	("ui", "sidebar", "sidebar_header.html"): {"strings": ["title-container"]},
 	("ui", "sidebar", "sidebar_item.js"): {
-		"strings": ["TypeButton", "TypeSpacer", "section-break", "standard-sidebar-item"],
+		"strings": [
+			"frappe.ui.sidebar_item.TypeButton =",
+			"TypeSpacer",
+			"section-break",
+			"standard-sidebar-item",
+		],
 	},
 	("ui", "sidebar", "sidebar_item.html"): {
 		"strings": ["sidebar-item-container", "item-anchor", "sidebar-item-label"],
@@ -140,12 +153,22 @@ SEAMS = {
 # The rail's drawers open over the sidebar, one above its z-index.
 SCSS_SEAMS = {("desk", "sidebar.scss"): ["z-index: 1020"]}
 
+# The desktop page Desk To Do puts its navbar icon on: the event it listens for, and the
+# bell it is placed beside. Outside `public/js`, so listed apart from SEAMS.
+DESKTOP_SEAMS = {
+	("desk", "page", "desktop", "desktop.js"): [
+		'$(document).trigger("desktop_screen"',
+		'$(".desktop-notifications")',
+	],
+	("desk", "page", "desktop", "desktop.html"): ['class="desktop-notifications"'],
+}
+
 # Where Frappe's own classes may be defined or drawn: its stylesheets and the sidebar's scripts
 # and templates.
 CLASS_SOURCES = [("public", "scss"), ("public", "js", "frappe", "ui", "sidebar")]
 
 # What the server half calls in `frappe.boot`, and the boot keys the desk half reads.
-BOOT_FUNCTIONS = ["get_module_sidebars", "get_app_data", "get_app_rail_host_map"]
+BOOT_FUNCTIONS = ["get_module_sidebars", "get_app_data", "get_app_rail_host_map", "get_boot_module_app"]
 BOOT_KEYS = ["module_sidebars", "app_data"]
 
 
@@ -172,6 +195,14 @@ class TestFrappeSeams(TestCase):
 				with self.subTest(path=path, string=text):
 					self.assertTrue(text in source, f"{text!r} is not in {path}")
 
+	def test_desktop_page_still_offers_what_desk_todos_reads(self):
+		for parts, texts in DESKTOP_SEAMS.items():
+			path = os.path.join(*parts)
+			source = _source(*parts)
+			for text in texts:
+				with self.subTest(path=path, string=text):
+					self.assertTrue(text in source, f"{text!r} is not in {path}")
+
 	def test_boot_still_offers_what_the_rail_reads(self):
 		import frappe.boot
 
@@ -182,6 +213,15 @@ class TestFrappeSeams(TestCase):
 		for key in BOOT_KEYS:
 			with self.subTest(key=key):
 				self.assertIn(f"bootinfo.{key} =", source)
+
+	def test_app_data_is_in_the_boot_before_extend_bootinfo_runs(self):
+		"""The rail reads this user's `app_data` from the boot it extends (`navigation_apps.py`)."""
+		# `get_bootinfo` builds it (`load_desktop_data`), then the session runs the hooks.
+		self.assertIn("load_desktop_data(bootinfo", _source("boot.py"))
+		sessions = _source("sessions.py")
+		self.assertLess(
+			sessions.index("bootinfo = get_bootinfo()"), sessions.index('get_hooks("extend_bootinfo")')
+		)
 
 	def test_every_frappe_class_the_rail_styles_is_still_frappes(self):
 		"""A renamed class throws nothing: the rail only looks wrong. So each is looked for here."""

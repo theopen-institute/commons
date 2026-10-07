@@ -46,7 +46,7 @@ class TestToMenuItem(TestCase):
 				self.assertIsNone(to_menu_item(row(item_type="Action", action=action)))
 
 	def test_hidden_and_conditional_rows_are_left_out(self):
-		self.assertIsNone(to_menu_item(row(item_type="Route", route="/app", hidden=1)))
+		self.assertIsNone(to_menu_item(row(item_type="Route", route="/desk", hidden=1)))
 		self.assertIsNone(
-			to_menu_item(row(item_type="Route", route="/app", condition="eval: frappe.boot.developer_mode"))
+			to_menu_item(row(item_type="Route", route="/desk", condition="eval: frappe.boot.developer_mode"))
 		)

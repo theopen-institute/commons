@@ -1,14 +1,13 @@
 """The pages this app ships, as a workspace is allowed to name them.
 
-A workspace row is one of two things: a `Self Service Record`, which is
-configuration and says its own name, or one of the pages below, which is code.
-This module is the list of the second kind.
+A workspace row is one of three things: a `Self Service Record`, which is
+configuration and says its own name, a Link to an address the site chooses, or
+one of the pages below, which is code. This module is the list of the last kind.
 
 The values are the keys the API sends and `frontend/src/data/shell.ts` resolves
 -- into a route, into whether this user may open it at all, and, for the three
 request sections, into the badge an approver reads. The two halves have to agree
-on this set, the way `hooks.py` and the old frontend app registry had to agree
-on theirs.
+on this set.
 
 The dictionary keys are what a System Manager picks in the desk, and they are
 worded as the sidebar words the row rather than as the code spells it -- the
@@ -46,11 +45,9 @@ PAGES: dict[str, str] = {
 	"Document Capture": "capture",
 }
 
-# What the default workspace holds when a site has configured no workspace of
-# its own, in sidebar order: the ungated page first as a bare row, then
-# everything self-service under one heading, then the three things a person
-# raises under another. This is the sidebar this app hard-coded before
-# workspaces were documents, and reproducing it exactly is the point.
+# The pages the default workspace -- the one a site that has configured no
+# workspace of its own gets -- holds under its Requests heading, in sidebar
+# order: the three things a person raises. See `workspaces._default`.
 DEFAULT_REQUEST_PAGES: tuple[str, ...] = ("leave", "expense", "procurement")
 
 
@@ -59,8 +56,7 @@ DEFAULT_REQUEST_PAGES: tuple[str, ...] = ("leave", "expense", "procurement")
 # stands on, and whether this site has what the section needs at all -- so this
 # points at it rather than restating either.
 #
-# Announcements has no entry: the page is ungated and reads nothing, which is
-# why it is also where bare `/commons` lands.
+# Announcements has no entry: the page is ungated and reads nothing.
 PAGE_SECTIONS = {
 	"leave": LEAVE,
 	"expense": EXPENSES,

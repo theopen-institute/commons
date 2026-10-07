@@ -90,9 +90,8 @@ def workspaces() -> list[dict]:
 	"""Every workspace this site offers, in sidebar order.
 
 	The configured ones, or -- for a site that has configured none -- the single
-	default. Never empty in the sense that matters: a site with no self-service
-	and no workspaces still gets the default workspace with its ungated page in
-	it, which is the sidebar it had before any of this was configurable.
+	default, built from whatever self-service and pages the site has. That
+	default can itself hold no rows, on a site with neither.
 	"""
 	return _configured() or [_default()]
 

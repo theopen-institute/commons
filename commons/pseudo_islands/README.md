@@ -24,10 +24,10 @@ The shims, all in this folder:
 | `js/island_page.js` | develop's Frappe UI page host, from `pageview.js` | See below |
 | `scss/island_page.scss` | develop's `frappe/public/scss/desk/island_page.scss` | Nothing |
 
-`js/island_page.js` differs from develop's page host in three ways: it draws a pointer to
-`/commons/...` when the setting is off; its error state draws its own markup, written when v16
-had no `frappe.ui.empty_state` (Frappe 16.50 has one); and it passes `onReplaceQuery`, so a screen that keeps its view in the
-query string can write it back (develop's host has no such event).
+`js/island_page.js` differs from develop's page host in two ways: it draws a pointer to
+`/commons/...` when the setting is off; and it passes `onReplaceQuery`, so a screen that keeps
+its view in the query string can write it back (develop's host has no such event). Its error
+state is Frappe 16.50's `frappe.ui.empty_state`, as develop's is.
 
 Outside this folder, each shim is a line or two that names it:
 
@@ -81,7 +81,7 @@ dialog inside a shadow root. The patch was made against reka-ui 2.10.1. It appli
 4. In each of the three Pages, set **Type** to "Frappe UI" and **Island** to `commons.banking`,
    `commons.capture` or `commons.attendance`, export them, and delete their `.js` files.
 5. Remove `enable_pseudo_islands` from Commons Settings and `settings.py`, and remove
-   `Pseudo Islands` from `modules.txt`. `drop_stale_module_defs` removes its Module Def.
+   `Pseudo Islands` from `modules.txt`, then delete its Module Def by hand.
 6. Check whether develop's page host has gained a way for an island to write its query string.
    Until it does, the banking and attendance islands' filters still work but stop reaching the URL
    on the desk.

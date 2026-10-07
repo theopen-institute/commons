@@ -22,7 +22,8 @@ app, say -- and a site may add as many as it likes.
 One can also stand for an installed app, or for "Other", by naming it in
 `installed_app`. It then takes that app's place on the rail rather than
 appearing beside it: in its own Rail Order, under its own title, roles and
-mark, falling back to the app's hooks for the logo and the frontend. Its
+mark, falling back to the app's own logo and frontend as Frappe's Apps screen
+has them (see `apps_from_app_data`). Its
 modules table either adds to what the app already holds (and relabels
 anything it lists) or, set to Replace, is the whole list, and what the app
 would have held goes to Other. The table's row order is the order the rail
@@ -44,7 +45,7 @@ configuring is only ever a matter of claiming what should move.
 Which installed app a module belongs to is Frappe's answer, already in the
 boot: each `module_sidebars` entry's `app` (its sidebar's own, else where the
 module is placed -- `modules.txt`, or a custom module's `app_name`), with the
-Module Def's `app_name` as the fallback. A companion app's modules go to the
+boot's `module_app` as the fallback. A companion app's modules go to the
 app Frappe mounts it on (`app_hosts`). A module neither places is grouped
 under "Other", which is the honest answer and a hint that it wants an app or
 claiming.
@@ -83,8 +84,8 @@ OTHER_LOGO = "/assets/commons/images/commons-other-logo.svg"
 ADD = "Add"
 REPLACE = "Replace"
 
-# What a row of a Navigation App's modules table is. Anything else -- unset, or
-# "Sidebar" from before rows named modules -- is a module.
+# What a row of a Navigation App's modules table is. Unset is a module, the
+# field's default.
 MODULE = "Module"
 CATEGORY = "Category"
 SPACER = "Spacer"
@@ -104,8 +105,10 @@ def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 	instead of after it. Left off entirely while the switch is off: the rail's
 	script checks the same flag and installs nothing.
 
-	Runs after Frappe has built `module_sidebars` for this user, and reads the
-	modules from there, so the rail offers exactly what the desk would. The boot
+	Runs after Frappe has built `module_sidebars` and `app_data` for this user
+	(`load_desktop_data`, before any `boot_session` hook), and reads the modules
+	and the installed apps from there, so the rail offers exactly what the desk
+	would. The boot
 	is otherwise left as Frappe made it: which rail app each module is in is
 	written into the desk's copy by the browser (`js/boot_arrangement.js`),
 	which can write it again whenever Frappe replaces that copy.
@@ -118,7 +121,9 @@ def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 	if module_sidebars is None:
 		return
 	try:
-		bootinfo.navigation_apps = navigation_apps(module_sidebars=module_sidebars)
+		bootinfo.navigation_apps = navigation_apps(
+			module_sidebars=module_sidebars, app_data=bootinfo.get("app_data")
+		)
 	except Exception:
 		# The boot is every page load: a broken rail must not take the desk with it.
 		# Without `navigation_apps` the browser half installs nothing.
@@ -126,20 +131,30 @@ def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 
 
 def navigation_apps(
-	user: str | None = None, module_sidebars: dict | None = None, everything: bool = False
+	user: str | None = None,
+	module_sidebars: dict | None = None,
+	everything: bool = False,
+	app_data: list[dict] | None = None,
 ) -> list[dict]:
 	"""The rail for `user` (the session user by default), read from the site.
 
-	`module_sidebars` is the boot's, when there is a boot; otherwise Frappe
-	builds it again for the session user.
+	`module_sidebars` and `app_data` are the boot's, when there is a boot;
+	otherwise Frappe builds them again for the session user.
 	"""
 	user = user or frappe.session.user
 	if module_sidebars is None:
 		from frappe.boot import get_module_sidebars
 
 		module_sidebars = get_module_sidebars()
+	if app_data is None:
+		from frappe.boot import get_app_data
+
+		app_data = get_app_data()
+	app_meta, frontends = apps_from_app_data(app_data)
 	return resolve(
 		**_site_inputs(),
+		app_meta=app_meta,
+		frontends=frontends,
 		sidebars=_shells(module_sidebars),
 		hosts=app_hosts(),
 		user=user,
@@ -165,7 +180,11 @@ def app_hosts() -> dict[str, str]:
 def _site_inputs() -> dict:
 	"""What the rail is built from that is the same for everyone, cached.
 
-	Seven queries and a hooks read per desk load otherwise, for data that
+	Not the installed apps' titles, logos and frontends: Frappe gates those per
+	user (`add_to_apps_screen`'s `has_permission`), so they come from this
+	user's `app_data` instead (see `apps_from_app_data`).
+
+	Four queries per desk load otherwise, for data that
 	changes when an administrator edits the rail or installs an app. Kept in
 	`frappe.client_cache` (process-local, invalidated through redis) and dropped
 	by `clear_cache`, which the doc events on everything read here call. An app
@@ -178,9 +197,7 @@ def _site_inputs() -> dict:
 		generator=lambda: {
 			"configured": _configured(),
 			"installed_apps": frappe.get_installed_apps(),
-			"app_meta": _app_meta(),
-			"module_apps": dict(frappe.get_all("Module Def", fields=["name", "app_name"], as_list=True)),
-			"frontends": _frontends(),
+			"module_apps": module_apps(),
 		},
 	)
 
@@ -223,9 +240,11 @@ def resolve(
 	and its `apps_screen`.
 	`sidebars` is the shells this user may open, from `module_sidebars`
 	(`name`, `module`, `app`, `label`, `header_icon`; see `_shells`). The rest
-	say what an installed app is called and which app a module belongs to,
-	`frontends` where an installed app's own frontend is, outside the desk, and
-	`hosts` which installed app a companion app mounts on (see `app_hosts`).
+	say what an installed app is called (`app_meta`) and where its own frontend
+	is, outside the desk (`frontends`), both as this user's `app_data` has them;
+	which app a module belongs to (`module_apps`, keyed by scrubbed module name,
+	as the boot's `module_app` is); and which installed app a companion app
+	mounts on (`hosts`, see `app_hosts`).
 
 	Every entry carries `frontend` -- `{label, url}` or None -- beside its
 	`sidebars`, which are modules only, one per shell: a module may carry a
@@ -252,8 +271,11 @@ def resolve(
 	for app in configured:
 		entries = []
 		for row in app["sidebars"]:
-			if row_type(row) != MODULE:
+			kind = row_type(row)
+			if kind in (CATEGORY, SPACER):
 				entries.append(_marker(row))
+				continue
+			if kind != MODULE:
 				continue
 			shells = [s for s in by_module.get(row.get("module") or "", []) if s["name"] not in claimed]
 			# Gone since, out of this user's reach, or already claimed by an
@@ -367,7 +389,7 @@ def _app_name(app_name: str) -> str:
 
 
 def _default_logo(app_name: str | None, meta: dict) -> str | None:
-	"""An installed app's logo from its hooks, or Other's own."""
+	"""An installed app's logo as Frappe's Apps screen has it, or Other's own."""
 	return meta.get("logo") or (OTHER_LOGO if app_name == OTHER else None)
 
 
@@ -383,8 +405,9 @@ def is_desk_route(url: str) -> bool:
 	"""Whether a link leads into the desk rather than out of it.
 
 	Several apps point their apps screen entry at a desk page (Frappe HR at
-	`/desk/people`, Lending at `/app/lending`); that is the app's desk home, which
-	its sidebars already reach, not a frontend of its own.
+	`/desk/hr-setup`, Lending at `/app/lending`); that is the app's desk home,
+	which its sidebars already reach, not a frontend of its own. `/app` is still
+	one: 16.50's desk is `/desk`, and `/app` only redirects there.
 	"""
 	path = (url or "").strip().split("?")[0].split("#")[0].rstrip("/")
 	return path in ("/app", "/desk") or path.startswith(("/app/", "/desk/"))
@@ -395,7 +418,7 @@ def installed_app_of(sidebar: dict, module_apps: dict[str, str]) -> str | None:
 	if sidebar.get("app"):
 		return sidebar["app"]
 	module = (sidebar.get("module") or "").strip()
-	return module_apps.get(module)
+	return module_apps.get(frappe.scrub(module)) if module else None
 
 
 def default_app_of(
@@ -436,9 +459,11 @@ def _default_order(entries: list[dict], app_names: set[str]) -> list[dict]:
 
 
 def row_type(row) -> str:
-	"""What a sidebars table row is; anything unknown or unset is a module."""
-	kind = row.get("type")
-	return kind if kind in (CATEGORY, SPACER) else MODULE
+	"""What a sidebars table row is: its type, or a module when unset.
+
+	Any other value is no row the rail knows, and `resolve` skips it.
+	"""
+	return row.get("type") or MODULE
 
 
 def _marker(row: dict) -> dict:
@@ -546,29 +571,42 @@ def _shells(module_sidebars: dict) -> list[dict]:
 	]
 
 
-def _frontends() -> dict[str, str]:
-	"""Each installed app's own frontend, outside the desk, as its hooks declare it.
+def module_apps() -> dict[str, str]:
+	"""Which installed app each module belongs to, keyed by scrubbed module name.
 
-	The apps screen's `route` (`add_to_apps_screen`), the hook the title and logo
-	already come from. Code, not site data, so the rail describes an installed
-	app the same way on every site; a site that wants a different link sets it
-	on a Navigation App. Routes that only open a desk page are not frontends.
+	Frappe's own map, the one its boot carries as `module_app`: `modules.txt`,
+	then each custom Module Def's `app_name` where that app is installed.
 	"""
-	found: dict[str, str] = {}
-	for app_name in frappe.get_installed_apps():
-		screen = (frappe.get_hooks("add_to_apps_screen", app_name=app_name) or [{}])[0]
-		url = (screen.get("route") or "").strip()
+	from frappe.boot import get_boot_module_app
+
+	return get_boot_module_app()
+
+
+def apps_from_app_data(app_data: list[dict]) -> tuple[dict[str, dict], dict[str, str]]:
+	"""Each installed app's title and logo, and its own frontend, from Frappe's `app_data`.
+
+	`app_data` is what Frappe's Apps screen draws from, built per user
+	(`frappe.boot.get_app_data`): the title and logo from `add_to_apps_screen`,
+	else the `app_title` and `app_logo_url` hooks, and the route from
+	`add_to_apps_screen`, else `app_home` -- empty when the app's
+	`has_permission` turns this user away, so the rail never offers a frontend
+	Frappe would hide. Routes that only open a desk page are not frontends.
+
+	Read before the Apps screen is arranged from the rail (`apps_screen.py`),
+	which rewrites these entries.
+	"""
+	meta: dict[str, dict] = {}
+	frontends: dict[str, str] = {}
+	for entry in app_data or []:
+		app_name = entry.get("app_name")
+		if not app_name:
+			continue
+		logo = entry.get("app_logo_url")
+		# Frappe hands a hook's value over as the hook's list.
+		if isinstance(logo, list | tuple):
+			logo = next(iter(logo), None)
+		meta[app_name] = {"title": entry.get("app_title") or app_name, "logo": logo or None}
+		url = (entry.get("app_route") or "").strip()
 		if url and not is_desk_route(url):
-			found[app_name] = url
-	return found
-
-
-def _app_meta() -> dict[str, dict]:
-	"""What each installed app is called and its logo, the way the desk's boot works it out."""
-	meta = {}
-	for app_name in frappe.get_installed_apps():
-		screen = (frappe.get_hooks("add_to_apps_screen", app_name=app_name) or [{}])[0]
-		title = screen.get("title") or next(iter(frappe.get_hooks("app_title", app_name=app_name)), None)
-		logo = screen.get("logo") or next(iter(frappe.get_hooks("app_logo_url", app_name=app_name)), None)
-		meta[app_name] = {"title": title or app_name, "logo": logo}
-	return meta
+			frontends[app_name] = url
+	return meta, frontends

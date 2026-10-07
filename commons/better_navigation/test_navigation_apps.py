@@ -14,6 +14,7 @@ from unittest import TestCase
 from commons.better_navigation.navigation_apps import (
 	MODULE,
 	OTHER,
+	apps_from_app_data,
 	installed_app_of,
 	is_desk_route,
 	resolve,
@@ -50,7 +51,8 @@ SIDEBARS = [
 	sidebar("Assessments"),
 	sidebar("Helpdesk"),
 ]
-MODULES = {"Students": "education", "Assessments": "commons"}
+# Keyed by scrubbed module name, as Frappe's boot `module_app` is.
+MODULES = {"students": "education", "assessments": "commons"}
 
 
 def rail(
@@ -267,10 +269,8 @@ class SiteInputsAreCached(TestCase):
 			patch.object(nav.frappe, "client_cache", cache),
 			patch.object(nav.frappe, "local", SimpleNamespace(db=None)),
 			patch.object(nav, "_configured", side_effect=lambda: reads.append("configured") or []),
-			patch.object(nav, "_app_meta", return_value={}),
-			patch.object(nav, "_frontends", return_value={}),
+			patch.object(nav, "module_apps", return_value={}),
 			patch.object(nav.frappe, "get_installed_apps", return_value=["frappe"]),
-			patch.object(nav.frappe, "get_all", return_value=[]),
 		):
 			nav._site_inputs()
 			nav._site_inputs()
@@ -450,26 +450,41 @@ class TestFrontends(TestCase):
 			with self.subTest(url=url):
 				self.assertFalse(is_desk_route(url))
 
-	def test_read_from_hooks_not_desktop_icons(self):
-		from unittest.mock import patch
+	def test_read_from_frappes_app_data(self):
+		app_data = [
+			{
+				"app_name": "frappe",
+				"app_title": "Framework",
+				"app_route": "/app/build",
+				"app_logo_url": ["/f.svg"],
+			},
+			{
+				"app_name": "helpdesk",
+				"app_title": "Helpdesk",
+				"app_route": "/helpdesk",
+				"app_logo_url": "/h.svg",
+			},
+			{
+				"app_name": "hrms",
+				"app_title": "Frappe HR",
+				"app_route": "/desk/hr-setup",
+				"app_logo_url": None,
+			},
+			# Turned away by its `has_permission`: Frappe empties the route, so no frontend.
+			{"app_name": "lending", "app_title": "Lending", "app_route": "", "app_logo_url": "/l.svg"},
+		]
+		meta, frontends = apps_from_app_data(app_data)
+		self.assertEqual(frontends, {"helpdesk": "/helpdesk"})
+		self.assertEqual(meta["frappe"], {"title": "Framework", "logo": "/f.svg"})
+		self.assertEqual(meta["hrms"], {"title": "Frappe HR", "logo": None})
+		self.assertEqual(meta["lending"]["title"], "Lending")
 
-		from commons.better_navigation import navigation_apps as nav
-
-		hooks = {
-			("add_to_apps_screen", "helpdesk"): [{"route": "/helpdesk"}],
-			("add_to_apps_screen", "hrms"): [{"route": "/desk/people"}],
-			("add_to_apps_screen", "commons"): [{"route": "/commons"}],
-		}
-		with (
-			patch.object(
-				nav.frappe, "get_installed_apps", return_value=["frappe", "helpdesk", "hrms", "commons"]
-			),
-			patch.object(
-				nav.frappe, "get_hooks", side_effect=lambda hook, app_name: hooks.get((hook, app_name), [])
-			),
-			patch.object(nav.frappe, "get_all", side_effect=AssertionError("read the database")),
-		):
-			self.assertEqual(nav._frontends(), {"helpdesk": "/helpdesk", "commons": "/commons"})
+	def test_an_app_frappe_hides_offers_no_frontend(self):
+		_meta, frontends = apps_from_app_data(
+			[{"app_name": "commons", "app_title": "Commons", "app_route": ""}]
+		)
+		entry = next(e for e in rail(frontends=frontends) if e["key"] == "app:commons")
+		self.assertIsNone(entry["frontend"])
 
 
 class TestCategoriesAndSpacers(TestCase):
@@ -506,10 +521,13 @@ class TestCategoriesAndSpacers(TestCase):
 		entry = rail([app("Finance", "Accounting", category("  "), "Stock")])[0]
 		self.assertEqual(layout(entry), [("Accounting", None), ("Stock", "gap")])
 
-	def test_rows_from_before_the_column_and_sidebar_rows_are_modules(self):
+	def test_a_row_without_a_type_is_a_module(self):
 		self.assertEqual(row_type({"module": "Stock"}), MODULE)
 		self.assertEqual(row_type({"type": "", "module": "Stock"}), MODULE)
-		self.assertEqual(row_type({"type": "Sidebar", "module": "Stock"}), MODULE)
+
+	def test_a_row_of_no_known_type_is_skipped(self):
+		entry = rail([app("Finance", "Accounting", {"type": "Sidebar", "module": "Stock", "label": None})])[0]
+		self.assertEqual(layout(entry), [("Accounting", None)])
 
 
 class TestKeepUnseen(TestCase):

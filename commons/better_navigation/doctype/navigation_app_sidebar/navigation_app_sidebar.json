@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-10-07 15:00:00.000000",
+ "modified": "2026-10-07 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -42,7 +42,7 @@
    "in_list_view": 1,
    "label": "Module",
    "options": "Module Def",
-   "mandatory_depends_on": "eval:!doc.type || doc.type == \"Module\" || doc.type == \"Sidebar\"",
+   "mandatory_depends_on": "eval:!doc.type || doc.type == \"Module\"",
    "read_only_depends_on": "eval:doc.type == \"Category\" || doc.type == \"Spacer\""
   },
   {
@@ -59,7 +59,7 @@
    "fieldtype": "Attach Image",
    "label": "Apps Screen Image",
    "depends_on": "eval:doc.type != \"Category\" && doc.type != \"Spacer\"",
-   "description": "This module's tile on the Apps screen, when its app shows an icon per module. Upload it as a public file: a private one cannot show. Left blank, artwork this app ships under the module's name, else its first letter."
+   "description": "This module's tile on the Apps screen, when its app shows an icon per module. Upload it as a public file: a private one cannot show. Left blank, its first letter."
   }
  ],
  "permissions": []

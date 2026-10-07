@@ -15,10 +15,12 @@ than code:
 Navbar rows are written for the desk. A Route row is a URL and travels as one. An
 Action row is desk JavaScript (`frappe.ui.toolbar.show_about()`), and so is a
 row's Condition; the SPA has neither `frappe.ui` nor `frappe.boot` to run them
-against. The one Action that is really a URL -- `new_window('/app/...')`, which
-is how System Console is added -- is turned into one. Every other Action row,
-and every row with a Condition, is left out rather than drawn as an entry that
-does nothing, or shown to people the desk would hide it from.
+against. The one Action that is really a URL --
+`frappe.ui.toolbar.new_window('/app/...')`, which is how older Frappe added
+System Console -- is turned into one, for sites that still carry such a row;
+Frappe 16.50 no longer has `new_window`, so the desk itself cannot run it. Every
+other Action row, and every row with a Condition, is left out rather than drawn
+as an entry that does nothing, or shown to people the desk would hide it from.
 """
 
 import json
@@ -28,7 +30,8 @@ import frappe
 
 from commons.commons_core import settings
 
-# `frappe.ui.toolbar.new_window('/app/system-console')`, quoted either way.
+# `frappe.ui.toolbar.new_window('/app/system-console')`, quoted either way: a
+# row written for an older Frappe.
 NEW_WINDOW = re.compile(r"""^\s*frappe\.ui\.toolbar\.new_window\(\s*(['"])(?P<url>[^'"]+)\1\s*\)\s*;?\s*$""")
 
 

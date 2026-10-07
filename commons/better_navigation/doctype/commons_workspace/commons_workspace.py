@@ -1,18 +1,16 @@
 """One named section of this app's navigation, and the rows in it.
 
-The sidebar used to be a list written into `AppSidebar.vue` under a name written
-into `data/apps.ts`: one workspace, called Staff Member, holding announcements,
-the profile pages and the three request sections in that order. All of that is
-this document now, and a site may have as many as it likes.
+A site may have as many workspaces as it likes; with none, the sidebar is the
+default one `commons.better_navigation.workspaces` builds.
 
-What a workspace is made of is deliberately narrow. A row points either at a
-page this app ships -- the ones in `commons.better_navigation.pages` -- or at a
-`Self Service Record`, which is itself configuration and already says what it is
-called. Nothing else can be put in the sidebar, because nothing else is a page
-this app has.
+What a workspace is made of is deliberately narrow. A row is one of three
+types: a page this app ships -- the ones in `commons.better_navigation.pages` --
+a `Self Service Record`, which is itself configuration and already says what it
+is called, or a Link, a label and an address on this site or the web.
 
-Two rules are enforced here, and both are about the sidebar being able to answer
-a question it is asked constantly.
+Two rules are enforced here, and both are about the sidebar being able to
+answer a question it is asked constantly. (A Link's address is checked too; see
+`validate_link`.)
 
 *A page or a record type sits in one workspace.* The header names the workspace
 the page you are looking at belongs to, and the switcher takes you elsewhere; a
