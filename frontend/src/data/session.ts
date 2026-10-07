@@ -14,7 +14,7 @@ export interface UserInfo {
    *  Read by everything in this app that offers the desk, because for somebody
    *  whose roles do not open it every one of those is a dead end: half of what
    *  the search bar offers (doctype lists, new documents, the documents Global
-   *  Search finds, all of which open at `/app`), the Home crumb beside a page
+   *  Search finds, all of which open at `/desk`), the Home crumb beside a page
    *  title, and the desk destinations in the sidebar's menu. See
    *  `hasDeskAccess`. */
   desk_access: boolean

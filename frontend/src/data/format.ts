@@ -43,21 +43,6 @@ export function formatDateRange(
   return dateFormatter.formatRange(start, end)
 }
 
-type BadgeTheme = 'gray' | 'blue' | 'green' | 'amber' | 'red'
-
-export function statusTheme(status?: string | null): BadgeTheme {
-  switch (status) {
-    case 'Active':
-      return 'green'
-    case 'Suspended':
-      return 'amber'
-    case 'Left':
-      return 'red'
-    default:
-      return 'gray'
-  }
-}
-
 const currencyFormatters = new Map<string, Intl.NumberFormat>()
 
 function currencyFormatter(currency: string, digits: number): Intl.NumberFormat {

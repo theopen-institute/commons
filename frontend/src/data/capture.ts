@@ -335,9 +335,7 @@ export function useCreateExpenseClaim() {
 }
 
 /** The desk address of a document, for "open in desk" links. */
-export function deskUrl(doctype: string, name: string): string {
-  return `/app/${doctype.toLowerCase().replace(/ /g, '-')}/${encodeURIComponent(name)}`
-}
+export { deskFormUrl as deskUrl } from './desk'
 
 /* -------------------------------------------------------------------------- */
 /* The reader's drafts                                                         */

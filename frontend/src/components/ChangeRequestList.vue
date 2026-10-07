@@ -154,8 +154,12 @@ function withdraw(row: ChangeRequest, button: DecisionButton) {
 					decision: button.decision,
 				})
 				// Throwing keeps the dialog open and renders the reason inline.
-				if (!result) throw decision.error ?? new Error('Could not withdraw the request')
-				toast.success('Request withdrawn')
+				if (!result)
+					throw (
+						decision.error ??
+						new Error(`Could not ${button.label.toLowerCase()} the request`)
+					)
+				toast.success('Request updated')
 				emit('refresh')
 			} finally {
 				working.value = ''

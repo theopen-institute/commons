@@ -222,6 +222,7 @@ import {
 	type RecordField,
 } from '@/data/selfService'
 import { pluralise } from '@/data/format'
+import { deskFormUrl, deskListUrl, useDeskTarget } from '@/data/desk'
 import AppPageHeader from '@/components/AppPageHeader.vue'
 import ChangeRequestList from '@/components/ChangeRequestList.vue'
 import ProfileSection from '@/components/ProfileSection.vue'
@@ -269,6 +270,17 @@ const loadError = computed(
 	() => navError.value ?? source.permissionsError.value ?? source.recordsError.value
 )
 const notFound = computed(() => navLoaded.value && !navError.value && !nav.value)
+
+// "Open in desk" goes to what this page shows: the one record when there is
+// one, otherwise the list of this record type. Whatever the configuration
+// makes the page about -- nothing here assumes Employee.
+useDeskTarget(() => {
+	if (!doctype.value) return null
+	const [only, ...more] = recordsLoaded.value ? records.value : []
+	return only && !more.length
+		? deskFormUrl(doctype.value, only.name)
+		: deskListUrl(doctype.value)
+})
 const request = useRaiseRequest()
 
 const showNew = ref(false)

@@ -68,8 +68,6 @@ export interface SelfServicePermissions {
    *  records are there and the site is withholding them. */
   record_access: 'visible' | 'forbidden' | 'missing'
   request: boolean
-  review: boolean
-  pending_reviews: number
   /** Fieldnames the server will accept a proposal for. Empty for a record type
    *  this section only reads. */
   proposable: string[]
@@ -122,8 +120,6 @@ export const NO_PERMISSIONS: SelfServicePermissions = {
   has_record: false,
   record_access: 'missing',
   request: false,
-  review: false,
-  pending_reviews: 0,
   proposable: [],
   display: [],
   owner_field: null,
@@ -400,17 +396,15 @@ export function requestStatus(row: {
   return { label: row.status_label, theme: styleTheme(row.status_style) }
 }
 
-/** Wording, and only wording. Covers both routes the server can take: a
- *  Workflow sends action names, a site running none sends the target status. */
+/** Wording, and only wording, for the doctype's own Status options -- what a
+ *  site running no Workflow is offered. Under a Workflow the buttons are the
+ *  site's action names, as the site wrote them: guessing at what it called its
+ *  actions would be this app naming the site's process. An outcome not listed
+ *  keeps the server's name for it. */
 const DECISION_LABELS: Record<string, string> = {
-  Approve: 'Apply',
   Approved: 'Apply',
-  Reject: 'Decline',
   Rejected: 'Decline',
-  Withdraw: 'Withdraw',
   Withdrawn: 'Withdraw',
-  Reverse: 'Reverse',
-  Reversed: 'Reverse',
 }
 
 export function decisionButtons(

@@ -26,8 +26,8 @@ const router = useRouter()
 
 // The apps-screen tile lands here rather than on a page, because which page
 // this user can open is a permission call away -- so a component redirects, not
-// a route. Where it goes is the first row of the first workspace they have; see
-// `landingRoute`.
+// a route. Where it goes is the page Commons Settings names, or else the first
+// row of the first workspace they have; see `landingRoute`.
 watch(
 	landingRoute,
 	(destination) => {

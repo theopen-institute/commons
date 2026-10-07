@@ -134,10 +134,6 @@ export const reconciliationCan = computed(() => ({
   repayLoans: Boolean(canRepayCall.data?.has_permission),
 }))
 
-export const reconciliationPermissionsLoaded = computed(
-  () => canReconcileCall.isFinished && canRepayCall.isFinished,
-)
-
 /** Whether this reader reconciles, and whether that answer is in: what the
  *  page waits on before it draws. The sidebar row has the server's answer to
  *  the same question with the shell (`commons.better_navigation.pages.access`),
@@ -1331,9 +1327,7 @@ export function useAutoReconcile() {
 }
 
 /** The desk address of a document, for "open in desk" links. */
-export function deskUrl(doctype: string, name: string): string {
-  return `/app/${doctype.toLowerCase().replace(/ /g, '-')}/${encodeURIComponent(name)}`
-}
+export { deskFormUrl as deskUrl } from './desk'
 
 /* -------------------------------------------------------------------------- */
 /* Importing a statement                                                       */

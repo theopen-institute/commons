@@ -4,15 +4,16 @@ import path from 'path'
 /**
  * Its own config rather than a `test` block in `vite.config.js`.
  *
- * That file's first plugin is `frappe-ui/vite`, which reads doctype JSON out of
- * the bench and writes `src/types/doctypes.ts` when the config loads. A unit
- * test run has no business touching the bench, and on a checkout without one it
- * would be the thing that failed rather than the tests.
+ * That file's first plugin is `frappe-ui/vite`, which looks for the bench when
+ * the config loads (its proxy reads `common_site_config.json`, its build finds
+ * the app's output directory). A unit test run has no business touching the
+ * bench, and on a checkout without one it would be the thing that failed rather
+ * than the tests.
  *
  * What is tested here is deliberately narrow: the modules under `src/data` that
- * are pure — arithmetic and shaping, with nothing fetched. Those are the parts
- * that used to be Python and were pinned by a test suite there; see
- * `src/data/attendanceRegister.ts` for why they moved.
+ * are pure — arithmetic and shaping, with nothing fetched, each beside its
+ * `*.test.ts`. The attendance register's were Python, pinned by a test suite
+ * there; see `src/data/attendanceRegister.ts` for why they moved.
  */
 export default defineConfig({
   resolve: {

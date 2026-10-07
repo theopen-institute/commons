@@ -43,7 +43,6 @@ export interface ProcurementRequestRow {
   approver: string | null
   approver_name: string | null
   justification: string | null
-  rejection_reason: string | null
   /** Summed from the item rows by the server on every read — no stored column
    *  backs it, so a list query cannot filter or sort on it. */
   total_estimated_cost: number
@@ -186,8 +185,8 @@ export function useMyProcurementRequests() {
 /**
  * One group of an approval queue, with what its requests would cost together.
  *
- * Grouped by the field the site names in Commons Settings (`procurement_group_by`,
- * department by default) — or not at all, in which case the queue is one group
+ * Grouped by the field the site names in Commons Settings (`procurement_group_by`)
+ * — or, where it names none, not at all, in which case the queue is one group
  * with an empty `key` and no heading. Built by the server — see
  * `group_requests` — so the total is arrived at in one place by one rule.
  */

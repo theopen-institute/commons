@@ -15,13 +15,16 @@
 
 			<a
 				v-if="userMenu.session_defaults_settings && hasDeskAccess"
-				href="/app/session-default-settings"
+				:href="deskListUrl('Session Default Settings')"
 				class="inline-block text-sm text-ink-gray-6 underline"
 			>
 				Settings
 			</a>
 
-			<ErrorMessage v-if="failed" message="An error occurred while setting Session Defaults" />
+			<ErrorMessage
+				v-if="failed"
+				message="An error occurred while setting Session Defaults"
+			/>
 		</div>
 	</Dialog>
 </template>
@@ -31,6 +34,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { Dialog, ErrorMessage, toast, type DialogAction } from 'frappe-ui'
 import LinkControl from './LinkControl.vue'
 import { hasDeskAccess } from '@/data/session'
+import { deskListUrl } from '@/data/desk'
 import { saveSessionDefaults, savingSessionDefaults, userMenu } from '@/data/userMenu'
 
 const open = defineModel<boolean>('open', { required: true })

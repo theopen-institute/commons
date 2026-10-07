@@ -42,7 +42,7 @@ watch(isMobile, (mobile) => {
  * desk writes `sidebar-expanded` from `expand_sidebar`
  * (frappe/public/js/frappe/ui/sidebar/sidebar.js) as a bare `true`/`false`,
  * which is what vueuse's boolean serializer reads and writes too. The two
- * panels are served from one origin (`/app` and `/commons`) and sit in the
+ * panels are served from one origin (`/desk` and `/commons`) and sit in the
  * same place on the screen, so a person who has narrowed one has said what
  * they want of the other. Give it a key of its own to split them again.
  */

@@ -75,7 +75,7 @@
 					</p>
 				</div>
 
-				<!-- Grouped by the field the site chose (department by default), each
+				<!-- Grouped by the field the site chose, if it chose one, each
 				     with what its requests would cost together. An ungrouped queue
 				     is one group with no heading of its own. -->
 				<ul v-else class="space-y-8">
@@ -153,14 +153,6 @@
 									:currency="request.currency"
 								/>
 
-								<Alert
-									v-if="request.rejection_reason"
-									class="mt-3"
-									theme="gray"
-									title="Review note"
-									:description="request.rejection_reason"
-								/>
-
 								<!-- Only opens the request: its workflow actions, and the
 								     edit form, are reached from the review dialog, and a
 								     transition is applied by a button pressed there rather
@@ -208,7 +200,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Alert, Avatar, Badge, Button, ErrorMessage, Skeleton, TabButtons } from 'frappe-ui'
+import { Avatar, Badge, Button, ErrorMessage, Skeleton, TabButtons } from 'frappe-ui'
 import {
 	procurementCan,
 	procurementPermissionsError,

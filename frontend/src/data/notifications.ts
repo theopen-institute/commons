@@ -1,5 +1,6 @@
 import { toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { call, useCall } from 'frappe-ui'
+import { deskFormUrl, deskListUrl } from './desk'
 
 /**
  * The desk's notification widget, on this app's sidebar.
@@ -72,11 +73,6 @@ export function useMarkAllNotificationsRead() {
   })
 }
 
-/** `frappe.router.slug`: how a doctype reads in a desk URL. */
-function slug(name: string): string {
-  return name.toLowerCase().replace(/ /g, '-')
-}
-
 /** `frappe.scrub`: how the timeline spells an entry's id. */
 function scrub(name: string): string {
   return name.toLowerCase().replace(/ /g, '_').replace(/-/g, '_')
@@ -97,7 +93,7 @@ export function notificationDeskUrl(item: AppNotification): string {
 
   const doctype = item.document_type || 'Notification Log'
   const name = item.document_name || item.name
-  const url = `/app/${slug(doctype)}/${encodeURIComponent(name)}`
+  const url = deskFormUrl(doctype, name)
 
   return item.source_doctype && item.source_name
     ? `${url}#${scrub(item.source_doctype)}-${item.source_name}`
@@ -105,4 +101,4 @@ export function notificationDeskUrl(item: AppNotification): string {
 }
 
 /** The whole log in the desk, which is where "See all" goes. */
-export const allNotificationsDeskUrl = '/app/notification-log'
+export const allNotificationsDeskUrl = deskListUrl('Notification Log')

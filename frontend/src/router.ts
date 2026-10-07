@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import type { PageKey } from '@/data/shell'
+import { deskListUrl, deskUrl } from '@/data/desk'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -9,6 +10,10 @@ declare module 'vue-router' {
      *  is what says which row they are. Nor do the two landing redirects, which
      *  are on their way somewhere that does. */
     page?: PageKey
+    /** Where the sidebar's "Open in desk" goes from this route: the desk's
+     *  version of what the page shows. Left out, it opens the desk's root --
+     *  unless the page says more once loaded (see `useDeskTarget`). */
+    desk?: string
   }
 }
 
@@ -52,7 +57,7 @@ const routes: RouteRecordRaw[] = [
     path: '/attendance',
     name: 'AttendanceRegister',
     component: () => import('@/pages/AttendanceRegister.vue'),
-    meta: { page: 'attendance' },
+    meta: { page: 'attendance', desk: deskUrl('commons-attendance') },
   },
   {
     // One bank account's statement for a period. Like the register, the
@@ -66,27 +71,28 @@ const routes: RouteRecordRaw[] = [
     path: '/banking',
     name: 'BankReconciliation',
     component: () => import('@/pages/BankReconciliation.vue'),
-    meta: { page: 'reconciliation' },
+    meta: { page: 'reconciliation', desk: deskUrl('commons-banking') },
   },
   {
-    // A scan in, a draft Purchase Invoice out. `/capture` rather than
-    // `/purchase-invoices`, because it is where documents are read from scans
-    // and bank statements are the next it should take. `search.py` holds the
-    // same path.
+    // A scan in, a draft out -- a Purchase Invoice or an Expense Claim, per the
+    // kinds of `commons/document_capture/capture.py`. `/capture` rather than
+    // `/purchase-invoices`, because it is where documents are read from scans,
+    // whatever they become. `search.py` holds the same path.
     path: '/capture',
     name: 'DocumentCapture',
     component: () => import('@/pages/DocumentCapture.vue'),
-    meta: { page: 'capture' },
+    meta: { page: 'capture', desk: deskUrl('commons-capture') },
   },
   {
-    // Where the Requests tile lands: which of the two sections opens depends on
-    // permissions that haven't loaded yet, so a component decides.
+    // Where the Requests tile lands: the page Commons Settings names, or the
+    // first row of the first workspace this user has. That depends on
+    // permissions that haven't loaded yet, so a component decides; see
+    // `landingRoute`.
     //
     // The three sections live under it rather than beside it -- they are one
-    // job in three forms, which is why they share a sidebar group, a Python
-    // package and a data module. Flat paths rather than nested routes: nothing
-    // is shared at render time, so there is no parent component to render a
-    // `<router-view>` into.
+    // job in three forms, which is why they share a Python package and a data
+    // module. Flat paths rather than nested routes: nothing is shared at render
+    // time, so there is no parent component to render a `<router-view>` into.
     path: '/requests',
     name: 'RequestsHome',
     component: () => import('@/pages/RequestsHome.vue'),
@@ -109,37 +115,37 @@ const routes: RouteRecordRaw[] = [
     path: '/requests/leave',
     name: 'MyLeave',
     component: () => import('@/pages/MyLeave.vue'),
-    meta: { page: 'leave' },
+    meta: { page: 'leave', desk: deskListUrl('Leave Application') },
   },
   {
     path: '/requests/leave/approvals',
     name: 'LeaveApprovals',
     component: () => import('@/pages/LeaveApprovals.vue'),
-    meta: { page: 'leave' },
+    meta: { page: 'leave', desk: deskListUrl('Leave Application') },
   },
   {
     path: '/requests/expenses',
     name: 'MyExpenses',
     component: () => import('@/pages/MyExpenses.vue'),
-    meta: { page: 'expense' },
+    meta: { page: 'expense', desk: deskListUrl('Expense Claim') },
   },
   {
     path: '/requests/expenses/approvals',
     name: 'ExpenseApprovals',
     component: () => import('@/pages/ExpenseApprovals.vue'),
-    meta: { page: 'expense' },
+    meta: { page: 'expense', desk: deskListUrl('Expense Claim') },
   },
   {
     path: '/requests/procurement',
     name: 'MyProcurement',
     component: () => import('@/pages/MyProcurement.vue'),
-    meta: { page: 'procurement' },
+    meta: { page: 'procurement', desk: deskListUrl('Procurement Request') },
   },
   {
     path: '/requests/procurement/approvals',
     name: 'ProcurementApprovals',
     component: () => import('@/pages/ProcurementApprovals.vue'),
-    meta: { page: 'procurement' },
+    meta: { page: 'procurement', desk: deskListUrl('Procurement Request') },
   },
   {
     // Last, and matching anything the routes above do not. Without it an

@@ -25,8 +25,9 @@ const targetCall = useCall<string>({
  * cascade -- Role home pages, then Portal Settings, then a hook, then Website
  * Settings -- and `frappe.auth` sends a fresh login through that same function,
  * so a button pointed by moving the home page moves where everyone lands at
- * login too. This setting is read here and by the desk sidebar, and nowhere in
- * the login path. See `commons/better_navigation/website_link.py`.
+ * login too. This setting is read here -- through `window.website_button_url`,
+ * which `commons/www/commons.py` sets -- and nowhere in the login path. See
+ * `commons/better_navigation/website_link.py`.
  */
 export const websiteUrl = computed<string>(
   () => (bootTarget ?? targetCall.data ?? '').trim() || window.location.origin,

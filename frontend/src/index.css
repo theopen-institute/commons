@@ -3,7 +3,7 @@
 /*
   The desk's own sidebar tokens, values copied from
   frappe/public/scss/desk/sidebar.scss (and `--shadow-sm` from its global
-  theme). They are defined by the desk bundle, which a page outside /app never
+  theme). They are defined by the desk bundle, which a page outside /desk never
   loads, so the sidebar here would otherwise be a near-miss of the one a user
   sees a click away. Kept together, and only used by AppSidebar.vue.
 */

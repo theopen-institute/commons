@@ -1,7 +1,7 @@
 import { computed, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { upload, useCall } from 'frappe-ui'
 import { createRequestSection, type RequestRow } from './section'
-import type { Decision, DecisionButton } from '../workflowStyle'
+import type { DecisionButton } from '../workflowStyle'
 
 export type { DecisionButton }
 export type { EmployeeAccess, RequestWorkflow as ExpenseWorkflow } from './section'
@@ -22,9 +22,6 @@ export type { RequestPermissions as ExpensePermissions } from './section'
  *   decision in one call, so the amount and the outcome land together and HRMS
  *   revalidates both.
  */
-
-/** One outcome an approver may be offered. The shared shape — see `Decision`. */
-export type ExpenseDecision = Decision
 
 /** One expense type a claim may be raised against. */
 export interface ExpenseClaimType {

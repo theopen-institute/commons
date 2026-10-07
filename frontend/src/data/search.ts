@@ -5,6 +5,7 @@ import router from '@/router'
 import { availableWorkspaces, visibleEntries, type NavEntry } from '@/data/shell'
 import { requestSections, type RequestSection } from '@/data/requests/sections'
 import { hasDeskAccess, user } from '@/data/session'
+import { deskFormUrl, deskListUrl, deskSlug, deskUrl } from '@/data/desk'
 
 /**
  * The Awesome Bar, ported.
@@ -22,7 +23,7 @@ import { hasDeskAccess, user } from '@/data/session'
  * global inside the desk bundle, built on jQuery, a Bootstrap modal and
  * Awesomplete, and they read every one of their result lists out of
  * `frappe.boot` -- `can_read`, `can_create`, `all_reports`, `page_info`,
- * `desktop_icons`. None of that exists on a page outside `/app`, and loading
+ * `desktop_icons`. None of that exists on a page outside `/desk`, and loading
  * the desk bundle to get it would bring jQuery, Bootstrap, socket.io and a
  * stylesheet that fights this app's. So the behaviour is reproduced and the
  * pieces that are genuinely portable are borrowed: the scorer is frappe's own
@@ -429,11 +430,6 @@ export function ensureDeskDoctypes(): Promise<DeskDoctypes> {
   return deskDoctypesPromise
 }
 
-/** `frappe.router.slug`: how a doctype reads in a desk URL. */
-function slug(name: string): string {
-  return name.toLowerCase().replace(/ /g, '-')
-}
-
 /**
  * How much a desk row is marked down against a page of this app's.
  *
@@ -470,7 +466,7 @@ export function getDoctypes(keywords: string): SearchResult[] {
       index: (score + PAGE_ORDER) * DESK_DAMPENING,
       destination: {
         kind: 'away',
-        href: `/app/${slug(doctype)}/${encodeURIComponent(doctype)}`,
+        href: deskFormUrl(doctype, doctype),
       },
     })
   }
@@ -487,7 +483,7 @@ export function getDoctypes(keywords: string): SearchResult[] {
         label: `New ${markedString}`,
         value: `New ${doctype}`,
         index: (score + CREATE_ORDER) * DESK_DAMPENING,
-        destination: { kind: 'away', href: `/app/${slug(doctype)}/new` },
+        destination: { kind: 'away', href: deskUrl(`${deskSlug(doctype)}/new`) },
       })
     }
 
@@ -503,7 +499,7 @@ export function getDoctypes(keywords: string): SearchResult[] {
       index: (score + PAGE_ORDER) * DESK_DAMPENING,
       destination: {
         kind: 'away',
-        href: tree ? `/app/${slug(doctype)}/view/tree` : `/app/${slug(doctype)}`,
+        href: tree ? deskUrl(`${deskSlug(doctype)}/view/tree`) : deskListUrl(doctype),
       },
     })
   }
@@ -932,7 +928,7 @@ export async function getGlobalResults(
       image: row.image,
       destination: {
         kind: 'away',
-        href: `/app/${slug(row.doctype)}/${encodeURIComponent(row.name)}`,
+        href: deskFormUrl(row.doctype, row.name),
       },
     }
 

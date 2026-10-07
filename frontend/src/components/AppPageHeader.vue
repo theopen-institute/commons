@@ -34,9 +34,8 @@
            and the "/" its breadcrumb stylesheet draws before every crumb but
            the first, 14px with 6px either side.
 
-           `/app` rather than `/desk`, matching the sidebar's Desktop entry --
-           the same destination, by the path Frappe has kept forwarding across
-           two renames of the desk.
+           `/desk`, the desk's root -- the same destination as the sidebar's
+           "All apps" entry.
 
            Not for everybody, and not everywhere:
 
@@ -48,7 +47,7 @@
              breakpoint at which the hamburger above appears. On a phone that
              button is what sits beside the title. -->
 			<template v-if="showHome">
-				<a href="/app" class="flex shrink-0 text-ink-gray-8" aria-label="Home">
+				<a :href="DESK" class="flex shrink-0 text-ink-gray-8" aria-label="Home">
 					<span class="lucide-home size-4" />
 				</a>
 				<!-- prettier-ignore -->
@@ -65,6 +64,7 @@ import { computed } from 'vue'
 import { PageHeader } from 'frappe-ui'
 import { isMobile, sidebarOpen, toggleSidebar } from '@/data/sidebar'
 import { hasDeskAccess } from '@/data/session'
+import { DESK } from '@/data/desk'
 
 defineSlots<{
 	/** The title area — what sits at the left of the header, after the toggle. */

@@ -447,7 +447,7 @@ describe('likelyPairs', () => {
 })
 
 describe('loanMatchingRules', () => {
-  it('is today’s tuning when the settings say nothing', () => {
+  it('is the doctype JSON’s defaults when the settings say nothing', () => {
     expect(loanMatchingRules(null)).toEqual(DEFAULT_LOAN_MATCHING)
     expect(DEFAULT_LOAN_MATCHING).toEqual({
       party_match_score: 8,

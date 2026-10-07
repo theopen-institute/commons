@@ -160,9 +160,10 @@ const PAGES: Record<PageKey, PageChrome> = {
     section: null,
     gate: serverGate('reconciliation'),
   },
-  // Offered to whoever may create a Purchase Invoice, the server's own test,
-  // because that is all the page makes and every read of a scan is billed. See
-  // `commons.document_capture.purchase_invoice.can_capture`.
+  // Offered to whoever may draft at least one kind of document the page makes
+  // here, the server's own test, because every read of a scan is billed. See
+  // `commons.document_capture.capture.can_capture`, which
+  // `commons.better_navigation.pages` asks.
   capture: {
     label: 'Document Capture',
     icon: 'lucide-scan-text',

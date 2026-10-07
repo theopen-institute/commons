@@ -25,7 +25,8 @@ import {
  * counts as "the answer is in", how a row reads, which button is the solid one
  * — is settled here, once, for both.
  *
- * Procurement is not built from this. Its queue is grouped by department and
+ * Procurement is not built from this. Its queue is grouped (by the Commons
+ * Settings field `procurement_group_by`) and
  * its permissions payload answers a different
  * question (workflow access, not an approve right), so it keeps its own module
  * and shares only `workflowStyle` with these two.

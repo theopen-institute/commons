@@ -38,9 +38,11 @@
  * The weights, and how long a run of digits or a one-word name must be, are a
  * site's to tune in Bank Reconciliation Settings: what pays off depends on
  * what its bank writes in a description and on how its borrowers pay. They
- * reach the page as `LoanMatchingRules`, and `DEFAULT_LOAN_MATCHING` is what
- * answers when they do not.
+ * reach the page as `LoanMatchingRules`, and `DEFAULT_LOAN_MATCHING`, the
+ * doctype's own defaults, is what answers when they do not.
  */
+
+import settingsDoctype from '../../../commons/banking/doctype/bank_reconciliation_settings/bank_reconciliation_settings.json'
 
 /** A statement line, as the page reads it. */
 export interface TransactionRow {
@@ -189,17 +191,28 @@ export interface LoanMatchingRules {
   min_name_length: number
 }
 
-/** The settings' own defaults, for a page that has not heard otherwise. */
-export const DEFAULT_LOAN_MATCHING: LoanMatchingRules = {
-  party_match_score: 8,
-  repeated_identifier_score: 6,
-  single_identifier_score: 2,
-  name_in_description_score: 5,
-  exact_payoff_score: 2,
-  usual_amount_score: 1,
-  min_identifier_digits: 6,
-  min_name_length: 5,
-}
+const LOAN_MATCHING_FIELDS: readonly (keyof LoanMatchingRules)[] = [
+  'party_match_score',
+  'repeated_identifier_score',
+  'single_identifier_score',
+  'name_in_description_score',
+  'exact_payoff_score',
+  'usual_amount_score',
+  'min_identifier_digits',
+  'min_name_length',
+]
+
+/** The settings' own defaults, for a page that has not heard otherwise: before
+ *  the server answers, when it fails to, and for a caller that passes no rules.
+ *  Read from Bank Reconciliation Settings' doctype JSON when the page is built,
+ *  so the JSON is the one place they are kept; the server reads the same
+ *  defaults from the doctype's meta. */
+export const DEFAULT_LOAN_MATCHING: LoanMatchingRules = Object.fromEntries(
+  LOAN_MATCHING_FIELDS.map((fieldname) => {
+    const field = settingsDoctype.fields.find((f) => f.fieldname === fieldname)
+    return [fieldname, Number(field && 'default' in field ? field.default : 0)]
+  }),
+) as unknown as LoanMatchingRules
 
 /** Whatever of `given` is a usable number, and the defaults for the rest. A
  *  missing or broken answer from the server leaves the page on the defaults

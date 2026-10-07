@@ -211,6 +211,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Dropdown, Sidebar, SidebarItem, SidebarSection, useCall, useColorScheme } from 'frappe-ui'
 import { hasDeskAccess, logout, user } from '@/data/session'
+import { DESK, deskFormUrl, deskTarget } from '@/data/desk'
 import { websiteUrl } from '@/data/website'
 import { isMobile, sidebarCollapsed, sidebarOpen } from '@/data/sidebar'
 import { modKey, openSearch } from '@/data/search'
@@ -273,21 +274,12 @@ const { colorScheme, setColorScheme } = useColorScheme()
 // is what the two landing paths sit on while they decide where to send you.
 const workspace = computed<Workspace>(() => workspaceFor(route))
 
-// Keyed by route prefix, not by app: Requests spans two doctypes, and "Open in
-// desk" should land on the one whose section is on screen.
-const DESK_ROUTES: [prefix: string, deskPath: string][] = [
-	// The profile page itself is one employee record, not the list of them.
-	['/profile', '/app/employee'],
-	['/requests/leave', '/app/leave-application'],
-	['/requests/expenses', '/app/expense-claim'],
-	['/requests/procurement', '/app/procurement-request'],
-]
-
-// A full page load, not a router push: the desk is a different app served off
-// the same site.
+// "Open in desk" lands on the desk's version of what is on screen, which the
+// page says rather than this menu: its route's `meta.desk`, or what the page
+// itself claims once it knows (see `deskTarget`). A full page load, not a
+// router push: the desk is a different app served off the same site.
 function openDesk() {
-	const match = DESK_ROUTES.find(([prefix]) => route.path.startsWith(prefix))
-	window.location.href = match ? match[1] : '/app'
+	window.location.href = deskTarget(route)
 }
 
 // The desk's Reload (`frappe.ui.toolbar.clear_cache`): clear the server's
@@ -312,15 +304,13 @@ const RELOAD_SHORTCUT = /mac/i.test(navigator.platform) ? '⇧⌘R' : 'Shift+Ctr
 
 // Where the desk's own footer badge goes: this person's User record, for a
 // person who can open it. `name` is the user id, which is an email for
-// everyone but Administrator, so it has to be encoded. `/app` rather than
-// `/desk`, like the routes above -- Frappe forwards it, and has kept
-// forwarding it across two renames of the desk.
-const userDeskUrl = computed(() => `/app/user/${encodeURIComponent(user.value.name)}`)
+// everyone but Administrator, so `deskFormUrl` encodes it.
+const userDeskUrl = computed(() => deskFormUrl('User', user.value.name))
 
 // The menu items that leave for the desk, spread in only when they lead
 // somewhere: for a user whose roles do not open it every one of them is a
-// refusal page. The apps screen is one of them -- `/apps` redirects to `/desk`
-// (frappe/hooks.py, `website_redirects`). What is left for such a user is this
+// refusal page. The apps screen is one of them -- the desk's root, `/desk`.
+// What is left for such a user is this
 // app's own workspaces, which is the whole of what they can reach.
 function deskOnly<T>(...items: T[]): T[] {
 	return hasDeskAccess.value ? items : []
@@ -356,10 +346,13 @@ const workspacesItem = computed(() => {
 			hideLabel: true,
 			options: [
 				{
+					// Frappe 16.50's own name for the desk's root
+					// (`SidebarHeader.all_apps_item`), which is also its desktop --
+					// so this one entry stands for both.
 					label: 'All apps',
 					icon: 'lucide-layout-grid',
 					onClick: () => {
-						window.location.href = '/apps'
+						window.location.href = DESK
 					},
 				},
 				{
@@ -384,14 +377,8 @@ const menuItems = computed(() => [
 ])
 
 const navigationItems = computed(() => [
-	// Desktop is the desk's own name for its home.
-	...deskOnly({
-		label: 'Desktop',
-		icon: 'lucide-home',
-		onClick: () => {
-			window.location.href = '/app'
-		},
-	}),
+	// No separate "Desktop": in Frappe 16.50 the desktop is the desk's root,
+	// which "All apps" under Workspaces already opens.
 	...workspacesItem.value,
 	{
 		// Website Settings' Website Button Target, falling back to the site root.

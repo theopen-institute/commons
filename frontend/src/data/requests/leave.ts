@@ -1,7 +1,7 @@
 import { toValue, type MaybeRefOrGetter } from 'vue'
 import { useCall } from 'frappe-ui'
 import { createRequestSection, type RequestRow } from './section'
-import type { Decision, DecisionButton } from '../workflowStyle'
+import type { DecisionButton } from '../workflowStyle'
 
 export type { DecisionButton }
 export type { EmployeeAccess, RequestWorkflow as LeaveWorkflow } from './section'
@@ -27,10 +27,6 @@ export interface MyEmployee {
   name: string
   leave_approver: string | null
 }
-
-/** One outcome an approver may be offered. The shared shape -- see `Decision` in
- *  `workflowStyle`, which procurement's and profile's vocabularies use too. */
-export type LeaveDecision = Decision
 
 /** One row of a leave application list. */
 export interface LeaveApplicationRow extends RequestRow {

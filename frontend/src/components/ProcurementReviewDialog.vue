@@ -67,13 +67,6 @@
 					</dd>
 				</div>
 			</dl>
-
-			<Alert
-				v-if="request.rejection_reason"
-				theme="gray"
-				title="Review note"
-				:description="request.rejection_reason"
-			/>
 		</template>
 
 		<!-- Editing opens the request form, which saves through its own call and
@@ -92,7 +85,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Alert, Badge, Button } from 'frappe-ui'
+import { Badge, Button } from 'frappe-ui'
 import {
 	procurementStatus,
 	procurementWorkflow,

@@ -1,11 +1,12 @@
 import { ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import { useCall } from 'frappe-ui'
+import { deskFormUrl, deskUrl } from './desk'
 
 /**
  * The staff portal's To Do sidebar widget.
  *
  * Both endpoints are `commons.commons_core.todos`, which the desk's own copy of
- * this widget also asks (`commons/public/js/desk_todos.js`). The list, the
+ * this widget also asks (`commons/public/js/desk_todos/`). The list, the
  * count and what "mine" means are one question, and a person crossing between
  * the two sidebars all day must not be told two different numbers, so there is
  * one answer and two front ends asking it.
@@ -130,25 +131,20 @@ export function priorityTheme(priority: OpenTodo['priority']) {
   return PRIORITY_THEME[priority ?? 'Medium'] ?? 'gray'
 }
 
-/** `frappe.router.slug`: how a doctype reads in a desk URL. */
-function slug(name: string): string {
-  return name.toLowerCase().replace(/ /g, '-')
-}
-
 /**
  * The desk form a ToDo points at, or the ToDo itself when it points nowhere.
  *
  * Every one of these is a desk page, so the caller must not offer them to
  * somebody whose roles do not open the desk -- see `hasDeskAccess`, and the
- * same rule everywhere else in this app that links to `/app`.
+ * same rule everywhere else in this app that links to the desk.
  */
 export function todoDeskUrl(todo: OpenTodo): string {
   const doctype =
     todo.reference_type && todo.reference_name ? todo.reference_type : 'ToDo'
   const name =
     todo.reference_type && todo.reference_name ? todo.reference_name : todo.name
-  return `/app/${slug(doctype)}/${encodeURIComponent(name)}`
+  return deskFormUrl(doctype, name)
 }
 
 /** The whole open list in the desk, which is where "See all" goes. */
-export const allTodosDeskUrl = '/app/todo?status=Open'
+export const allTodosDeskUrl = deskUrl('todo?status=Open')
