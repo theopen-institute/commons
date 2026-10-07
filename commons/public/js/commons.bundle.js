@@ -4,6 +4,8 @@ import "./user_menu_rows";
 // Better Navigation keeps its browser halves beside its server halves. Only entry
 // files have to be under public/ -- esbuild globs there for `*.bundle.js` --
 // and an entry may import from anywhere in the app.
+// Before the rail, which hands it the modules to place.
+import "../../better_navigation/js/boot_arrangement";
 import "../../better_navigation/js/navigation_rail";
 import "../../better_navigation/js/user_menu";
 import "../../better_navigation/js/arrange";

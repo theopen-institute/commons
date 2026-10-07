@@ -86,6 +86,10 @@ def save_rail(items) -> dict:
 	"""
 	_check()
 	items = _parse(items)
+	from frappe.boot import get_module_sidebars
+
+	# Built once for the whole save: it is Frappe's, and nothing saved here changes it.
+	module_sidebars = get_module_sidebars()
 	created = []
 	for item in items:
 		if not item.get("new"):
@@ -107,14 +111,14 @@ def save_rail(items) -> dict:
 		item["key"] = f"navigation-app:{doc.name}"
 		created.append(item["key"])
 
-	rail = _rail()
+	rail = _rail(module_sidebars)
 	known = {app["key"] for app in rail}
 	keys = [item["key"] for item in items if item.get("key") in known]
 	# An app the editor did not list (installed since it opened) keeps its place at the end.
 	keys += [app["key"] for app in rail if app["key"] not in keys]
 	hidden = {item["key"] for item in items if item.get("hidden")}
 	_store_order(rail, keys, hidden)
-	return {**payload(), "created": created}
+	return {**payload(module_sidebars), "created": created}
 
 
 def _store_order(rail: list[dict], keys: list[str], hidden: set[str]) -> None:
@@ -228,14 +232,10 @@ def get_app_modules(key: str) -> dict:
 	if target:
 		# Modules another app lists are that app's to give up, not this one's to take back.
 		holders = {m["sidebar"] for other in rail if other is not app for m in other["sidebars"]}
-		module_apps = dict(frappe.get_all("Module Def", fields=["name", "app_name"], as_list=True))
-		installed = set(frappe.get_installed_apps())
+		owner = _owner_of(module_sidebars)
 		for shell, sidebar in module_sidebars.items():
 			module = sidebar.get("module") or shell
-			if module in listed or shell in holders:
-				continue
-			owner = nav.installed_app_of({"app": sidebar.get("app"), "module": module}, module_apps)
-			if (owner if owner in installed else nav.OTHER) != target:
+			if module in listed or shell in holders or owner(module) != target:
 				continue
 			listed.add(module)
 			rows.append(
@@ -314,14 +314,15 @@ def save_app_modules(key: str, items) -> dict:
 	doc.set("sidebars", rows)
 	doc.save()
 
-	_store_order(_rail(), order, hidden_apps)
-	return payload()
+	_store_order(_rail(module_sidebars), order, hidden_apps)
+	return payload(module_sidebars)
 
 
 def _owner_of(module_sidebars: dict):
 	"""A function from a module to the installed app it belongs to by default, or Other."""
 	module_apps = dict(frappe.get_all("Module Def", fields=["name", "app_name"], as_list=True))
 	installed = set(frappe.get_installed_apps())
+	hosts = nav.app_hosts()
 	app_by_module = {}
 	for shell, sidebar in module_sidebars.items():
 		module = sidebar.get("module") or shell
@@ -330,8 +331,7 @@ def _owner_of(module_sidebars: dict):
 	def owner(module: str | None) -> str | None:
 		if not module:
 			return None
-		found = nav.installed_app_of({"app": app_by_module.get(module), "module": module}, module_apps)
-		return found if found in installed else nav.OTHER
+		return nav.default_app_of(app_by_module.get(module), module, module_apps, hosts, installed)
 
 	return owner
 
@@ -363,25 +363,23 @@ def _keep_unseen(rows: list[dict], old_rows: list, visible: set[str]) -> list[di
 # ------------------------------------------------------------------------------------
 
 
-def payload() -> dict:
-	"""The rail and the placement it makes, as the boot would carry them now.
+def payload(module_sidebars: dict | None = None) -> dict:
+	"""The rail and the Apps screen, as the boot would carry them now.
 
-	So an editor's save is redrawn in place: `navigation_apps`, each module's rail app
-	(`placement`), and the `app_data` entries for rail apps Frappe does not know.
+	So an editor's save is redrawn in place: `navigation_apps`, and `app_data` as the
+	Apps screen arranges it. The browser places each module in its rail app from the
+	rail itself (`js/boot_arrangement.js`).
 	"""
 	from frappe.boot import get_app_data, get_module_sidebars
 
 	from commons.better_navigation import apps_screen
 	from commons.commons_core import settings
 
-	bootinfo = frappe._dict(module_sidebars=get_module_sidebars(), app_data=get_app_data())
-	bootinfo.navigation_apps = nav.navigation_apps(module_sidebars=bootinfo.module_sidebars)
-	nav.place_modules(bootinfo)
+	if module_sidebars is None:
+		module_sidebars = get_module_sidebars()
+	rail = nav.navigation_apps(module_sidebars=module_sidebars)
+	app_data = get_app_data()
 	# The Apps screen as the boot would arrange it, or the desk's copy would be Frappe's.
 	if settings.feature_enabled(settings.ENABLE_DESKTOP_FROM_NAVIGATION_APPS):
-		apps_screen.arrange(bootinfo.app_data, bootinfo.navigation_apps, apps_screen._artwork())
-	return {
-		"navigation_apps": bootinfo.navigation_apps,
-		"placement": {shell: sidebar.get("app") for shell, sidebar in bootinfo.module_sidebars.items()},
-		"app_data": bootinfo.app_data,
-	}
+		apps_screen.arrange(app_data, rail, apps_screen._artwork())
+	return {"navigation_apps": rail, "app_data": app_data}

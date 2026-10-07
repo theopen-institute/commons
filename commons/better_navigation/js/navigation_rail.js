@@ -41,12 +41,16 @@
 // here animates; the rebuilds Frappe makes on its own as you navigate just appear, or motion
 // would stop meaning anything.
 //
-// Which app a module is in comes from the boot: `navigation_apps.place_modules` has already
-// written each module's rail app into `module_sidebars[shell].app` and given rail apps Frappe
-// does not know an `app_data` entry, so Frappe's own header names the right app and logo.
+// Which app a module is in is written into the boot by `js/boot_arrangement.js`: each module's
+// rail app into `module_sidebars[shell].app`, and an `app_data` entry for each rail app Frappe
+// does not know, so Frappe's own header names the right app and logo -- again whenever Frappe
+// replaces either.
 //
 // Off unless Commons Settings' "Enable Navigation Rail" is ticked, and off too if Frappe has moved
-// what this hangs on: then the desk is simply Frappe's.
+// what this hangs on: then the desk is simply Frappe's. Every change to Frappe's classes goes
+// through `patch`, so if Frappe changes something this reads and a change throws, the rail
+// switches itself off for the rest of the page and Frappe's own method runs instead (`give_up`).
+// `test_frappe_seams.py` checks every name this hangs on is still in Frappe's source.
 (function () {
 	const features = (frappe.boot && frappe.boot.commons_features) || {};
 	// Kept as one array for the life of the page: an editor's save refills it in place.
@@ -63,7 +67,6 @@
 		[
 			"dock_enabled",
 			"open_module",
-			"get_sidebar_app",
 			"setup",
 			"set_workspace_sidebar",
 			"add_item",
@@ -74,12 +77,68 @@
 		) ||
 		typeof Header.prototype.menu_items !== "function" ||
 		typeof Sidebar.prototype.refresh_header !== "function" ||
-		!(window.commons && commons.user_menu && commons.user_menu.add)
+		!(window.commons && commons.user_menu && commons.user_menu.add) ||
+		!(commons.boot_arrangement && commons.boot_arrangement.place)
 	) {
 		return;
 	}
 
 	$("body").addClass("commons-rail-on");
+	commons.boot_arrangement.place(rail_apps);
+
+	// Set once a change has thrown: from then on every patched method is Frappe's own.
+	let broken = false;
+
+	// Replace `proto[name]` with `impl`, which is handed a function calling Frappe's original with
+	// the same arguments. If `impl` throws, the rail gives up and the original answers -- once:
+	// not again if `impl` had already called it.
+	function patch(proto, name, impl) {
+		const original = proto[name];
+		proto[name] = function (...args) {
+			let called = false;
+			let result;
+			const call_original = () => {
+				called = true;
+				return (result = original.apply(this, args));
+			};
+			if (broken) return call_original();
+			try {
+				return impl.call(this, call_original, args);
+			} catch (e) {
+				give_up(e);
+				return called ? result : original.apply(this, args);
+			}
+		};
+	}
+
+	// Off for the rest of the page: Frappe's placement back, the rail's tools gone, and the sidebar
+	// and Dock drawn again, now by Frappe alone.
+	function give_up(error) {
+		if (broken) return;
+		broken = true;
+		console.error(
+			"commons: the navigation rail met a change in Frappe and has switched itself off",
+			error
+		);
+		$("body").removeClass("commons-rail-on");
+		$(".commons-rail-tools").remove();
+		commons.boot_arrangement.release();
+		setTimeout(() => {
+			try {
+				const sidebar = frappe.app && frappe.app.sidebar;
+				if (!sidebar) return;
+				sidebar.commons_module_list = null;
+				if (sidebar.sidebar_header) clear_list_header(sidebar.sidebar_header);
+				if (sidebar.current_module) sidebar.setup(sidebar.current_module);
+				if (sidebar.dock) {
+					sidebar.dock.rendered = null;
+					sidebar.refresh_dock();
+				}
+			} catch (e) {
+				console.error("commons: could not redraw Frappe's sidebar", e);
+			}
+		});
+	}
 
 	// The rail app holding a shell, by the placement the server wrote into the boot.
 	function rail_app_of(shell) {
@@ -241,7 +300,7 @@
 				"click",
 				(event) => {
 					const shown = sidebar.commons_module_list;
-					if (!shown) return;
+					if (!shown || broken) return;
 					event.stopImmediatePropagation();
 					event.preventDefault();
 					if (can_manage()) commons.navigation_rail.manage_modules(shown.app.key);
@@ -261,9 +320,8 @@
 	}
 
 	// Search, Notifications and To Do, at the foot of the rail. Built once, with the Dock.
-	const make_dock = Dock.prototype.make;
-	Dock.prototype.make = function () {
-		const result = make_dock.apply(this, arguments);
+	patch(Dock.prototype, "make", function (make_dock) {
+		const result = make_dock();
 		const $tools = $('<div class="commons-rail-tools"></div>').insertBefore(
 			this.$dock.find(".dock-user")
 		);
@@ -312,7 +370,7 @@
 			todos.show_count(todos.count);
 		}
 		return result;
-	};
+	});
 
 	// Whether this user may arrange the rail: the editors in `js/arrange.js` say.
 	function can_manage() {
@@ -330,28 +388,28 @@
 		onclick: () => commons.navigation_rail.manage_rail(),
 	};
 	commons.user_menu.add((groups) =>
-		groups.map((group) =>
-			group && Array.isArray(group.options)
-				? {
-						...group,
-						options: group.options.map((row) =>
-							row && row.name === "workspace-selector" ? manage_rail : row
-						),
-				  }
-				: group
-		)
+		broken
+			? groups
+			: groups.map((group) =>
+					group && Array.isArray(group.options)
+						? {
+								...group,
+								options: group.options.map((row) =>
+									row && row.name === "workspace-selector" ? manage_rail : row
+								),
+						  }
+						: group
+			  )
 	);
 
 	// After an editor saves: the rail, each module's rail app, and the app entries Frappe's header
 	// reads, as the server now resolves them -- then everything drawn from them.
 	frappe.provide("commons.navigation_rail");
-	commons.navigation_rail.apply = function ({ navigation_apps, placement, app_data }) {
+	commons.navigation_rail.apply = function ({ navigation_apps, app_data }) {
+		if (broken) return;
 		rail_apps.splice(0, rail_apps.length, ...(navigation_apps || []));
-		Object.entries(placement || {}).forEach(([shell, app_name]) => {
-			const sidebar = frappe.boot.module_sidebars[shell];
-			if (sidebar) sidebar.app = app_name;
-		});
-		if (Array.isArray(app_data)) frappe.boot.app_data = app_data;
+		commons.boot_arrangement.adopt(app_data);
+		commons.boot_arrangement.place(rail_apps);
 
 		const sidebar = frappe.app && frappe.app.sidebar;
 		if (!sidebar) return;
@@ -367,12 +425,10 @@
 
 	// Every page can switch apps, so the rail is drawn wherever the page lets Frappe draw a Dock,
 	// whether or not the app on screen ships one.
-	Sidebar.prototype.dock_enabled = function () {
-		return true;
-	};
+	patch(Sidebar.prototype, "dock_enabled", () => true);
 
 	// The site's mark at the top, leading where Frappe's app mark leads: the Apps screen.
-	Dock.prototype.render_logo = function () {
+	patch(Dock.prototype, "render_logo", function () {
 		const logo = frappe.boot.app_logo_url;
 		const title = __("Home");
 		this.$header_logo.html(
@@ -391,11 +447,11 @@
 				class: "es-tooltip--plain",
 			});
 		}
-	};
+	});
 
 	// Apps instead of the open app's modules. Frappe calls this whenever what it would draw
 	// changes, which includes moving to another module, so the lit app follows.
-	Dock.prototype.render_entries = function () {
+	patch(Dock.prototype, "render_entries", function () {
 		this.tooltips.forEach((tip) => tip.destroy());
 		this.tooltips = [];
 		this.$items.empty();
@@ -423,32 +479,29 @@
 			});
 			this.$items.append($item);
 		});
-	};
+	});
 
 	// Any rebuild of the sidebar is the real sidebar again.
-	const setup = Sidebar.prototype.setup;
-	Sidebar.prototype.setup = function () {
+	patch(Sidebar.prototype, "setup", function (setup) {
 		this.commons_module_list = null;
 		if (this.sidebar_header) clear_list_header(this.sidebar_header);
-		return setup.apply(this, arguments);
-	};
+		return setup();
+	});
 
 	// Frappe re-resolves the sidebar on every route change but rebuilds it only when the answer
 	// is a different module, which the list never changed. So once the route has moved on from
 	// where the list was opened, the list is put away here.
-	const set_workspace_sidebar = Sidebar.prototype.set_workspace_sidebar;
-	Sidebar.prototype.set_workspace_sidebar = function () {
-		const result = set_workspace_sidebar.apply(this, arguments);
+	patch(Sidebar.prototype, "set_workspace_sidebar", function (set_workspace_sidebar) {
+		const result = set_workspace_sidebar();
 		const list = this.commons_module_list;
 		if (list && frappe.get_route_str() !== list.route) leave_module_list(this);
 		return result;
-	};
+	});
 
 	// Frappe makes the header, and redraws it, as pages settle and modules change, always through
 	// here. Over the list it is the app; inside a module, the module over its app.
-	const refresh_header = Sidebar.prototype.refresh_header;
-	Sidebar.prototype.refresh_header = function () {
-		const result = refresh_header.apply(this, arguments);
+	patch(Sidebar.prototype, "refresh_header", function (refresh_header) {
+		const result = refresh_header();
 		if (this.commons_module_list) {
 			draw_list_header(this);
 		} else if (this.sidebar_header) {
@@ -457,7 +510,7 @@
 			set_subtitle(this.sidebar_header, app ? app.title : "");
 		}
 		return result;
-	};
+	});
 
 	// Back to the header Frappe draws for a module.
 	function clear_list_header(header) {
@@ -485,9 +538,8 @@
 
 	// The header menu's switcher rows become the open app's module list: its frontend first, then
 	// its modules under their Categories, a Spacer starting a new group.
-	const menu_items = Header.prototype.menu_items;
-	Header.prototype.menu_items = function () {
-		const items = menu_items.apply(this, arguments);
+	patch(Header.prototype, "menu_items", function (menu_items) {
+		const items = menu_items();
 		const app = rail_app_of(this.sidebar.current_module);
 		if (!app) return items;
 		return [
@@ -495,7 +547,7 @@
 			...app_switcher(this, this.sidebar),
 			...items.filter((group) => !is_switcher(group)),
 		];
-	};
+	});
 
 	// Frappe's switcher group, known by its rows rather than by where it sits: Modules, Apps, and
 	// the way out to the Apps screen (`SidebarHeader.switcher_items`). A group that holds nothing

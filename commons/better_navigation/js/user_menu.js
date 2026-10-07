@@ -13,7 +13,9 @@
 // (`public/js/user_menu_rows.js`), which says how a row gets into Frappe's user menu.
 //
 // Off unless Commons Settings' "Enable User Menu" is ticked, and off too if Frappe has moved what
-// this hangs on: then both stay where Frappe puts them.
+// this hangs on: then both stay where Frappe puts them. They leave the header menu only once a
+// user menu has really been built with them in it, so a change in how Frappe builds that menu
+// leaves them where Frappe puts them rather than nowhere.
 (function () {
 	const features = (frappe.boot && frappe.boot.commons_features) || {};
 	if (!features.user_menu) return;
@@ -31,6 +33,7 @@
 
 	// Into the user menu, over Logout -- and then, only once they are there, off the header menu,
 	// where that whole block is the Navbar Settings rows and Help.
+	let delivered = false;
 	const added = commons.user_menu.add((groups, sidebar) => {
 		// Navbar Settings rows read only the boot, so the prototype builds them as well as a
 		// header would; the sidebar's header may not exist yet when the menu is made.
@@ -60,11 +63,13 @@
 
 		const changed = [...groups];
 		changed.splice(Math.max(changed.length - 1, 0), 0, help);
+		delivered = true;
 		return changed;
 	});
 	if (added) {
+		const system_items = Header.prototype.system_items;
 		Header.prototype.system_items = function () {
-			return [];
+			return delivered ? [] : system_items.apply(this, arguments);
 		};
 	}
 })();

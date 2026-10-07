@@ -139,6 +139,7 @@ DESK_FEATURES = {
 	"user_permission_gate": ENABLE_PERMISSION_GATE,
 	"user_menu": ENABLE_USER_MENU,
 	"navigation_rail": ENABLE_NAVIGATION_RAIL,
+	"apps_screen": ENABLE_DESKTOP_FROM_NAVIGATION_APPS,
 	"derived_docfields": ENABLE_DERIVED_DOCFIELDS,
 	"visual_email_editor": ENABLE_VISUAL_EMAIL_EDITOR,
 	"pseudo_islands": ENABLE_PSEUDO_ISLANDS,

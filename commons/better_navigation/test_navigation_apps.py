@@ -16,7 +16,6 @@ from commons.better_navigation.navigation_apps import (
 	OTHER,
 	installed_app_of,
 	is_desk_route,
-	place_modules,
 	resolve,
 	row_type,
 )
@@ -54,7 +53,14 @@ SIDEBARS = [
 MODULES = {"Students": "education", "Assessments": "commons"}
 
 
-def rail(configured=(), user="someone@example.com", roles=("Desk User",), sidebars=SIDEBARS, frontends=None):
+def rail(
+	configured=(),
+	user="someone@example.com",
+	roles=("Desk User",),
+	sidebars=SIDEBARS,
+	frontends=None,
+	hosts=None,
+):
 	return resolve(
 		configured=list(configured),
 		sidebars=sidebars,
@@ -64,6 +70,7 @@ def rail(configured=(), user="someone@example.com", roles=("Desk User",), sideba
 		user=user,
 		user_roles=set(roles),
 		frontends=frontends,
+		hosts=hosts,
 	)
 
 
@@ -213,48 +220,24 @@ class TestModules(TestCase):
 		self.assertEqual(rail(sidebars=shells)[0]["sidebars"][0]["label"], "Lending")
 
 
-class TestPlaceModules(TestCase):
-	"""Frappe's boot is told which rail app each module is in."""
+COMPANION_SHELLS = [sidebar("Accounting", app="erpnext"), sidebar("GST", app="india_compliance")]
+HOSTS = {"india_compliance": "erpnext"}
 
-	def boot(self, rail_apps):
-		return SimpleNamespace(
-			module_sidebars={
-				name: {"app": app_name} for name, app_name in (("Stock", "erpnext"), ("Helpdesk", None))
-			},
-			app_data=[{"app_name": "erpnext", "app_title": "ERPNext", "app_logo_url": "/erpnext.svg"}],
-			navigation_apps=rail_apps,
-			setdefault=lambda key, default: getattr(self._boot, key),
+
+class TestCompanionApps(TestCase):
+	"""A companion app's modules are its host's, as Frappe's desk shows them."""
+
+	def test_grouped_under_the_host(self):
+		self.assertEqual(
+			dict(shape(rail(sidebars=COMPANION_SHELLS, hosts=HOSTS)))["ERPNext"], ["Accounting", "GST"]
 		)
 
-	def place(self, configured=(), sidebars=None):
-		rail_apps = rail(
-			configured, sidebars=sidebars or [sidebar("Stock", app="erpnext"), sidebar("Helpdesk")]
-		)
-		self._boot = self.boot(rail_apps)
-		place_modules(self._boot)
-		return self._boot
+	def test_without_a_mount_it_is_not_an_installed_app(self):
+		self.assertEqual(dict(shape(rail(sidebars=COMPANION_SHELLS)))[OTHER], ["GST"])
 
-	def test_a_synthetic_app_gets_an_app_data_entry_off_the_apps_screen(self):
-		boot = self.place([app("Stores", "Stock")])
-		self.assertEqual(boot.module_sidebars["Stock"]["app"], "navigation-app:Stores")
-		entry = next(a for a in boot.app_data if a["app_name"] == "navigation-app:Stores")
-		self.assertEqual((entry["app_title"], entry["on_apps_screen"]), ("Stores", False))
-
-	def test_other_becomes_an_app_of_its_own(self):
-		boot = self.place()
-		self.assertEqual(boot.module_sidebars["Helpdesk"]["app"], "commons-other")
-		self.assertIn("commons-other", [a["app_name"] for a in boot.app_data])
-
-	def test_a_bound_app_retitles_frappes_entry(self):
-		boot = self.place([{**bound("Books", "erpnext"), "logo": "/books.svg"}])
-		erpnext = next(a for a in boot.app_data if a["app_name"] == "erpnext")
-		self.assertEqual((erpnext["app_title"], erpnext["app_logo_url"]), ("Books", "/books.svg"))
-		self.assertEqual(boot.module_sidebars["Stock"]["app"], "erpnext")
-
-	def test_an_unconfigured_app_keeps_frappes_entry(self):
-		boot = self.place()
-		erpnext = next(a for a in boot.app_data if a["app_name"] == "erpnext")
-		self.assertEqual(erpnext["app_title"], "ERPNext")
+	def test_a_navigation_app_still_claims_it(self):
+		result = rail([app("Tax", "GST")], sidebars=COMPANION_SHELLS, hosts=HOSTS)
+		self.assertEqual(shape(result)[0], ("Tax", ["GST"]))
 
 
 class FakeClientCache:
@@ -295,22 +278,6 @@ class SiteInputsAreCached(TestCase):
 			nav.clear_cache()
 			nav._site_inputs()
 			self.assertEqual(reads, ["configured", "configured"])
-
-	def test_the_endpoint_answers_nothing_to_a_website_user_or_with_the_rail_off(self):
-		from unittest.mock import patch
-
-		from commons.better_navigation import navigation_apps as nav
-		from commons.commons_core import settings
-
-		for user_type, on in (("Website User", True), ("System User", False)):
-			with (
-				self.subTest(user_type=user_type, on=on),
-				patch.object(nav.frappe, "session", SimpleNamespace(user="someone@example.com")),
-				patch.object(nav.frappe, "get_cached_value", return_value=user_type),
-				patch.object(settings, "feature_enabled", return_value=on),
-				patch.object(nav, "navigation_apps", side_effect=AssertionError("built the rail")),
-			):
-				self.assertEqual(nav.get_navigation_apps(), [])
 
 
 def bound(name, installed_app, *sidebars, mode="Add", hidden=0, **kwargs):
@@ -491,9 +458,7 @@ class TestFrontends(TestCase):
 		hooks = {
 			("add_to_apps_screen", "helpdesk"): [{"route": "/helpdesk"}],
 			("add_to_apps_screen", "hrms"): [{"route": "/desk/people"}],
-			# Its own hook wins over the apps screen's route.
-			("add_to_apps_screen", "commons"): [{"route": "/commons/announcements"}],
-			("navigation_frontend_url", "commons"): ["/commons"],
+			("add_to_apps_screen", "commons"): [{"route": "/commons"}],
 		}
 		with (
 			patch.object(
