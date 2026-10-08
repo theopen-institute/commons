@@ -25,8 +25,7 @@ app, say -- and a site may add as many as it likes.
 
 One can also stand for an installed app, or for "Other", by naming it in
 `installed_app`. It then takes that app's place on the rail rather than
-appearing beside it: in its own Rail Order, under its own title, roles and
-mark, falling back to the app's own logo and frontend as Frappe's Apps screen
+appearing beside it: under its own title, roles and mark, falling back to the app's own logo and frontend as Frappe's Apps screen
 has them (see `apps_from_app_data`). Its
 modules table either adds to what the app already holds or, set to Replace, is
 the whole list, and what the app would have held goes to Other. The table's row
@@ -35,6 +34,17 @@ the app's default (see below). The table can also hold Category rows, a heading
 over the modules after it, and Spacer rows, a gap; see `_layout`. Hidden takes it off the rail, and its modules
 with it. "Other" is bindable like any installed app: the one group no hooks
 describe, but as much the site's to rename, restrict or hide.
+
+Where an app sits on the rail
+-----------------------------
+In its default place, unless it has been moved. The default is install order,
+then Other, for installed apps and the records that stand for them; an app of
+the site's own has no default place, so it sits at the top. A moved app's
+record says which app it follows (`rail_after`, or "top"), and nothing else
+needs a record to stay where it is: Manage Rail anchors only what left the
+default order (`arrange._store_order`), and `rail_sequence` puts each anchored
+app back after its anchor. An anchor that is gone -- an app uninstalled, a
+record renamed or disabled -- leaves the app at its default place.
 
 The fallback is the installed apps
 ----------------------------------
@@ -103,6 +113,9 @@ SPACER = "Spacer"
 
 # The module an app starts from, when its name does not say so already.
 HOME = "home"
+
+# A `rail_after` that puts an app first on the rail rather than after another.
+TOP = "top"
 
 
 # The site-level half of the rail: everything `resolve` reads except the user.
@@ -245,12 +258,12 @@ def resolve(
 	docks: dict[str, dict] | None = None,
 	everything: bool = False,
 ) -> list[dict]:
-	"""The rail, from plain data: configured apps first, then the installed ones.
+	"""The rail, from plain data: every app at its default place or where it was moved to.
 
-	`configured` is the enabled Navigation Apps in rail order, each with its
+	`configured` is the enabled Navigation Apps in title order, each with its
 	`modules` rows (`type`, `module`, and a Category's `label`), `roles`, and optionally the
-	`installed_app` it stands for, its `module_mode`, whether it is `hidden`
-	and its `apps_screen`.
+	`installed_app` it stands for, its `module_mode`, whether it is `hidden`,
+	its `apps_screen` and the app it follows on the rail (`rail_after`).
 	`sidebars` is the shells this user may open, from `module_sidebars`
 	(`name`, `module`, `app`, `label`, `header_icon`; see `_shells`). The rest
 	say what an installed app is called (`app_meta`) and where its own frontend
@@ -397,7 +410,55 @@ def resolve(
 				"frontend": frontend,
 			}
 		)
+	# Ordered over every app, shown or not, so an app anchored to one this user
+	# does not see still finds its place.
+	defaults = [f"app:{name}" for name in [*installed_apps, OTHER]]
+	anchors = {}
+	for index, app in enumerate(configured):
+		target = next((t for t, i in bound.items() if i == index), None)
+		key = f"app:{target}" if target else f"navigation-app:{app['name']}"
+		anchors[key] = (app.get("rail_after") or "").strip() or (None if target else TOP)
+	position = {key: i for i, key in enumerate(rail_sequence(defaults, anchors))}
+	rail.sort(key=lambda entry: position.get(entry["key"], len(position)))
 	return rail
+
+
+def rail_sequence(defaults: list[str], anchors: dict[str, str | None]) -> list[str]:
+	"""Every app's key in rail order: the default order, with each anchored app after its anchor.
+
+	`defaults` is the apps that have a default place, in that order. `anchors`
+	maps the apps with a record to what they follow -- another app's key, `TOP`,
+	or None for "where it would be anyway". Apps anchored to the same one keep
+	the order `anchors` lists them in. An app whose anchor never turns up (gone,
+	or a loop) goes to its default place, or the top if it has none.
+	"""
+	moved = {key: anchor for key, anchor in anchors.items() if anchor}
+	order = [key for key in defaults if key not in moved]
+	last_after: dict[str, str] = {}
+
+	def insert(key: str, anchor: str) -> None:
+		previous = last_after.get(anchor) or (None if anchor == TOP else anchor)
+		order.insert(order.index(previous) + 1 if previous else 0, key)
+		last_after[anchor] = key
+
+	pending = list(moved.items())
+	while pending:
+		waiting = [(key, anchor) for key, anchor in pending if anchor != TOP and anchor not in order]
+		for key, anchor in pending:
+			if (key, anchor) not in waiting:
+				insert(key, anchor)
+		if len(waiting) == len(pending):
+			break
+		pending = waiting
+
+	# What could not be placed: back where it would have been, or at the top.
+	for key, _anchor in pending:
+		if key in defaults:
+			later = [k for k in defaults[defaults.index(key) + 1 :] if k in order]
+			order.insert(order.index(later[0]) if later else len(order), key)
+		else:
+			insert(key, TOP)
+	return order
 
 
 def _app_name(app_name: str) -> str:
@@ -551,8 +612,9 @@ def _configured() -> list[dict]:
 			"module_mode",
 			"hidden",
 			"apps_screen",
+			"rail_after",
 		],
-		order_by="rail_order asc, title asc",
+		order_by="title asc",
 	)
 	if not apps:
 		return []

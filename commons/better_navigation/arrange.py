@@ -8,7 +8,7 @@ the one behind Manage Dock and Edit Sidebar) -- see `js/arrange.js`. This is wha
 read and write. Everything is stored where it already was, on `Navigation App`
 records, so the form and the editors are two ways into the same data:
 
-- Manage Rail orders and hides apps (`rail_order` and `hidden`), and adds new ones: a
+- Manage Rail orders and hides apps (`rail_after` and `hidden`), and adds new ones: a
   Navigation App of its own, with a title and an icon, which then needs modules before
   the rail shows it.
 - Manage Modules orders, adds and takes modules off one app's list, with
@@ -20,12 +20,11 @@ records, so the form and the editors are two ways into the same data:
 Only the site's arrangement is edited ("For everyone"). There is no per-user layer:
 Navigation Apps are site records.
 
-The rail order is the whole rail's, whichever editor wrote. The resolver lists apps
-with a record before apps without one, so giving one app a record (the first edit of
-ERPNext's modules, say) would otherwise move it to the top. Each save therefore
-writes the order the rail had, or the one the editor asked for, onto records -- and
-only onto the apps that need one to hold their place: an app still where Frappe's
-default would put it, among the apps nobody has configured, is left without a record.
+The rail order is the whole rail's, whichever editor wrote. Every app sits at its
+default place unless its record anchors it after another (see `navigation_apps`), so
+a save writes an anchor only onto the apps that left the default order, and a record
+is made only for an app that needs one to hold a position or to be hidden. A record
+an editor made that no longer holds anything (`_is_placeholder`) is deleted again.
 """
 
 import json
@@ -124,28 +123,89 @@ def save_rail(items) -> dict:
 def _store_order(rail: list[dict], keys: list[str], hidden: set[str]) -> None:
 	"""Write `keys` as the rail order, and `hidden` as the apps off it, onto records.
 
-	The apps at the end that nobody configured, still in Frappe's default order and
-	not hidden, are left as they are: the resolver already lists them there. Every app
-	before them gets a record holding its place, made for it if it has none.
+	As few apps as possible are anchored; see `anchors_for`.
 	"""
+	from frappe.boot import get_app_data
+
 	by_key = {app["key"]: app for app in rail}
-	default = [app["key"] for app in rail if not app.get("configured")]
+	defaults = [f"app:{name}" for name in [*frappe.get_installed_apps(), nav.OTHER]]
+	anchors = anchors_for(keys, defaults, {key for key in keys if by_key[key].get("record")})
+	meta = nav.apps_from_app_data(get_app_data())[0]
 
-	# The longest tail of plain apps in the default order.
-	tail: list[str] = []
-	for key in reversed(keys):
+	for key in keys:
 		app = by_key[key]
-		if app.get("configured") or key in hidden:
-			break
-		if tail and default.index(key) > default.index(tail[0]):
-			break
-		tail.insert(0, key)
+		anchor = anchors[key]
+		is_hidden = 1 if key in hidden else 0
+		if not app.get("record") and not anchor and not is_hidden:
+			continue
+		doc = _record_for(app)
+		changed = doc.is_new() or (doc.rail_after or None) != anchor or int(doc.hidden or 0) != is_hidden
+		doc.rail_after = anchor
+		doc.hidden = is_hidden
+		target = doc.installed_app
+		if _is_placeholder(doc, nav.OTHER if target == nav.OTHER else (meta.get(target) or {}).get("title")):
+			if not doc.is_new():
+				frappe.delete_doc(APP, doc.name)
+		elif changed:
+			doc.save()
 
-	for position, key in enumerate(keys[: len(keys) - len(tail)], start=1):
-		doc = _record_for(by_key[key])
-		doc.rail_order = position * 10
-		doc.hidden = 1 if key in hidden else 0
-		doc.save()
+
+def anchors_for(keys: list[str], defaults: list[str], with_record: set[str]) -> dict[str, str | None]:
+	"""What each app in `keys` follows on the rail so that it reads `keys`: None for its default place.
+
+	The longest run of apps still in their default order stays unanchored
+	(`_unmoved`), and each of the rest follows the app before it in `keys`, or the
+	top. `navigation_apps.rail_sequence` turns this back into `keys`.
+	"""
+	stay = _unmoved(keys, defaults, with_record)
+	return {
+		key: None if key in stay else (keys[index - 1] if index else nav.TOP)
+		for index, key in enumerate(keys)
+	}
+
+
+def _unmoved(keys: list[str], defaults: list[str], with_record: set[str]) -> set[str]:
+	"""The apps of `keys` that can stay unanchored: a run in default order, chosen to anchor as few as it can.
+
+	The heaviest increasing subsequence by default position. An app without a record
+	weighs far more than one with, since anchoring it means making a record for it.
+	"""
+	rank = {key: i for i, key in enumerate(defaults)}
+	candidates = [key for key in keys if key in rank]
+	weight = [1 if key in with_record else 1000 for key in candidates]
+	best = list(weight)
+	previous: list[int | None] = [None] * len(candidates)
+	for i, key in enumerate(candidates):
+		for j in range(i):
+			if rank[candidates[j]] < rank[key] and best[j] + weight[i] > best[i]:
+				best[i], previous[i] = best[j] + weight[i], j
+	stay: set[str] = set()
+	at = max(range(len(candidates)), key=best.__getitem__, default=None)
+	while at is not None:
+		stay.add(candidates[at])
+		at = previous[at]
+	return stay
+
+
+def _is_placeholder(doc, default_title: str | None) -> bool:
+	"""Whether a record stands for an installed app and says nothing about it but that.
+
+	What `_record_for` makes for an app that only needed a position: bound, enabled,
+	under the app's own title, in Add mode, with no position, modules, roles, mark or
+	frontend of its own, and not hidden.
+	"""
+	return bool(
+		doc.installed_app
+		and doc.enabled
+		and not doc.hidden
+		and not doc.rail_after
+		and (doc.module_mode or nav.ADD) == nav.ADD
+		and not doc.modules
+		and not doc.roles
+		and not (doc.icon or doc.logo or doc.frontend_url or doc.frontend_label)
+		and (doc.apps_screen or "One Icon") == "One Icon"
+		and doc.title == (default_title or doc.installed_app)
+	)
 
 
 def _record_for(app: dict):

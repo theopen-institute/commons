@@ -4,12 +4,12 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-10-08 12:00:00.000000",
+ "modified": "2026-10-08 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
  "row_format": "Dynamic",
- "sort_field": "rail_order",
+ "sort_field": "title",
  "sort_order": "ASC",
  "states": [],
  "track_changes": 1,
@@ -25,7 +25,7 @@
   "installed_app",
   "enabled",
   "hidden",
-  "rail_order",
+  "rail_after",
   "column_break_app",
   "icon",
   "logo",
@@ -62,12 +62,11 @@
    "description": "A disabled record changes nothing: it claims none of its modules, and an installed app it stands for is drawn as if it had no record. To take an app off the rail, use Hide from Rail."
   },
   {
-   "default": "0",
-   "fieldname": "rail_order",
-   "fieldtype": "Int",
-   "label": "Rail Order",
+   "fieldname": "rail_after",
+   "fieldtype": "Data",
+   "label": "Rail Position",
    "in_list_view": 1,
-   "description": "Lower numbers sit higher on the rail. Ties are broken by title."
+   "description": "Where this app sits when it is not in its default place: \"top\", or the key of the app it follows (app:erpnext, navigation-app:Finance). Left blank, an installed app's record sits where the app would (install order, Other last), and an app of the site's own at the top. Manage Rail sets this; it writes a position only for the apps that move."
   },
   {
    "fieldname": "column_break_app",

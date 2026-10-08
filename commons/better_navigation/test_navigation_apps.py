@@ -106,6 +106,11 @@ def layout(entry):
 	]
 
 
+def titled(result, title):
+	"""One rail entry by its title: a bound record sits at its installed app's place, not first."""
+	return next(entry for entry in result if entry["title"] == title)
+
+
 def shape(result):
 	return [(entry["title"], [s["shell"] for s in entry["modules"]]) for entry in result]
 
@@ -293,15 +298,16 @@ class TestBoundApps(TestCase):
 
 	def test_takes_the_installed_apps_place_and_keeps_its_modules(self):
 		result = rail([bound("Books", "erpnext")])
-		self.assertEqual(shape(result)[0], ("Books", ["Accounting", "Stock"]))
+		# ERPNext's place: after Frappe, as installed.
+		self.assertEqual(shape(result)[1], ("Books", ["Accounting", "Stock"]))
 		# Not drawn a second time among the installed apps.
 		self.assertNotIn("ERPNext", [entry["title"] for entry in result])
-		self.assertEqual(result[0]["key"], "app:erpnext")
-		self.assertTrue(result[0]["configured"])
+		self.assertEqual(result[1]["key"], "app:erpnext")
+		self.assertTrue(result[1]["configured"])
 
 	def test_add_mode_adds(self):
 		books = bound("Books", "erpnext", "Stock", "Students")
-		entry = rail([books])[0]
+		entry = titled(rail([books]), "Books")
 		# The listed ones in table order, then what ERPNext already held.
 		self.assertEqual([s["shell"] for s in entry["modules"]], ["Stock", "Students", "Accounting"])
 		# Claimed away from Education.
@@ -309,12 +315,12 @@ class TestBoundApps(TestCase):
 
 	def test_replace_mode_keeps_only_the_list_and_sends_the_rest_to_other(self):
 		result = shape(rail([bound("Books", "erpnext", "Stock", mode="Replace")]))
-		self.assertEqual(result[0], ("Books", ["Stock"]))
+		self.assertEqual(dict(result)["Books"], ["Stock"])
 		self.assertEqual(result[-1], (OTHER, ["Accounting", "Helpdesk"]))
 
 	def test_another_app_claiming_one_of_its_sidebars_takes_it(self):
-		result = shape(rail([bound("Books", "erpnext"), app("Stores", "Stock")]))
-		self.assertEqual(result[:2], [("Books", ["Accounting"]), ("Stores", ["Stock"])])
+		result = dict(shape(rail([bound("Books", "erpnext"), app("Stores", "Stock")])))
+		self.assertEqual((result["Books"], result["Stores"]), (["Accounting"], ["Stock"]))
 
 	def test_hidden_takes_the_app_and_its_sidebars_off_the_rail(self):
 		result = shape(rail([bound("Books", "erpnext", "Students", hidden=1)]))
@@ -325,26 +331,29 @@ class TestBoundApps(TestCase):
 	def test_roles_hide_without_releasing(self):
 		books = bound("Books", "erpnext", roles=("Accounts User",))
 		self.assertEqual(
-			shape(rail([books], roles=("Accounts User",)))[0], ("Books", ["Accounting", "Stock"])
+			dict(shape(rail([books], roles=("Accounts User",))))["Books"], ["Accounting", "Stock"]
 		)
 		result = shape(rail([books]))
 		self.assertFalse(any(title in ("Books", "ERPNext") for title, _ in result))
 
 	def test_inherits_the_logo_and_frontend_unless_it_has_its_own(self):
-		entry = rail([bound("Books", "erpnext")], frontends={"erpnext": "/shop"})[0]
+		entry = titled(rail([bound("Books", "erpnext")], frontends={"erpnext": "/shop"}), "Books")
 		self.assertEqual(entry["logo"], "/erpnext.svg")
 		self.assertEqual(entry["frontend"], {"label": "Books app", "url": "/shop"})
 		# An icon of its own is a mark of its own: the app's logo would cover it.
-		entry = rail([bound("Books", "erpnext", icon="book")])[0]
+		entry = titled(rail([bound("Books", "erpnext", icon="book")]), "Books")
 		self.assertEqual((entry["icon"], entry["logo"]), ("book", None))
-		entry = rail([{**bound("Books", "erpnext"), "logo": "/books.svg", "frontend_url": "/books"}])[0]
+		entry = titled(
+			rail([{**bound("Books", "erpnext"), "logo": "/books.svg", "frontend_url": "/books"}]), "Books"
+		)
 		self.assertEqual((entry["logo"], entry["frontend"]["url"]), ("/books.svg", "/books"))
 
 	def test_other_is_bindable(self):
 		result = rail([bound("Unsorted", OTHER)])
-		self.assertEqual(shape(result)[0], ("Unsorted", ["Helpdesk"]))
-		self.assertEqual(result[0]["key"], f"app:{OTHER}")
-		self.assertEqual(result[0]["logo"], "/assets/commons/images/commons-other-logo.svg")
+		# Other's place: last.
+		self.assertEqual(shape(result)[-1], ("Unsorted", ["Helpdesk"]))
+		self.assertEqual(result[-1]["key"], f"app:{OTHER}")
+		self.assertEqual(result[-1]["logo"], "/assets/commons/images/commons-other-logo.svg")
 		self.assertNotIn(OTHER, [entry["title"] for entry in result])
 		hidden = shape(rail([bound("Unsorted", OTHER, hidden=1)]))
 		self.assertFalse(any(title in ("Unsorted", OTHER) for title, _ in hidden))
@@ -358,13 +367,15 @@ class TestBoundApps(TestCase):
 				]
 			)
 		)
-		self.assertEqual(result[:2], [("Books", ["Stock"]), ("Unsorted", ["Users"])])
+		self.assertEqual((dict(result)["Books"], dict(result)["Unsorted"]), (["Stock"], ["Users"]))
 		self.assertFalse(any(s in ("Accounting", "Helpdesk") for _, row in result for s in row))
 
 	def test_only_the_first_record_for_an_app_stands_for_it(self):
 		result = rail([bound("Books", "erpnext"), bound("Ledger", "erpnext", "Stock")])
-		self.assertEqual(shape(result)[:2], [("Books", ["Accounting"]), ("Ledger", ["Stock"])])
-		self.assertEqual(result[1]["key"], "navigation-app:Ledger")
+		self.assertEqual(
+			(dict(shape(result))["Books"], dict(shape(result))["Ledger"]), (["Accounting"], ["Stock"])
+		)
+		self.assertEqual(titled(result, "Ledger")["key"], "navigation-app:Ledger")
 
 	def test_an_app_not_installed_is_only_a_grouping(self):
 		result = rail([bound("Desk", "helpdesk", "Helpdesk")])
@@ -560,7 +571,7 @@ class TestCategoriesAndSpacers(TestCase):
 		self.assertEqual(layout(entry), [("Accounting", None)])
 
 	def test_a_trailing_category_heads_what_the_app_holds_besides(self):
-		entry = rail([bound("Books", "erpnext", "Stock", category("More"))])[0]
+		entry = titled(rail([bound("Books", "erpnext", "Stock", category("More"))]), "Books")
 		self.assertEqual(layout(entry), [("Stock", None), ("Accounting", "More")])
 
 	def test_only_markers_is_no_app(self):
@@ -604,3 +615,70 @@ class TestKeepUnseen(TestCase):
 			[{"module": "Stock"}], [self.row("Secret"), self.row("Stock")], visible={"Stock"}
 		)
 		self.assertEqual([r["module"] for r in result], ["Secret", "Stock"])
+
+
+# The apps with a default place, in that order: installed, then Other.
+DEFAULTS = ["app:frappe", "app:erpnext", "app:education", "app:Other"]
+
+
+class TestRailPosition(TestCase):
+	"""Every app at its default place, unless its record anchors it after another."""
+
+	def test_anchored_apps_follow_their_anchor_and_the_rest_keep_default_order(self):
+		from commons.better_navigation.navigation_apps import TOP, rail_sequence
+
+		anchors = {"app:education": TOP, "navigation-app:Finance": "app:erpnext", "app:erpnext": None}
+		self.assertEqual(
+			rail_sequence(DEFAULTS, anchors),
+			["app:education", "app:frappe", "app:erpnext", "navigation-app:Finance", "app:Other"],
+		)
+
+	def test_a_chain_of_anchors_and_one_that_is_gone(self):
+		from commons.better_navigation.navigation_apps import rail_sequence
+
+		anchors = {
+			"navigation-app:B": "navigation-app:A",
+			"navigation-app:A": "app:frappe",
+			"app:erpnext": "app:uninstalled",
+			"navigation-app:C": "navigation-app:C",
+		}
+		self.assertEqual(
+			rail_sequence(DEFAULTS, anchors),
+			[
+				"navigation-app:C",
+				"app:frappe",
+				"navigation-app:A",
+				"navigation-app:B",
+				"app:erpnext",
+				"app:education",
+				"app:Other",
+			],
+		)
+
+	def test_every_arrangement_is_stored_and_read_back(self):
+		from itertools import permutations
+
+		from commons.better_navigation.arrange import anchors_for
+		from commons.better_navigation.navigation_apps import rail_sequence
+
+		apps = [*DEFAULTS, "navigation-app:Finance"]
+		for keys in permutations(apps):
+			with self.subTest(keys=keys):
+				anchors = anchors_for(list(keys), DEFAULTS, {"navigation-app:Finance"})
+				self.assertEqual(rail_sequence(DEFAULTS, anchors), list(keys))
+
+	def test_moving_one_app_anchors_only_that_app(self):
+		from commons.better_navigation.arrange import anchors_for
+
+		keys = ["app:frappe", "app:education", "app:Other", "app:erpnext"]
+		anchors = anchors_for(keys, DEFAULTS, set())
+		self.assertEqual({k: a for k, a in anchors.items() if a}, {"app:erpnext": "app:Other"})
+
+	def test_a_bound_record_sits_at_its_apps_place_and_a_site_app_on_top(self):
+		result = rail([bound("Books", "erpnext"), app("Finance", "Students")])
+		self.assertEqual([entry["title"] for entry in result][:3], ["Finance", "Frappe Framework", "Books"])
+
+	def test_rail_after_moves_an_app(self):
+		finance = {**app("Finance", "Students"), "rail_after": "app:erpnext"}
+		titles = [entry["title"] for entry in rail([finance])]
+		self.assertEqual(titles.index("Finance"), titles.index("ERPNext") + 1)

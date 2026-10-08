@@ -65,12 +65,13 @@ class NavigationApp(Document):
 		logo: DF.AttachImage | None
 		module_mode: DF.Literal["Add", "Replace"]
 		modules: DF.Table[NavigationAppModule]
-		rail_order: DF.Int
+		rail_after: DF.Data | None
 		roles: DF.Table[HasRole]
 		title: DF.Data
 	# end: auto-generated types
 
 	def validate(self):
+		self.rail_after = (self.rail_after or "").strip() or None
 		self.validate_marks()
 		self.validate_installed_app()
 		self.validate_modules()
@@ -150,6 +151,16 @@ class NavigationApp(Document):
 						row.idx, frappe.bold(row.module), frappe.bold(held[row.module])
 					)
 				)
+
+	def after_rename(self, old: str, new: str, merge: bool = False):
+		"""Keep the apps placed after this one there: an anchor names a site app by its record."""
+		frappe.db.set_value(
+			APP,
+			{"rail_after": f"navigation-app:{old}"},
+			"rail_after",
+			f"navigation-app:{new}",
+			update_modified=False,
+		)
 
 	def warn_private_images(self):
 		"""Say so when a picture is a private file, which the rail and the Apps screen cannot load.
