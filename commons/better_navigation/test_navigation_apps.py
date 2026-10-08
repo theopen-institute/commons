@@ -62,7 +62,12 @@ def rail(
 	sidebars=SIDEBARS,
 	frontends=None,
 	hosts=None,
+	multi_shell_modules=None,
 ):
+	if multi_shell_modules is None:
+		# The site's sidebars are the ones this user opens, unless a test says otherwise.
+		modules = [s["module"] for s in sidebars]
+		multi_shell_modules = {m for m in modules if modules.count(m) > 1}
 	return resolve(
 		configured=list(configured),
 		sidebars=sidebars,
@@ -73,6 +78,7 @@ def rail(
 		user_roles=set(roles),
 		frontends=frontends,
 		hosts=hosts,
+		multi_shell_modules=multi_shell_modules,
 	)
 
 
@@ -213,6 +219,25 @@ class TestModules(TestCase):
 		]
 		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Quality", "Audits"])
 
+	def test_a_label_is_not_used_when_the_user_opens_one_of_the_sites_two_shells(self):
+		# The site has Quality and Audits; this user can open only Quality.
+		shells = [s for s in SHELLS if s["name"] != "Audits"]
+		entry = rail(
+			[app("QA", "Quality Management", labels={"Quality Management": "QA"})],
+			sidebars=shells,
+			multi_shell_modules={"Quality Management"},
+		)[0]
+		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Quality"])
+
+	def test_the_sites_shells_are_its_sidebar_documents(self):
+		from unittest.mock import patch
+
+		from commons.better_navigation import navigation_apps as nav
+
+		modules = ["Quality Management", "Quality Management", "Stock"]
+		with patch.object(nav.frappe, "get_all", return_value=modules):
+			self.assertEqual(nav.multi_shell_modules(), {"Quality Management"})
+
 	def test_a_renamed_shell_is_claimed_by_its_module_not_its_name(self):
 		result = rail([app("QA", "Quality")], sidebars=SHELLS)
 		self.assertNotIn("QA", [entry["title"] for entry in result])
@@ -270,6 +295,7 @@ class SiteInputsAreCached(TestCase):
 			patch.object(nav.frappe, "local", SimpleNamespace(db=None)),
 			patch.object(nav, "_configured", side_effect=lambda: reads.append("configured") or []),
 			patch.object(nav, "module_apps", return_value={}),
+			patch.object(nav, "multi_shell_modules", return_value=set()),
 			patch.object(nav.frappe, "get_installed_apps", return_value=["frappe"]),
 		):
 			nav._site_inputs()

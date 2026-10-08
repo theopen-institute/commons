@@ -20,6 +20,9 @@ shapes that resolver could not give a stable answer for:
   the page you are on belongs to, so the second claim is refused and told which
   app has it. A disabled app claims nothing, so this is checked only while
   enabled -- and again when a disabled one is switched back on.
+
+It also warns, without refusing, about what the rail will quietly leave out: a
+picture in a private file, and a label on a module of more than one sidebar.
 """
 
 import re
@@ -34,6 +37,7 @@ from commons.better_navigation.navigation_apps import (
 	MODULE,
 	OTHER,
 	SPACER,
+	multi_shell_modules,
 	row_type,
 )
 
@@ -71,6 +75,7 @@ class NavigationApp(Document):
 		self.validate_marks()
 		self.validate_installed_app()
 		self.validate_sidebars()
+		self.warn_unused_labels()
 		self.warn_private_images()
 
 	def validate_marks(self):
@@ -145,6 +150,26 @@ class NavigationApp(Document):
 						row.idx, frappe.bold(row.module), frappe.bold(held[row.module])
 					)
 				)
+
+	def warn_unused_labels(self):
+		"""Say so when a label is on a module of more than one sidebar, where the rail does not use it.
+
+		One label on two rail entries would make them look the same, so each keeps
+		its own name (see `navigation_apps.resolve`). A warning, not a refusal: the
+		label is kept, and is used if the module comes down to one sidebar.
+		"""
+		several = multi_shell_modules()
+		unused = [row for row in self.modules() if (row.label or "").strip() and row.module in several]
+		if unused:
+			frappe.msgprint(
+				_(
+					"These modules have more than one sidebar, so each keeps its own name and the label is not used: {0}."
+				).format(
+					", ".join(_("Row {0}: {1}").format(row.idx, frappe.bold(row.module)) for row in unused)
+				),
+				indicator="orange",
+				alert=True,
+			)
 
 	def warn_private_images(self):
 		"""Say so when a picture is a private file, which the rail and the Apps screen cannot load.

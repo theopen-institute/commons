@@ -189,8 +189,9 @@ def get_app_modules(key: str) -> dict:
 
 	`rows` is the list as the rail draws it -- each Category and Spacer a row of its
 	own -- and then, taken off, the installed app's own modules it no longer lists.
-	A module row names its Module Def, what the rail calls it, and the label the
-	record gives it (`own_label`), if any.
+	A module row names its Module Def, what the rail calls it, the label the
+	record gives it (`own_label`), if any, and whether it has more than one
+	sidebar on the site (`several_sidebars`), where that label is not used.
 	"""
 	_check()
 	from frappe.boot import get_module_sidebars
@@ -201,6 +202,7 @@ def get_app_modules(key: str) -> dict:
 	if not app:
 		frappe.throw(_("{0} is not on the rail.").format(frappe.bold(key)))
 
+	several = nav.multi_shell_modules()
 	own_labels = {}
 	if app.get("record"):
 		for row in frappe.get_doc(APP, app["record"]).sidebars:
@@ -224,6 +226,7 @@ def get_app_modules(key: str) -> dict:
 				"label": entry["label"],
 				"own_label": own_labels.get(module),
 				"icon": entry.get("icon"),
+				"several_sidebars": module in several,
 			}
 		)
 
@@ -245,6 +248,7 @@ def get_app_modules(key: str) -> dict:
 					"label": sidebar.get("label") or shell,
 					"icon": sidebar.get("header_icon"),
 					"hidden": True,
+					"several_sidebars": module in several,
 				}
 			)
 

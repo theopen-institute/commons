@@ -55,6 +55,14 @@ it, but a renamed sidebar keeps its own name (ERPNext's "Quality" is module
 "Quality Management") and a module may have two. A row claims the module, so
 it claims all of them.
 
+A row's label is for a module of one sidebar. On a module of two it would give
+both rail entries one name, so each keeps its own. That is decided by how many
+sidebars the module has on the site (`multi_shell_modules`), not by how many
+this user can open: Frappe drops a shell with nothing the user may open, and a
+label that came and went with permissions would name one sidebar for some
+people and another for others. The form and the editor both say so when a
+label will not be used.
+
 Two rules
 ---------
 *A module is in one app.* The header has to say which app and module the page
@@ -184,8 +192,8 @@ def _site_inputs() -> dict:
 	user (`add_to_apps_screen`'s `has_permission`), so they come from this
 	user's `app_data` instead (see `apps_from_app_data`).
 
-	Four queries per desk load otherwise, for data that
-	changes when an administrator edits the rail or installs an app. Kept in
+	Five queries per desk load otherwise, for data that
+	changes when an administrator edits the rail or a sidebar, or installs an app. Kept in
 	`frappe.client_cache` (process-local, invalidated through redis) and dropped
 	by `clear_cache`, which the doc events on everything read here call. An app
 	installed, removed or migrated needs no call: `install_app`, `remove_app`
@@ -198,6 +206,7 @@ def _site_inputs() -> dict:
 			"configured": _configured(),
 			"installed_apps": frappe.get_installed_apps(),
 			"module_apps": module_apps(),
+			"multi_shell_modules": multi_shell_modules(),
 		},
 	)
 
@@ -230,6 +239,7 @@ def resolve(
 	user_roles: set[str],
 	frontends: dict[str, str] | None = None,
 	hosts: dict[str, str] | None = None,
+	multi_shell_modules: set[str] | frozenset[str] = frozenset(),
 	everything: bool = False,
 ) -> list[dict]:
 	"""The rail, from plain data: configured apps first, then the installed ones.
@@ -244,7 +254,8 @@ def resolve(
 	is, outside the desk (`frontends`), both as this user's `app_data` has them;
 	which app a module belongs to (`module_apps`, keyed by scrubbed module name,
 	as the boot's `module_app` is); and which installed app a companion app
-	mounts on (`hosts`, see `app_hosts`).
+	mounts on (`hosts`, see `app_hosts`); and which modules have more than one
+	sidebar on the site (`multi_shell_modules`), whose rows' labels are not used.
 
 	Every entry carries `frontend` -- `{label, url}` or None -- beside its
 	`sidebars`, which are modules only, one per shell: a module may carry a
@@ -280,9 +291,10 @@ def resolve(
 			shells = [s for s in by_module.get(row.get("module") or "", []) if s["name"] not in claimed]
 			# Gone since, out of this user's reach, or already claimed by an
 			# earlier app. A module of two shells keeps their own labels.
+			# Counted on the site, not in `shells`: this user may open only one of them.
+			label = None if row.get("module") in multi_shell_modules else row.get("label")
 			for sidebar in shells:
 				claimed.add(sidebar["name"])
-				label = row.get("label") if len(shells) == 1 else None
 				entries.append(_entry(sidebar, label, row.get("desktop_image")))
 		claims.append(entries)
 
@@ -569,6 +581,21 @@ def _shells(module_sidebars: dict) -> list[dict]:
 		}
 		for name, sidebar in module_sidebars.items()
 	]
+
+
+def multi_shell_modules() -> set[str]:
+	"""The modules with more than one sidebar on the site, whoever is asking.
+
+	A module's shells are its `Sidebar` documents, shipped or made on the site, and
+	only when it has none, one computed from what it holds and named after it
+	(`frappe.desk.doctype.sidebar.sidebar.get_sidebar_bases`). A computed sidebar
+	is never a second one, so counting documents is the whole answer, and needs no
+	user. Who may open which comes later, per user, and is not asked here.
+	"""
+	from collections import Counter
+
+	counts = Counter(frappe.get_all("Sidebar", filters={"module": ["is", "set"]}, pluck="module"))
+	return {module for module, count in counts.items() if count > 1}
 
 
 def module_apps() -> dict[str, str]:

@@ -347,7 +347,7 @@ doc_events = {
 			"on_update": "commons.better_navigation.navigation_apps.clear_cache",
 			"after_delete": "commons.better_navigation.navigation_apps.clear_cache",
 		}
-		for doctype in ("Navigation App", "Module Def")
+		for doctype in ("Navigation App", "Module Def", "Sidebar")
 	},
 	# A cancelled document's Notification emails that are still waiting in the
 	# queue are not sent. See `commons.email_extensions.scheduled`.

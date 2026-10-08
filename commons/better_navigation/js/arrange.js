@@ -323,6 +323,7 @@
 					label: row.label,
 					own_label: row.own_label || null,
 					icon: row.icon,
+					several_sidebars: !!row.several_sidebars,
 				};
 			}
 
@@ -377,10 +378,15 @@
 						fieldtype: "Data",
 						label: entry.kind === "category" ? __("Heading") : __("Label"),
 						default: entry.kind === "category" ? entry.label : entry.own_label || "",
+						// A module of several sidebars keeps each one's own name on the rail.
 						description:
-							entry.kind === "module"
-								? __("Left blank, the module's own name.")
-								: "",
+							entry.kind !== "module"
+								? ""
+								: entry.several_sidebars
+								? __(
+										"This module has more than one sidebar, so each keeps its own name: a label here is not used."
+								  )
+								: __("Left blank, the module's own name."),
 						reqd: entry.kind === "category",
 					},
 					({ label }) => {
@@ -389,7 +395,7 @@
 							entry.label = label;
 						} else {
 							entry.own_label = label || null;
-							entry.label = label || entry.module;
+							if (!entry.several_sidebars) entry.label = label || entry.module;
 						}
 						this.render_panes();
 					},

@@ -214,6 +214,20 @@ class TestFrappeSeams(TestCase):
 			with self.subTest(key=key):
 				self.assertIn(f"bootinfo.{key} =", source)
 
+	def test_a_modules_shells_are_still_its_sidebar_documents(self):
+		"""`navigation_apps.multi_shell_modules` counts `Sidebar` documents per module.
+
+		That holds while Frappe gives a module one shell per document, and a computed one
+		only when it has none (`get_sidebar_bases`).
+		"""
+		from frappe.desk.doctype.sidebar import sidebar
+
+		self.assertEqual(frappe.get_meta("Sidebar").get_field("module").options, "Module Def")
+		source = _source("desk", "doctype", "sidebar", "sidebar.py")
+		self.assertTrue(callable(getattr(sidebar, "get_sidebar_bases", None)))
+		self.assertIn('filters={"module": ["in", modules]}', source)
+		self.assertIn("for base in shells.get(module) or [computed[module]]:", source)
+
 	def test_app_data_is_in_the_boot_before_extend_bootinfo_runs(self):
 		"""The rail reads this user's `app_data` from the boot it extends (`navigation_apps.py`)."""
 		# `get_bootinfo` builds it (`load_desktop_data`), then the session runs the hooks.
