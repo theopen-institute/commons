@@ -102,10 +102,13 @@ before_migrate = [
 ]
 
 # Frappe's dock, the rail of an app's modules down the left of the desk, is a
-# document an app ships as `<app>/dock/<app>/<app>.json`, not a hook. This app
-# ships none yet, so Frappe gives its modules a switcher in the sidebar header.
-# With Commons Settings' navigation rail on, the rail shows apps instead and
-# draws itself over the dock (see `commons.better_navigation`).
+# document an app ships as `<app>/dock/<app>/<app>.json`, not a hook. This app's
+# lists the sidebars its modules ship under `<module>/sidebar/`. Modules whose
+# pages and doctypes one of those sidebars carries are named hidden, so a rail
+# leaves them off rather than listing them after; modules with nothing to open
+# get no sidebar from Frappe and are not named. With Commons Settings'
+# navigation rail on, the rail shows apps instead and draws itself over the dock
+# (see `commons.better_navigation`).
 
 # Includes in <head>
 # ------------------

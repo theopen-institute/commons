@@ -1,0 +1,87 @@
+{
+ "app": "commons",
+ "creation": "2026-10-08 11:06:34.129840",
+ "docstatus": 0,
+ "doctype": "Dock",
+ "idx": 0,
+ "items": [
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "wallet-duotone",
+   "link_to": "Banking",
+   "link_type": "Sidebar",
+   "title": "Banking"
+  },
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "receipt-card-duotone",
+   "link_to": "Document Capture",
+   "link_type": "Sidebar",
+   "title": "Document Capture"
+  },
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "user-clock-duotone",
+   "link_to": "Class Attendance",
+   "link_type": "Sidebar",
+   "title": "Class Attendance"
+  },
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "workflow-builder-duotone",
+   "link_to": "Requests",
+   "link_type": "Sidebar",
+   "title": "Requests"
+  },
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "pocket-knife-duotone",
+   "link_to": "Commons Setup",
+   "link_type": "Sidebar",
+   "title": "Commons Setup"
+  },
+  {
+   "added": 0,
+   "hidden": 1,
+   "icon": "users-duotone",
+   "link_to": "Self Service",
+   "link_type": "Sidebar",
+   "title": "Self Service"
+  },
+  {
+   "added": 0,
+   "hidden": 1,
+   "icon": "data-table-duotone",
+   "link_to": "Data Sync",
+   "link_type": "Sidebar",
+   "title": "Data Sync"
+  },
+  {
+   "added": 0,
+   "hidden": 1,
+   "icon": "plug-duotone",
+   "link_to": "API Integrations",
+   "link_type": "Sidebar",
+   "title": "API Integrations"
+  },
+  {
+   "added": 0,
+   "hidden": 1,
+   "icon": "website-browser-duotone",
+   "link_to": "Better Navigation",
+   "link_type": "Sidebar",
+   "title": "Better Navigation"
+  }
+ ],
+ "modified": "2026-10-08 11:06:34.129840",
+ "modified_by": "Administrator",
+ "name": "commons",
+ "owner": "Administrator",
+ "standard": 1,
+ "user": ""
+}

@@ -1,7 +1,7 @@
 // A To Do widget for the desk, beside the notification bell, in the places the
 // desk puts that bell: the sidebar's band of standard rows (Search, Notification),
-// the navigation rail's foot when Better Navigation's rail is on, and the desktop
-// navbar.
+// the navigation rail's foot when Better Navigation's or Open Desk's rail is on,
+// and the desktop navbar.
 //
 // Beside the sidebar it is Frappe's own kind of panel, as Notifications is: a
 // `frappe.ui.SidebarPanel` named `commons-todos`, opened through
@@ -170,11 +170,34 @@ function patch_desktop() {
 	});
 }
 
+/* --------------------------------------------------------------------------
+ * Host 3: Open Desk's rail, when that app is installed and its rail is on
+ * ----------------------------------------------------------------------- */
+
+// A tile at the rail's foot, beside its bell, opening the same drawer as the
+// sidebar's row. Open Desk reads `opendesk.rail.tools` when it draws the rail,
+// so this works whichever bundle loads first, and costs nothing where Open
+// Desk is not installed. See `opendesk/open_desk/js/rail.js`.
+function add_to_open_desk_rail() {
+	const rail = frappe.provide("opendesk.rail");
+	(rail.tools = rail.tools || []).push({
+		name: "commons-todos",
+		label: __("To Do"),
+		icon: "list-todo",
+		class: commons.desk_todos.TRIGGER,
+		badge_class: "commons-todo-badge",
+		condition: may_use_todos,
+		on_click: () => frappe.ui.sidebar_panels.toggle(PANEL),
+		on_draw: () => show_count(commons.desk_todos.count),
+	});
+}
+
 // Opt-in: "Enable Desk To Do" in Commons Settings. Off, neither seam is
-// wrapped, and the navigation rail's To Do tile, which opens the sidebar's
-// drawer, is not drawn either.
+// wrapped, and neither rail's To Do tile, which opens the sidebar's drawer,
+// is drawn either.
 const features = (frappe.boot && frappe.boot.commons_features) || {};
 if (features.desk_todos) {
 	patch_sidebar();
 	patch_desktop();
+	add_to_open_desk_rail();
 }

@@ -19,6 +19,10 @@
 (function () {
 	const features = (frappe.boot && frappe.boot.commons_features) || {};
 	if (!features.user_menu) return;
+	// Open Desk's copy of this does the same, behind its own switch; one of them is enough. The
+	// switch here still opens the Commons frontend's user menu.
+	const open_desk = (frappe.boot && frappe.boot.opendesk_features) || {};
+	if (open_desk.user_menu) return;
 
 	const Header = frappe.ui && frappe.ui.SidebarHeader;
 	if (
