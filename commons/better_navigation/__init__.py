@@ -41,42 +41,25 @@ The frontend half is `frontend/src/data/shell.ts`. The split is the same one
 what order, under which heading, and what they are called; that side knows what
 a row opens, whether this user may open it, and what the badge on it says.
 
-The rail
+The desk
 --------
-`Navigation App` is the level above the modules: an entry on the rail, holding
-the modules it offers. A site's apps need not be installed apps -- "Finance"
-may hold modules from two of them. Nothing configured, the rail is the
-installed apps; configured, it is those apps first and every module they leave
-unclaimed still under its installed app. `navigation_apps.py` resolves it and
-says why each rule is there.
+The desk's own navigation -- the rail of apps, Manage Desk Apps, the Apps screen
+arranged from it, and Help and the site's tools in the desk's user menu -- is the
+Open Desk app's. This app adds to it where that app offers a place: Desk To Do
+puts a tile at the foot of Open Desk's rail (`opendesk.rail.tools`). What is left
+here on the desk side:
 
-Frappe 16.50 replaced the desk's navigation: one `Sidebar` per module, a Dock
-of the open app's modules, an Apps screen. The rail is built on top of that --
-`js/navigation_rail.js` has the Dock list apps where it lists modules, and the
-sidebar's header menu list the open app's modules -- and `navigation_apps.py`
-reads the modules from Frappe's own boot. A module itself is overridden the way
-Frappe offers (a Custom Sidebar layer, or a custom Module Def for a synthetic
-one); this module only adds the level above.
-
-The desk's sidebar
-------------------
-Frappe 16.50's sidebar has its own user menu, keeps the sidebar you came from
-in the URL, and has no Website entry, so the desk halves that used to patch
-those are gone. What is left:
-
-- `js/user_menu.js` and `user_menu.py`: in the desk, Help moves from the
-  sidebar's header menu into Frappe's user menu. In the frontend, the user
-  badge opens a menu of your account, display, session defaults, site tools,
-  help and logout (`AppSidebar.vue`); `user_menu.py` gives it the Session
-  Defaults fields and Navbar Settings rows.
+- `user_menu.py`: the frontend's user menu. The user badge opens a menu of your
+  account, display, session defaults, site tools, help and logout
+  (`AppSidebar.vue`); `user_menu.py` gives it the Session Defaults fields and
+  Navbar Settings rows.
 - `website_link.py`: where the frontend's "Website" entry goes.
 - `home_page.py`: where you land after logging in, when your roles name more
   than one home page. The other half of the cascade `website_link.py` splits.
 
-Commons Settings' Better Navigation tab has a switch for each desk part, all
-off until ticked (`commons.commons_core.settings`): the navigation rail, the
-user menu, the home page priority, Desk To Do (`public/js/desk_todos/`, a To Do
-panel beside the desk's notification bell) and the Apps screen arranged from
-the Navigation Apps (`apps_screen.py`). The Website entry's switch is its own
-target field, which does nothing until it is filled in.
+Commons Settings' Better Navigation tab has a switch for each part, all off until
+ticked (`commons.commons_core.settings`): the frontend's user menu, the home page
+priority and Desk To Do (`public/js/desk_todos/`, a To Do panel beside the desk's
+notification bell). The Website entry's switch is its own target field, which
+does nothing until it is filled in.
 """

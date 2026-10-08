@@ -1,12 +1,12 @@
 // A To Do widget for the desk, beside the notification bell, in the places the
 // desk puts that bell: the sidebar's band of standard rows (Search, Notification),
-// the navigation rail's foot when Better Navigation's or Open Desk's rail is on,
-// and the desktop navbar.
+// the foot of Open Desk's rail where that app is installed and its rail is on, and
+// the desktop navbar.
 //
 // Beside the sidebar it is Frappe's own kind of panel, as Notifications is: a
 // `frappe.ui.SidebarPanel` named `commons-todos`, opened through
 // `frappe.ui.sidebar_panels` by any element carrying `commons-todo-trigger` --
-// the sidebar row here, the rail's tile in `better_navigation/js/navigation_rail.js`.
+// the sidebar row here, or the tile this adds to Open Desk's rail (`opendesk.rail.tools`).
 // Every `.commons-todo-badge` on the page shows the open count.
 //
 // Written entirely from this app. An earlier version of this widget edited

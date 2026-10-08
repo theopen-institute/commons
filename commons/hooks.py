@@ -5,12 +5,12 @@ app_description = "Shared tools for Frappe"
 app_email = "pgraif@gmail.com"
 app_license = "none"
 # This app's logo where `add_to_apps_screen` below gives none; where it does, that
-# one wins, on the Apps screen and on the rail alike.
+# one wins.
 app_logo_url = "/assets/commons/images/commons-logo.svg"
-# Commons' tile on Frappe's Apps screen (/desk), opening its own frontend. The
-# rail offers the same address as the app's "Commons app" row, read from the
-# boot's `app_data`, which Frappe builds from this hook (see
-# `commons.better_navigation.navigation_apps.apps_from_app_data`).
+# Commons' tile on Frappe's Apps screen (/desk), opening its own frontend. Open
+# Desk's rail, where it is installed, offers the same address as the app's
+# "Commons app" row, read from the boot's `app_data`, which Frappe builds from this
+# hook.
 add_to_apps_screen = [
 	{
 		"name": "commons",
@@ -106,9 +106,8 @@ before_migrate = [
 # lists the sidebars its modules ship under `<module>/sidebar/`. Modules whose
 # pages and doctypes one of those sidebars carries are named hidden, so a rail
 # leaves them off rather than listing them after; modules with nothing to open
-# get no sidebar from Frappe and are not named. With Commons Settings'
-# navigation rail on, the rail shows apps instead and draws itself over the dock
-# (see `commons.better_navigation`).
+# get no sidebar from Frappe and are not named. Open Desk's rail, where it is
+# installed and on, shows apps instead and draws itself over the dock.
 
 # Includes in <head>
 # ------------------
@@ -117,9 +116,7 @@ before_migrate = [
 #
 # One bundle, loaded after core's own `app_include_js`, so the classes it patches
 # already exist. `commons/public/js/commons.bundle.js` lists what is in it: the
-# desk halves of Better Navigation (the rail, its Manage Rail and Manage Modules
-# editors, and the user menu's extra rows, under `commons/better_navigation/js/`),
-# Desk To Do, the Bikram Sambat readout on Date and Datetime fields, the Email
+# user menu's rows of this app's own, Desk To Do, the Bikram Sambat readout on Date and Datetime fields, the Email
 # menu and composer, print templates, derived fields, hiding cancelled documents
 # and internal accounts, and the desk islands. Each draws itself only where its
 # setting or its data says so.
@@ -343,15 +340,6 @@ doc_events = {
 	"Material Request": {
 		"validate": "commons.requests.material_request.validate_procurement_links",
 	},
-	# The navigation rail's site-level inputs are cached; these are what it reads.
-	# See `commons.better_navigation.navigation_apps._site_inputs`.
-	**{
-		doctype: {
-			"on_update": "commons.better_navigation.navigation_apps.clear_cache",
-			"after_delete": "commons.better_navigation.navigation_apps.clear_cache",
-		}
-		for doctype in ("Navigation App", "Module Def", "Dock")
-	},
 	# A cancelled document's Notification emails that are still waiting in the
 	# queue are not sent. See `commons.email_extensions.scheduled`.
 	"*": {
@@ -572,11 +560,6 @@ page_js = {"permission-manager": "public/js/permission_manager_gate.js"}
 
 
 extend_bootinfo = [
-	# The navigation rail's apps, when Commons Settings switches it on.
-	"commons.better_navigation.navigation_apps.extend_bootinfo",
-	# Frappe's Apps screen arranged from the same apps, when Commons Settings says so.
-	# After the rail's, whose answer it reuses.
-	"commons.better_navigation.apps_screen.extend_bootinfo",
 	# Which of the desk patches Commons Settings switches on.
 	"commons.commons_core.settings.extend_bootinfo",
 	# Which Email Templates each doctype's forms offer, so a form can draw its

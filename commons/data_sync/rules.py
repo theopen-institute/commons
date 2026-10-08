@@ -34,8 +34,9 @@ TABLE = "Data Sync Doctype"
 # not `standard` either. `Custom Sidebar` (a module's sidebar as the site edits
 # it) and the site's `Dock` arrangements are named by a hash, different on every
 # site, so they are recognised by what they are for: the module or the app, and
-# no user -- each person's own layer stays theirs. Navigation Apps come last:
-# their rows name modules.
+# no user -- each person's own layer stays theirs. Desk Apps (Open Desk's rail,
+# where that app is installed) come last: their rows name modules. A site without
+# Open Desk shows that row as not on the site.
 #
 # `Custom Role` is who may open a page or report, over the roles it ships with
 # (the app's own pages ship System Manager only). Named by a hash, so recognised
@@ -68,7 +69,7 @@ DEFAULT_RULES = [
 		"filters": {"standard": 0, "user": ["is", "not set"]},
 		"key_fields": ["app", "user"],
 	},
-	{"doctype": "Navigation App"},
+	{"doctype": "Desk App"},
 ]
 
 

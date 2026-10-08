@@ -70,24 +70,17 @@ ENABLE_BIKRAM_SAMBAT = "enable_bikram_sambat"
 # whose desk, permissions or books start misbehaving can rule them out first,
 # without a deploy.
 
-# Better Navigation: overrides too, of the desk's navigation, on a tab of their
-# own in the form because they are one design with this app's own sidebar
-# (`commons.better_navigation`).
+# Better Navigation, on a tab of its own in the form. The desk's navigation -- the
+# rail, the Apps screen and the desk's user menu -- is Open Desk's now; what is left
+# here is this app's own frontend and two desk additions (`commons.better_navigation`).
 
-# `commons/better_navigation/js/navigation_rail.js`, Frappe's Dock listing the
-# apps `commons.better_navigation.navigation_apps` resolves
-ENABLE_NAVIGATION_RAIL = "enable_navigation_rail"
-# `commons/better_navigation/js/user_menu.js`, which moves the site tools and Help into the desk's
-# user menu, and the frontend's user menu (`commons.better_navigation.user_menu.get_user_menu`)
+# The frontend's user menu (`commons.better_navigation.user_menu.get_user_menu`)
 ENABLE_USER_MENU = "enable_user_menu"
 # `commons.better_navigation.home_page`, which preempts core's `get_home_page`
 ENABLE_HOME_PAGE_PRIORITY = "enable_home_page_priority"
 # `commons/public/js/desk_todos/`, which adds a To Do button and drawer beside
-# Frappe's bell, in the sidebar or, with the rail on, on the rail
+# Frappe's bell, in the sidebar or, with Open Desk's rail, on the rail
 ENABLE_DESK_TODOS = "enable_desk_todos"
-# `commons.better_navigation.apps_screen`, which arranges Frappe's Apps screen
-# from the Navigation Apps
-ENABLE_DESKTOP_FROM_NAVIGATION_APPS = "enable_desktop_from_navigation_apps"
 
 # The rest share the Core Overrides tab, a section per theme, in the order they
 # are listed here.
@@ -146,8 +139,6 @@ DESK_FEATURES = {
 	"unencoded_at_in_routes": ENABLE_UNENCODED_AT,
 	"user_permission_gate": ENABLE_PERMISSION_GATE,
 	"user_menu": ENABLE_USER_MENU,
-	"navigation_rail": ENABLE_NAVIGATION_RAIL,
-	"apps_screen": ENABLE_DESKTOP_FROM_NAVIGATION_APPS,
 	"derived_docfields": ENABLE_DERIVED_DOCFIELDS,
 	"visual_email_editor": ENABLE_VISUAL_EMAIL_EDITOR,
 	"pseudo_islands": ENABLE_PSEUDO_ISLANDS,

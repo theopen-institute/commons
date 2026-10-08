@@ -131,25 +131,9 @@
    "open_in_new_tab": 1,
    "show_arrow": 0,
    "type": "Link"
-  },
-  {
-   "added": 0,
-   "child": 1,
-   "collapsible": 1,
-   "hidden": 0,
-   "icon": "",
-   "indent": 0,
-   "is_default_module": 0,
-   "keep_closed": 0,
-   "label": "Navigation App",
-   "link_to": "Navigation App",
-   "link_type": "DocType",
-   "open_in_new_tab": 1,
-   "show_arrow": 0,
-   "type": "Link"
   }
  ],
- "modified": "2026-10-08 11:06:34.120188",
+ "modified": "2026-10-08 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Setup",

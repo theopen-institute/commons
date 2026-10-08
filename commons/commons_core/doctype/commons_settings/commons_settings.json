@@ -11,11 +11,9 @@
   "landing_page",
   "navigation_tab",
   "navigation_section",
-  "enable_navigation_rail",
   "enable_user_menu",
   "enable_home_page_priority",
   "enable_desk_todos",
-  "enable_desktop_from_navigation_apps",
   "core_overrides_tab",
   "core_overrides_section",
   "core_overrides_intro",
@@ -102,20 +100,13 @@
    "label": "Better Navigation"
   },
   {
-   "description": "Changes to how people find their way around, in the desk and in Commons alike. Like the Core Overrides, these change how Frappe itself behaves and lean on details of its code that an upgrade can change without warning, so they are the first to switch off if navigation misbehaves after an upgrade. Changes to the desk take effect when each user reloads the page.",
+   "description": "This app's own frontend navigation, and two additions to the desk. The desk's rail, Apps screen and desk user menu are Open Desk's. Changes to the desk take effect when each user reloads the page.",
    "fieldname": "navigation_section",
    "fieldtype": "Section Break"
   },
   {
    "default": "0",
-   "description": "Turns Frappe's Dock, the column left of the desk's sidebar, into a rail of apps rather than the open app's modules: the Navigation Apps configured here, then every installed app for the modules those leave unclaimed. Picking an app shows its module list in the sidebar (its frontend first, then its modules under the Categories its Navigation App sets); picking it again from inside a module shows the list again. An app with one module opens it. The menu at the top of the sidebar also lists the open app's modules, the header names the module over its app, and the mark at the top of the rail opens the Apps screen. Search and Notifications move from the top of the sidebar to the foot of the rail. Applies to the desk; the Commons frontend does not have the rail yet. Suspect this first if the rail or the sidebar's top menu are missing entries or open the wrong page.",
-   "fieldname": "enable_navigation_rail",
-   "fieldtype": "Check",
-   "label": "Enable Navigation Rail"
-  },
-  {
-   "default": "0",
-   "description": "In the desk, moves the site's tools (the Navbar Settings rows, such as System Console) and Help from the menu at the top of the sidebar into the user menu (your avatar at the foot of the rail, or of the sidebar), above Logout. In Commons, opens a menu from your name at the foot of the sidebar, holding your account, display, session defaults, site tools, help and logout. Suspect this first if either menu is missing entries or does not open.",
+   "description": "In Commons, opens a menu from your name at the foot of the sidebar, holding your account, display, session defaults, site tools, help and logout. Suspect this first if that menu is missing entries or does not open.",
    "fieldname": "enable_user_menu",
    "fieldtype": "Check",
    "label": "Enable User Menu"
@@ -129,17 +120,10 @@
   },
   {
    "default": "0",
-   "description": "Adds a To Do button beside the notification bell, opening your open ToDos with a count of them in a drawer like the Notifications one: in the sidebar's top rows, or at the foot of the navigation rail when that is on (where both drawers open beside the rail). The Commons frontend has its own To Do panel either way. Suspect this first if the To Do button or its drawer misbehaves.",
+   "description": "Adds a To Do button beside the notification bell, opening your open ToDos with a count of them in a drawer like the Notifications one: in the sidebar's top rows, or at the foot of Open Desk's rail where that app's rail and its Move Search and Notifications to Rail are on. The Commons frontend has its own To Do panel either way. Suspect this first if the To Do button or its drawer misbehaves.",
    "fieldname": "enable_desk_todos",
    "fieldtype": "Check",
    "label": "Enable Desk To Do"
-  },
-  {
-   "default": "0",
-   "description": "Arranges Frappe's Apps screen (/desk, with Desktop Settings on Apps) from the Navigation Apps, in rail order: each app as one icon, as an icon per module, or not at all, as its Apps Screen setting says. Apps with no Navigation App show as one icon, and apps taken off the rail are left off. Turning this off brings back Frappe's own Apps screen. Suspect this first if the Apps screen is missing an app or a module.",
-   "fieldname": "enable_desktop_from_navigation_apps",
-   "fieldtype": "Check",
-   "label": "Enable Apps Screen from Navigation Apps"
   },
   {
    "fieldname": "core_overrides_tab",
@@ -462,7 +446,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-07 12:30:00.000000",
+ "modified": "2026-10-08 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

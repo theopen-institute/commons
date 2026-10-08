@@ -7,14 +7,6 @@
 import "./unencoded_at_in_routes";
 // Before anything that adds to the user menu: see the file.
 import "./user_menu_rows";
-// Better Navigation keeps its browser halves beside its server halves. Only entry
-// files have to be under public/ -- esbuild globs there for `*.bundle.js` --
-// and an entry may import from anywhere in the app.
-// Before the rail, which hands it the modules to place.
-import "../../better_navigation/js/boot_arrangement";
-import "../../better_navigation/js/navigation_rail";
-import "../../better_navigation/js/user_menu";
-import "../../better_navigation/js/arrange";
 import "./bikram_sambat/date_control";
 import "./desk_todos";
 import "./derived_docfields";

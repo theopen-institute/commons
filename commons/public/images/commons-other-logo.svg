@@ -1,9 +1,0 @@
-<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- The rail's "Other" group: sidebars no app claims. Same tile shape as the
-       Commons marks, but the Framework logo's grey, since the group belongs to
-       no app; three dots, the usual sign for "the rest". -->
-  <rect width="64" height="64" rx="14" fill="#7B808A"/>
-  <circle cx="18" cy="32" r="4.5" fill="#fff"/>
-  <circle cx="32" cy="32" r="4.5" fill="#fff"/>
-  <circle cx="46" cy="32" r="4.5" fill="#fff"/>
-</svg>

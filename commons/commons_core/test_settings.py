@@ -96,7 +96,7 @@ class TestOverrideEnabled(TestCase):
 	def test_the_desk_is_told_each_browser_feature(self):
 		bootinfo = settings.frappe._dict()
 		with patch.object(
-			settings, "feature_enabled", side_effect=lambda field: field == settings.ENABLE_NAVIGATION_RAIL
+			settings, "feature_enabled", side_effect=lambda field: field == settings.ENABLE_DESK_TODOS
 		):
 			settings.extend_bootinfo(bootinfo)
 		self.assertEqual(
@@ -106,11 +106,10 @@ class TestOverrideEnabled(TestCase):
 				"unencoded_at_in_routes": False,
 				"user_permission_gate": False,
 				"user_menu": False,
-				"navigation_rail": True,
 				"derived_docfields": False,
 				"visual_email_editor": False,
 				"pseudo_islands": False,
-				"desk_todos": False,
+				"desk_todos": True,
 				"hide_internal_accounts": False,
 			},
 		)
