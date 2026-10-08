@@ -16,7 +16,7 @@ def rail_app(key, app_name, title, modules=(), mode=None, logo=None, frontend=No
 		"logo": logo,
 		"apps_screen": mode,
 		"frontend": frontend,
-		"sidebars": [{"sidebar": m, "label": m} for m in modules],
+		"modules": [{"shell": m, "label": m} for m in modules],
 	}
 
 
@@ -83,7 +83,7 @@ class TestArrange(TestCase):
 			mode=PER_MODULE,
 			frontend={"label": "OI app", "url": "/commons"},
 		)
-		oi["sidebars"][0]["desktop_image"] = "/files/members.png"
+		oi["modules"][0]["desktop_image"] = "/files/members.png"
 		arrange(data, [oi])
 		tiles = sorted((e for e in data if e["on_apps_screen"]), key=lambda e: e["sequence_id"])
 		self.assertEqual([t["app_title"] for t in tiles], ["OI app", "Members", "Student Accounts"])

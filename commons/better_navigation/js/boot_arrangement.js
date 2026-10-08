@@ -41,7 +41,7 @@ frappe.provide("commons.boot_arrangement");
 		if (!module_sidebars) return;
 		const placement = {};
 		(rail || []).forEach((app) =>
-			(app.sidebars || []).forEach((module) => (placement[module.sidebar] = app.app_name))
+			(app.modules || []).forEach((module) => (placement[module.shell] = app.app_name))
 		);
 		Object.entries(module_sidebars).forEach(([shell, sidebar]) => {
 			if (!sidebar || typeof sidebar !== "object") return;

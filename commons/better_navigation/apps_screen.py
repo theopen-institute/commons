@@ -78,15 +78,15 @@ def arrange(app_data: list[dict], rail: list[dict]) -> None:
 						route=app["frontend"]["url"],
 					)
 				)
-			for module in app["sidebars"]:
+			for module in app["modules"]:
 				sequence += 1
 				app_data.append(
 					_tile(
-						f"commons-module:{module['sidebar']}",
+						f"commons-module:{module['shell']}",
 						module["label"],
 						module.get("desktop_image"),
 						sequence,
-						dock=[{"link_type": "Sidebar", "link_to": module["sidebar"]}],
+						dock=[{"link_type": "Sidebar", "link_to": module["shell"]}],
 					)
 				)
 			continue
@@ -103,7 +103,7 @@ def arrange(app_data: list[dict], rail: list[dict]) -> None:
 		# An app Frappe does not know has no dock of its own; its modules lead into it, so the
 		# tile opens its first one even where the rail has not placed them.
 		if not entry.get("dock") and not entry.get("app_route"):
-			entry["dock"] = [{"link_type": "Sidebar", "link_to": m["sidebar"]} for m in app["sidebars"]]
+			entry["dock"] = [{"link_type": "Sidebar", "link_to": m["shell"]} for m in app["modules"]]
 
 
 def _tile(

@@ -214,19 +214,14 @@ class TestFrappeSeams(TestCase):
 			with self.subTest(key=key):
 				self.assertIn(f"bootinfo.{key} =", source)
 
-	def test_a_modules_shells_are_still_its_sidebar_documents(self):
-		"""`navigation_apps.multi_shell_modules` counts `Sidebar` documents per module.
+	def test_an_apps_shipped_dock_is_still_readable(self):
+		"""`navigation_apps.shipped_docks` reads each app's own Dock, before any layer."""
+		from frappe.desk.doctype.dock import dock
 
-		That holds while Frappe gives a module one shell per document, and a computed one
-		only when it has none (`get_sidebar_bases`).
-		"""
-		from frappe.desk.doctype.sidebar import sidebar
-
-		self.assertEqual(frappe.get_meta("Sidebar").get_field("module").options, "Module Def")
-		source = _source("desk", "doctype", "sidebar", "sidebar.py")
-		self.assertTrue(callable(getattr(sidebar, "get_sidebar_bases", None)))
-		self.assertIn('filters={"module": ["in", modules]}', source)
-		self.assertIn("for base in shells.get(module) or [computed[module]]:", source)
+		self.assertTrue(callable(getattr(dock, "get_app_base", None)))
+		for row in dock.get_app_base("frappe"):
+			with self.subTest(row=row.get("link_to")):
+				self.assertLessEqual({"link_type", "link_to", "hidden"}, set(row))
 
 	def test_app_data_is_in_the_boot_before_extend_bootinfo_runs(self):
 		"""The rail reads this user's `app_data` from the boot it extends (`navigation_apps.py`)."""

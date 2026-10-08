@@ -11,7 +11,7 @@ records, so the form and the editors are two ways into the same data:
 - Manage Rail orders and hides apps (`rail_order` and `hidden`), and adds new ones: a
   Navigation App of its own, with a title and an icon, which then needs modules before
   the rail shows it.
-- Manage Modules orders, adds, relabels and takes modules off one app's list, with
+- Manage Modules orders, adds and takes modules off one app's list, with
   Category and Spacer rows between them: the record's modules table. Taking one of an
   installed app's own modules off its list switches the record to Replace, which is
   what sends a module to Other; with none taken off it stays in Add, so a module the
@@ -105,7 +105,7 @@ def save_rail(items) -> dict:
 				"title": title,
 				"icon": item.get("icon") or None,
 				"enabled": 1,
-				"sidebar_mode": nav.ADD,
+				"module_mode": nav.ADD,
 			}
 		).insert()
 		item["key"] = f"navigation-app:{doc.name}"
@@ -163,7 +163,7 @@ def _record_for(app: dict):
 			"title": _free_title(app["title"], app["installed_app"]),
 			"installed_app": app["installed_app"],
 			"enabled": 1,
-			"sidebar_mode": nav.ADD,
+			"module_mode": nav.ADD,
 		}
 	)
 
@@ -189,9 +189,8 @@ def get_app_modules(key: str) -> dict:
 
 	`rows` is the list as the rail draws it -- each Category and Spacer a row of its
 	own -- and then, taken off, the installed app's own modules it no longer lists.
-	A module row names its Module Def, what the rail calls it, the label the
-	record gives it (`own_label`), if any, and whether it has more than one
-	sidebar on the site (`several_sidebars`), where that label is not used.
+	A module row names its Module Def and what the rail calls it, which is its
+	sidebar's label: the editor renames Categories, not modules.
 	"""
 	_check()
 	from frappe.boot import get_module_sidebars
@@ -202,20 +201,13 @@ def get_app_modules(key: str) -> dict:
 	if not app:
 		frappe.throw(_("{0} is not on the rail.").format(frappe.bold(key)))
 
-	several = nav.multi_shell_modules()
-	own_labels = {}
-	if app.get("record"):
-		for row in frappe.get_doc(APP, app["record"]).sidebars:
-			if nav.row_type(row) == nav.MODULE and row.module and row.label:
-				own_labels[row.module] = row.label
-
 	rows, listed = [], set()
-	for entry in app["sidebars"]:
+	for entry in app["modules"]:
 		if entry.get("category"):
 			rows.append({"kind": "category", "label": entry["category"]})
 		elif entry.get("space_before"):
 			rows.append({"kind": "spacer"})
-		module = (module_sidebars.get(entry["sidebar"]) or {}).get("module") or entry["sidebar"]
+		module = (module_sidebars.get(entry["shell"]) or {}).get("module") or entry["shell"]
 		if module in listed:
 			continue
 		listed.add(module)
@@ -224,17 +216,16 @@ def get_app_modules(key: str) -> dict:
 				"kind": "module",
 				"module": module,
 				"label": entry["label"],
-				"own_label": own_labels.get(module),
 				"icon": entry.get("icon"),
-				"several_sidebars": module in several,
 			}
 		)
 
-	# An installed app's (or Other's) own modules it does not list: taken off by Replace.
+	# An installed app's (or Other's) own modules it does not list: taken off by Replace, or
+	# hidden by the app's Dock.
 	target = app.get("installed_app")
 	if target:
 		# Modules another app lists are that app's to give up, not this one's to take back.
-		holders = {m["sidebar"] for other in rail if other is not app for m in other["sidebars"]}
+		holders = {m["shell"] for other in rail if other is not app for m in other["modules"]}
 		owner = _owner_of(module_sidebars)
 		for shell, sidebar in module_sidebars.items():
 			module = sidebar.get("module") or shell
@@ -248,7 +239,6 @@ def get_app_modules(key: str) -> dict:
 					"label": sidebar.get("label") or shell,
 					"icon": sidebar.get("header_icon"),
 					"hidden": True,
-					"several_sidebars": module in several,
 				}
 			)
 
@@ -264,7 +254,8 @@ def save_app_modules(key: str, items) -> dict:
 	row's Apps Screen Image, which the editor does not carry.
 
 	Taking one of an installed app's own modules off its list switches the record to
-	Replace, which sends it to Other. Other has nowhere further to send a module, so its
+	Replace, which sends it to Other -- unless its Dock hides it, which already keeps
+	it off the rail. Putting such a module back lists it. Other has nowhere further to send a module, so its
 	list is only ever ordered and labelled: nothing is taken off it. A module that came
 	from another app is simply released, back to that app, without changing the mode.
 	"""
@@ -285,7 +276,11 @@ def save_app_modules(key: str, items) -> dict:
 
 	visible = {sidebar.get("module") or shell for shell, sidebar in module_sidebars.items()}
 	owner = _owner_of(module_sidebars)
-	old_rows = frappe.get_doc(APP, app["record"]).sidebars if app.get("record") else []
+	old_rows = frappe.get_doc(APP, app["record"]).modules if app.get("record") else []
+	dock_hidden = set((nav.shipped_docks().get(target) or {}).get("hidden") or ())
+	dock_hidden = {
+		sidebar.get("module") or shell for shell, sidebar in module_sidebars.items() if shell in dock_hidden
+	}
 	images = {row.module: row.desktop_image for row in old_rows if row.module and row.get("desktop_image")}
 
 	rows, taken_off = [], False
@@ -293,7 +288,8 @@ def save_app_modules(key: str, items) -> dict:
 		kind = item.get("kind")
 		hidden = item.get("hidden") and target != nav.OTHER
 		if hidden:
-			if kind == "module" and target and owner(item.get("module")) == target:
+			module = item.get("module")
+			if kind == "module" and target and owner(module) == target and module not in dock_hidden:
 				taken_off = True
 			continue
 		if kind == "module" and item.get("module"):
@@ -301,7 +297,6 @@ def save_app_modules(key: str, items) -> dict:
 				{
 					"type": nav.MODULE,
 					"module": item["module"],
-					"label": item.get("own_label") or None,
 					"desktop_image": images.get(item["module"]),
 				}
 			)
@@ -314,8 +309,8 @@ def save_app_modules(key: str, items) -> dict:
 
 	doc = _record_for(app)
 	if target:
-		doc.sidebar_mode = nav.REPLACE if taken_off else nav.ADD
-	doc.set("sidebars", rows)
+		doc.module_mode = nav.REPLACE if taken_off else nav.ADD
+	doc.set("modules", rows)
 	doc.save()
 
 	_store_order(_rail(module_sidebars), order, hidden_apps)
@@ -349,7 +344,6 @@ def _keep_unseen(rows: list[dict], old_rows: list, visible: set[str]) -> list[di
 			kept = {
 				"type": nav.MODULE,
 				"module": row.module,
-				"label": row.label or None,
 				"desktop_image": row.get("desktop_image"),
 			}
 			at = next(

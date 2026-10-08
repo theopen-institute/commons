@@ -7,9 +7,10 @@
 //
 //   Manage Rail     the apps on the rail, in order; the eye takes one off it (Hide from Rail).
 //                   Add makes a new app, which Manage Modules then opens on to fill.
-//   Manage Modules  one app's module list: order, Category and Spacer rows, labels, and the
-//                   eye, which takes a module off this app's list (an installed app's own module
-//                   then goes to Other). Add puts a module, a heading or a gap on it.
+//   Manage Modules  one app's module list: order, Category and Spacer rows, and the eye, which
+//                   takes a module off this app's list (an installed app's own module then goes
+//                   to Other). Add puts a module, a heading or a gap on it. A module is called
+//                   what its sidebar calls it, so only headings are renamed here.
 //
 // Both write Navigation App records, through `commons.better_navigation.arrange`, which says how.
 // There is one layer, the site's ("For everyone"): Navigation Apps are site records.
@@ -317,14 +318,7 @@
 			entry_for(row) {
 				if (row.kind === "spacer") return { kind: "spacer", label: __("Spacer") };
 				if (row.kind === "category") return { kind: "category", label: row.label };
-				return {
-					kind: "module",
-					module: row.module,
-					label: row.label,
-					own_label: row.own_label || null,
-					icon: row.icon,
-					several_sidebars: !!row.several_sidebars,
-				};
+				return { kind: "module", module: row.module, label: row.label, icon: row.icon };
 			}
 
 			entry_icon(entry) {
@@ -357,10 +351,10 @@
 					: __("Take off this app");
 			}
 
-			// A pencil on modules and headings, for what the list calls them.
+			// A pencil on headings. A module is renamed in its own sidebar (Edit Sidebar).
 			decorate_item($el, key) {
 				const entry = this.entries.get(key);
-				if (entry.kind === "spacer") return;
+				if (entry.kind !== "category") return;
 				$(
 					`<button class="ws-item-eye commons-arrange-rename" title="${__(
 						"Rename"
@@ -376,27 +370,12 @@
 					{
 						fieldname: "label",
 						fieldtype: "Data",
-						label: entry.kind === "category" ? __("Heading") : __("Label"),
-						default: entry.kind === "category" ? entry.label : entry.own_label || "",
-						// A module of several sidebars keeps each one's own name on the rail.
-						description:
-							entry.kind !== "module"
-								? ""
-								: entry.several_sidebars
-								? __(
-										"This module has more than one sidebar, so each keeps its own name: a label here is not used."
-								  )
-								: __("Left blank, the module's own name."),
-						reqd: entry.kind === "category",
+						label: __("Heading"),
+						default: entry.label,
+						reqd: 1,
 					},
 					({ label }) => {
-						label = (label || "").trim();
-						if (entry.kind === "category") {
-							entry.label = label;
-						} else {
-							entry.own_label = label || null;
-							if (!entry.several_sidebars) entry.label = label || entry.module;
-						}
+						entry.label = label.trim();
 						this.render_panes();
 					},
 					__("Rename")
@@ -448,9 +427,8 @@
 						{
 							fieldname: "label",
 							fieldtype: "Data",
-							label: __("Label"),
-							depends_on: "eval:doc.kind != 'spacer'",
-							description: __("For a module, left blank: its own name."),
+							label: __("Heading"),
+							depends_on: "eval:doc.kind == 'category'",
 						},
 					],
 					primary_action_label: __("Add"),
@@ -493,8 +471,7 @@
 					this.entries.set(key, {
 						kind,
 						module,
-						label: label || (sidebar && sidebar.label) || module,
-						own_label: label || null,
+						label: (sidebar && sidebar.label) || module,
 						icon: sidebar && sidebar.header_icon,
 					});
 					this.order.push(key);
@@ -519,7 +496,6 @@
 						kind: entry.kind,
 						module: entry.module || null,
 						label: entry.kind === "category" ? entry.label : null,
-						own_label: entry.own_label || null,
 						hidden,
 					};
 				});

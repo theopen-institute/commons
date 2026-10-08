@@ -149,7 +149,7 @@
 
 	// A rail app's modules this user can open, in its order.
 	function modules_of(app) {
-		return (app.sidebars || []).filter((entry) => frappe.boot.module_sidebars[entry.sidebar]);
+		return (app.modules || []).filter((entry) => frappe.boot.module_sidebars[entry.shell]);
 	}
 
 	// What an app's module list offers: its frontend, then its modules.
@@ -165,7 +165,7 @@
 		}
 		const [only] = modules_of(app);
 		if (only) {
-			open_module(sidebar, only.sidebar, "fade");
+			open_module(sidebar, only.shell, "fade");
 		} else if (app.frontend) {
 			window.location.href = app.frontend.url;
 		}
@@ -260,11 +260,11 @@
 			}
 			add_row({
 				label: __(entry.label),
-				icon: entry.icon || frappe.get_module_icon(entry.sidebar) || "folder",
-				onClick: () => open_module(sidebar, entry.sidebar, "forward"),
+				icon: entry.icon || frappe.get_module_icon(entry.shell) || "folder",
+				onClick: () => open_module(sidebar, entry.shell, "forward"),
 			});
 			// The module the page is in, lit the way Frappe lights the current row.
-			if (entry.sidebar === sidebar.current_module) {
+			if (entry.shell === sidebar.current_module) {
 				$container
 					.find(".commons-module-row")
 					.last()
@@ -626,10 +626,10 @@
 				start();
 			}
 			group.options.push({
-				name: `commons-rail-module-${entry.sidebar}`,
+				name: `commons-rail-module-${entry.shell}`,
 				label: __(entry.label),
-				icon: entry.icon || frappe.get_module_icon(entry.sidebar),
-				onclick: () => open_module(sidebar, entry.sidebar, "fade"),
+				icon: entry.icon || frappe.get_module_icon(entry.shell),
+				onclick: () => open_module(sidebar, entry.shell, "fade"),
 			});
 		});
 		return groups;

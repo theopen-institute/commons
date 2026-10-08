@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-10-07 16:00:00.000000",
+ "modified": "2026-10-08 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -17,7 +17,7 @@
  "naming_rule": "Random",
  "istable": 1,
  "editable_grid": 1,
- "name": "Navigation App Sidebar",
+ "name": "Navigation App Module",
  "field_order": [
   "type",
   "module",
@@ -50,9 +50,10 @@
    "fieldname": "label",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Label",
-   "description": "What the menus call this module, or a category's heading. Left blank on a module, its sidebar's own title.",
-   "mandatory_depends_on": "eval:doc.type == \"Category\""
+   "label": "Heading",
+   "description": "A Category's heading. A module is called what its sidebar calls it; rename it with Edit Sidebar.",
+   "mandatory_depends_on": "eval:doc.type == \"Category\"",
+   "depends_on": "eval:doc.type == \"Category\""
   },
   {
    "fieldname": "desktop_image",

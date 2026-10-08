@@ -5,7 +5,8 @@
 
 `resolve` takes everything it reads as arguments, so each rule in the module
 docstring is one small table here: the fallback, the one-app rule, roles that
-hide without releasing, and a module of more than one shell.
+hide without releasing, a module of more than one shell, and an installed
+app's shipped Dock.
 """
 
 from types import SimpleNamespace
@@ -62,12 +63,8 @@ def rail(
 	sidebars=SIDEBARS,
 	frontends=None,
 	hosts=None,
-	multi_shell_modules=None,
+	docks=None,
 ):
-	if multi_shell_modules is None:
-		# The site's sidebars are the ones this user opens, unless a test says otherwise.
-		modules = [s["module"] for s in sidebars]
-		multi_shell_modules = {m for m in modules if modules.count(m) > 1}
 	return resolve(
 		configured=list(configured),
 		sidebars=sidebars,
@@ -78,12 +75,11 @@ def rail(
 		user_roles=set(roles),
 		frontends=frontends,
 		hosts=hosts,
-		multi_shell_modules=multi_shell_modules,
+		docks=docks,
 	)
 
 
-def app(name, *sidebars, roles=(), icon=None, labels=None):
-	labels = labels or {}
+def app(name, *modules, roles=(), icon=None):
 	return {
 		"name": name,
 		"title": name,
@@ -91,7 +87,7 @@ def app(name, *sidebars, roles=(), icon=None, labels=None):
 		"logo": None,
 		"roles": list(roles),
 		# A module's name, or a row as it is (a Category or Spacer).
-		"sidebars": [s if isinstance(s, dict) else {"module": s, "label": labels.get(s)} for s in sidebars],
+		"modules": [m if isinstance(m, dict) else {"module": m, "label": None} for m in modules],
 	}
 
 
@@ -105,13 +101,13 @@ SPACER = {"type": "Spacer", "module": None, "label": None}
 def layout(entry):
 	"""An app's modules with what is drawn above each: a heading, a gap, or nothing."""
 	return [
-		(s["sidebar"], s.get("category") or ("gap" if s.get("space_before") else None))
-		for s in entry["sidebars"]
+		(s["shell"], s.get("category") or ("gap" if s.get("space_before") else None))
+		for s in entry["modules"]
 	]
 
 
 def shape(result):
-	return [(entry["title"], [s["sidebar"] for s in entry["sidebars"]]) for entry in result]
+	return [(entry["title"], [s["shell"] for s in entry["modules"]]) for entry in result]
 
 
 class TestFallback(TestCase):
@@ -167,17 +163,15 @@ class TestConfigured(TestCase):
 	def test_desktop_image_is_carried_only_when_set(self):
 		row = {"module": "Accounting", "label": None, "desktop_image": "/files/books.png"}
 		entry = rail([app("Finance", row, "Stock")])[0]
-		by_name = {s["sidebar"]: s for s in entry["sidebars"]}
+		by_name = {s["shell"]: s for s in entry["modules"]}
 		self.assertEqual(by_name["Accounting"]["desktop_image"], "/files/books.png")
 		self.assertNotIn("desktop_image", by_name["Stock"])
 
-	def test_label_overrides_the_sidebars_own(self):
-		entry = rail([app("Finance", "Accounting", labels={"Accounting": "Books"})])[0]
-		self.assertEqual(entry["sidebars"][0], {"sidebar": "Accounting", "label": "Books", "icon": None})
-
-	def test_a_relabelled_row_keeps_its_place_in_the_table(self):
-		entry = rail([app("Finance", "Stock", "Accounting", labels={"Stock": "Zebra"})])[0]
-		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Zebra", "Accounting"])
+	def test_a_module_is_called_what_its_sidebar_is(self):
+		# A label left on a module row from before is not a name for it.
+		row = {"module": "Accounting", "label": "Books"}
+		entry = rail([app("Finance", row)])[0]
+		self.assertEqual(entry["modules"][0], {"shell": "Accounting", "label": "Accounting", "icon": None})
 
 	def test_first_claim_wins(self):
 		result = rail([app("Finance", "Stock"), app("Warehouse", "Stock", "Accounting")])
@@ -213,30 +207,9 @@ class TestModules(TestCase):
 		self.assertEqual(shape(result)[0], ("QA", ["Quality", "Audits"]))
 		self.assertNotIn("Quality", shape(result)[2][1])
 
-	def test_a_label_relabels_only_a_module_of_one_shell(self):
-		entry = rail([app("QA", "Quality Management", labels={"Quality Management": "QA"})], sidebars=SHELLS)[
-			0
-		]
-		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Quality", "Audits"])
-
-	def test_a_label_is_not_used_when_the_user_opens_one_of_the_sites_two_shells(self):
-		# The site has Quality and Audits; this user can open only Quality.
-		shells = [s for s in SHELLS if s["name"] != "Audits"]
-		entry = rail(
-			[app("QA", "Quality Management", labels={"Quality Management": "QA"})],
-			sidebars=shells,
-			multi_shell_modules={"Quality Management"},
-		)[0]
-		self.assertEqual([s["label"] for s in entry["sidebars"]], ["Quality"])
-
-	def test_the_sites_shells_are_its_sidebar_documents(self):
-		from unittest.mock import patch
-
-		from commons.better_navigation import navigation_apps as nav
-
-		modules = ["Quality Management", "Quality Management", "Stock"]
-		with patch.object(nav.frappe, "get_all", return_value=modules):
-			self.assertEqual(nav.multi_shell_modules(), {"Quality Management"})
+	def test_each_shell_keeps_its_own_label(self):
+		entry = rail([app("QA", "Quality Management")], sidebars=SHELLS)[0]
+		self.assertEqual([s["label"] for s in entry["modules"]], ["Quality", "Audits"])
 
 	def test_a_renamed_shell_is_claimed_by_its_module_not_its_name(self):
 		result = rail([app("QA", "Quality")], sidebars=SHELLS)
@@ -244,7 +217,7 @@ class TestModules(TestCase):
 
 	def test_unlabelled_modules_take_the_sidebars_label(self):
 		shells = [sidebar("Loan Management", app="erpnext", label="Lending")]
-		self.assertEqual(rail(sidebars=shells)[0]["sidebars"][0]["label"], "Lending")
+		self.assertEqual(rail(sidebars=shells)[0]["modules"][0]["label"], "Lending")
 
 
 COMPANION_SHELLS = [sidebar("Accounting", app="erpnext"), sidebar("GST", app="india_compliance")]
@@ -295,7 +268,7 @@ class SiteInputsAreCached(TestCase):
 			patch.object(nav.frappe, "local", SimpleNamespace(db=None)),
 			patch.object(nav, "_configured", side_effect=lambda: reads.append("configured") or []),
 			patch.object(nav, "module_apps", return_value={}),
-			patch.object(nav, "multi_shell_modules", return_value=set()),
+			patch.object(nav, "shipped_docks", return_value={}),
 			patch.object(nav.frappe, "get_installed_apps", return_value=["frappe"]),
 		):
 			nav._site_inputs()
@@ -310,7 +283,7 @@ def bound(name, installed_app, *sidebars, mode="Add", hidden=0, **kwargs):
 	return {
 		**app(name, *sidebars, **kwargs),
 		"installed_app": installed_app,
-		"sidebar_mode": mode,
+		"module_mode": mode,
 		"hidden": hidden,
 	}
 
@@ -326,12 +299,11 @@ class TestBoundApps(TestCase):
 		self.assertEqual(result[0]["key"], "app:erpnext")
 		self.assertTrue(result[0]["configured"])
 
-	def test_add_mode_adds_and_relabels(self):
-		books = bound("Books", "erpnext", "Stock", "Students", labels={"Stock": "Inventory"})
+	def test_add_mode_adds(self):
+		books = bound("Books", "erpnext", "Stock", "Students")
 		entry = rail([books])[0]
 		# The listed ones in table order, then what ERPNext already held.
-		self.assertEqual([s["sidebar"] for s in entry["sidebars"]], ["Stock", "Students", "Accounting"])
-		self.assertEqual(next(s for s in entry["sidebars"] if s["sidebar"] == "Stock")["label"], "Inventory")
+		self.assertEqual([s["shell"] for s in entry["modules"]], ["Stock", "Students", "Accounting"])
 		# Claimed away from Education.
 		self.assertIn(("Education", ["Education"]), shape(rail([books])))
 
@@ -419,22 +391,73 @@ class TestOrder(TestCase):
 		self.assertIn(("Education", ["Education", "Courses"]), result)
 
 	def test_a_landing_module_by_its_label_counts_too(self):
-		entry = rail([bound("Books", "erpnext", "Stock", labels={"Stock": "Home"})], sidebars=LANDING)[0]
-		# Listed, so its row decides -- it is first because it is the only row.
-		self.assertEqual(
-			[s["sidebar"] for s in entry["sidebars"]], ["Stock", "Home", "ERPNext", "Accounting"]
-		)
+		shells = [sidebar("Start", app="erpnext", label="Home"), *LANDING[:2]]
+		self.assertIn(("ERPNext", ["Start", "Accounting", "Stock"]), shape(rail(sidebars=shells)))
 
 	def test_the_table_order_is_kept_and_the_rest_follow(self):
 		entry = rail([bound("Books", "erpnext", "Stock", "Accounting")], sidebars=LANDING)[0]
 		# The record is called Books, but the app is still ERPNext: its module still lands first.
-		self.assertEqual(
-			[s["sidebar"] for s in entry["sidebars"]], ["Stock", "Accounting", "Home", "ERPNext"]
-		)
+		self.assertEqual([s["shell"] for s in entry["modules"]], ["Stock", "Accounting", "Home", "ERPNext"])
 
 	def test_a_synthetic_app_is_only_its_table(self):
 		entry = rail([app("Finance", "Stock", "Home", "Accounting")], sidebars=LANDING)[0]
-		self.assertEqual([s["sidebar"] for s in entry["sidebars"]], ["Stock", "Home", "Accounting"])
+		self.assertEqual([s["shell"] for s in entry["modules"]], ["Stock", "Home", "Accounting"])
+
+
+# ERPNext's shipped Dock, as `shipped_docks` hands it over: its order, and what it hides.
+DOCKED = [
+	sidebar("Accounting", app="erpnext"),
+	sidebar("CRM", app="erpnext"),
+	sidebar("Selling", app="erpnext"),
+	sidebar("Setup", app="erpnext"),
+	sidebar("Accounts (Custom)", app="erpnext"),
+	sidebar("Home", app="erpnext"),
+	sidebar("Education", app="education"),
+]
+DOCKS = {"erpnext": {"order": ["Setup", "Accounting", "Selling", "CRM"], "hidden": ["CRM"]}}
+
+
+class TestShippedDocks(TestCase):
+	"""An installed app's shipped Dock orders and hides what nobody has configured."""
+
+	def test_the_dock_orders_then_the_rest_follow_in_the_rails_order(self):
+		result = dict(shape(rail(sidebars=DOCKED, docks=DOCKS)))
+		self.assertEqual(result["ERPNext"], ["Setup", "Accounting", "Selling", "Home", "Accounts (Custom)"])
+
+	def test_a_module_the_dock_hides_is_off_the_rail_not_in_other(self):
+		result = dict(shape(rail(sidebars=DOCKED, docks=DOCKS)))
+		self.assertNotIn("CRM", [shell for shells in result.values() for shell in shells])
+		result = dict(
+			shape(rail([bound("Books", "erpnext", "Setup", mode="Replace")], sidebars=DOCKED, docks=DOCKS))
+		)
+		self.assertNotIn("CRM", result.get(OTHER, []))
+
+	def test_listing_a_hidden_module_puts_it_back(self):
+		entry = rail([bound("Books", "erpnext", "CRM")], sidebars=DOCKED, docks=DOCKS)[0]
+		self.assertEqual(
+			shape([entry])[0][1], ["CRM", "Setup", "Accounting", "Selling", "Home", "Accounts (Custom)"]
+		)
+
+	def test_an_app_without_a_dock_keeps_the_rails_order(self):
+		self.assertIn(("Education", ["Education"]), shape(rail(sidebars=DOCKED, docks=DOCKS)))
+
+	def test_read_from_frappes_shipped_base(self):
+		from unittest.mock import patch
+
+		from commons.better_navigation import navigation_apps as nav
+
+		bases = {
+			"erpnext": [
+				{"link_type": "Sidebar", "link_to": "Setup", "hidden": 0},
+				{"link_type": "Workspace", "link_to": "Pinned", "hidden": 0},
+				{"link_type": "Sidebar", "link_to": "CRM", "hidden": 1},
+			],
+		}
+		with (
+			patch.object(nav.frappe, "get_installed_apps", return_value=["frappe", "erpnext"]),
+			patch("frappe.desk.doctype.dock.dock.get_app_base", side_effect=lambda app: bases.get(app, [])),
+		):
+			self.assertEqual(nav.shipped_docks(), {"erpnext": {"order": ["Setup", "CRM"], "hidden": ["CRM"]}})
 
 
 class TestFrontends(TestCase):
@@ -443,7 +466,7 @@ class TestFrontends(TestCase):
 	def test_an_installed_app_carries_its_frontend(self):
 		entry = next(e for e in rail(frontends={"commons": "/commons"}) if e["key"] == "app:commons")
 		self.assertEqual(entry["frontend"], {"label": "Commons app", "url": "/commons"})
-		self.assertEqual([s["sidebar"] for s in entry["sidebars"]], ["Assessments"])
+		self.assertEqual([s["shell"] for s in entry["modules"]], ["Assessments"])
 
 	def test_apps_without_one_carry_none(self):
 		self.assertTrue(all(entry["frontend"] is None for entry in rail()))
@@ -455,7 +478,7 @@ class TestFrontends(TestCase):
 			for e in rail(frontends={"frappe": "/builder"}, sidebars=SIDEBARS[1:])
 			if e["key"] == "app:frappe"
 		)
-		self.assertEqual(entry["sidebars"], [])
+		self.assertEqual(entry["modules"], [])
 		self.assertEqual(entry["frontend"]["url"], "/builder")
 
 	def test_a_configured_app_has_its_own_frontend_and_label(self):
@@ -559,21 +582,20 @@ class TestCategoriesAndSpacers(TestCase):
 class TestKeepUnseen(TestCase):
 	"""Manage Modules keeps rows for modules the person editing was not shown."""
 
-	def row(self, module, label=None):
+	def row(self, module):
 		return SimpleNamespace(
 			module=module,
-			label=label,
 			get=lambda key, m=module: f"/files/{m}.png" if key == "desktop_image" else None,
 		)
 
 	def test_an_unseen_row_goes_back_after_the_row_it_followed(self):
 		from commons.better_navigation.arrange import _keep_unseen
 
-		old = [self.row("Stock"), self.row("Secret", "Hush"), self.row("Accounts")]
+		old = [self.row("Stock"), self.row("Secret"), self.row("Accounts")]
 		new = [{"module": "Accounts"}, {"module": "Stock"}]
 		result = _keep_unseen(new, old, visible={"Stock", "Accounts"})
 		self.assertEqual([r["module"] for r in result], ["Accounts", "Stock", "Secret"])
-		self.assertEqual((result[2]["label"], result[2]["desktop_image"]), ("Hush", "/files/Secret.png"))
+		self.assertEqual(result[2]["desktop_image"], "/files/Secret.png")
 
 	def test_an_unseen_first_row_stays_first(self):
 		from commons.better_navigation.arrange import _keep_unseen

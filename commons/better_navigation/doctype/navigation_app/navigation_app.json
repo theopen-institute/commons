@@ -4,7 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "links": [],
- "modified": "2026-10-07 15:00:00.000000",
+ "modified": "2026-10-08 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Better Navigation",
  "owner": "Administrator",
@@ -29,10 +29,10 @@
   "column_break_app",
   "icon",
   "logo",
-  "sidebars_section",
-  "sidebar_mode",
+  "modules_section",
+  "module_mode",
   "apps_screen",
-  "sidebars",
+  "modules",
   "frontend_section",
   "frontend_url",
   "frontend_label",
@@ -86,16 +86,16 @@
    "description": "Drawn on the rail in place of the icon."
   },
   {
-   "fieldname": "sidebars_section",
+   "fieldname": "modules_section",
    "fieldtype": "Section Break",
-   "label": "Sidebars"
+   "label": "Modules"
   },
   {
-   "fieldname": "sidebars",
+   "fieldname": "modules",
    "fieldtype": "Table",
-   "label": "Sidebars",
-   "options": "Navigation App Sidebar",
-   "description": "The modules this app offers, in the order the rail's menus list them: drag rows to reorder. For an installed app in Add mode, these come first and the app's other modules follow in the default order (Home, or the one named after the app, first; then alphabetical). Listing one of its own modules here relabels it. A module can belong to only one enabled app. A Category row is a heading over the modules after it, and a Spacer row a gap; a Category left last heads the app's other modules."
+   "label": "Modules",
+   "options": "Navigation App Module",
+   "description": "The modules this app offers, in the order the rail's menus list them: drag rows to reorder. For an installed app in Add mode, these come first and the app's other modules follow in its default order: the order its shipped Dock gives them, leaving out the ones the Dock hides; else Home, or the one named after the app, first, then alphabetical. Listing a module the Dock hides puts it back. A module can belong to only one enabled app. A Category row is a heading over the modules after it, and a Spacer row a gap; a Category left last heads the app's other modules."
   },
   {
    "collapsible": 1,
@@ -107,7 +107,7 @@
    "fieldname": "frontend_url",
    "fieldtype": "Data",
    "label": "Frontend URL",
-   "description": "An app with a frontend of its own, outside the desk, such as /helpdesk or /commons. Offered beside the app's modules and opened in the same tab. An app with a frontend and no sidebars opens it straight from the rail. Left blank, an installed app keeps the frontend its code declares."
+   "description": "An app with a frontend of its own, outside the desk, such as /helpdesk or /commons. Offered beside the app's modules and opened in the same tab. An app with a frontend and no modules opens it straight from the rail. Left blank, an installed app keeps the frontend its code declares."
   },
   {
    "fieldname": "frontend_label",
@@ -145,12 +145,12 @@
   },
   {
    "default": "Add",
-   "fieldname": "sidebar_mode",
+   "fieldname": "module_mode",
    "fieldtype": "Select",
-   "label": "Sidebars Mode",
+   "label": "Modules Mode",
    "options": "Add\nReplace",
    "depends_on": "installed_app",
-   "description": "Add: the app keeps the modules it already has, after any listed below. Replace: only the modules listed below, in their order; the rest go to Other."
+   "description": "Add: the app keeps the modules it already has, after any listed below. Replace: only the modules listed below, in their order; the rest go to Other, except the ones its Dock hides, which stay off the rail."
   },
   {
    "default": "One Icon",

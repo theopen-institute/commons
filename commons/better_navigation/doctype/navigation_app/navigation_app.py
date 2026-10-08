@@ -21,8 +21,8 @@ shapes that resolver could not give a stable answer for:
   app has it. A disabled app claims nothing, so this is checked only while
   enabled -- and again when a disabled one is switched back on.
 
-It also warns, without refusing, about what the rail will quietly leave out: a
-picture in a private file, and a label on a module of more than one sidebar.
+It also warns, without refusing, when a picture is a private file, which the
+rail and the Apps screen cannot load.
 """
 
 import re
@@ -33,11 +33,10 @@ from frappe.model.document import Document
 
 from commons.better_navigation.navigation_apps import (
 	APP,
-	APP_SIDEBAR,
+	APP_MODULE,
 	MODULE,
 	OTHER,
 	SPACER,
-	multi_shell_modules,
 	row_type,
 )
 
@@ -52,8 +51,8 @@ class NavigationApp(Document):
 		from frappe.core.doctype.has_role.has_role import HasRole
 		from frappe.types import DF
 
-		from commons.better_navigation.doctype.navigation_app_sidebar.navigation_app_sidebar import (
-			NavigationAppSidebar,
+		from commons.better_navigation.doctype.navigation_app_module.navigation_app_module import (
+			NavigationAppModule,
 		)
 
 		apps_screen: DF.Literal["One Icon", "Icon per Module", "Hidden"]
@@ -64,18 +63,17 @@ class NavigationApp(Document):
 		icon: DF.Icon | None
 		installed_app: DF.Autocomplete | None
 		logo: DF.AttachImage | None
+		module_mode: DF.Literal["Add", "Replace"]
+		modules: DF.Table[NavigationAppModule]
 		rail_order: DF.Int
 		roles: DF.Table[HasRole]
-		sidebar_mode: DF.Literal["Add", "Replace"]
-		sidebars: DF.Table[NavigationAppSidebar]
 		title: DF.Data
 	# end: auto-generated types
 
 	def validate(self):
 		self.validate_marks()
 		self.validate_installed_app()
-		self.validate_sidebars()
-		self.warn_unused_labels()
+		self.validate_modules()
 		self.warn_private_images()
 
 	def validate_marks(self):
@@ -118,22 +116,24 @@ class NavigationApp(Document):
 				)
 			)
 
-	def validate_sidebars(self):
-		for row in self.sidebars:
+	def validate_modules(self):
+		for row in self.modules:
 			row.type = row_type(row)
 			if row.type == MODULE:
 				if not row.module:
 					frappe.throw(_("Row {0}: pick a module.").format(row.idx))
+				# A module is called what its sidebar calls it (see `navigation_apps`).
+				row.label = None
 				continue
 			row.module = None
 			row.desktop_image = None
 			if row.type == SPACER:
 				row.label = None
 			elif not (row.label or "").strip():
-				frappe.throw(_("Row {0}: a Category needs a label.").format(row.idx))
+				frappe.throw(_("Row {0}: a Category needs a heading.").format(row.idx))
 
 		seen = set()
-		for row in self.modules():
+		for row in self.module_rows():
 			if row.module in seen:
 				frappe.throw(
 					_("Row {0}: {1} is already in this app.").format(row.idx, frappe.bold(row.module))
@@ -143,33 +143,13 @@ class NavigationApp(Document):
 		if not self.enabled:
 			return
 		held = claimed_elsewhere(self.name)
-		for row in self.modules():
+		for row in self.module_rows():
 			if row.module in held:
 				frappe.throw(
 					_("Row {0}: {1} is already in {2}. A module can belong to only one app.").format(
 						row.idx, frappe.bold(row.module), frappe.bold(held[row.module])
 					)
 				)
-
-	def warn_unused_labels(self):
-		"""Say so when a label is on a module of more than one sidebar, where the rail does not use it.
-
-		One label on two rail entries would make them look the same, so each keeps
-		its own name (see `navigation_apps.resolve`). A warning, not a refusal: the
-		label is kept, and is used if the module comes down to one sidebar.
-		"""
-		several = multi_shell_modules()
-		unused = [row for row in self.modules() if (row.label or "").strip() and row.module in several]
-		if unused:
-			frappe.msgprint(
-				_(
-					"These modules have more than one sidebar, so each keeps its own name and the label is not used: {0}."
-				).format(
-					", ".join(_("Row {0}: {1}").format(row.idx, frappe.bold(row.module)) for row in unused)
-				),
-				indicator="orange",
-				alert=True,
-			)
 
 	def warn_private_images(self):
 		"""Say so when a picture is a private file, which the rail and the Apps screen cannot load.
@@ -181,7 +161,7 @@ class NavigationApp(Document):
 			_("Logo") if (self.logo or "").startswith("/private/") else None,
 			*(
 				_("Row {0}: Apps Screen Image").format(row.idx)
-				for row in self.sidebars
+				for row in self.modules
 				if (row.desktop_image or "").startswith("/private/")
 			),
 		]
@@ -194,9 +174,9 @@ class NavigationApp(Document):
 				alert=True,
 			)
 
-	def modules(self):
+	def module_rows(self):
 		"""The rows that are modules, not Categories or Spacers."""
-		return [row for row in self.sidebars if row.module]
+		return [row for row in self.modules if row.module]
 
 
 def claimed_elsewhere(app: str | None) -> dict[str, str]:
@@ -205,7 +185,7 @@ def claimed_elsewhere(app: str | None) -> dict[str, str]:
 	if not others:
 		return {}
 	rows = frappe.get_all(
-		APP_SIDEBAR,
+		APP_MODULE,
 		filters={"parent": ["in", others], "parenttype": APP, "module": ["is", "set"]},
 		fields=["parent", "module"],
 		parent_doctype=APP,

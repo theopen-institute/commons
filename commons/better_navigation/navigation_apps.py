@@ -7,13 +7,17 @@ Three levels, in this app's terms rather than Frappe's:
         Item         a row in that sidebar (a `Sidebar Item`)
 
 Only the top level is this app's. The bottom two are Frappe's own: since 16.50
-every module has a sidebar (shipped, made on the site, or worked out from what
-the module holds), resolved per user into `frappe.boot.module_sidebars` with
-the site's and the user's Custom Sidebar layers applied. That is also where a
-site overrides a module -- relabel it, change its icon, add or hide its rows --
-and a custom Module Def is a synthetic module. This adds the level above, which
-Frappe has only for installed apps: its Dock lists the open app's modules, and
-its Apps screen lists installed apps, neither of which a site can regroup.
+every module has a sidebar (shipped by its app, or worked out from what the
+module holds), resolved per user into `frappe.boot.module_sidebars` with the
+site's and the user's Custom Sidebar layers applied. That is also where a site
+overrides a module -- rename it, change its icon, add or hide its rows -- and a
+custom Module Def is a synthetic module. So a module row here names a module
+and nothing more: the rail calls it what its sidebar does.
+
+This adds the level above, which Frappe has only for installed apps: its Dock
+lists the open app's modules, and its Apps screen lists installed apps, neither
+of which a site can regroup. The rail takes the Dock's place, and a Navigation
+App's modules table does the Dock's job for that app.
 
 "App" here is not an installed app. A `Navigation App` is whatever grouping a
 site wants on its rail -- "Finance" holding modules from ERPNext and from this
@@ -24,11 +28,10 @@ One can also stand for an installed app, or for "Other", by naming it in
 appearing beside it: in its own Rail Order, under its own title, roles and
 mark, falling back to the app's own logo and frontend as Frappe's Apps screen
 has them (see `apps_from_app_data`). Its
-modules table either adds to what the app already holds (and relabels
-anything it lists) or, set to Replace, is the whole list, and what the app
-would have held goes to Other. The table's row order is the order the rail
-lists them in; only what nobody has put in order is sorted, landing module
-first (see `_default_order`). The table can also hold Category rows, a heading
+modules table either adds to what the app already holds or, set to Replace, is
+the whole list, and what the app would have held goes to Other. The table's row
+order is the order the rail lists them in; what nobody has put in order follows
+the app's default (see below). The table can also hold Category rows, a heading
 over the modules after it, and Spacer rows, a gap; see `_layout`. Hidden takes it off the rail, and its modules
 with it. "Other" is bindable like any installed app: the one group no hooks
 describe, but as much the site's to rename, restrict or hide.
@@ -50,18 +53,18 @@ app Frappe mounts it on (`app_hosts`). A module neither places is grouped
 under "Other", which is the honest answer and a hint that it wants an app or
 claiming.
 
+An installed app's own order is its shipped `Dock` (`shipped_docks`): the
+modules it names, in its order, and none of the ones it hides -- ERPNext ships
+CRM and Support hidden. A hidden module is off the rail, not moved to Other,
+until a Navigation App lists it. The Dock's site and user layers are not read:
+the rail replaces Manage Dock, so nothing could edit them any more. Modules the
+Dock does not name, and every module of an app that ships none, follow in the
+rail's own order (`_default_order`).
+
 A module is one or more shells in the boot: usually one sidebar named after
 it, but a renamed sidebar keeps its own name (ERPNext's "Quality" is module
 "Quality Management") and a module may have two. A row claims the module, so
-it claims all of them.
-
-A row's label is for a module of one sidebar. On a module of two it would give
-both rail entries one name, so each keeps its own. That is decided by how many
-sidebars the module has on the site (`multi_shell_modules`), not by how many
-this user can open: Frappe drops a shell with nothing the user may open, and a
-label that came and went with permissions would name one sidebar for some
-people and another for others. The form and the editor both say so when a
-label will not be used.
+it claims all of them, and the rail has one entry per shell.
 
 Two rules
 ---------
@@ -81,7 +84,7 @@ import frappe
 from frappe import _
 
 APP = "Navigation App"
-APP_SIDEBAR = "Navigation App Sidebar"
+APP_MODULE = "Navigation App Module"
 
 # Where a module goes when nothing says which app it belongs to.
 OTHER = "Other"
@@ -193,7 +196,7 @@ def _site_inputs() -> dict:
 	user's `app_data` instead (see `apps_from_app_data`).
 
 	Five queries per desk load otherwise, for data that
-	changes when an administrator edits the rail or a sidebar, or installs an app. Kept in
+	changes when an administrator edits the rail or installs an app. Kept in
 	`frappe.client_cache` (process-local, invalidated through redis) and dropped
 	by `clear_cache`, which the doc events on everything read here call. An app
 	installed, removed or migrated needs no call: `install_app`, `remove_app`
@@ -206,7 +209,7 @@ def _site_inputs() -> dict:
 			"configured": _configured(),
 			"installed_apps": frappe.get_installed_apps(),
 			"module_apps": module_apps(),
-			"multi_shell_modules": multi_shell_modules(),
+			"docks": shipped_docks(),
 		},
 	)
 
@@ -239,14 +242,14 @@ def resolve(
 	user_roles: set[str],
 	frontends: dict[str, str] | None = None,
 	hosts: dict[str, str] | None = None,
-	multi_shell_modules: set[str] | frozenset[str] = frozenset(),
+	docks: dict[str, dict] | None = None,
 	everything: bool = False,
 ) -> list[dict]:
 	"""The rail, from plain data: configured apps first, then the installed ones.
 
 	`configured` is the enabled Navigation Apps in rail order, each with its
-	`sidebars` rows (`type`, `module`, `label`), `roles`, and optionally the
-	`installed_app` it stands for, its `sidebar_mode`, whether it is `hidden`
+	`modules` rows (`type`, `module`, and a Category's `label`), `roles`, and optionally the
+	`installed_app` it stands for, its `module_mode`, whether it is `hidden`
 	and its `apps_screen`.
 	`sidebars` is the shells this user may open, from `module_sidebars`
 	(`name`, `module`, `app`, `label`, `header_icon`; see `_shells`). The rest
@@ -254,11 +257,11 @@ def resolve(
 	is, outside the desk (`frontends`), both as this user's `app_data` has them;
 	which app a module belongs to (`module_apps`, keyed by scrubbed module name,
 	as the boot's `module_app` is); and which installed app a companion app
-	mounts on (`hosts`, see `app_hosts`); and which modules have more than one
-	sidebar on the site (`multi_shell_modules`), whose rows' labels are not used.
+	mounts on (`hosts`, see `app_hosts`); and each installed app's shipped
+	order and hidden shells (`docks`, see `shipped_docks`).
 
 	Every entry carries `frontend` -- `{label, url}` or None -- beside its
-	`sidebars`, which are modules only, one per shell: a module may carry a
+	`modules`, one per shell (`shell`, `label`, `icon`): a module may carry a
 	`category` or `space_before` to draw above it (see `_layout`). An app is on
 	the rail if it has either: a frontend with no desk modules (Frappe Builder,
 	say) is somewhere to go too. `app_name` is the name the desk's boot knows it
@@ -270,6 +273,7 @@ def resolve(
 	"""
 	frontends = frontends or {}
 	hosts = hosts or {}
+	docks = docks or {}
 	by_module: dict[str, list[dict]] = {}
 	for sidebar in sidebars:
 		by_module.setdefault(sidebar.get("module") or sidebar["name"], []).append(sidebar)
@@ -281,7 +285,7 @@ def resolve(
 	claims: list[list[dict]] = []
 	for app in configured:
 		entries = []
-		for row in app["sidebars"]:
+		for row in app["modules"]:
 			kind = row_type(row)
 			if kind in (CATEGORY, SPACER):
 				entries.append(_marker(row))
@@ -290,12 +294,10 @@ def resolve(
 				continue
 			shells = [s for s in by_module.get(row.get("module") or "", []) if s["name"] not in claimed]
 			# Gone since, out of this user's reach, or already claimed by an
-			# earlier app. A module of two shells keeps their own labels.
-			# Counted on the site, not in `shells`: this user may open only one of them.
-			label = None if row.get("module") in multi_shell_modules else row.get("label")
+			# earlier app.
 			for sidebar in shells:
 				claimed.add(sidebar["name"])
-				entries.append(_entry(sidebar, label, row.get("desktop_image")))
+				entries.append(_entry(sidebar, row.get("desktop_image")))
 		claims.append(entries)
 
 	grouped: dict[str, list[dict]] = {}
@@ -303,6 +305,9 @@ def resolve(
 		if sidebar["name"] in claimed:
 			continue
 		owner = default_app_of(sidebar.get("app"), sidebar.get("module"), module_apps, hosts, installed_apps)
+		# Hidden by the app's Dock: off the rail until a Navigation App lists it, not sent to Other.
+		if sidebar["name"] in (docks.get(owner) or {}).get("hidden", ()):
+			continue
 		grouped.setdefault(owner, []).append(_entry(sidebar))
 
 	# Which configured app stands for which installed app: the first enabled one
@@ -318,7 +323,7 @@ def resolve(
 	# sidebar nothing places goes -- unless it is Other that replaces, when
 	# there is nowhere further for them to go.
 	for target, index in bound.items():
-		if configured[index].get("sidebar_mode") == REPLACE and target != OTHER:
+		if configured[index].get("module_mode") == REPLACE and target != OTHER:
 			grouped.setdefault(OTHER, []).extend(grouped.pop(target, []))
 
 	rail: list[dict] = []
@@ -328,9 +333,9 @@ def resolve(
 		# Listed rows in the table's order, then (Add) what the app already held,
 		# in the default order.
 		entries = list(claims[index])
-		if target and app.get("sidebar_mode") != REPLACE:
+		if target and app.get("module_mode") != REPLACE:
 			names = {app["title"], meta.get("title") or target, target}
-			entries += _default_order(grouped.get(target) or [], names)
+			entries += _default_order(grouped.get(target) or [], names, docks.get(target))
 		entries = _layout(entries)
 
 		# Hidden, or restricted to roles this user lacks: off the rail, and what it
@@ -362,7 +367,7 @@ def resolve(
 					"icon": app.get("icon") or None,
 					"logo": app.get("logo") or (None if own_mark else _default_logo(target, meta)),
 					"configured": True,
-					"sidebars": entries,
+					"modules": entries,
 					"frontend": frontend,
 					# How the Apps screen shows it; see `apps_screen.py`.
 					"apps_screen": app.get("apps_screen") or None,
@@ -388,7 +393,7 @@ def resolve(
 				"icon": None,
 				"logo": _default_logo(app_name, meta),
 				"configured": False,
-				"sidebars": _default_order(entries, {title, app_name}),
+				"modules": _default_order(entries, {title, app_name}, docks.get(app_name)),
 				"frontend": frontend,
 			}
 		)
@@ -449,29 +454,33 @@ def default_app_of(
 	return owner if owner in installed_apps else OTHER
 
 
-def _default_order(entries: list[dict], app_names: set[str]) -> list[dict]:
-	"""Modules nobody has put in order: the app's landing module, then the rest.
+def _default_order(entries: list[dict], app_names: set[str], dock: dict | None = None) -> list[dict]:
+	"""Modules nobody has put in order: the app's Dock order, else its landing module, then the rest.
 
-	Modules have no order of their own across an app (a Dock is an order only
-	for the apps that ship one). So alphabetical, by what
-	the menus call them -- except that a module called "Home", or called what
-	the app is (Education's "Education", Lending's "Lending"), is where the app
+	An app that ships a Dock has said what order its modules go in, and those it
+	names go first, in that order. The rest -- every module of an app that ships
+	none, and custom modules placed in one that does -- are alphabetical, by what
+	the menus call them, except that a module called "Home", or called what the
+	app is (Education's "Education", Lending's "Lending"), is where the app
 	starts, and goes first. Home before the app-named one if an app has both.
-	A Navigation App's sidebars table is an order someone chose, and is never
+	A Navigation App's modules table is an order someone chose, and is never
 	passed through this.
 	"""
 	names = {name.casefold() for name in app_names if name}
+	shipped = {shell: index for index, shell in enumerate((dock or {}).get("order") or ())}
 
-	def rank(entry: dict) -> tuple[int, str]:
-		keys = {entry["sidebar"].casefold(), entry["label"].casefold()}
+	def rank(entry: dict) -> tuple[int, int, int, str]:
+		if entry["shell"] in shipped:
+			return 0, shipped[entry["shell"]], 0, ""
+		keys = {entry["shell"].casefold(), entry["label"].casefold()}
 		landing = 0 if HOME in keys else 1 if keys & names else 2
-		return landing, entry["label"].casefold()
+		return 1, 0, landing, entry["label"].casefold()
 
 	return sorted(entries, key=rank)
 
 
 def row_type(row) -> str:
-	"""What a sidebars table row is: its type, or a module when unset.
+	"""What a modules table row is: its type, or a module when unset.
 
 	Any other value is no row the rail knows, and `resolve` skips it.
 	"""
@@ -503,7 +512,7 @@ def _layout(rows: list[dict]) -> list[dict]:
 	laid_out: list[dict] = []
 	pending: dict = {}
 	for row in rows:
-		if "sidebar" not in row:
+		if "shell" not in row:
 			if "category" in row or "category" not in pending:
 				pending = dict(row)
 			continue
@@ -514,10 +523,10 @@ def _layout(rows: list[dict]) -> list[dict]:
 	return laid_out
 
 
-def _entry(sidebar: dict, label: str | None = None, desktop_image: str | None = None) -> dict:
+def _entry(sidebar: dict, desktop_image: str | None = None) -> dict:
 	entry = {
-		"sidebar": sidebar["name"],
-		"label": (label or "").strip() or sidebar.get("label") or sidebar["name"],
+		"shell": sidebar["name"],
+		"label": sidebar.get("label") or sidebar["name"],
 		"icon": sidebar.get("header_icon") or None,
 	}
 	# Only the Apps screen draws it (`apps_screen.py`), so it is carried only
@@ -539,7 +548,7 @@ def _configured() -> list[dict]:
 			"frontend_url",
 			"frontend_label",
 			"installed_app",
-			"sidebar_mode",
+			"module_mode",
 			"hidden",
 			"apps_screen",
 		],
@@ -550,7 +559,7 @@ def _configured() -> list[dict]:
 
 	names = [app.name for app in apps]
 	rows = frappe.get_all(
-		APP_SIDEBAR,
+		APP_MODULE,
 		filters={"parent": ["in", names], "parenttype": APP},
 		fields=["parent", "type", "module", "label", "desktop_image"],
 		order_by="parent asc, idx asc",
@@ -564,7 +573,7 @@ def _configured() -> list[dict]:
 	)
 
 	for app in apps:
-		app["sidebars"] = [row for row in rows if row.parent == app.name]
+		app["modules"] = [row for row in rows if row.parent == app.name]
 		app["roles"] = [row.role for row in roles if row.parent == app.name]
 	return apps
 
@@ -583,19 +592,27 @@ def _shells(module_sidebars: dict) -> list[dict]:
 	]
 
 
-def multi_shell_modules() -> set[str]:
-	"""The modules with more than one sidebar on the site, whoever is asking.
+def shipped_docks() -> dict[str, dict]:
+	"""Each installed app's shipped Dock: the shells it names, in order, and the ones it hides.
 
-	A module's shells are its `Sidebar` documents, shipped or made on the site, and
-	only when it has none, one computed from what it holds and named after it
-	(`frappe.desk.doctype.sidebar.sidebar.get_sidebar_bases`). A computed sidebar
-	is never a second one, so counting documents is the whole answer, and needs no
-	user. Who may open which comes later, per user, and is not asked here.
+	Frappe's own base for an app's Dock (`get_app_base`): the record the app
+	ships, with the rows of companion apps mounted on it appended, as Frappe's
+	Dock has it before any site or user layer. The same for everyone, so cached
+	with the rest of `_site_inputs`; an app's shipped Dock changes only when it is
+	installed or migrated, which clears every cache. Rows that open a workspace or
+	a URL are pins, not modules, and the rail has no place for them.
 	"""
-	from collections import Counter
+	from frappe.desk.doctype.dock.dock import get_app_base
 
-	counts = Counter(frappe.get_all("Sidebar", filters={"module": ["is", "set"]}, pluck="module"))
-	return {module for module, count in counts.items() if count > 1}
+	docks = {}
+	for app in frappe.get_installed_apps():
+		rows = [row for row in get_app_base(app) if row.get("link_type") == "Sidebar"]
+		if rows:
+			docks[app] = {
+				"order": [row["link_to"] for row in rows],
+				"hidden": [row["link_to"] for row in rows if row.get("hidden")],
+			}
+	return docks
 
 
 def module_apps() -> dict[str, str]:
