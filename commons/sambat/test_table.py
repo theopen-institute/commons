@@ -183,3 +183,52 @@ class TestRefresh(Base):
 		self.fetch(error=requests.ConnectionError())
 		self.assertIn("since 2026-08-01", self.told.call_args.args[0])
 		self.assertTrue(self.told.call_args.kwargs["once"])
+
+
+class TestQueueing(TestCase):
+	"""Fetching straight after a migrate, and as soon as the setting is ticked."""
+
+	def setUp(self):
+		self.enqueue = self.enterContext(patch.object(table.frappe, "enqueue"))
+
+	def settings_doc(self, on, was_on):
+		before = None if was_on is None else {table.settings.ENABLE_BIKRAM_SAMBAT: was_on}
+		doc = {table.settings.ENABLE_BIKRAM_SAMBAT: on}
+		return type(
+			"Doc",
+			(),
+			{"get": lambda self, key: doc.get(key), "get_doc_before_save": lambda self: before},
+		)()
+
+	def test_after_migrate_where_bikram_sambat_is_on(self):
+		with patch.object(table.settings, "feature_enabled", return_value=True):
+			table.queue_refresh()
+		self.enqueue.assert_called_once()
+		self.assertEqual(self.enqueue.call_args.args[0], "commons.sambat.table.refresh")
+		self.assertTrue(self.enqueue.call_args.kwargs["deduplicate"])
+		self.assertTrue(self.enqueue.call_args.kwargs["enqueue_after_commit"])
+
+	def test_not_after_migrate_where_it_is_off(self):
+		with patch.object(table.settings, "feature_enabled", return_value=False):
+			table.queue_refresh()
+		self.enqueue.assert_not_called()
+
+	def test_when_the_setting_is_ticked(self):
+		table.refresh_when_switched_on(self.settings_doc(on=1, was_on=0))
+		table.refresh_when_switched_on(self.settings_doc(on=1, was_on=None))
+		self.assertEqual(self.enqueue.call_count, 2)
+
+	def test_not_on_every_save_while_it_stays_on_or_off(self):
+		table.refresh_when_switched_on(self.settings_doc(on=1, was_on=1))
+		table.refresh_when_switched_on(self.settings_doc(on=0, was_on=1))
+		table.refresh_when_switched_on(self.settings_doc(on=0, was_on=0))
+		self.enqueue.assert_not_called()
+
+	def test_a_queue_that_cannot_be_reached_does_not_fail_the_migrate(self):
+		self.enqueue.side_effect = ConnectionError("redis")
+		with (
+			patch.object(table.settings, "feature_enabled", return_value=True),
+			patch.object(table.frappe, "log_error") as logged,
+		):
+			table.queue_refresh()
+		logged.assert_called_once()

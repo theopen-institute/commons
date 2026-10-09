@@ -14,10 +14,10 @@ Bikram Sambat month lengths cannot be computed. Nepal's Panchanga Nirnayak Samit
 publishes it as a PDF a few months ahead, so every converter carries a table, and a table nobody
 updates goes wrong when a published year differs from the guess that stood in for it.
 
-So this one is not maintained by hand. Weekly, `table.refresh` reads the month lengths from
-opensource-nepal's `nepali` package on GitHub, **as data**: the file is parsed with
-`ast.literal_eval`, and none of that package's code is installed, imported or run. A calendar is used
-only if it passes `table.validate`:
+So this one is not maintained by hand. Weekly, after every migrate, and as soon as the setting is
+ticked, `table.refresh` reads the month lengths from opensource-nepal's `nepali` package on GitHub,
+**as data**: the file is parsed with `ast.literal_eval`, and none of that package's code is
+installed, imported or run. A calendar is used only if it passes `table.validate`:
 
 - every month is 29 to 32 days and every year 365 or 366;
 - every year begins between 10 and 16 April, which catches a table a day out as well as a broken one;
@@ -26,10 +26,11 @@ only if it passes `table.validate`:
   government's published lists.
 
 What passes is kept in Commons Settings (`bikram_sambat_calendar`, with a status line under the
-switch) and sent to the browser at boot. System Managers get a To Do when the calendar changes, when
-one is refused, or when it has not been fetched for 45 days. Until the first fetch, and for the years
-before BS 2000 that opensource-nepal does not cover, the browser uses the table shipped here
-(`js/calendar_data.js`).
+switch) and sent to the browser at boot. The migrate and the settings save only queue the check (one
+job at a time), so a slow or offline network never holds either of them up. System Managers get a To
+Do when the calendar changes, when one is refused, or when it has not been fetched for 45 days.
+Until the first fetch, and for the years before BS 2000 that opensource-nepal does not cover, the
+browser uses the table shipped here (`js/calendar_data.js`).
 
 When the government publishes a new year's holidays, adding a few of them to `confirmed_dates.json`
 tightens the check; nothing else needs doing.

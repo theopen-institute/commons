@@ -286,6 +286,47 @@ def changes(old: dict, new: dict) -> list[str]:
 # The weekly check
 # ----------------
 
+# One queued check at a time, however many triggers ask for one.
+REFRESH_JOB = "commons-sambat-refresh"
+
+
+def queue_refresh() -> None:
+	"""Run `refresh` soon, in the background. `after_migrate`, from `hooks.py`.
+
+	So a site has the current calendar straight after a deploy rather than up to
+	a week later. Queued rather than run, because it fetches from GitHub: a slow
+	or offline network must not hold up a migrate, let alone fail it. If the
+	queue itself cannot be reached, the weekly run is still there.
+	"""
+	if settings.feature_enabled(settings.ENABLE_BIKRAM_SAMBAT):
+		_enqueue()
+
+
+def refresh_when_switched_on(doc) -> None:
+	"""Commons Settings `on_update`: fetch the calendar as soon as Bikram Sambat is ticked.
+
+	Without this, a site that switches it on converts with the shipped table
+	until the next weekly run. `refresh` reads the setting again when it runs,
+	after this save has been committed.
+	"""
+	before = doc.get_doc_before_save()
+	if doc.get(settings.ENABLE_BIKRAM_SAMBAT) and not (before and before.get(settings.ENABLE_BIKRAM_SAMBAT)):
+		_enqueue()
+
+
+def _enqueue() -> None:
+	try:
+		frappe.enqueue(
+			"commons.sambat.table.refresh",
+			queue="short",
+			job_id=REFRESH_JOB,
+			deduplicate=True,
+			enqueue_after_commit=True,
+		)
+	except Exception:
+		# Redis down during a migrate, say. Nothing is lost but a week.
+		frappe.log_error(title="Bikram Sambat calendar check could not be queued")
+
 
 def refresh() -> None:
 	"""Fetch opensource-nepal's calendar and use it if it is good. Weekly, from `hooks.py`.

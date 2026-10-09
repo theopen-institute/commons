@@ -89,6 +89,9 @@ after_migrate = [
 	# A migrate is when a doctype along some derived field's path most often
 	# changes under it. Reports what no longer resolves; repairs nothing.
 	"commons.derived_docfields.validation.check_all",
+	# Fetches the current Bikram Sambat calendar in the background, so a deploy
+	# does not wait a week for the weekly run. See `commons.sambat.table`.
+	"commons.sambat.table.queue_refresh",
 ]
 
 # Core writes a new module's `Module Def` before this runs, but the module map

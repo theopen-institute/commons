@@ -21,6 +21,7 @@ whose Single has never been saved and therefore has no row to read at all.
 from frappe.model.document import Document
 
 from commons.banking.internal_transfers import clear_existing_when_switched_on
+from commons.sambat.table import refresh_when_switched_on
 
 
 class CommonsSettings(Document):
@@ -85,3 +86,4 @@ class CommonsSettings(Document):
 
 	def on_update(self):
 		clear_existing_when_switched_on(self)
+		refresh_when_switched_on(self)
