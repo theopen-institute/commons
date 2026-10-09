@@ -18,7 +18,6 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 
 - **Self Service Records**: a site declares which doctypes people can view as their own records (such as their Employee record), and which fields they may propose changes to.
 - **Record Change Requests**: the owner proposes a correction and the responsible team approves or rejects it. The change is written under the approver's own permissions, and a field that changed in the meantime is refused. Without a Workflow, Commons Settings names the outcome that applies the change and whether reviewers may decide their own requests.
-- **Account statement** (`/commons/account`): what a person owes the organisation and what it owes them, from the general ledger, with loans shown separately, a PDF per account, and a `party_statement` endpoint a Web Template's Context Prep calls to print one. Any Party Type whose record links to a User can be a statement party, and each Party Type can name its statement Print Format.
 
 #### Requests and approvals
 
@@ -61,15 +60,13 @@ Features marked ⚙ are off until switched on in **Commons Settings**. The app s
 - **Print templates**: write a print layout once as a Web Template, with declared inputs and Context Prep, and print it from several doctypes. Includes a Test PDF form.
 - **QR codes**: a `make_qr_code` Jinja helper.
 
-#### Desk navigation ⚙
+#### Navigation ⚙
 
-Built on Frappe 16.50's own sidebar, dock and Apps screen.
+The desk's own navigation (the rail of apps, the Apps screen and the desk user menu) is the Open Desk app's. What is left here:
 
-- **Navigation rail**: a narrow rail of apps (Navigation Apps) beside the sidebar, in place of Frappe's per-app dock of modules, with Search, Notifications and To Do at its foot. Picking an app lists its modules in the sidebar. **Manage Rail** and **Manage Modules** in the user menu arrange it for the site.
-- **Apps screen from Navigation Apps**: Frappe's Apps screen (`/desk`) arranged from the same apps, one icon per app or per module.
-- **User menu rows**: Help and the Navbar Settings rows move into Frappe's user menu. The same switch gives the Commons frontend its user menu.
+- **Frontend user menu**: the Commons frontend's user menu, with your account, display, session defaults, site tools, help and logout.
 - **Home page priority**: when a user holds several roles, the role with the lowest Home Page Priority decides where they land after login.
-- **Desk To Do**: your open ToDos, in a sidebar panel next to Notifications.
+- **Desk To Do**: your open ToDos, in a sidebar panel next to Notifications, and a tile at the foot of Open Desk's rail where it is installed.
 
 #### Desk conveniences
 

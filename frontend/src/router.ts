@@ -35,20 +35,6 @@ const routes: RouteRecordRaw[] = [
     meta: { page: 'announcements' },
   },
   {
-    // The reader's own balances. Off the requests tree and alone at the top
-    // level, because it is not one: nothing is raised here and nobody approves
-    // anything, so it has neither an approvals tab nor a route to pair with.
-    //
-    // `/account` rather than `/balance` -- it is an account with a balance on
-    // it, and the address outlives whatever the page's headline figure is
-    // called. `search.py` holds the same path; see `PAGE_PATHS` there for why
-    // the server needs its own copy.
-    path: '/account',
-    name: 'AccountBalance',
-    component: () => import('@/pages/AccountBalance.vue'),
-    meta: { page: 'statement' },
-  },
-  {
     // The teaching register. One page, no tabs: the term and the course it is
     // showing live in the query string rather than in the path, because they
     // are a view of it rather than a different page -- and because a link to

@@ -92,7 +92,7 @@
    "fieldname": "landing_page",
    "fieldtype": "Select",
    "label": "Landing Page",
-   "options": "\nAnnouncements\nAccount Balance\nLeave Request\nExpense Claim\nProcurement\nAttendance\nBank Reconciliation\nDocument Capture"
+   "options": "\nAnnouncements\nLeave Request\nExpense Claim\nProcurement\nAttendance\nBank Reconciliation\nDocument Capture"
   },
   {
    "fieldname": "navigation_tab",
@@ -446,7 +446,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-08 22:00:00.000000",
+ "modified": "2026-10-09 15:05:55.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

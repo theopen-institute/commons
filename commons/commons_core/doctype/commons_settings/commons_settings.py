@@ -68,7 +68,6 @@ class CommonsSettings(Document):
 		landing_page: DF.Literal[
 			"",
 			"Announcements",
-			"Account Balance",
 			"Leave Request",
 			"Expense Claim",
 			"Procurement",

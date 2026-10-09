@@ -48,7 +48,7 @@ class TestUninstall(TestCase):
 				"doctype": "Print Format",
 				"name": MARK,
 				"doc_type": "ToDo",
-				"module": "Statement",
+				"module": "Banking",
 				"standard": "No",
 				"print_format_type": "Jinja",
 				"html": "<p></p>",

@@ -16,7 +16,7 @@ rewritten.
 | File | What it holds |
 | --- | --- |
 | `custom_field.json` | The ten fields this app adds to Frappe's core and customisation doctypes, the ten on Email Template, two on Notification, one on Communication, one on Email Account, and two on Web Template |
-| `custom_field_erpnext.json` | The three fields the requests section adds to ERPNext's doctypes, the statement's one on Party Type, and the financial reports' one on Account |
+| `custom_field_erpnext.json` | The three fields the requests section adds to ERPNext's doctypes, and the financial reports' one on Account |
 | `property_setter.json` | Which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification, and the fieldtypes a Web Template's inputs may have |
 
 All of the Custom Fields are schema: code dereferences every one of them, and
@@ -179,18 +179,6 @@ Fields rather than part of the `Procurement Request` definition.
 `make_material_request` fills them in, and every read of a request counts back
 through them to see what has actually been ordered — which is why the two on the
 item rows are indexed.
-
-**`Party Type.statement_print_format`** — which Print Format a party type's
-account statement is downloaded with. Read by
-`commons.statement.statement_print_format`, which `api.download_statement` asks.
-Blank, the statement falls back to the format named `{Party Type} Account
-Statement`, the convention it had before the field, so a site that set its
-formats up under those names needs to change nothing; the field is for a site
-whose formats are called something else. Either way the format must be enabled and belong to the party
-doctype, and the download is refused when none does — Frappe would otherwise
-fall back to "Standard" and print the whole party record. On Party Type because
-that is the one record per party doctype, and ERPNext's, so the field is here
-and not in `custom_field.json`.
 
 **`Account.internal_account`** — which accounts record money moving between the
 organisation's own departments. Read by `commons.banking.financial_statements`,

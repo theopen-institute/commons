@@ -36,7 +36,6 @@ import { requestSection, type RequestSection, type RequestSectionKey } from './r
 /** One of the pages this app ships, as a workspace row may name it. */
 export type PageKey =
   | 'announcements'
-  | 'statement'
   | 'attendance'
   | 'reconciliation'
   | 'capture'
@@ -122,24 +121,10 @@ const PAGES: Record<PageKey, PageChrome> = {
     section: null,
     gate: null,
   },
-  // No section, and so always visible. That is the same answer a self-service
-  // row gets and it is the same argument: a page that says "you have no account
-  // here" explains an empty balance far better than a missing row does, and
-  // deciding otherwise would mean asking the server who this reader is before
-  // the sidebar could draw itself.
-  statement: {
-    label: 'Account Balance',
-    icon: 'lucide-wallet',
-    to: { name: 'AccountBalance' },
-    routeName: 'AccountBalance',
-    section: null,
-    gate: null,
-  },
-  // Gated, unlike the two above, and for the opposite reason to each of them.
-  // Announcements and Account Balance are offered to everybody because the page
-  // explains itself better than a missing row would; this one is a whole
-  // cohort's attendance, and a student who may not mark it should not be
-  // offered it. See `PageGate`.
+  // Gated, unlike Announcements, and for the opposite reason. Announcements is
+  // offered to everybody because the page explains itself better than a missing
+  // row would; this one is a whole cohort's attendance, and a student who may
+  // not mark it should not be offered it. See `PageGate`.
   attendance: {
     label: 'Attendance',
     icon: 'lucide-clipboard-check',

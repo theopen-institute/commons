@@ -27,9 +27,8 @@ add_to_apps_screen = [
 # site runs them, and takes the features that need them away where it does not.
 # Each such feature asks `commons.commons_core.apps` first.
 #
-# Which features those are: procurement, bank reconciliation, the account
-# statement, the financial statement overrides and Purchase Invoice capture need
-# ERPNext; leave, expenses, receipt capture and the payroll extensions need HRMS;
+# Which features those are: procurement, bank reconciliation, the financial
+# statement overrides and Purchase Invoice capture need ERPNext; leave, expenses, receipt capture and the payroll extensions need HRMS;
 # loan matching and loan dates need Lending; the attendance register needs
 # Education. What is left on a bare Frappe site is self-service, workspaces and
 # navigation, the permission gate, derived fields, email, print templates and
@@ -79,12 +78,11 @@ website_route_rules = [
 # Server-side caches need nothing: migrate's own `frappe.clear_cache()` drops
 # every key the site has.
 #
-# No approval chain, no self-service configuration and no statement print
-# formats. Those are a System Manager's to set up on a new site, and a deploy is
-# not where they get made. The app ships none of them, and the code reads
-# whatever a site has rather than assuming any particular shape -- see
-# `commons.requests.procurement_workflow`, `commons.self_service.registry` and
-# `commons.statement.api.download_statement`.
+# No approval chain and no self-service configuration. Those are a System
+# Manager's to set up on a new site, and a deploy is not where they get made.
+# The app ships neither, and the code reads whatever a site has rather than
+# assuming any particular shape -- see `commons.requests.procurement_workflow`
+# and `commons.self_service.registry`.
 after_install = ["commons.safer_permissions.install.sync_permission_manager"]
 after_migrate = [
 	"commons.safer_permissions.install.sync_permission_manager",
@@ -195,9 +193,8 @@ doctype_js = {"Payroll Entry": "public/js/payroll_entry.js"}
 # `render_web_template` prints one Web Template, a layout kept on the site, from
 # as many doctypes' formats as call it, each through the template's own Context
 # Prep. It reads only the `doc` its caller already holds. Data a layout needs
-# from this app is fetched in the prep, through `frappe.call` -- the Account
-# Statement template calls `commons.statement.api.party_statement` that way --
-# so no section's functions need a name in Jinja. See `commons.print_templates`.
+# from an app is fetched in the prep, through `frappe.call`, so no section's
+# functions need a name in Jinja. See `commons.print_templates`.
 jinja = {
 	"methods": [
 		"commons.commons_core.jinja.make_qr_code",

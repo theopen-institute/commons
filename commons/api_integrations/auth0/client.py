@@ -134,7 +134,7 @@ def available() -> bool:
 	The three credentials, because a site with a domain and no secret cannot
 	make a single call and should be told so here rather than at the token
 	request. Asked the way the rest of this app asks it -- see
-	`commons.statement.ledger.available` -- so a page or a button can leave
+	`commons.banking.reconciliation.available` -- so a page or a button can leave
 	itself out instead of offering something that only explains itself after
 	being pressed.
 	"""

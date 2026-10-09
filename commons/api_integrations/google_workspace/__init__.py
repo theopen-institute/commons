@@ -90,7 +90,7 @@ paste the key file's contents.
 A site that has not done this has no Google Workspace: `client.available` is
 false, the endpoints say so plainly rather than failing at the first request,
 and nothing else in the app changes. That is the shape the rest of this app uses
-for things a site may or may not have -- see `commons.statement.ledger.available`.
+for things a site may or may not have -- see `commons.banking.reconciliation.available`.
 
 One thing to check before wiring anything to it: Google increasingly discourages
 service account keys, and an organisation with the

@@ -24,7 +24,6 @@ declare module 'vue' {
     AttendanceGrid: typeof import('./src/components/AttendanceGrid.vue')['default']
     AttendanceMarksDialog: typeof import('./src/components/AttendanceMarksDialog.vue')['default']
     AttendanceSessionDialog: typeof import('./src/components/AttendanceSessionDialog.vue')['default']
-    BalanceHeadline: typeof import('./src/components/BalanceHeadline.vue')['default']
     BikramDatePicker: typeof import('./src/components/BikramDatePicker.vue')['default']
     CaptureDetailsDialog: typeof import('./src/components/CaptureDetailsDialog.vue')['default']
     CaptureExpenseDialog: typeof import('./src/components/CaptureExpenseDialog.vue')['default']
@@ -38,7 +37,6 @@ declare module 'vue' {
     LeaveRequestDialog: typeof import('./src/components/LeaveRequestDialog.vue')['default']
     LeaveReviewDialog: typeof import('./src/components/LeaveReviewDialog.vue')['default']
     LinkControl: typeof import('./src/components/LinkControl.vue')['default']
-    LoanBalances: typeof import('./src/components/LoanBalances.vue')['default']
     PermissionNotice: typeof import('./src/components/PermissionNotice.vue')['default']
     ProcurementLines: typeof import('./src/components/ProcurementLines.vue')['default']
     ProcurementRequestDialog: typeof import('./src/components/ProcurementRequestDialog.vue')['default']
@@ -64,6 +62,5 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SessionDefaultsDialog: typeof import('./src/components/SessionDefaultsDialog.vue')['default']
-    StatementLines: typeof import('./src/components/StatementLines.vue')['default']
   }
 }

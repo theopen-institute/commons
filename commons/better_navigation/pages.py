@@ -32,11 +32,9 @@ from commons.document_capture import capture
 from commons.requests.expense import EXPENSES
 from commons.requests.leave import LEAVE
 from commons.requests.procurement import PROCUREMENT
-from commons.statement import ledger
 
 PAGES: dict[str, str] = {
 	"Announcements": "announcements",
-	"Account Balance": "statement",
 	"Leave Request": "leave",
 	"Expense Claim": "expense",
 	"Procurement": "procurement",
@@ -63,13 +61,12 @@ PAGE_SECTIONS = {
 	"procurement": PROCUREMENT,
 }
 
-# The same question for a page that is not a request section. `statement` is the
-# only one so far and it is not an oversight that it has no `RequestType`: there
-# is nothing to raise and nobody to approve it, so the shape the three request
-# pages share has nothing to lend it -- what it has in common with them is only
-# that it can be absent, and that is this line rather than a base class.
+# The same question for a page that is not a request section. None of these has
+# a `RequestType`: there is nothing to raise and nobody to approve, so the shape
+# the three request pages share has nothing to lend them -- what they have in
+# common with them is only that they can be absent, and that is a line here
+# rather than a base class.
 PAGE_AVAILABILITY = {
-	"statement": ledger.available,
 	# Absent without the education module, the way leave is absent without HRMS.
 	# `Course Schedule` and `Student Attendance` are what the register is made
 	# of, and `attendance.available` asks about those two rather than about
@@ -88,23 +85,13 @@ PAGE_AVAILABILITY = {
 # The doctype whose read permission decides whether a page is worth offering to
 # *this user*, which is a different question from whether the site has it at all
 # -- see `better_navigation.search._page_row`, the one caller.
-#
-# `statement` is deliberately absent, and the absence is the point rather than an
-# omission. The doctype behind it is `GL Entry`, whose read permission is an
-# accountant's: gating the row on it would take the page away from every student,
-# member and supplier it was written for and leave it to the only people who were
-# never going to read their own balance on it. Who may see what is settled inside
-# the page instead -- the reader's own parties, and nothing else exists for them
-# to be offered.
 PAGE_DOCTYPES: dict[str, str] = {key: section.doctype for key, section in PAGE_SECTIONS.items()}
 
 # The same question again for a page where read permission is the wrong test.
 #
-# The attendance register is the one so far, and it is the mirror image of
-# `statement` above. There the doctype's read permission was too *narrow* -- an
-# accountant's -- for a page written for everybody. Here it is too wide:
-# `Student Attendance` is readable by every student and guardian on the site,
-# and the register is a whole cohort's marks on one screen. The page opens for
+# For the attendance register, read is too wide: `Student Attendance` is
+# readable by every student and guardian on the site, and the register is a
+# whole cohort's marks on one screen. The page opens for
 # somebody who may write one, so that is what the row is offered on, and it is
 # the same call the endpoints make -- see `attendance.can_mark`.
 PAGE_ACCESS: dict[str, Callable[[], bool]] = {

@@ -66,8 +66,8 @@ event.
 The inverse is the useful half of the test. Something that reads this site's
 doctypes and calls out to a service is not an integration in this sense, it is a
 feature that happens to make a call, and it belongs with the section whose
-doctypes it reads. `commons.statement` would not move in here if it learned to
-email a statement. Nor do the words a Claude prompt is told about this site's
+doctypes it reads. `commons.banking` would not move in here if it learned to
+email a reconciliation. Nor do the words a Claude prompt is told about this site's
 documents (country, currency, calendar, tax terms, the site's own
 instructions): they read Company and the site's settings, so they are
 `commons.document_capture.locale`, and the settings they read are Document
@@ -85,7 +85,7 @@ gets it for free:
 	public function that makes an authenticated call. An error type carrying the
 	HTTP status, so callers can tell a refusal from an outage. An `available()`
 	that answers whether the site has this service at all, the way
-	`commons.statement.ledger.available` does, so a page can leave a button out
+	`commons.banking.reconciliation.available` does, so a page can leave a button out
 	rather than offer one that explains itself after being pressed.
 
 ``<operations>``

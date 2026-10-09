@@ -192,7 +192,6 @@ class TestDefaultWorkspace(TestCase):
 			[
 				("record", "Employee", "Profile"),
 				("record", "Bank Account", "Profile"),
-				("page", "statement", "Profile"),
 				("page", "leave", "Requests"),
 				("page", "expense", "Requests"),
 				("page", "procurement", "Requests"),
@@ -220,7 +219,7 @@ class TestDefaultWorkspace(TestCase):
 			rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["statement", "leave", "expense", "procurement", "attendance", "reconciliation"],
+			["leave", "expense", "procurement", "attendance", "reconciliation"],
 		)
 
 
@@ -250,7 +249,7 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["Employee", "statement", "procurement", "attendance", "reconciliation"],
+			["Employee", "procurement", "attendance", "reconciliation"],
 		)
 
 	def test_a_configured_row_naming_one_is_dropped(self):
@@ -292,7 +291,6 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 			[row["key"] for row in rows],
 			[
 				"Employee",
-				"statement",
 				"leave",
 				"expense",
 				"procurement",
@@ -310,77 +308,27 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		one that cannot load. The section names the app instead --
 		`Procurement.requires_apps` -- and this is the navigation agreeing.
 		"""
-		# `GL Entry` goes with ERPNext, so a site without it has no ledger either
-		# -- named here rather than inferred from `apps`, because the stand-in
-		# answers the two questions separately and so does the code under test.
-		# `Bank Transaction` goes with it for the same reason.
-		with_documents(
-			self, [], [], absent=("GL Entry", "Bank Transaction"), apps=("frappe", "hrms", "commons")
-		)
+		# `Bank Transaction` goes with ERPNext -- named here rather than inferred
+		# from `apps`, because the stand-in answers the two questions separately
+		# and so does the code under test.
+		with_documents(self, [], [], absent=("Bank Transaction",), apps=("frappe", "hrms", "commons"))
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["Employee", "leave", "expense", "attendance"])
 
 	def test_a_site_with_neither_keeps_the_pages_that_need_neither(self):
 		"""Bare Frappe: whatever self-service is configured."""
-		with_documents(
-			self, [], [], absent=(*self.ABSENT, "GL Entry", "Bank Transaction"), apps=("frappe", "commons")
-		)
+		with_documents(self, [], [], absent=(*self.ABSENT, "Bank Transaction"), apps=("frappe", "commons"))
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual([row["key"] for row in rows], ["Employee", "attendance"])
-
-
-class TestTheStatementPage(TestCase):
-	"""The one shipped page that is not a request section.
-
-	It is here for the same reason leave is: it can be absent. `Account Balance`
-	reads the general ledger, so a site with no ERPNext has no such page -- and
-	that answer comes from `pages.PAGE_AVAILABILITY` rather than from a
-	`RequestType`, which is a second code path through `pages.available` and so a
-	second thing that can quietly stop being asked.
-	"""
-
-	def setUp(self):
-		with_policies(self, policy("Employee", "Profile", "employee"))
-
-	def test_is_offered_where_there_is_a_ledger(self):
-		with_documents(self, [], [])
-		rows = workspaces.workspaces()[0]["items"]
-		row = next(row for row in rows if row["key"] == "statement")
-		# Under Profile, and unnamed: like every shipped page, what it is called
-		# and what it is drawn with live in the frontend.
-		self.assertEqual(row["group"], "Profile")
-		self.assertIsNone(row["label"])
-		self.assertIsNone(row["icon"])
-
-	def test_is_absent_where_there_is_not(self):
-		with_documents(self, [], [], absent=("GL Entry",))
-		rows = workspaces.workspaces()[0]["items"]
-		self.assertNotIn("statement", [row["key"] for row in rows])
-
-	def test_a_configured_row_naming_it_is_dropped_too(self):
-		"""The same rule as leave's, and it has to be: the Select offers the page
-		on every site, so a workspace saved on one that has a ledger has to stop
-		resolving on one that does not."""
-		with_documents(
-			self,
-			[parent("Staff")],
-			[
-				item("Staff", page="Announcements", idx=1),
-				item("Staff", page="Account Balance", idx=2),
-			],
-			absent=("GL Entry",),
-		)
-		rows = workspaces.workspaces()[0]["items"]
-		self.assertEqual([row["key"] for row in rows], ["announcements"])
 
 
 class TestTheAttendanceRegisterRow(TestCase):
 	"""The register, which can be absent for a third reason again.
 
-	Not a `RequestType` and not `PAGE_AVAILABILITY`'s only entry any more, so it
-	is worth its own class for the same reason the statement has one: the answer
-	comes from a different place, and a different place is a different thing to
-	stop being asked.
+	Not a `RequestType`, so it is worth its own class: the answer comes from
+	`pages.PAGE_AVAILABILITY` rather than from a section, which is a second code
+	path through `pages.available` and so a second thing that can quietly stop
+	being asked.
 
 	It is deliberately *not* tested here that a student does not get the row.
 	That is `pages.PAGE_ACCESS`, which is a permission question about a person
@@ -613,7 +561,7 @@ class TestLandingPage(TestCase):
 			return api.landing_page()
 
 	def test_a_named_page_is_sent_as_its_key(self):
-		self.assertEqual(self.landing("Account Balance"), "statement")
+		self.assertEqual(self.landing("Attendance"), "attendance")
 
 	def test_unset_leaves_it_to_the_first_row(self):
 		self.assertIsNone(self.landing(""))

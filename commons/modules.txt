@@ -4,7 +4,6 @@ Requests
 Safer Permissions
 Self Service
 Better Navigation
-Statement
 Derived Docfields
 Email Extensions
 Banking

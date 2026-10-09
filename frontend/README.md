@@ -80,7 +80,6 @@ user has.
 | Route | Page | Server |
 | --- | --- | --- |
 | `/announcements` | `Announcements.vue` | — |
-| `/account` | `AccountBalance.vue` | `commons.statement.api` |
 | `/attendance` | `AttendanceRegister.vue` | document API, plus `commons.attendance_register.register` |
 | `/banking` | `BankReconciliation.vue` | `commons.banking.reconciliation`, `commons.banking.statement_import`, ERPNext's bank reconciliation tool |
 | `/capture` | `DocumentCapture.vue` | `commons.document_capture` (`capture`, `purchase_invoice`, `expense_claim`) |

@@ -200,7 +200,7 @@ def available() -> bool:
 
 	The two things without which not one call can be made: a key to sign with
 	and somebody to sign as. Asked the way the rest of this app asks it -- see
-	`commons.statement.ledger.available` -- so a page or a button can leave
+	`commons.banking.reconciliation.available` -- so a page or a button can leave
 	itself out instead of offering something that only explains itself after
 	being pressed.
 

@@ -67,5 +67,5 @@ and `read:users` to make accounts, `update:users` to change them,
 A site that has not done this has no Auth0: `client.available` is false, the
 endpoints say so plainly rather than failing at the first request, and nothing
 else in the app changes. That is the shape the rest of this app uses for things
-a site may or may not have -- see `commons.statement.ledger.available`.
+a site may or may not have -- see `commons.banking.reconciliation.available`.
 """

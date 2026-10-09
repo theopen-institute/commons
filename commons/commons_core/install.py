@@ -12,9 +12,9 @@ walks every module in `modules.txt`, and `commons.safer_permissions.install`
 gets a changed `page_js` in front of admins whose desks still hold the last copy
 of it. None of them creates a document a site would think of as its own.
 
-Workflows, self-service configuration and statement print formats are a System
-Manager's to set up on a new site, and the app ships none of them -- not as a
-seed, not as a fixture, not at all. Property Setters are shipped only where they
+Workflows and self-service configuration are a System Manager's to set up on
+a new site, and the app ships none of them -- not as a seed, not as a fixture,
+not at all. Property Setters are shipped only where they
 belong to something else the app ships, in `commons/fixtures/property_setter.json`:
 
 * two on Frappe's `Email Template`, hiding the compiled HTML and making

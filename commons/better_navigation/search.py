@@ -75,7 +75,6 @@ from commons.self_service import registry
 # kind of thing this map exists to get right.
 PAGE_PATHS: dict[str, str] = {
 	"announcements": "/commons/announcements",
-	"statement": "/commons/account",
 	"leave": "/commons/requests/leave",
 	"expense": "/commons/requests/expenses",
 	"procurement": "/commons/requests/procurement",

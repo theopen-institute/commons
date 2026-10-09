@@ -105,7 +105,6 @@ class TestOverrideEnabled(TestCase):
 				"bikram_sambat": False,
 				"unencoded_at_in_routes": False,
 				"user_permission_gate": False,
-				"user_menu": False,
 				"derived_docfields": False,
 				"visual_email_editor": False,
 				"pseudo_islands": False,

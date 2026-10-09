@@ -31,8 +31,7 @@ given the inputs themselves. Only a Script Manager may change the prep, the
 role core asks of a Server Script's author, because it runs whenever anybody
 prints through the template. Anything heavier than looking records up -- a
 balance, a query that needs permission checks -- still belongs in an app
-function the prep calls, as the Account Statement template calls
-`commons.statement.api.party_statement` through `frappe.call`.
+function the prep calls through `frappe.call`.
 
 Nothing checks a real print against the Fields: a statement printed short is
 better than one refused. The **Test PDF** dialog on the form is where a

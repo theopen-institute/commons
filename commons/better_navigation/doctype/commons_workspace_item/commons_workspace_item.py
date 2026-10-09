@@ -25,7 +25,6 @@ class CommonsWorkspaceItem(Document):
 		page: DF.Literal[
 			"",
 			"Announcements",
-			"Account Balance",
 			"Leave Request",
 			"Expense Claim",
 			"Procurement",

@@ -65,13 +65,10 @@ PROFILE_GROUP = "Profile"
 REQUESTS_GROUP = "Requests"
 EDUCATION_GROUP = "Education"
 
-# The page the default workspace closes its Profile group with. Named rather
-# than spelled inline for the same reason `DEFAULT_REQUEST_PAGES` is: the key is
-# the frontend's half of a contract, and a literal buried in a list comprehension
-# is the kind of thing a rename misses.
-STATEMENT_PAGE = "statement"
-
-# And the page the Education group holds, on a site with the education module.
+# The page the Education group holds, on a site with the education module.
+# Named rather than spelled inline for the same reason `DEFAULT_REQUEST_PAGES`
+# is: the key is the frontend's half of a contract, and a literal buried in a
+# list comprehension is the kind of thing a rename misses.
 # Its own heading rather than a row among the requests: nothing is raised on it
 # and nobody approves it, and it is addressed to somebody in their capacity as an
 # instructor rather than as a person with a leave balance.
@@ -256,16 +253,8 @@ def _default() -> dict:
 				slug=policy["slug"],
 			)
 		)
-	# Under Profile rather than beside the request sections, and last within it.
-	# It is the same kind of thing as the rows above it -- a fact about you that
-	# you read rather than something you raise -- and a site that wants it
-	# somewhere else says so with a workspace, which is what workspaces are for.
-	#
-	# Dropped on a site that keeps no ledger, the way leave is dropped without
-	# HRMS. `page_list.available` is asked here rather than assumed because the
-	# default workspace is exactly the sidebar nobody has curated.
-	if page_list.available(STATEMENT_PAGE):
-		items.append(_item("page", STATEMENT_PAGE, PROFILE_GROUP))
+	# `page_list.available` is asked of every page rather than assumed, because
+	# the default workspace is exactly the sidebar nobody has curated.
 	items += [_item("page", key, REQUESTS_GROUP) for key in DEFAULT_REQUEST_PAGES if page_list.available(key)]
 	# Last, and dropped on a site with no education module, the way the three
 	# above are dropped without HRMS. Whether *this reader* is offered it is a

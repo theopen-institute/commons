@@ -35,9 +35,8 @@ and the rows under it, in order.
 
 Each row is one of three types:
 
-- a **Page** this app ships — Announcements, Account Balance, Leave Request,
-  Expense Claim, Procurement, Attendance, Bank Reconciliation or Document
-  Capture;
+- a **Page** this app ships — Announcements, Leave Request, Expense Claim,
+  Procurement, Attendance, Bank Reconciliation or Document Capture;
 - a **Self Service Record**, which is a record type already configured under
   that doctype, and which already says what it is called and what it is drawn
   with;
@@ -84,7 +83,7 @@ answers to:
 - **Attendance** appears for someone who may mark attendance, **Bank
   Reconciliation** for someone who could reconcile in the desk, and **Document
   Capture** for someone who may make the drafts it makes;
-- **Announcements**, **Account Balance** and **Links** are ungated.
+- **Announcements** and **Links** are ungated.
 
 A page whose doctypes the site does not have — leave and expenses without HRMS,
 say — is dropped from every workspace, whatever the rows say.
@@ -96,8 +95,7 @@ lands on the "Nothing to show you" page.
 ## A site that configures none of this
 
 There is no need to create a workspace. A site with none gets a default one,
-named with the app's title: every self-service record type and then Account
-Balance under *Profile*; leave, expenses and procurement under *Requests*;
+named with the app's title: every self-service record type under *Profile*; leave, expenses and procurement under *Requests*;
 Attendance under *Education*; Bank Reconciliation and Document Capture under
 *Accounts*. Each page is there only where the site has what it needs, and
 Announcements is not in it.

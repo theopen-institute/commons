@@ -138,7 +138,6 @@ DESK_FEATURES = {
 	"bikram_sambat": ENABLE_BIKRAM_SAMBAT,
 	"unencoded_at_in_routes": ENABLE_UNENCODED_AT,
 	"user_permission_gate": ENABLE_PERMISSION_GATE,
-	"user_menu": ENABLE_USER_MENU,
 	"derived_docfields": ENABLE_DERIVED_DOCFIELDS,
 	"visual_email_editor": ENABLE_VISUAL_EMAIL_EDITOR,
 	"pseudo_islands": ENABLE_PSEUDO_ISLANDS,
