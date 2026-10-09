@@ -21,7 +21,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
       // The Bikram Sambat tables, which `captureRules.ts` converts scanned
       // dates with. The same alias `vite.config.js` gives the app.
-      '@bikram': path.resolve(__dirname, '../commons/public/js/bikram_sambat'),
+      '@sambat': path.resolve(__dirname, '../commons/sambat/js'),
     },
   },
   test: {

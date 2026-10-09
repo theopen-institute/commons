@@ -45,6 +45,8 @@ class CommonsSettings(Document):
 		attendance_session_details_field: DF.Data | None
 		attendance_session_hours_field: DF.Data | None
 		attendance_session_type_field: DF.Data | None
+		bikram_sambat_calendar: DF.JSON | None
+		bikram_sambat_calendar_status: DF.SmallText | None
 		change_request_allow_self_approval: DF.Check
 		change_request_applying_outcome: DF.Data | None
 		data_sync_doctypes: DF.Table[DataSyncDoctype]

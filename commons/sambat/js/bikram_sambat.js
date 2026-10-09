@@ -1,9 +1,11 @@
 /**
  * Converting between Gregorian and Bikram Sambat, and naming the result.
  *
- * Pure: no jQuery, no Frappe, no DOM. Everything here is arithmetic over the
- * table in [calendar_data.js], which is what makes the two directions exact
- * inverses of each other rather than two independent guesses that mostly agree.
+ * Pure: no jQuery, no Frappe, no DOM. Everything here is arithmetic over one
+ * table of month lengths -- the site's, once `use_calendar` is handed it, and
+ * until then the one shipped in [calendar_data.js] -- which is what makes the
+ * two directions exact inverses of each other rather than two independent
+ * guesses that mostly agree.
  *
  * Dates are handled as *calendar days*, never as instants. A JS `Date` carries a
  * time and a zone, and a Bikram Sambat date carries neither; converting through
@@ -20,12 +22,7 @@
  * NepalERP did not catch it, so a 1905 date of birth broke the field.)
  */
 
-import {
-	EPOCH_UTC_DAY,
-	FIRST_BS_YEAR,
-	LAST_TRUSTED_BS_YEAR,
-	MONTH_LENGTHS,
-} from "./calendar_data.js";
+import { EPOCH_UTC_DAY, FIRST_BS_YEAR, MONTH_LENGTHS } from "./calendar_data.js";
 
 const MS_PER_DAY = 86400000;
 
@@ -69,34 +66,93 @@ export const WEEKDAY_NAMES = {
 
 const DEVANAGARI_DIGITS = ["०", "१", "२", "३", "४", "५", "६", "७", "८", "९"];
 
+const total = (months) => months.reduce((sum, days) => sum + days, 0);
+
+/** The table this app ships, as day counts: the fallback, and what fills in early years. */
+const SHIPPED = MONTH_LENGTHS.map((row) => Array.from(row, (character) => Number(character) + 28));
+
 /**
- * Where each Bikram Sambat year starts, as a day number, built once on import.
+ * Where each Bikram Sambat year starts, as a day number, and how long its months are.
  *
- * Roughly 1,500 additions over the whole table -- under two milliseconds, and it
- * buys constant-time conversion afterwards in both directions. The alternative,
- * walking the table on every conversion, would be run once per date field per
- * refresh on forms that carry dozens.
+ * Built from the shipped table on import, and again whenever `use_calendar` is
+ * handed the site's. Roughly 1,500 additions over the whole table -- under two
+ * milliseconds, and it buys constant-time conversion afterwards in both
+ * directions. The alternative, walking the table on every conversion, would be
+ * run once per date field per refresh on forms that carry dozens.
  */
 const YEAR_START = new Map();
 const YEAR_MONTHS = new Map();
 
-(function build_index() {
-	let cursor = EPOCH_UTC_DAY;
-	MONTH_LENGTHS.forEach((row, offset) => {
-		const year = FIRST_BS_YEAR + offset;
-		const months = Array.from(row, (character) => Number(character) + 28);
-		YEAR_START.set(year, cursor);
-		YEAR_MONTHS.set(year, months);
-		cursor += months.reduce((total, days) => total + days, 0);
+/** The years, and the first and last day numbers, this module will answer for. */
+export let MIN_BS_YEAR;
+export let MAX_BS_YEAR;
+let FIRST_DAY;
+let LAST_DAY;
+
+function index(first_year, epoch_day, years) {
+	YEAR_START.clear();
+	YEAR_MONTHS.clear();
+	let cursor = epoch_day;
+	years.forEach((months, offset) => {
+		YEAR_START.set(first_year + offset, cursor);
+		YEAR_MONTHS.set(first_year + offset, months);
+		cursor += total(months);
 	});
-})();
+	MIN_BS_YEAR = first_year;
+	MAX_BS_YEAR = first_year + years.length - 1;
+	FIRST_DAY = epoch_day;
+	LAST_DAY = cursor - 1;
+}
 
-export const MIN_BS_YEAR = FIRST_BS_YEAR;
-export const MAX_BS_YEAR = LAST_TRUSTED_BS_YEAR;
+index(FIRST_BS_YEAR, EPOCH_UTC_DAY, SHIPPED);
 
-/** First and last day numbers this module will answer for. */
-const FIRST_DAY = YEAR_START.get(MIN_BS_YEAR);
-const LAST_DAY = YEAR_START.get(MAX_BS_YEAR + 1) - 1;
+/**
+ * Convert with the site's calendar rather than the shipped one.
+ *
+ * `calendar` is what `commons.sambat.table` sends at boot:
+ * `{first_year, epoch, months}`, where `epoch` is the Gregorian date of the
+ * first year's Baisakh 1 and `months` one row of twelve month lengths per year.
+ * The site keeps it current from opensource-nepal's calendar; see that module.
+ *
+ * That calendar starts at BS 2000. The shipped table goes back to 1970, so the
+ * years before are kept from it -- but only where the two meet on the same day,
+ * since otherwise every one of those early dates would be shifted by the gap.
+ *
+ * Anything malformed leaves the current table in place, and no calendar at all
+ * goes back to the shipped one. Returns whether the site's calendar is in use.
+ */
+export function use_calendar(calendar) {
+	if (!calendar) {
+		index(FIRST_BS_YEAR, EPOCH_UTC_DAY, SHIPPED);
+		return false;
+	}
+	const { first_year, epoch, months } = calendar;
+	const [year, month, day] = String(epoch).split("-").map(Number);
+	const epoch_day = Date.UTC(year, month - 1, day) / MS_PER_DAY;
+	const valid =
+		Number.isInteger(first_year) &&
+		Number.isInteger(epoch_day) &&
+		Array.isArray(months) &&
+		months.length > 0 &&
+		months.every(
+			(row) =>
+				Array.isArray(row) &&
+				row.length === 12 &&
+				row.every((days) => Number.isInteger(days) && days >= 29 && days <= 32) &&
+				[365, 366].includes(total(row))
+		);
+	if (!valid) return false;
+
+	const earlier = SHIPPED.slice(0, Math.max(0, first_year - FIRST_BS_YEAR));
+	const meets =
+		earlier.length > 0 &&
+		earlier.length === first_year - FIRST_BS_YEAR &&
+		EPOCH_UTC_DAY + earlier.reduce((sum, row) => sum + total(row), 0) === epoch_day;
+	const rows = months.map((row) => row.slice());
+	if (meets) index(FIRST_BS_YEAR, EPOCH_UTC_DAY, [...earlier, ...rows]);
+	else index(first_year, epoch_day, rows);
+	return true;
+}
 
 /** A local calendar date, stripped of time and zone. */
 function to_day_number(date) {
@@ -132,7 +188,7 @@ export function is_valid(bs) {
 
 /**
  * Gregorian to Bikram Sambat. Returns `{year, month, day}`, or null outside the
- * supported span (13 April 1913 to 14 April 2039).
+ * table's span (from 13 April 1913, and to April 2043 with the site's calendar).
  */
 export function from_gregorian(date) {
 	const day_number = to_day_number(date);

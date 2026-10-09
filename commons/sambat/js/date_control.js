@@ -45,7 +45,7 @@
  * already in the user's zone for a Datetime, and has none for a Date.
  */
 
-import { format, from_gregorian } from "./bikram_sambat.js";
+import { format, from_gregorian, use_calendar } from "./bikram_sambat.js";
 import { picker } from "./picker.js";
 
 frappe.provide("commons.bikram_sambat");
@@ -67,11 +67,15 @@ const READOUT_FIELDTYPES = ["Date", "Datetime"];
  * without a reload, and this is consulted on every control that is built.
  */
 let enabled = null;
-function is_enabled() {
+export function is_enabled() {
 	// Only cache once boot has actually arrived: a patch that ran a moment too
 	// early would otherwise pin the answer to "no" for the rest of the session.
 	if (enabled === null && frappe.boot?.commons_features) {
 		enabled = frappe.boot.commons_features.bikram_sambat === true;
+		// The site's calendar, kept current by `commons.sambat.table`.
+		// Applied here, once, because this is the first moment boot is known to be
+		// here and before anything on the page has converted a date.
+		if (enabled) use_calendar(frappe.boot.commons_features.bikram_sambat_calendar);
 	}
 	return enabled === true;
 }
@@ -138,7 +142,8 @@ function applies_to(control) {
  * input instead, mirroring the `t` core already binds there for "today".
  */
 function attach(control) {
-	if (!applies_to(control) || control.$bs_readout || !control.$input) return;
+	if (!applies_to(control)) return;
+	if (control.$bs_readout) return bind_input(control);
 
 	// Hang the readout on `.control-input-wrapper`, the parent of *both* the
 	// editable `.control-input` and the read-only `.control-value` -- not on
@@ -177,6 +182,23 @@ function attach(control) {
 		toggle_picker(control);
 	});
 
+	bind_input(control);
+	refresh(control);
+}
+
+/**
+ * The input's half of the readout, once there is an input.
+ *
+ * Not always at the same time as the readout: a field that is read-only when
+ * the form is first drawn -- every date on a submitted invoice -- never gets an
+ * input at all, because core only calls `make_input` for a field it can write
+ * to. The readout is hung from `set_disp_area` there instead, and this runs
+ * later if the field ever becomes writable.
+ */
+function bind_input(control) {
+	if (!control.$input || control.$bs_input_bound) return;
+	control.$bs_input_bound = true;
+
 	control.$input.on("keydown", (event) => {
 		if (event.ctrlKey || event.metaKey || event.altKey) return;
 		if (String(event.key).toLowerCase() !== "b") return;
@@ -188,8 +210,6 @@ function attach(control) {
 	// between them: without this the readout would lag a date being typed by
 	// hand until the field was left.
 	control.$input.on("input", () => refresh(control));
-
-	refresh(control);
 }
 
 /**
@@ -336,9 +356,13 @@ function wrap(prototype, name, after) {
 	// Date and Datetime and leaves every other fieldtype untouched.
 	// Both, because they are the two ends of the swap: `set_input` is the only one
 	// core calls while a field is editable, and `set_disp_area` the only one it
-	// calls once the field has gone read-only.
+	// calls once the field has gone read-only. A field that was read-only from the
+	// start has had no `make_input` to attach the readout, so this one attaches it.
 	wrap(date_control.prototype, "set_input", refresh);
-	wrap(date_control.prototype, "set_disp_area", refresh);
+	wrap(date_control.prototype, "set_disp_area", (control) => {
+		attach(control);
+		refresh(control);
+	});
 
 	// ControlDatetime overrides none of the three, so it inherits all of them --
 	// which is the whole reason for patching here rather than subclassing. The

@@ -60,7 +60,7 @@ def _settings():
 # -----------------
 # Each is opt-in: a site that never ticked one runs Frappe's own behaviour.
 
-# `commons/public/js/bikram_sambat/`. Additive -- nothing is stored in Bikram
+# `commons.sambat`. Additive -- nothing is stored in Bikram
 # Sambat -- so it sits in the form's main section, not among the overrides.
 ENABLE_BIKRAM_SAMBAT = "enable_bikram_sambat"
 
@@ -176,3 +176,9 @@ def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 	The home page is not here: it is decided on the server, per request.
 	"""
 	bootinfo.commons_features = {key: feature_enabled(field) for key, field in DESK_FEATURES.items()}
+	if bootinfo.commons_features["bikram_sambat"]:
+		from commons.sambat.table import boot_calendar
+
+		# The month lengths to convert with, kept current by the weekly check;
+		# None leaves the browser on the table this app ships.
+		bootinfo.commons_features["bikram_sambat_calendar"] = boot_calendar()

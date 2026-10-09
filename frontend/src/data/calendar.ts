@@ -1,4 +1,4 @@
-import { format, from_gregorian } from '@bikram/bikram_sambat.js'
+import { format, from_gregorian } from '@sambat/bikram_sambat.js'
 
 /**
  * What a date picker shows of Bikram Sambat, given whether the site uses it.

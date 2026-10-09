@@ -39,7 +39,7 @@ never loads `frappe-ui/vite` or looks for the bench.
 Set in `vite.config.js` (and the first two in `vitest.config.ts`):
 
 - `@` → `src/`
-- `@bikram` → `../commons/public/js/bikram_sambat`, the desk's Bikram Sambat
+- `@sambat` → `../commons/sambat/js`, the desk's Bikram Sambat
   conversions and calendar table, shared rather than copied
 - `@fuzzy-match` → frappe's Awesome Bar matcher, so search ranks as the desk does
 

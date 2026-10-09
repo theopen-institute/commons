@@ -21,7 +21,7 @@ export default defineConfig({
 			// this alias are plain ES modules with no jQuery and no `frappe` — which
 			// is what lets the SPA import the same calendar the desk fields use
 			// instead of carrying a second copy of a 130-year almanac table.
-			'@bikram': path.resolve(__dirname, '../commons/public/js/bikram_sambat'),
+			'@sambat': path.resolve(__dirname, '../commons/sambat/js'),
 			// The desk's fuzzy matcher -- the thing that decides what the Awesome Bar
 			// puts at the top when you type three letters. Aliased for the same
 			// reason as the calendar above: it is a plain ES module with no jQuery

@@ -7,7 +7,9 @@
 import "./unencoded_at_in_routes";
 // Before anything that adds to the user menu: see the file.
 import "./user_menu_rows";
-import "./bikram_sambat/date_control";
+// Bikram Sambat dates beside Gregorian ones; see `commons/sambat/README.md`.
+import "../../sambat/js/date_control";
+import "../../sambat/js/table_cells";
 import "./desk_todos";
 import "./derived_docfields";
 import "./email_extensions";

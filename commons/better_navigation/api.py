@@ -42,9 +42,18 @@ def get_shell() -> dict:
 		"title": title(),
 		"workspaces": workspaces.workspaces(),
 		"access": pages.access(),
-		"features": {"bikram_sambat": feature_enabled(ENABLE_BIKRAM_SAMBAT)},
+		"features": features(),
 		"landing": landing_page(),
 	}
+
+
+def features() -> dict:
+	"""What the SPA is told of Bikram Sambat: whether it is on, and the calendar to convert with."""
+	if not feature_enabled(ENABLE_BIKRAM_SAMBAT):
+		return {"bikram_sambat": False}
+	from commons.sambat.table import boot_calendar
+
+	return {"bikram_sambat": True, "bikram_sambat_calendar": boot_calendar()}
 
 
 def landing_page() -> str | None:

@@ -71,7 +71,7 @@ The desk's own navigation (the rail of apps, the Apps screen and the desk user m
 #### Desk conveniences
 
 - **Hide cancelled documents**: a per-browser toggle in the user menu that hides cancelled records from every list-type view.
-- ⚙ **Bikram Sambat calendar**: shows Date and Datetime fields in Bikram Sambat as well and adds a BS date picker, in the desk and in the Commons frontend. Values are still stored in Gregorian.
+- ⚙ **Bikram Sambat calendar**: shows Date and Datetime fields in Bikram Sambat as well and adds a BS date picker, in the desk and in the Commons frontend, with BS tooltips on dates in tables and reports. Values are still stored in Gregorian. The calendar keeps itself current from opensource-nepal's published month lengths, checked against government holiday dates (`commons/sambat/README.md`).
 - ⚙ **Literal @ in desk URLs**: `/desk/member/name@example.org` instead of `%40`.
 - ⚙ **Desk islands**: shows Bank Reconciliation, Document Capture and the attendance register as desk pages (`/desk/commons-banking`, `/desk/commons-capture`, `/desk/commons-attendance`), until Frappe v17 brings islands of its own.
 

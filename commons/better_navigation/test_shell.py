@@ -533,6 +533,8 @@ class TestShellFeatures(TestCase):
 		self.enterContext(patch.object(api, "title", return_value="Commons"))
 		self.enterContext(patch.object(api.pages, "access", return_value={}))
 		self.enterContext(patch.object(api, "_settings", return_value=None))
+		self.calendar = {"first_year": 2000, "epoch": "1943-04-14", "months": []}
+		self.enterContext(patch("commons.sambat.table.boot_calendar", return_value=self.calendar))
 
 	def shell(self, switched_on=()):
 		with patch.object(api, "feature_enabled", side_effect=lambda field: field in switched_on) as asked:
@@ -547,6 +549,10 @@ class TestShellFeatures(TestCase):
 		answer, asked = self.shell(switched_on=(api.ENABLE_BIKRAM_SAMBAT,))
 		self.assertTrue(answer["features"]["bikram_sambat"])
 		asked.assert_called_with(api.ENABLE_BIKRAM_SAMBAT)
+
+	def test_the_calendar_travels_with_the_switch(self):
+		answer, _ = self.shell(switched_on=(api.ENABLE_BIKRAM_SAMBAT,))
+		self.assertEqual(answer["features"]["bikram_sambat_calendar"], self.calendar)
 
 
 class TestLandingPage(TestCase):

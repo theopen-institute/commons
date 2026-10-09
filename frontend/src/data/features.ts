@@ -1,4 +1,5 @@
 import { computed, ref, watch } from 'vue'
+import { use_calendar, type BikramSambatCalendar } from '@sambat/bikram_sambat.js'
 
 /**
  * Which of `Commons Settings`' optional features this site has switched on, as
@@ -20,6 +21,8 @@ import { computed, ref, watch } from 'vue'
 
 interface Features {
   bikram_sambat?: boolean
+  /** The month lengths to convert with, where the site has fetched them. */
+  bikram_sambat_calendar?: BikramSambatCalendar | null
 }
 
 type DeskWindow = Window & { frappe?: { boot?: { commons_features?: Features } } }
@@ -27,14 +30,18 @@ type DeskWindow = Window & { frappe?: { boot?: { commons_features?: Features } }
 const desk = (window as DeskWindow).frappe?.boot?.commons_features
 const booted = desk ?? window.shell?.features
 
-const bikramSambat = ref(Boolean(booted?.bikram_sambat))
+const bikramSambat = ref(false)
+
+/** Take a site's answer: the switch, and the calendar its dates convert with. */
+function apply(value: Features | undefined) {
+  bikramSambat.value = Boolean(value?.bikram_sambat)
+  if (bikramSambat.value) use_calendar(value?.bikram_sambat_calendar ?? null)
+}
 
 if (booted === undefined) {
-  void import('./shell').then(({ features }) =>
-    watch(features, (value) => (bikramSambat.value = Boolean(value.bikram_sambat)), {
-      immediate: true,
-    }),
-  )
+  void import('./shell').then(({ features }) => watch(features, apply, { immediate: true }))
+} else {
+  apply(booted)
 }
 
 /** Whether this site uses the Bikram Sambat calendar alongside the Gregorian. */

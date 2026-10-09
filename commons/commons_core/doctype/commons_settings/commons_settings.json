@@ -8,6 +8,8 @@
   "general_tab",
   "title",
   "enable_bikram_sambat",
+  "bikram_sambat_calendar_status",
+  "bikram_sambat_calendar",
   "landing_page",
   "navigation_tab",
   "navigation_section",
@@ -86,6 +88,21 @@
    "fieldname": "enable_bikram_sambat",
    "fieldtype": "Check",
    "label": "Enable Bikram Sambat Calendar"
+  },
+  {
+   "depends_on": "enable_bikram_sambat",
+   "description": "Month lengths come from opensource-nepal's Nepali calendar, checked weekly against the dates the government has published. When they change, or cannot be fetched, System Managers get a To Do.",
+   "fieldname": "bikram_sambat_calendar_status",
+   "fieldtype": "Small Text",
+   "label": "Bikram Sambat Calendar Data",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bikram_sambat_calendar",
+   "fieldtype": "JSON",
+   "hidden": 1,
+   "label": "Bikram Sambat Calendar",
+   "read_only": 1
   },
   {
    "description": "Where <b>/commons</b> opens. Left blank, it opens the first page in the person's sidebar that they may use.",
@@ -446,7 +463,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-09 15:05:55.000000",
+ "modified": "2026-10-09 16:35:50.748936",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

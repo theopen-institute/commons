@@ -1,6 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import { useCall } from 'frappe-ui'
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from 'vue-router'
+import type { BikramSambatCalendar } from '@sambat/bikram_sambat.js'
 import { requestSection, type RequestSection, type RequestSectionKey } from './requests/sections'
 
 /**
@@ -211,7 +212,7 @@ interface ShellData {
   /** The `Commons Settings` switches the SPA draws differently for. Read
    *  through `data/features.ts`, which also answers on a desk page. Optional
    *  for the same reason as `access`. */
-  features?: { bikram_sambat?: boolean }
+  features?: { bikram_sambat?: boolean; bikram_sambat_calendar?: BikramSambatCalendar | null }
   /** The page Commons Settings opens `/commons` on, when it names one this
    *  site has. Null leaves it to `landingRoute`'s own rule. */
   landing?: PageKey | null

@@ -1,4 +1,4 @@
-import { to_gregorian } from '@bikram/bikram_sambat.js'
+import { to_gregorian } from '@sambat/bikram_sambat.js'
 
 /**
  * Turning what Claude read off a scan into a draft Purchase Invoice, and the

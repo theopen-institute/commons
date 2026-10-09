@@ -19,7 +19,7 @@ import { buildIslands } from '@framework/ui/vite/island'
 const root = import.meta.dirname
 
 // The preset runs Vite with `configFile: false`, so the SPA's aliases (`@`,
-// `@bikram`, `@fuzzy-match`) are read from its config and handed over, rather
+// `@sambat`, `@fuzzy-match`) are read from its config and handed over, rather
 // than written out a second time.
 const spa = await loadConfigFromFile(
   { command: 'build', mode: 'production' },

@@ -114,7 +114,7 @@ before_migrate = [
 #
 # One bundle, loaded after core's own `app_include_js`, so the classes it patches
 # already exist. `commons/public/js/commons.bundle.js` lists what is in it: the
-# user menu's rows of this app's own, Desk To Do, the Bikram Sambat readout on Date and Datetime fields, the Email
+# user menu's rows of this app's own, Desk To Do, the Bikram Sambat readout on Date and Datetime fields (a tooltip in tables), the Email
 # menu and composer, print templates, derived fields, hiding cancelled documents
 # and internal accounts, and the desk islands. Each draws itself only where its
 # setting or its data says so.
@@ -380,6 +380,12 @@ doc_events = {
 # 		"commons.tasks.monthly"
 # 	],
 # }
+
+# Keeps the Bikram Sambat calendar current from opensource-nepal's. See
+# `commons.sambat.table`.
+scheduler_events = {
+	"weekly": ["commons.sambat.table.refresh"],
+}
 
 # Testing
 # -------

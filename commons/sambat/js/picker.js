@@ -106,14 +106,18 @@ class BikramSambatPicker {
 			<div class="commons-bs-nav">
 				<button type="button" class="commons-bs-step" data-step="-1" tabindex="-1"
 					aria-label="${frappe.utils.escape_html(__("Previous month"))}">&lsaquo;</button>
-				<select class="commons-bs-select commons-bs-month" aria-label="${frappe.utils.escape_html(__("Month"))}"></select>
-				<select class="commons-bs-select commons-bs-year" aria-label="${frappe.utils.escape_html(__("Year"))}"></select>
+				<select class="commons-bs-select commons-bs-month" aria-label="${frappe.utils.escape_html(
+					__("Month")
+				)}"></select>
+				<select class="commons-bs-select commons-bs-year" aria-label="${frappe.utils.escape_html(
+					__("Year")
+				)}"></select>
 				<button type="button" class="commons-bs-step" data-step="1" tabindex="-1"
 					aria-label="${frappe.utils.escape_html(__("Next month"))}">&rsaquo;</button>
 			</div>
 			<div class="commons-bs-weekdays" aria-hidden="true"></div>
 			<div class="commons-bs-grid" role="group" aria-label="${frappe.utils.escape_html(
-				__("Days"),
+				__("Days")
 			)}"></div>
 			<div class="commons-bs-foot">
 				<button type="button" class="commons-bs-today" tabindex="-1"></button>
@@ -132,9 +136,9 @@ class BikramSambatPicker {
 		this.root.querySelector(".commons-bs-weekdays").innerHTML = Array.from(
 			{ length: 7 },
 			(_, index) =>
-				`<span class="${index === SATURDAY ? "is-weekend" : ""}">${frappe.utils.escape_html(
-					weekday_name(index),
-				)}</span>`,
+				`<span class="${
+					index === SATURDAY ? "is-weekend" : ""
+				}">${frappe.utils.escape_html(weekday_name(index))}</span>`
 		).join("");
 
 		for (let month = 1; month <= 12; month++) {
@@ -152,13 +156,13 @@ class BikramSambatPicker {
 		this.root
 			.querySelectorAll(".commons-bs-step")
 			.forEach((button) =>
-				button.addEventListener("click", () => this.step(Number(button.dataset.step))),
+				button.addEventListener("click", () => this.step(Number(button.dataset.step)))
 			);
 		this.month_select.addEventListener("change", () =>
-			this.go_to({ ...this.cursor, month: Number(this.month_select.value) }),
+			this.go_to({ ...this.cursor, month: Number(this.month_select.value) })
 		);
 		this.year_select.addEventListener("change", () =>
-			this.go_to({ ...this.cursor, year: Number(this.year_select.value) }),
+			this.go_to({ ...this.cursor, year: Number(this.year_select.value) })
 		);
 		today_button.addEventListener("click", () => {
 			const now = today();
@@ -220,14 +224,18 @@ class BikramSambatPicker {
 			const focusable = same_day(bs, this.focused) ? 0 : -1;
 			const gregorian = to_gregorian(bs);
 			cells.push(
-				`<span class="${classes.join(" ").trim()}" role="button" data-day="${day}" tabindex="${focusable}"` +
+				`<span class="${classes
+					.join(" ")
+					.trim()}" role="button" data-day="${day}" tabindex="${focusable}"` +
 					(same_day(bs, now) ? ' aria-current="date"' : "") +
 					(same_day(bs, this.selected) ? ' aria-pressed="true"' : "") +
 					` aria-label="${frappe.utils.escape_html(
-						`${to_devanagari_digits(day)} ${month_name(bs.month)} ${to_devanagari_digits(
-							bs.year,
-						)} — ${frappe.datetime.obj_to_user(gregorian)}`,
-					)}">${to_devanagari_digits(day)}</span>`,
+						`${to_devanagari_digits(day)} ${month_name(
+							bs.month
+						)} ${to_devanagari_digits(bs.year)} — ${frappe.datetime.obj_to_user(
+							gregorian
+						)}`
+					)}">${to_devanagari_digits(day)}</span>`
 			);
 		}
 		this.grid.innerHTML = cells.join("");
@@ -278,7 +286,7 @@ class BikramSambatPicker {
 		const from = to_gregorian(this.focused);
 		if (!from) return;
 		const moved = from_gregorian(
-			new Date(from.getFullYear(), from.getMonth(), from.getDate() + delta),
+			new Date(from.getFullYear(), from.getMonth(), from.getDate() + delta)
 		);
 		if (!moved) return; // walked off the end of the supported span
 		const changed_month = moved.year !== this.cursor.year || moved.month !== this.cursor.month;
@@ -296,8 +304,8 @@ class BikramSambatPicker {
 			.forEach((cell) =>
 				cell.setAttribute(
 					"tabindex",
-					Number(cell.dataset.day) === this.focused.day ? "0" : "-1",
-				),
+					Number(cell.dataset.day) === this.focused.day ? "0" : "-1"
+				)
 			);
 		this.grid.querySelector('[tabindex="0"]')?.focus({ preventScroll: true });
 		this.show_gregorian(this.focused);
@@ -318,7 +326,7 @@ class BikramSambatPicker {
 		}
 		const left = Math.max(
 			margin,
-			Math.min(anchor.left, window.innerWidth - popup.width - margin),
+			Math.min(anchor.left, window.innerWidth - popup.width - margin)
 		);
 
 		// Fixed rather than absolute, so a popup opened inside a scrolling modal

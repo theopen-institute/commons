@@ -179,7 +179,7 @@ import {
 	to_devanagari_digits,
 	to_gregorian,
 	weekday_name,
-} from '@bikram/bikram_sambat.js'
+} from '@sambat/bikram_sambat.js'
 import {
 	adDayTitle,
 	calendarMode,

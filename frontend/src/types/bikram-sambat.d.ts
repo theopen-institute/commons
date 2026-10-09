@@ -1,17 +1,17 @@
 /**
  * Types for the shared Bikram Sambat module.
  *
- * The module itself is plain JavaScript under `commons/public/js/bikram_sambat/`,
+ * The module itself is plain JavaScript under `commons/sambat/js/`,
  * because that tree is what esbuild globs to build the desk bundle and the desk
  * has no TypeScript. Rather than move it, or turn on `allowJs` for a directory
  * outside this project's root, its surface is declared here — which also keeps
  * the contract the SPA relies on written down in one place.
  *
  * `null` is the module's answer for anything outside the calendar it can
- * represent (13 April 1913 to 14 April 2039), never an exception; the optional
+ * represent (from 13 April 1913 to the end of its table), never an exception; the optional
  * returns below are that promise in the type system.
  */
-declare module '@bikram/bikram_sambat.js' {
+declare module '@sambat/bikram_sambat.js' {
   export interface BikramSambatDate {
     year: number
     month: number
@@ -19,6 +19,22 @@ declare module '@bikram/bikram_sambat.js' {
   }
 
   export type BikramSambatScript = 'devanagari' | 'latin'
+
+  /** A site's calendar, as `commons.sambat.table` sends it. */
+  export interface BikramSambatCalendar {
+    first_year: number
+    /** The Gregorian date, `YYYY-MM-DD`, of the first year's Baisakh 1. */
+    epoch: string
+    /** Twelve month lengths per year, from `first_year` on. */
+    months: number[][]
+  }
+
+  /**
+   * Convert with this calendar rather than the shipped one. Malformed leaves the
+   * current table in place; `null` goes back to the shipped one. Returns whether
+   * the site's calendar is in use.
+   */
+  export function use_calendar(calendar: BikramSambatCalendar | null | undefined): boolean
 
   export const MIN_BS_YEAR: number
   export const MAX_BS_YEAR: number
@@ -58,4 +74,17 @@ declare module '@bikram/bikram_sambat.js' {
     bs: BikramSambatDate | null | undefined,
     options?: { script?: BikramSambatScript },
   ): string
+}
+
+/** The shipped table, which tests read to build calendars of the server's shape. */
+declare module '@sambat/calendar_data.js' {
+  export const FIRST_BS_YEAR: number
+  export const EPOCH_UTC_DAY: number
+  export const MONTH_LENGTHS: string[]
+}
+
+/** Dates the government has published in both calendars, shared with the server's check. */
+declare module '@sambat/confirmed_dates.json' {
+  const dates: { bs: string; ad: string; what: string; source: string }[]
+  export default dates
 }
