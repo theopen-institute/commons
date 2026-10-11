@@ -47,18 +47,32 @@
 	min-width: 12rem;
 }
 .data-sync .ds-group {
-	margin-bottom: var(--margin-lg);
+	margin-top: var(--margin-2xl, 2.5rem);
+}
+.data-sync .ds-group:first-child {
+	margin-top: var(--margin-lg);
 }
 .data-sync .ds-group-head {
+	font-size: var(--text-2xl, 1.25rem);
 	font-weight: 600;
-	margin-bottom: var(--margin-xs);
+	color: var(--heading-color, var(--text-color));
+	line-height: 1.3;
+	padding-bottom: var(--padding-sm);
+	border-bottom: 2px solid var(--text-color);
 }
 .data-sync .ds-group-head .text-muted {
+	font-size: var(--text-lg, 1rem);
 	font-weight: 400;
-	margin-left: var(--margin-xs);
+	margin-left: var(--margin-sm);
 }
 .data-sync .ds-table {
 	margin-bottom: 0;
+}
+.data-sync .ds-table thead th {
+	border-top: none;
+	font-size: var(--text-sm);
+	font-weight: 400;
+	color: var(--text-muted);
 }
 .data-sync .ds-table tbody tr {
 	cursor: pointer;
