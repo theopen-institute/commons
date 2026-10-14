@@ -43,10 +43,10 @@ a row opens, whether this user may open it, and what the badge on it says.
 
 The desk
 --------
-The desk's own navigation -- the rail of apps, Manage Desk Apps, the Apps screen
+The desk's own navigation -- the dock of apps, Manage Desk Apps, the Apps screen
 arranged from it, and Help and the site's tools in the desk's user menu -- is the
 Open Desk app's. This app adds to it where that app offers a place: Desk To Do
-puts a tile at the foot of Open Desk's rail (`opendesk.rail.tools`). What is left
+puts a tile at the foot of Open Desk's dock (`opendesk.dock.tools`). What is left
 here on the desk side:
 
 - `user_menu.py`: the frontend's user menu. The user badge opens a menu of your

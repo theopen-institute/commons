@@ -1,12 +1,12 @@
 // A To Do widget for the desk, beside the notification bell, in the places the
 // desk puts that bell: the sidebar's band of standard rows (Search, Notification),
-// the foot of Open Desk's rail where that app is installed and its rail is on, and
+// the foot of Open Desk's dock where that app is installed and its dock is on, and
 // the desktop navbar.
 //
 // Beside the sidebar it is Frappe's own kind of panel, as Notifications is: a
 // `frappe.ui.SidebarPanel` named `commons-todos`, opened through
 // `frappe.ui.sidebar_panels` by any element carrying `commons-todo-trigger` --
-// the sidebar row here, or the tile this adds to Open Desk's rail (`opendesk.rail.tools`).
+// the sidebar row here, or the tile this adds to Open Desk's dock (`opendesk.dock.tools`).
 // Every `.commons-todo-badge` on the page shows the open count.
 //
 // Written entirely from this app. An earlier version of this widget edited
@@ -27,7 +27,7 @@ frappe.provide("commons.desk_todos");
 const PANEL = "commons-todos";
 commons.desk_todos.PANEL = PANEL;
 commons.desk_todos.TRIGGER = "commons-todo-trigger";
-// The last count, for a badge drawn after it arrived (the rail is built later).
+// The last count, for a badge drawn after it arrived (the dock is built later).
 commons.desk_todos.count = 0;
 
 function show_count(count) {
@@ -171,16 +171,16 @@ function patch_desktop() {
 }
 
 /* --------------------------------------------------------------------------
- * Host 3: Open Desk's rail, when that app is installed and its rail is on
+ * Host 3: Open Desk's dock, when that app is installed and its dock is on
  * ----------------------------------------------------------------------- */
 
-// A tile at the rail's foot, beside its bell, opening the same drawer as the
-// sidebar's row. Open Desk reads `opendesk.rail.tools` when it draws the rail,
+// A tile at the dock's foot, beside its bell, opening the same drawer as the
+// sidebar's row. Open Desk reads `opendesk.dock.tools` when it draws the dock,
 // so this works whichever bundle loads first, and costs nothing where Open
-// Desk is not installed. See `opendesk/open_desk/js/rail.js`.
-function add_to_open_desk_rail() {
-	const rail = frappe.provide("opendesk.rail");
-	(rail.tools = rail.tools || []).push({
+// Desk is not installed. See `opendesk/open_desk/js/dock.js`.
+function add_to_open_desk_dock() {
+	const dock = frappe.provide("opendesk.dock");
+	(dock.tools = dock.tools || []).push({
 		name: "commons-todos",
 		label: __("To Do"),
 		icon: "list-todo",
@@ -193,11 +193,11 @@ function add_to_open_desk_rail() {
 }
 
 // Opt-in: "Enable Desk To Do" in Commons Settings. Off, neither seam is
-// wrapped, and neither rail's To Do tile, which opens the sidebar's drawer,
+// wrapped, and neither dock's To Do tile, which opens the sidebar's drawer,
 // is drawn either.
 const features = (frappe.boot && frappe.boot.commons_features) || {};
 if (features.desk_todos) {
 	patch_sidebar();
 	patch_desktop();
-	add_to_open_desk_rail();
+	add_to_open_desk_dock();
 }

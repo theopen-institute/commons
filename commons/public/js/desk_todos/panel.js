@@ -1,6 +1,6 @@
 // The panel both hosts open: header, scrolling list, footer.
 //
-// Beside the sidebar (or the rail) it is drawn inside a `frappe.ui.SidebarPanel`, the
+// Beside the sidebar (or the dock) it is drawn inside a `frappe.ui.SidebarPanel`, the
 // frame Frappe's own notifications panel uses: Frappe gives it the full-height
 // drawer, the heading and its close button, and `frappe.ui.sidebar_panels` keeps
 // one panel open at a time and closes it on a click away, Escape or a page change.
