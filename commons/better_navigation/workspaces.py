@@ -73,6 +73,7 @@ EDUCATION_GROUP = "Education"
 # and nobody approves it, and it is addressed to somebody in their capacity as an
 # instructor rather than as a person with a leave balance.
 ATTENDANCE_PAGE = "attendance"
+ADVANCEMENT_PAGE = "advancement"
 
 # And the pages the Accounts group holds: reconciliation on a site that keeps
 # bank statements, and document capture on one that can read scans. Their own
@@ -263,6 +264,8 @@ def _default() -> dict:
 	# away from somebody who does not mark attendance.
 	if page_list.available(ATTENDANCE_PAGE):
 		items.append(_item("page", ATTENDANCE_PAGE, EDUCATION_GROUP))
+	if page_list.available(ADVANCEMENT_PAGE):
+		items.append(_item("page", ADVANCEMENT_PAGE, EDUCATION_GROUP))
 	# Same arrangement: the site decides whether the row exists, and
 	# `PAGE_ACCESS` whether this reader is somebody who reconciles.
 	if page_list.available(RECONCILIATION_PAGE):

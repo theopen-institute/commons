@@ -10,7 +10,7 @@
  *         commons.pseudo_islands.mount_page(wrapper, "commons.banking");
  *
  * The methods below are develop's at beeaa33c6b, as functions over a state
- * object rather than methods on the page view, with two additions, each
+ * object rather than methods on the page view, with three additions, each
  * marked:
  *
  * - the page draws a pointer to the same screen in the app's frontend when
@@ -18,7 +18,10 @@
  *   no loader at all;
  * - `onReplaceQuery`, so an island that keeps its view in the query string can
  *   write it back. develop's page host has no such event, and on v17 the
- *   island's filters simply stop reaching the URL.
+ *   island's filters simply stop reaching the URL;
+ * - an action marked `primary` is a button in the page head rather than a
+ *   menu row, as the frontend's own header draws it. develop's host lists
+ *   every action in the menu, and on v17 these go back there.
  *
  * Both states the page draws in place of the island are Frappe 16.50's
  * `frappe.ui.empty_state`, as develop's are.
@@ -139,8 +142,15 @@ function set_island_chrome(state) {
 	frappe.utils.set_title(label);
 
 	page.clear_menu();
+	// Added: primary actions as buttons. See the header.
+	page.clear_custom_actions();
 	state.island_actions.forEach((action) => {
 		const click = action.href ? () => window.open(action.href, "_blank") : action.onClick;
+		if (action.primary) {
+			const button = page.add_button(action.label, click);
+			button.prop("disabled", Boolean(action.disabled || action.loading));
+			return;
+		}
 		page.add_menu_item(action.label, click);
 	});
 }

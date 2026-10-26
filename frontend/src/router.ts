@@ -46,6 +46,15 @@ const routes: RouteRecordRaw[] = [
     meta: { page: 'attendance', desk: deskUrl('commons-attendance') },
   },
   {
+    // A term's students and what becomes of each in the next. The two terms
+    // are in the query string, for the register's reason. See
+    // `StudentAdvancement.vue`.
+    path: '/advancement',
+    name: 'StudentAdvancement',
+    component: () => import('@/pages/StudentAdvancement.vue'),
+    meta: { page: 'advancement', desk: deskUrl('commons-advancement') },
+  },
+  {
     // One bank account's statement for a period. Like the register, the
     // account, the dates and the view are in the query string, because "OI
     // Checking for July" is a view of this page and a link worth sending. See

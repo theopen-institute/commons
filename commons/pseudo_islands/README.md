@@ -24,9 +24,11 @@ The shims, all in this folder:
 | `js/island_page.js` | develop's Frappe UI page host, from `pageview.js` | See below |
 | `scss/island_page.scss` | develop's `frappe/public/scss/desk/island_page.scss` | Nothing |
 
-`js/island_page.js` differs from develop's page host in two ways: it draws a pointer to
-`/commons/...` when the setting is off; and it passes `onReplaceQuery`, so a screen that keeps
-its view in the query string can write it back (develop's host has no such event). Its error
+`js/island_page.js` differs from develop's page host in three ways: it draws a pointer to
+`/commons/...` when the setting is off; it passes `onReplaceQuery`, so a screen that keeps
+its view in the query string can write it back (develop's host has no such event); and it
+draws an action marked `primary` as a button in the page head rather than a menu row
+(develop's host lists every action in the menu). Its error
 state is Frappe 16.50's `frappe.ui.empty_state`, as develop's is.
 
 Outside this folder, each shim is a line or two that names it:

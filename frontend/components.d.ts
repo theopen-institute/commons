@@ -11,6 +11,8 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdvancementDecisionDialog: typeof import('./src/components/AdvancementDecisionDialog.vue')['default']
+    AdvancementReviewDialog: typeof import('./src/components/AdvancementReviewDialog.vue')['default']
     AppGlobalSearch: typeof import('./src/components/AppGlobalSearch.vue')['default']
     AppNotifications: typeof import('./src/components/AppNotifications.vue')['default']
     AppPageActions: typeof import('./src/components/AppPageActions.vue')['default']

@@ -196,6 +196,7 @@ class TestDefaultWorkspace(TestCase):
 				("page", "expense", "Requests"),
 				("page", "procurement", "Requests"),
 				("page", "attendance", "Education"),
+				("page", "advancement", "Education"),
 				("page", "reconciliation", "Accounts"),
 			],
 		)
@@ -219,7 +220,7 @@ class TestDefaultWorkspace(TestCase):
 			rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["leave", "expense", "procurement", "attendance", "reconciliation"],
+			["leave", "expense", "procurement", "attendance", "advancement", "reconciliation"],
 		)
 
 
@@ -249,7 +250,7 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		rows = workspaces.workspaces()[0]["items"]
 		self.assertEqual(
 			[row["key"] for row in rows],
-			["Employee", "procurement", "attendance", "reconciliation"],
+			["Employee", "procurement", "attendance", "advancement", "reconciliation"],
 		)
 
 	def test_a_configured_row_naming_one_is_dropped(self):
@@ -295,6 +296,7 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 				"expense",
 				"procurement",
 				"attendance",
+				"advancement",
 				"reconciliation",
 			],
 		)
@@ -313,13 +315,15 @@ class TestPagesWhoseAppIsNotInstalled(TestCase):
 		# and so does the code under test.
 		with_documents(self, [], [], absent=("Bank Transaction",), apps=("frappe", "hrms", "commons"))
 		rows = workspaces.workspaces()[0]["items"]
-		self.assertEqual([row["key"] for row in rows], ["Employee", "leave", "expense", "attendance"])
+		self.assertEqual(
+			[row["key"] for row in rows], ["Employee", "leave", "expense", "attendance", "advancement"]
+		)
 
 	def test_a_site_with_neither_keeps_the_pages_that_need_neither(self):
 		"""Bare Frappe: whatever self-service is configured."""
 		with_documents(self, [], [], absent=(*self.ABSENT, "Bank Transaction"), apps=("frappe", "commons"))
 		rows = workspaces.workspaces()[0]["items"]
-		self.assertEqual([row["key"] for row in rows], ["Employee", "attendance"])
+		self.assertEqual([row["key"] for row in rows], ["Employee", "attendance", "advancement"])
 
 
 class TestTheAttendanceRegisterRow(TestCase):
@@ -484,11 +488,14 @@ class TestAccess(TestCase):
 	def test_each_gated_page_is_asked_by_its_own_test(self):
 		with_documents(self, [], [], claude_key=True)
 		self.with_permissions()
-		self.assertEqual(pages.access(), {"attendance": True, "reconciliation": True, "capture": True})
+		self.assertEqual(
+			pages.access(), {"attendance": True, "advancement": True, "reconciliation": True, "capture": True}
+		)
 		self.assertCountEqual(
 			self.asked,
 			[
 				("Student Attendance", "write"),
+				("Program Enrollment", "create"),
 				("Bank Transaction", "write"),
 				("Purchase Invoice", "create"),
 			],
@@ -497,7 +504,10 @@ class TestAccess(TestCase):
 	def test_a_refusal_is_that_page_s_alone(self):
 		with_documents(self, [], [], claude_key=True)
 		self.with_permissions(refused=("Bank Transaction",))
-		self.assertEqual(pages.access(), {"attendance": True, "reconciliation": False, "capture": True})
+		self.assertEqual(
+			pages.access(),
+			{"attendance": True, "advancement": True, "reconciliation": False, "capture": True},
+		)
 
 	def test_a_page_the_site_does_not_have_is_no_without_asking(self):
 		with_documents(self, [], [], absent=("Bank Transaction",))

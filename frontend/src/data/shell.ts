@@ -38,6 +38,7 @@ import { requestSection, type RequestSection, type RequestSectionKey } from './r
 export type PageKey =
   | 'announcements'
   | 'attendance'
+  | 'advancement'
   | 'reconciliation'
   | 'capture'
   | RequestSectionKey
@@ -133,6 +134,17 @@ const PAGES: Record<PageKey, PageChrome> = {
     routeName: 'AttendanceRegister',
     section: null,
     gate: serverGate('attendance'),
+  },
+  // Gated like the register: a term's whole roll with each student's standing
+  // is for whoever enrols them. See
+  // `commons.student_advancement.advancement.can_advance`.
+  advancement: {
+    label: 'Student Advancement',
+    icon: 'lucide-graduation-cap',
+    to: { name: 'StudentAdvancement' },
+    routeName: 'StudentAdvancement',
+    section: null,
+    gate: serverGate('advancement'),
   },
   // Gated for the register's reason and a sharper one: ERPNext's candidate
   // search reads vouchers without asking permission, so the page is offered

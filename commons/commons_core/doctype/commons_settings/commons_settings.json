@@ -62,6 +62,17 @@
   "attendance_course_plan_column",
   "attendance_course_plan_type_column",
   "attendance_course_plan_hours_column",
+  "advancement_tab",
+  "advancement_programs_section",
+  "advancement_next_programs_field",
+  "advancement_programs_column",
+  "advancement_next_program_column",
+  "advancement_status_section",
+  "advancement_status_field",
+  "advancement_status_column",
+  "advancement_continuing_status",
+  "advancement_groups_section",
+  "advancement_group_name_format",
   "data_sync_tab",
   "data_sync_source_section",
   "data_sync_source_url",
@@ -109,7 +120,7 @@
    "fieldname": "landing_page",
    "fieldtype": "Select",
    "label": "Landing Page",
-   "options": "\nAnnouncements\nLeave Request\nExpense Claim\nProcurement\nAttendance\nBank Reconciliation\nDocument Capture"
+   "options": "\nAnnouncements\nLeave Request\nExpense Claim\nProcurement\nAttendance\nStudent Advancement\nBank Reconciliation\nDocument Capture"
   },
   {
    "fieldname": "navigation_tab",
@@ -426,6 +437,68 @@
    "label": "Planned Hours Column"
   },
   {
+   "fieldname": "advancement_tab",
+   "fieldtype": "Tab Break",
+   "label": "Advancement"
+  },
+  {
+   "description": "How the page at <b>/commons/advancement</b> knows which program a student goes on to. Left blank, every program is offered and none is suggested.",
+   "fieldname": "advancement_programs_section",
+   "fieldtype": "Section Break",
+   "label": "Next Programs"
+  },
+  {
+   "description": "A Table field on <b>Program</b> listing the programs a student may go on to after it. Only those are offered, and the first row is suggested.",
+   "fieldname": "advancement_next_programs_field",
+   "fieldtype": "Data",
+   "label": "Next Programs Table"
+  },
+  {
+   "fieldname": "advancement_programs_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.advancement_next_programs_field",
+   "description": "The column of that table linking to the next <b>Program</b>.",
+   "fieldname": "advancement_next_program_column",
+   "fieldtype": "Data",
+   "label": "Program Column"
+  },
+  {
+   "description": "Where a site keeps whether a student is enrolled, graduated, withdrawn and so on. Left blank, advancing a term changes no student's status.",
+   "fieldname": "advancement_status_section",
+   "fieldtype": "Section Break",
+   "label": "Student Status"
+  },
+  {
+   "description": "A Select field on <b>Student</b>. Every one of its options is offered.",
+   "fieldname": "advancement_status_field",
+   "fieldtype": "Data",
+   "label": "Status Field"
+  },
+  {
+   "fieldname": "advancement_status_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.advancement_status_field",
+   "description": "The option a student is given when they are enrolled in a next program. Blank: no status is suggested.",
+   "fieldname": "advancement_continuing_status",
+   "fieldtype": "Data",
+   "label": "Continuing Status"
+  },
+  {
+   "fieldname": "advancement_groups_section",
+   "fieldtype": "Section Break",
+   "label": "Student Groups"
+  },
+  {
+   "description": "How a new term's student group is named. <code>{field}</code> is a field of the <b>Academic Term</b> and <code>{program.field}</code> one of the <b>Program</b>; <code>name</code> is each one's own name. For example <code>{program.name} - {name}</code>. Left blank, a group is named after the program's last one, with the term swapped. Either way the name can be changed before it is made.",
+   "fieldname": "advancement_group_name_format",
+   "fieldtype": "Data",
+   "label": "Group Name Format"
+  },
+  {
    "fieldname": "data_sync_tab",
    "fieldtype": "Tab Break",
    "label": "Data Sync"
@@ -463,7 +536,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-09 16:35:50.748936",
+ "modified": "2026-10-26 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

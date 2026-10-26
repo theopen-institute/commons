@@ -16,15 +16,19 @@
  * One row of a page's actions. `onClick` runs in the screen; `href` is a URL
  * out of the host app, which the desk opens in a new tab.
  *
- * `primary` and `loading` are this app's, not the contract's: the SPA's header
- * draws a primary action as a button beside the menu, with its spinner, and a
- * desk host, which knows neither field, lists it in the menu like the rest.
+ * `primary`, `loading` and `disabled` are this app's, not the contract's. Both
+ * of this app's hosts draw a primary action as a button beside the menu: the
+ * SPA's header with its spinner, and `commons.pseudo_islands` on v16. A host
+ * that knows none of them -- develop's page host, on v17 -- lists it in the
+ * menu like the rest.
  */
 export type PageAction = {
   label: string
   icon?: string
   primary?: boolean
   loading?: boolean
+  /** Drawn but not clickable: a primary action with nothing to act on yet. */
+  disabled?: boolean
 } & ({ onClick: () => void; href?: never } | { href: string; onClick?: never })
 
 /** The query string below a page, one string per key. */

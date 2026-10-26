@@ -32,6 +32,14 @@
   {
    "added": 0,
    "hidden": 0,
+   "icon": "podium-duotone",
+   "link_to": "Student Advancement",
+   "link_type": "Sidebar",
+   "title": "Student Advancement"
+  },
+  {
+   "added": 0,
+   "hidden": 0,
    "icon": "workflow-builder-duotone",
    "link_to": "Requests",
    "link_type": "Sidebar",
@@ -78,7 +86,7 @@
    "title": "Better Navigation"
   }
  ],
- "modified": "2026-10-08 11:06:34.129840",
+ "modified": "2026-10-26 14:00:00.000000",
  "modified_by": "Administrator",
  "name": "commons",
  "owner": "Administrator",

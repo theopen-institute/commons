@@ -29,10 +29,10 @@ add_to_apps_screen = [
 #
 # Which features those are: procurement, bank reconciliation, the financial
 # statement overrides and Purchase Invoice capture need ERPNext; leave, expenses, receipt capture and the payroll extensions need HRMS;
-# loan matching and loan dates need Lending; the attendance register needs
-# Education. What is left on a bare Frappe site is self-service, workspaces and
-# navigation, the permission gate, derived fields, email, print templates and
-# the desk additions -- none of which reads another app's doctype.
+# loan matching and loan dates need Lending; the attendance register and
+# student advancement need Education. What is left on a bare Frappe site is
+# self-service, workspaces and navigation, the permission gate, derived fields,
+# email, print templates and the desk additions -- none of which reads another app's doctype.
 #
 # Two things had to hold before this could be empty, and both are worth knowing
 # about before it is put back.

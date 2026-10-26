@@ -32,6 +32,7 @@ from commons.document_capture import capture
 from commons.requests.expense import EXPENSES
 from commons.requests.leave import LEAVE
 from commons.requests.procurement import PROCUREMENT
+from commons.student_advancement import advancement
 
 PAGES: dict[str, str] = {
 	"Announcements": "announcements",
@@ -39,6 +40,7 @@ PAGES: dict[str, str] = {
 	"Expense Claim": "expense",
 	"Procurement": "procurement",
 	"Attendance": "attendance",
+	"Student Advancement": "advancement",
 	"Bank Reconciliation": "reconciliation",
 	"Document Capture": "capture",
 }
@@ -72,6 +74,9 @@ PAGE_AVAILABILITY = {
 	# of, and `attendance.available` asks about those two rather than about
 	# which app happens to bring them.
 	"attendance": attendance.available,
+	# Absent without enrolments and groups to make, which is Education again,
+	# asked of the two doctypes the page writes.
+	"advancement": advancement.available,
 	# Absent on a site that keeps no bank statements. Not tied to ERPNext as a
 	# whole, for the same reason attendance is not tied to Education: the two
 	# doctypes are what the page is made of.
@@ -96,6 +101,10 @@ PAGE_DOCTYPES: dict[str, str] = {key: section.doctype for key, section in PAGE_S
 # the same call the endpoints make -- see `attendance.can_mark`.
 PAGE_ACCESS: dict[str, Callable[[], bool]] = {
 	"attendance": attendance.can_mark,
+	# Offered to whoever may enrol a student. Read would put a term's whole
+	# roll, with a status beside each name, in front of anyone who may read an
+	# enrolment, for a page whose only use is making them.
+	"advancement": advancement.can_advance,
 	# Read is too wide here as well, and for a sharper reason than a
 	# cohort's marks: ERPNext's candidate search reads vouchers without asking
 	# permission, so the page is offered only to somebody who could keep this

@@ -9,6 +9,7 @@
 			:icon-left="action.icon"
 			:label="action.label"
 			:loading="action.loading"
+			:disabled="action.disabled"
 			@click="run(action)"
 		/>
 		<!-- The occasional actions, out of the way of the everyday ones. -->

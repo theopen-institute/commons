@@ -79,6 +79,7 @@ PAGE_PATHS: dict[str, str] = {
 	"expense": "/commons/requests/expenses",
 	"procurement": "/commons/requests/procurement",
 	"attendance": "/commons/attendance",
+	"advancement": "/commons/advancement",
 	"reconciliation": "/commons/banking",
 	"capture": "/commons/capture",
 }
