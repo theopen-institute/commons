@@ -142,3 +142,12 @@ class TestApplyRefuses(TestCase):
 		with patch.object(frappe, "throw", side_effect=frappe.ValidationError):
 			with self.assertRaises(frappe.ValidationError):
 				advancement.set_status("someone", standing, "Expelled")
+
+	def test_a_current_term_that_does_not_exist(self):
+		with (
+			patch.object(advancement.apps, "has_doctype", return_value=True),
+			patch.object(frappe, "db", SimpleNamespace(get_value=lambda *args, **kwargs: None)),
+			patch.object(frappe, "throw", side_effect=frappe.ValidationError),
+		):
+			with self.assertRaises(frappe.ValidationError):
+				advancement.set_current_term("No such term")

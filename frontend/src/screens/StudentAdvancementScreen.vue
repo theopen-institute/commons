@@ -31,6 +31,10 @@
 				/>
 			</div>
 
+			<p v-if="data.loaded.value" class="mt-2 text-p-sm text-ink-gray-5">
+				Current term in Education Settings: {{ data.currentTerm.value || 'none' }}
+			</p>
+
 			<ErrorMessage
 				v-if="data.error.value"
 				:message="data.error.value.message"
@@ -254,7 +258,16 @@
 			:name-group="(program: string) => data.groupName(program, to)"
 			:source-term="from"
 			:target-term="to"
+			:current-term="data.currentTerm.value"
+			:can-set-current="canSetCurrent"
 			@applied="onApplied"
+		/>
+
+		<AdvancementCurrentTermDialog
+			v-model:open="currentOpen"
+			:term="to"
+			:current-term="data.currentTerm.value"
+			@changed="data.loadCurrentTerm()"
 		/>
 	</div>
 </template>
@@ -263,10 +276,12 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Badge, ErrorMessage, FormControl, Skeleton } from 'frappe-ui'
 import AdvancementDecisionDialog from '@/components/AdvancementDecisionDialog.vue'
+import AdvancementCurrentTermDialog from '@/components/AdvancementCurrentTermDialog.vue'
 import AdvancementReviewDialog from '@/components/AdvancementReviewDialog.vue'
 import {
 	advancePermissionLoaded,
 	canAdvance,
+	canSetCurrent,
 	useAdvancement,
 	type Applied,
 	type Candidate,
@@ -411,6 +426,12 @@ function saveDecision(decision: Decision) {
 }
 
 const reviewOpen = ref(false)
+const currentOpen = ref(false)
+
+/** Offered once the new term is picked and is not current yet. */
+const offerCurrent = computed(
+	() => canSetCurrent.value && Boolean(to.value) && to.value !== data.currentTerm.value
+)
 
 function onApplied(result: Applied) {
 	applied.value = result
@@ -458,6 +479,17 @@ const actions = computed<PageAction[]>(() =>
 						if (changeCount.value) reviewOpen.value = true
 					},
 				},
+				...(offerCurrent.value
+					? [
+							{
+								label: `Make ${to.value} the current term`,
+								icon: 'lucide-calendar-check',
+								onClick: () => {
+									currentOpen.value = true
+								},
+							},
+					  ]
+					: []),
 				{
 					label: 'Reset to suggestions',
 					icon: 'lucide-rotate-ccw',

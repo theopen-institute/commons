@@ -50,6 +50,11 @@ const canAdvanceCall = permissionCall('Program Enrollment', 'create')
 export const canAdvance = computed(() => Boolean(canAdvanceCall.data?.has_permission))
 export const advancePermissionLoaded = computed(() => canAdvanceCall.isFinished)
 
+/** Whether this reader may change which term is current: write on Education Settings. */
+const canSetCurrentCall = permissionCall('Education Settings', 'write')
+
+export const canSetCurrent = computed(() => Boolean(canSetCurrentCall.data?.has_permission))
+
 interface ListCall<Row> {
   submit: (params: Record<string, unknown>) => Promise<Row[] | null>
   error: Error | null
@@ -104,6 +109,10 @@ export function useAdvancement() {
   const programsCall = documentList<FieldValues & { name: string }>('Program')
   const groupsCall = documentList<GroupRow>('Student Group')
   const enrolledTermsCall = documentList<{ academic_term: string }>('Program Enrollment')
+  const currentTermCall = useCall<string | null, { doctype: string; field: string }>({
+    url: `${CLIENT}.get_single_value`,
+    immediate: false,
+  })
   const leavingCall = documentList<EnrollmentRow>('Program Enrollment')
   const enteringCall = documentList<EnrollmentRow>('Program Enrollment')
   const studentsCall = documentList<Record<string, string | null>>('Student')
@@ -117,6 +126,8 @@ export function useAdvancement() {
   const groups = ref<GroupRow[]>([])
   const defaults = ref({ from: '', to: '' })
   const loaded = ref(false)
+  /** Education Settings' current term, or null where it is unset or unreadable. */
+  const currentTerm = ref<string | null>(null)
   const error = ref<Error | null>(null)
 
   const candidates = ref<Candidate[]>([])
@@ -167,6 +178,7 @@ export function useAdvancement() {
       programs.value = programRows.rows.map((row) => row.name)
       programRowsByName.value = Object.fromEntries(programRows.rows.map((row) => [row.name, row]))
       groups.value = groupRows.rows
+      await loadCurrentTerm()
       defaults.value = defaultTerms(
         termRows.rows,
         enrolled.rows.map((row) => row.academic_term),
@@ -179,6 +191,15 @@ export function useAdvancement() {
     } catch (problem) {
       error.value = problem as Error
     }
+  }
+
+  /** A refusal reads as no current term rather than failing the page. */
+  async function loadCurrentTerm() {
+    const value = await currentTermCall.submit({
+      doctype: 'Education Settings',
+      field: 'current_academic_term',
+    })
+    currentTerm.value = currentTermCall.error ? null : value || null
   }
 
   /** Called-off reads are told apart by ticket: only the latest pair is kept. */
@@ -300,6 +321,8 @@ export function useAdvancement() {
   }
 
   return {
+    currentTerm,
+    loadCurrentTerm,
     groupName,
     settings,
     terms,
@@ -320,6 +343,8 @@ export function useAdvancement() {
 
 /** What `apply` reports back. */
 export interface Applied {
+  /** The term made current, where Apply was asked to. */
+  current_term?: string
   groups: string[]
   enrollments: { name: string; student: string; student_name: string; program: string }[]
   skipped: { student: string; student_name: string; program: string }[]
@@ -334,9 +359,19 @@ export function useApply() {
       target_term: string
       decisions: { enrollment: string; program: string | null; status: string | null }[]
       group_names: Record<string, string>
+      make_current: boolean
     }
   >({
     url: `${ADVANCEMENT}.apply`,
+    method: 'POST',
+    immediate: false,
+  })
+}
+
+/** `make_current`: make a term the current one in Education Settings. */
+export function useMakeCurrent() {
+  return useCall<string, { term: string }>({
+    url: `${ADVANCEMENT}.make_current`,
     method: 'POST',
     immediate: false,
   })

@@ -75,6 +75,21 @@
 				</ul>
 			</section>
 
+			<!-- Offered when the new term is not current yet and this reader may
+			     change Education Settings. On by default: advancing into a term is
+			     normally the moment it becomes the current one. -->
+			<section v-if="offerCurrent" class="rounded-4 bg-surface-gray-2 px-3 py-2">
+				<FormControl
+					v-model="makeCurrent"
+					type="checkbox"
+					:label="`Also make ${targetTerm} the current term`"
+				/>
+				<p class="mt-1 text-p-sm text-ink-gray-5">
+					Education Settings now says {{ currentTerm || 'no term' }}. The attendance
+					register and Education's own pages open on the current term.
+				</p>
+			</section>
+
 			<ErrorMessage v-if="problem" :message="problem" />
 		</div>
 	</Dialog>
@@ -93,6 +108,10 @@ const props = defineProps<{
 	nameGroup: (program: string) => string
 	sourceTerm: string
 	targetTerm: string
+	/** Education Settings' current term, or null. */
+	currentTerm: string | null
+	/** Whether this reader may change it. */
+	canSetCurrent: boolean
 }>()
 
 const open = defineModel<boolean>('open', { required: true })
@@ -111,11 +130,15 @@ const names = reactive<Record<string, string>>({})
 watch(open, (isOpen) => {
 	if (!isOpen) return
 	problem.value = ''
+	makeCurrent.value = true
 	for (const key of Object.keys(names)) delete names[key]
 	for (const program of props.plan.newGroups) {
 		names[program] = props.nameGroup(program)
 	}
 })
+
+const offerCurrent = computed(() => props.canSetCurrent && props.currentTerm !== props.targetTerm)
+const makeCurrent = ref(true)
 
 const missingName = computed(() => props.plan.newGroups.some((program) => !names[program]?.trim()))
 
@@ -134,13 +157,17 @@ async function submit(close: () => void) {
 			group_names: Object.fromEntries(
 				props.plan.newGroups.map((program) => [program, names[program].trim()])
 			),
+			make_current: offerCurrent.value && makeCurrent.value,
 		})
 		if (!result || apply.error) {
 			problem.value =
 				apply.error?.message || 'Nothing was written: the changes could not be applied.'
 			return
 		}
-		toast.success(`${pluralise(result.enrollments.length, 'draft enrolment')} made`)
+		toast.success(
+			`${pluralise(result.enrollments.length, 'draft enrolment')} made` +
+				(result.current_term ? `; ${result.current_term} is now the current term` : '')
+		)
 		emit('applied', result)
 		close()
 	} finally {

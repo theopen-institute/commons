@@ -40,6 +40,7 @@ STUDENT = "Student"
 ACADEMIC_TERM = "Academic Term"
 PROGRAM_ENROLLMENT = "Program Enrollment"
 STUDENT_GROUP = "Student Group"
+EDUCATION_SETTINGS = "Education Settings"
 
 NEXT_PROGRAMS_FIELD = PREFIX + "next_programs_field"
 NEXT_PROGRAM_COLUMN = PREFIX + "next_program_column"
@@ -193,14 +194,16 @@ def allowed_programs(chain: dict | None, program: str) -> list[str] | None:
 
 
 @frappe.whitelist(methods=["POST"])
-def apply(source_term: str, target_term: str, decisions, group_names=None) -> dict:
+def apply(source_term: str, target_term: str, decisions, group_names=None, make_current=False) -> dict:
 	"""Write a term's advancement: groups, draft enrolments and statuses, all or nothing.
 
 	`decisions` is one row per enrolment in `source_term` that is to change:
 	`enrollment`, the next `program` (or none), and the `status` to give the
 	student (or none, to leave it). `group_names` names the group to make for
 	each program the new term has no group for yet; a program left out gets
-	its name and the term's.
+	its name and the term's. `make_current` also makes `target_term` the
+	current term in Education Settings, in the same transaction; see
+	`make_current`.
 
 	Enrolments are made as drafts. Submitting one is what a site's own rules
 	hang fees and group membership on, and that stays a person's act, one
@@ -294,7 +297,39 @@ def apply(source_term: str, target_term: str, decisions, group_names=None) -> di
 					}
 				)
 
+	if frappe.parse_json(make_current):
+		done["current_term"] = set_current_term(target_term)
+
 	return done
+
+
+@frappe.whitelist(methods=["POST"])
+def make_current(term: str) -> str:
+	"""Make `term` the current term in Education Settings, and its year the current year.
+
+	The page offers it once a term has been advanced into: Education's own
+	"current" is what its defaults, its portal and the attendance register
+	open on, and moving it is the moment one term hands over to the next.
+	"""
+	return set_current_term(term)
+
+
+def set_current_term(term: str) -> str:
+	"""Saved through the document, not set in the database: Education Settings'
+	`on_update` copies the two into the site's defaults, which is where most of
+	Education reads them from.
+	"""
+	if not apps.has_doctype(EDUCATION_SETTINGS):
+		frappe.throw(_("This site has no Education Settings."))
+	year = frappe.db.get_value(ACADEMIC_TERM, term, "academic_year")
+	if not year:
+		frappe.throw(_("Academic Term {0} does not exist or has no academic year.").format(term))
+	settings = frappe.get_single(EDUCATION_SETTINGS)
+	settings.check_permission("write")
+	settings.current_academic_term = term
+	settings.current_academic_year = year
+	settings.save()
+	return term
 
 
 def enrolled(student: str, program: str, term: str) -> bool:
