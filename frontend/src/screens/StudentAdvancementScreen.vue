@@ -122,7 +122,7 @@
 					<Skeleton class="h-48 w-full rounded-4" />
 				</div>
 
-				<div v-else-if="!data.candidates.value.length" class="mt-16 text-center">
+				<div v-else-if="!everyone.length" class="mt-16 text-center">
 					<span class="lucide-users mx-auto size-8 text-ink-gray-4" />
 					<p class="mt-2 text-base-medium text-ink-gray-7">
 						Nobody is enrolled in {{ from }}
@@ -145,14 +145,34 @@
 						{{ pluralise(plan.statusChanges, 'status change', 'status changes') }}
 						<template v-if="editedCount"> · {{ editedCount }} changed by you</template>
 					</p>
+					<!-- Said above the list as well as on each row: Apply waits on these,
+					     and a long list hides the rows that need them. -->
+					<p
+						v-if="plan.unresolved.length"
+						class="mt-1 flex items-center gap-1.5 text-p-sm text-ink-red-4"
+					>
+						<span class="lucide-circle-alert size-4 shrink-0" />
+						{{ pluralise(plan.unresolved.length, 'student is', 'students are') }}
+						not enrolled in {{ to }}, and their status doesn't say they left. Give each
+						{{ leaving.join(' or ') }} before applying.
+					</p>
 
 					<section v-for="section in sections" :key="section.program" class="mt-5">
-						<h2 class="mb-2 text-base-medium text-ink-gray-8">
+						<h2
+							class="mb-2 text-base-medium"
+							:class="section.stray ? 'text-ink-red-4' : 'text-ink-gray-8'"
+						>
 							{{ section.program }}
 							<span class="text-p-sm font-normal text-ink-gray-5">
 								· {{ pluralise(section.rows.length, 'student') }}
 							</span>
 						</h2>
+						<!-- Should never happen, so it is said first and in red. -->
+						<p v-if="section.stray" class="-mt-1 mb-2 text-p-sm text-ink-gray-6">
+							Marked {{ continuing }}, but enrolled in neither {{ from }} nor
+							{{ to }} and active in no {{ from }} group. Enrol them in the desk, or
+							give them the status that says they left.
+						</p>
 						<ul
 							class="divide-y divide-outline-gray-1 rounded-4 border border-outline-gray-2"
 						>
@@ -166,7 +186,26 @@
 										<div class="truncate text-p-base text-ink-gray-8">
 											{{ row.studentName }}
 										</div>
+										<div v-if="row.stray" class="text-p-xs text-ink-gray-5">
+											{{
+												row.lastTerm
+													? `Last enrolled in ${row.program}, ${row.lastTerm}`
+													: 'Never enrolled'
+											}}
+										</div>
 										<div class="mt-0.5 flex flex-wrap gap-1">
+											<Badge
+												v-if="
+													needsLeavingStatus(
+														row,
+														decisionOf(row),
+														data.settings.value
+													)
+												"
+												size="sm"
+												theme="red"
+												:label="`Needs ${leaving.join(' or ')}`"
+											/>
 											<Badge
 												v-if="row.status"
 												size="sm"
@@ -176,7 +215,22 @@
 												:label="row.status"
 											/>
 											<Badge
-												v-if="row.active === false"
+												v-if="
+													continuingWithoutGroup(
+														row,
+														data.settings.value
+													)
+												"
+												size="sm"
+												theme="red"
+												:label="
+													row.active === false
+														? `${row.status}, but inactive in group`
+														: `${row.status}, but in no group`
+												"
+											/>
+											<Badge
+												v-else-if="row.active === false"
 												size="sm"
 												theme="amber"
 												label="Inactive in group"
@@ -260,6 +314,7 @@
 			:target-term="to"
 			:current-term="data.currentTerm.value"
 			:can-set-current="canSetCurrent"
+			:settings="data.settings.value"
 			@applied="onApplied"
 		/>
 
@@ -287,7 +342,15 @@ import {
 	type Candidate,
 	type Decision,
 } from '@/data/advancement'
-import { buildPlan, holdReason, isEdited, suggest } from '@/data/advancementPlan'
+import {
+	buildPlan,
+	continuingWithoutGroup,
+	holdReason,
+	isEdited,
+	leavingStatuses,
+	needsLeavingStatus,
+	suggest,
+} from '@/data/advancementPlan'
 import { MAX_ROWS } from '@/data/attendanceRegister'
 import { deskFormUrl, deskListUrl } from '@/data/desk'
 import { pluralise } from '@/data/format'
@@ -382,17 +445,21 @@ function decisionOf(row: Candidate): Decision {
 }
 
 /** Every row's decision, suggestions included -- what the plan is made from. */
+/** The term's students, then the strays: everyone the page decides about. */
+const everyone = computed(() => [...data.strays.value, ...data.candidates.value])
+
 const allDecisions = computed(() =>
-	Object.fromEntries(data.candidates.value.map((row) => [row.enrollment, decisionOf(row)]))
+	Object.fromEntries(everyone.value.map((row) => [row.enrollment, decisionOf(row)]))
 )
 
 const plan = computed(() =>
-	buildPlan(data.candidates.value, allDecisions.value, data.groups.value, to.value)
+	buildPlan(everyone.value, allDecisions.value, data.groups.value, to.value, data.settings.value)
 )
 
+const leaving = computed(() => leavingStatuses(data.settings.value))
+
 const editedCount = computed(
-	() =>
-		data.candidates.value.filter((row) => isEdited(decisionOf(row), suggestionOf(row))).length
+	() => everyone.value.filter((row) => isEdited(decisionOf(row), suggestionOf(row))).length
 )
 
 const sections = computed(() => {
@@ -402,7 +469,18 @@ const sections = computed(() => {
 		list.push(row)
 		byProgram.set(row.program, list)
 	}
-	return [...byProgram].map(([program, rows]) => ({ program, rows }))
+	const programs = [...byProgram].map(([program, rows]) => ({ program, rows, stray: false }))
+	const strays = data.strays.value
+	return strays.length
+		? [
+				{
+					program: `${continuing.value}, but in no group`,
+					rows: strays,
+					stray: true,
+				},
+				...programs,
+		  ]
+		: programs
 })
 
 const termOptions = computed(() => [
@@ -466,6 +544,8 @@ const draftsUrl = computed(
 const settingsUrl = deskFormUrl('Commons Settings', 'Commons Settings')
 
 const changeCount = computed(() => plan.value.rows.length)
+/** Open as long as there is something to apply or something holding it back. */
+const reviewable = computed(() => Boolean(changeCount.value || plan.value.unresolved.length))
 
 const actions = computed<PageAction[]>(() =>
 	canAdvance.value
@@ -474,9 +554,9 @@ const actions = computed<PageAction[]>(() =>
 					label: 'Review and Apply',
 					icon: 'lucide-list-checks',
 					primary: true,
-					disabled: !changeCount.value,
+					disabled: !reviewable.value,
 					onClick: () => {
-						if (changeCount.value) reviewOpen.value = true
+						if (reviewable.value) reviewOpen.value = true
 					},
 				},
 				...(offerCurrent.value

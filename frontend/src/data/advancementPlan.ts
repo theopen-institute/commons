@@ -23,6 +23,8 @@ export interface AdvancementSettings {
     options: string[]
     /** The option given to a student moving on, or null for none. */
     continuing: string | null
+    /** The site requires a student going nowhere to leave with another option. */
+    require_leaving: boolean
   } | null
   /** The format a new group is named by, and the fields of the term and the
    *  program it reads. Null: named after the program's last group. */
@@ -98,6 +100,93 @@ export interface Candidate {
   already: { program: string; name: string; draft: boolean }[]
   /** The programs that may follow this one, in the order the site lists them. */
   offered: string[]
+  /**
+   * Not enrolled in the term being left at all, but marked as continuing and
+   * active in none of its groups -- see `findStrays`. Such a row is keyed by
+   * `student:<name>` rather than an enrolment, offers no program, and can
+   * only have its status changed.
+   */
+  stray?: boolean
+  /** For a stray: the term of the student's latest submitted enrolment. */
+  lastTerm?: string | null
+}
+
+/** The key a stray's decision is held under: it has no enrolment to key it by. */
+export function strayKey(student: string): string {
+  return `student:${student}`
+}
+
+/**
+ * A continuing student who is enrolled in neither term and active in none of
+ * the old term's groups -- which should never happen.
+ *
+ * The status says they continue; nothing else does. Usually a student who
+ * left without their status being changed, or one whose enrolment was
+ * cancelled. Listed with a warning so that one of the two is put right:
+ * enrolled in the desk, or given the status that says they left.
+ *
+ * Not a stray: a student enrolled in the old term (they are on the list
+ * already, and say the same thing with a badge), or one with an enrolment in
+ * the new term or any later one, such as a new student starting the first
+ * program.
+ */
+export function findStrays(input: {
+  /** Students whose status is the continuing one. */
+  continuing: StudentRow[]
+  candidates: Candidate[]
+  entering: EnrollmentRow[]
+  groups: GroupRow[]
+  members: MemberRow[]
+  sourceTerm: string
+  /** The students' enrolments, draft or submitted, in any term. */
+  latest: { student: string; program: string; academic_term: string }[]
+  /** For ordering terms by when they start. */
+  terms: TermRow[]
+}): Candidate[] {
+  const starts = new Map(input.terms.map((row) => [row.name, row.term_start_date ?? '']))
+  const start = (term: string) => starts.get(term) ?? ''
+  const lastOf = new Map<string, { program: string; academic_term: string }>()
+  for (const row of input.latest) {
+    const known = lastOf.get(row.student)
+    if (!known || start(row.academic_term) > start(known.academic_term)) lastOf.set(row.student, row)
+  }
+  const sourceStart = start(input.sourceTerm)
+  const listed = new Set(input.candidates.map((row) => row.student))
+  const entering = new Set(input.entering.map((row) => row.student))
+  const oldGroups = new Set(
+    input.groups.filter((row) => row.academic_term === input.sourceTerm).map((row) => row.name),
+  )
+  const active = new Set(
+    input.members.filter((row) => row.active && oldGroups.has(row.parent)).map((row) => row.student),
+  )
+  return input.continuing
+    .filter((row) => !listed.has(row.name) && !entering.has(row.name) && !active.has(row.name))
+    .filter((row) => {
+      const last = lastOf.get(row.name)
+      return !last || start(last.academic_term) <= sourceStart
+    })
+    .map((row): Candidate => {
+      const last = lastOf.get(row.name)
+      return {
+        enrollment: strayKey(row.name),
+        student: row.name,
+        studentName: row.student_name || row.name,
+        program: last?.program ?? '',
+        status: row.status,
+        active: null,
+        already: [],
+        offered: [],
+        stray: true,
+        lastTerm: last?.academic_term ?? null,
+      }
+    })
+    .sort((a, b) => a.studentName.localeCompare(b.studentName))
+}
+
+/** Whether a listed student is marked as continuing but is not active in the term's group. */
+export function continuingWithoutGroup(candidate: Candidate, settings: AdvancementSettings): boolean {
+  const continuing = settings.status?.continuing
+  return Boolean(continuing && candidate.status === continuing && candidate.active !== true)
 }
 
 /** What becomes of one student. Null `program`: no new enrolment. Null `status`: left as it is. */
@@ -170,6 +259,7 @@ export function buildCandidates(input: {
 
 /** Why a candidate is suggested no change, or null where the suggestion is to move on. */
 export function holdReason(candidate: Candidate, settings: AdvancementSettings): string | null {
+  if (candidate.stray) return 'Enrolled, but in no group and no enrolment'
   if (candidate.already.length) return 'Already enrolled in the new term'
   const continuing = settings.status?.continuing
   if (continuing && candidate.status && candidate.status !== continuing) {
@@ -268,6 +358,39 @@ export interface Plan {
   newGroups: string[]
   /** Students whose status changes. */
   statusChanges: number
+  /** Students going nowhere whose status still says they continue. Apply
+   *  waits until there are none. See `needsLeavingStatus`. */
+  unresolved: Candidate[]
+}
+
+/** The statuses a student who is not continuing may have: every option but the continuing one. */
+export function leavingStatuses(settings: AdvancementSettings): string[] {
+  const status = settings.status
+  if (!status?.continuing || !status.require_leaving) return []
+  return status.options.filter((option) => option !== status.continuing)
+}
+
+/**
+ * Whether a student is left with no enrolment in the new term and a status
+ * that does not say they left.
+ *
+ * A student going nowhere has finished one way or another, and the status is
+ * where that is recorded: they must end the advancement with one of the
+ * statuses other than the continuing one (Withdrawn or Graduated, say), not
+ * with the continuing one or none. Only where the site names a continuing
+ * status; without one there is no rule to keep. A student already enrolled in
+ * the new term is continuing, whatever this page decides. Only where the site
+ * has switched the rule on (Require a Leaving Status), and `apply` keeps it
+ * too.
+ */
+export function needsLeavingStatus(
+  candidate: Candidate,
+  decision: Decision,
+  settings: AdvancementSettings,
+): boolean {
+  const leaving = leavingStatuses(settings)
+  if (!leaving.length || candidate.stray || decision.program || candidate.already.length) return false
+  return !leaving.includes(decision.status ?? candidate.status ?? '')
 }
 
 /**
@@ -279,13 +402,16 @@ export function buildPlan(
   decisions: Record<string, Decision>,
   groups: GroupRow[],
   targetTerm: string,
+  settings: AdvancementSettings = NO_SETTINGS,
 ): Plan {
   const rows: Plan['rows'] = []
+  const unresolved: Candidate[] = []
   const counts = new Map<string, number>()
   let statusChanges = 0
   for (const candidate of candidates) {
     const decision = decisions[candidate.enrollment]
     if (!decision) continue
+    if (needsLeavingStatus(candidate, decision, settings)) unresolved.push(candidate)
     const program =
       decision.program && !candidate.already.some((row) => row.program === decision.program)
         ? decision.program
@@ -306,6 +432,7 @@ export function buildPlan(
     enrolments,
     newGroups: enrolments.filter((row) => !row.group).map((row) => row.program),
     statusChanges,
+    unresolved,
   }
 }
 

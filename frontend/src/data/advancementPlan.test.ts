@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCandidates,
   buildPlan,
+  continuingWithoutGroup,
+  findStrays,
   defaultTerms,
   groupNameFor,
   renderGroupName,
   holdReason,
+  needsLeavingStatus,
   NO_SETTINGS,
   suggest,
   type AdvancementSettings,
@@ -23,7 +26,12 @@ import {
 const SETTINGS: AdvancementSettings = {
   group_name: null,
   next_programs: { table_field: 'next', table_doctype: 'Next Program', program_column: 'program' },
-  status: { field: 'standing', options: ['Enrolled', 'Graduated', 'Withdrawn'], continuing: 'Enrolled' },
+  status: {
+    field: 'standing',
+    options: ['Enrolled', 'Graduated', 'Withdrawn'],
+    continuing: 'Enrolled',
+    require_leaving: true,
+  },
 }
 
 function enrolment(student: string, program: string, term = 'T1', docstatus = 1): EnrollmentRow {
@@ -182,6 +190,89 @@ describe('the plan', () => {
     ])
     expect(plan.newGroups).toEqual(['Hold'])
     expect(plan.statusChanges).toBe(1)
+  })
+})
+
+describe('students going nowhere', () => {
+  const nowhere = { program: null, status: null }
+
+  it('must leave with a status other than the continuing one', () => {
+    expect(needsLeavingStatus(candidate(), nowhere, SETTINGS)).toBe(true)
+    expect(needsLeavingStatus(candidate({ status: null }), nowhere, SETTINGS)).toBe(true)
+    expect(needsLeavingStatus(candidate(), { program: null, status: 'Graduated' }, SETTINGS)).toBe(false)
+    expect(needsLeavingStatus(candidate({ status: 'Withdrawn' }), nowhere, SETTINGS)).toBe(false)
+  })
+
+  it('does not apply to a student moving on or already enrolled, or without a continuing status', () => {
+    expect(needsLeavingStatus(candidate(), { program: 'Two', status: null }, SETTINGS)).toBe(false)
+    expect(
+      needsLeavingStatus(candidate({ already: [{ program: 'Two', name: 'x', draft: true }] }), nowhere, SETTINGS),
+    ).toBe(false)
+    expect(needsLeavingStatus(candidate(), nowhere, NO_SETTINGS)).toBe(false)
+  })
+
+  it('holds the plan back until each has one', () => {
+    const plan = buildPlan(
+      [candidate(), candidate({ enrollment: 'PE-b', student: 'b' })],
+      { 'PE-a': nowhere, 'PE-b': { program: null, status: 'Withdrawn' } },
+      [],
+      'T2',
+      SETTINGS,
+    )
+    expect(plan.unresolved.map((row) => row.student)).toEqual(['a'])
+    expect(plan.rows.map((row) => row.candidate.student)).toEqual(['b'])
+  })
+})
+
+describe('continuing students with nothing behind them', () => {
+  const terms = [
+    { name: 'T0', academic_year: null, term_start_date: '2025-02-01' },
+    { name: 'T1', academic_year: null, term_start_date: '2025-08-01' },
+    { name: 'T2', academic_year: null, term_start_date: '2026-02-01' },
+  ]
+  const base = {
+    continuing: [
+      { name: 'listed', student_name: 'Listed', status: 'Enrolled' },
+      { name: 'active', student_name: 'Active', status: 'Enrolled' },
+      { name: 'entering', student_name: 'Entering', status: 'Enrolled' },
+      { name: 'later', student_name: 'Later', status: 'Enrolled' },
+      { name: 'stray', student_name: 'Stray', status: 'Enrolled' },
+    ],
+    candidates: [candidate({ student: 'listed' })],
+    entering: [enrolment('entering', 'One', 'T2', 0)],
+    groups: [group('G1', 'One', 'T1', '1')],
+    members: [{ parent: 'G1', student: 'active', active: 1 }],
+    sourceTerm: 'T1',
+    terms,
+    latest: [
+      { student: 'later', program: 'One', academic_term: 'T2' },
+      { student: 'stray', program: 'Two', academic_term: 'T0' },
+    ],
+  }
+
+  it('lists only those enrolled in neither term, in no group, and in no later term', () => {
+    const strays = findStrays(base)
+    expect(strays.map((row) => row.student)).toEqual(['stray'])
+    expect(strays[0]).toMatchObject({
+      enrollment: 'student:stray',
+      stray: true,
+      program: 'Two',
+      lastTerm: 'T0',
+      offered: [],
+    })
+  })
+
+  it('is suggested no change and never blocks Apply', () => {
+    const [stray] = findStrays(base)
+    expect(suggest(stray, SETTINGS)).toEqual({ program: null, status: null })
+    expect(needsLeavingStatus(stray, { program: null, status: null }, SETTINGS)).toBe(false)
+  })
+
+  it('flags a listed student who is continuing but not active in the group', () => {
+    expect(continuingWithoutGroup(candidate({ active: false }), SETTINGS)).toBe(true)
+    expect(continuingWithoutGroup(candidate({ active: null }), SETTINGS)).toBe(true)
+    expect(continuingWithoutGroup(candidate(), SETTINGS)).toBe(false)
+    expect(continuingWithoutGroup(candidate({ status: 'Withdrawn', active: null }), SETTINGS)).toBe(false)
   })
 })
 

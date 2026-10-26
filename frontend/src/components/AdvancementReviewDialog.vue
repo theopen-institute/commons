@@ -14,6 +14,19 @@
 	>
 		<div class="space-y-5">
 			<p class="text-p-sm text-ink-gray-7">{{ sourceTerm }} → {{ targetTerm }}</p>
+			<section
+				v-if="plan.unresolved.length"
+				class="rounded-4 bg-surface-red-1 px-3 py-2 text-p-sm text-ink-red-4"
+			>
+				<p class="font-medium">Nothing can be applied yet</p>
+				<p class="mt-1">
+					{{ plan.unresolved.length === 1 ? 'This student is' : 'These students are' }}
+					not enrolled in {{ targetTerm }} and need a status that says they left ({{
+						leaving.join(' or ')
+					}}): {{ plan.unresolved.map((row) => row.studentName).join(', ') }}.
+				</p>
+			</section>
+
 			<section v-if="plan.newGroups.length">
 				<h3 class="mb-1 text-base-medium text-ink-gray-8">New student groups</h3>
 				<p class="mb-2 text-p-sm text-ink-gray-5">
@@ -99,7 +112,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Dialog, ErrorMessage, FormControl, toast, type DialogAction } from 'frappe-ui'
 import { useApply, type Applied } from '@/data/advancement'
-import type { Plan } from '@/data/advancementPlan'
+import { leavingStatuses, type AdvancementSettings, type Plan } from '@/data/advancementPlan'
 import { pluralise } from '@/data/format'
 
 const props = defineProps<{
@@ -112,7 +125,10 @@ const props = defineProps<{
 	currentTerm: string | null
 	/** Whether this reader may change it. */
 	canSetCurrent: boolean
+	settings: AdvancementSettings
 }>()
+
+const leaving = computed(() => leavingStatuses(props.settings))
 
 const open = defineModel<boolean>('open', { required: true })
 
@@ -149,11 +165,21 @@ async function submit(close: () => void) {
 		const result = await apply.submit({
 			source_term: props.sourceTerm,
 			target_term: props.targetTerm,
-			decisions: props.plan.rows.map((row) => ({
-				enrollment: row.candidate.enrollment,
-				program: row.decision.program,
-				status: row.decision.status,
-			})),
+			// A stray has no enrolment to name: it is sent by student, and only
+			// its status can change.
+			decisions: props.plan.rows.map((row) =>
+				row.candidate.stray
+					? {
+							student: row.candidate.student,
+							program: null,
+							status: row.decision.status,
+					  }
+					: {
+							enrollment: row.candidate.enrollment,
+							program: row.decision.program,
+							status: row.decision.status,
+					  }
+			),
 			group_names: Object.fromEntries(
 				props.plan.newGroups.map((program) => [program, names[program].trim()])
 			),
@@ -179,7 +205,7 @@ const actions = computed<DialogAction[]>(() => [
 	{
 		label: `Apply ${pluralise(props.plan.rows.length, 'change')}`,
 		variant: 'solid',
-		disabled: !props.plan.rows.length || missingName.value,
+		disabled: !props.plan.rows.length || missingName.value || props.plan.unresolved.length > 0,
 		loading: busy.value,
 		onClick: ({ close }) => submit(close),
 	},

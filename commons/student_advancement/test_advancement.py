@@ -83,8 +83,15 @@ class TestStatus(SiteTestCase):
 				"field": "standing",
 				"options": ["Enrolled", "Graduated", "Withdrawn"],
 				"continuing": "Enrolled",
+				"require_leaving": False,
 			},
 		)
+
+	def test_the_leaving_rule_needs_a_continuing_status(self):
+		on = {advancement.STATUS_FIELD: "standing", advancement.REQUIRE_LEAVING_STATUS: 1}
+		self.assertFalse(advancement.status(on)["require_leaving"])
+		on[advancement.CONTINUING_STATUS] = "Enrolled"
+		self.assertTrue(advancement.status(on)["require_leaving"])
 
 	def test_a_continuing_status_that_is_no_option_is_none(self):
 		settings = {advancement.STATUS_FIELD: "standing", advancement.CONTINUING_STATUS: "Active"}
@@ -142,6 +149,11 @@ class TestApplyRefuses(TestCase):
 		with patch.object(frappe, "throw", side_effect=frappe.ValidationError):
 			with self.assertRaises(frappe.ValidationError):
 				advancement.set_status("someone", standing, "Expelled")
+
+	def test_a_program_for_a_student_with_no_enrolment(self):
+		with patch.object(frappe, "throw", side_effect=frappe.ValidationError):
+			with self.assertRaises(frappe.ValidationError):
+				advancement.stray_status({"student": "someone", "program": "Two"}, None, {})
 
 	def test_a_current_term_that_does_not_exist(self):
 		with (

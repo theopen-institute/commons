@@ -7,11 +7,11 @@
 <template>
 	<Dialog v-model:open="open" :title="candidate.studentName" :actions="actions" size="lg">
 		<div class="space-y-4">
-			<p class="text-p-sm text-ink-gray-7">
+			<p v-if="!candidate.stray" class="text-p-sm text-ink-gray-7">
 				{{ candidate.program
 				}}<template v-if="candidate.status"> · {{ candidate.status }}</template>
 			</p>
-			<p v-if="holdReason" class="text-p-sm text-ink-gray-6">
+			<p v-if="holdReason && !candidate.stray" class="text-p-sm text-ink-gray-6">
 				Suggested: no new enrolment ({{ holdReason.toLowerCase() }}).
 			</p>
 			<p v-else-if="suggestion.program" class="text-p-sm text-ink-gray-6">
@@ -27,7 +27,18 @@
 				}}
 			</div>
 
-			<fieldset>
+			<!-- A stray has no enrolment this page could carry forward: only its
+			     status can be put right here, and enrolling them is the desk's. -->
+			<p v-if="candidate.stray" class="text-p-sm text-ink-red-4">
+				Marked {{ candidate.status }}, but not enrolled in this term or {{ targetTerm }},
+				and active in no group. This should not happen. Enrol them in the desk, or give
+				them the status that says they left.
+				<template v-if="candidate.lastTerm">
+					Last enrolled in {{ candidate.program }}, {{ candidate.lastTerm }}.
+				</template>
+			</p>
+
+			<fieldset v-else>
 				<legend class="mb-1.5 text-p-sm text-ink-gray-6">
 					Next program in {{ targetTerm }}
 				</legend>
@@ -67,6 +78,10 @@
 				label="Status"
 				:options="statusOptions"
 			/>
+			<p v-if="unresolved" class="text-p-sm text-ink-red-4">
+				Not enrolled in {{ targetTerm }}, so the status has to say how they left:
+				{{ leaving.join(' or ') }}.
+			</p>
 		</div>
 	</Dialog>
 </template>
@@ -74,7 +89,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Dialog, FormControl, type DialogAction } from 'frappe-ui'
-import type { AdvancementSettings, Candidate, Decision } from '@/data/advancementPlan'
+import {
+	leavingStatuses,
+	needsLeavingStatus,
+	type AdvancementSettings,
+	type Candidate,
+	type Decision,
+} from '@/data/advancementPlan'
 
 const props = defineProps<{
 	candidate: Candidate
@@ -135,6 +156,16 @@ function pickProgram(program: string) {
 	if (!program && before && draftStatus.value === continuing) draftStatus.value = ''
 }
 
+const draft = computed<Decision>(() => ({
+	program: draftProgram.value || null,
+	status: draftStatus.value || null,
+}))
+
+const leaving = computed(() => leavingStatuses(props.settings))
+
+/** Going nowhere with a status that says otherwise; see `needsLeavingStatus`. */
+const unresolved = computed(() => needsLeavingStatus(props.candidate, draft.value, props.settings))
+
 const actions = computed<DialogAction[]>(() => [
 	{
 		label: 'Use suggestion',
@@ -144,11 +175,9 @@ const actions = computed<DialogAction[]>(() => [
 	{
 		label: 'Save',
 		variant: 'solid',
+		disabled: unresolved.value,
 		onClick: ({ close }) => {
-			emit('save', {
-				program: draftProgram.value || null,
-				status: draftStatus.value || null,
-			})
+			emit('save', draft.value)
 			close()
 		},
 	},

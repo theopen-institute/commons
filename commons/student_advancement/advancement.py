@@ -46,6 +46,7 @@ NEXT_PROGRAMS_FIELD = PREFIX + "next_programs_field"
 NEXT_PROGRAM_COLUMN = PREFIX + "next_program_column"
 STATUS_FIELD = PREFIX + "status_field"
 CONTINUING_STATUS = PREFIX + "continuing_status"
+REQUIRE_LEAVING_STATUS = PREFIX + "require_leaving_status"
 GROUP_NAME_FORMAT = PREFIX + "group_name_format"
 
 # A placeholder in the group name format: `{term_name}` is a field of the new
@@ -117,6 +118,10 @@ def status(settings) -> dict | None:
 	`continuing` is the option a student is given when an enrolment is made for
 	them, or None where the setting is blank or names no option of the field --
 	the page then suggests no change of status, and still offers every option.
+
+	`require_leaving` is the site's choice that a student enrolled in nothing
+	next term must leave it with one of the other options; see `unresolved`.
+	It needs a continuing status to mean anything, and is off without one.
 	"""
 	field = valid_field(settings, STATUS_FIELD, STUDENT, frozenset(("Select",)))
 	if not field:
@@ -125,7 +130,13 @@ def status(settings) -> dict | None:
 		option for option in (frappe.get_meta(STUDENT).get_field(field).options or "").split("\n") if option
 	]
 	continuing = (settings.get(CONTINUING_STATUS) or "").strip()
-	return {"field": field, "options": options, "continuing": continuing if continuing in options else None}
+	continuing = continuing if continuing in options else None
+	return {
+		"field": field,
+		"options": options,
+		"continuing": continuing,
+		"require_leaving": bool(continuing and settings.get(REQUIRE_LEAVING_STATUS)),
+	}
 
 
 def group_name(settings) -> dict | None:
@@ -199,7 +210,10 @@ def apply(source_term: str, target_term: str, decisions, group_names=None, make_
 
 	`decisions` is one row per enrolment in `source_term` that is to change:
 	`enrollment`, the next `program` (or none), and the `status` to give the
-	student (or none, to leave it). `group_names` names the group to make for
+	student (or none, to leave it). A row may instead name a `student` with
+	no enrolment in `source_term` -- one the page found marked as continuing
+	with nothing behind it -- and then only its `status` is changed.
+	`group_names` names the group to make for
 	each program the new term has no group for yet; a program left out gets
 	its name and the term's. `make_current` also makes `target_term` the
 	current term in Education Settings, in the same transaction; see
@@ -241,6 +255,9 @@ def apply(source_term: str, target_term: str, decisions, group_names=None, make_
 	allowed: dict[str, list[str] | None] = {}
 
 	for decision in decisions:
+		if not decision.get("enrollment") and decision.get("student"):
+			stray_status(decision, standing, done)
+			continue
 		source = sources.get(decision.get("enrollment"))
 		if not source:
 			frappe.throw(
@@ -297,10 +314,59 @@ def apply(source_term: str, target_term: str, decisions, group_names=None, make_
 					}
 				)
 
+	if standing and standing["require_leaving"]:
+		left = unresolved(source_term, target_term, standing)
+		if left:
+			frappe.throw(
+				_(
+					"Nothing was applied. Every student not enrolled in {0} needs a status other than {1}: {2}."
+				).format(target_term, standing["continuing"], ", ".join(left))
+			)
+
 	if frappe.parse_json(make_current):
 		done["current_term"] = set_current_term(target_term)
 
 	return done
+
+
+def unresolved(source_term: str, target_term: str, standing: dict) -> list[str]:
+	"""The students of `source_term` with no enrolment in `target_term` whose status says they continue.
+
+	Asked after everything else is written, so it sees this call's enrolments
+	and statuses: a student enrolled in the new term, by this call or before
+	it, continues; anyone else must have left, and the status is where that
+	is said. Blank counts as not said. Read with the reader's permissions,
+	like the rest of `apply`.
+	"""
+	leaving = [option for option in standing["options"] if option != standing["continuing"]]
+	students = {
+		row.student: row.student_name
+		for row in frappe.get_list(
+			PROGRAM_ENROLLMENT,
+			filters={"academic_term": source_term, "docstatus": 1},
+			fields=["student", "student_name"],
+		)
+	}
+	if not students:
+		return []
+	entering = set(
+		frappe.get_list(
+			PROGRAM_ENROLLMENT,
+			filters={"academic_term": target_term, "docstatus": ("<", 2), "student": ("in", list(students))},
+			pluck="student",
+		)
+	)
+	statuses = {
+		row.name: row.get(standing["field"])
+		for row in frappe.get_list(
+			STUDENT, filters={"name": ("in", list(students))}, fields=["name", standing["field"]]
+		)
+	}
+	return sorted(
+		name or student
+		for student, name in students.items()
+		if student not in entering and statuses.get(student) not in leaving
+	)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -330,6 +396,30 @@ def set_current_term(term: str) -> str:
 	settings.current_academic_year = year
 	settings.save()
 	return term
+
+
+def stray_status(decision: dict, standing: dict | None, done: dict) -> None:
+	"""A status for a student the page found continuing with no enrolment or group to show for it.
+
+	Only a status: with no enrolment in the term being left, there is nothing
+	this page could carry forward, and enrolling them is the desk's.
+	"""
+	if decision.get("program"):
+		frappe.throw(_("A student with no enrolment this term can only have their status changed here."))
+	value = decision.get("status")
+	if not (value and standing):
+		return
+	student = decision["student"]
+	before = set_status(student, standing, value)
+	if before is not None:
+		done["statuses"].append(
+			{
+				"student": student,
+				"student_name": frappe.db.get_value(STUDENT, student, "student_name"),
+				"from": before,
+				"to": value,
+			}
+		)
 
 
 def enrolled(student: str, program: str, term: str) -> bool:

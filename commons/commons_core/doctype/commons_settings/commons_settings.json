@@ -71,6 +71,7 @@
   "advancement_status_field",
   "advancement_status_column",
   "advancement_continuing_status",
+  "advancement_require_leaving_status",
   "advancement_groups_section",
   "advancement_group_name_format",
   "data_sync_tab",
@@ -488,6 +489,14 @@
    "label": "Continuing Status"
   },
   {
+   "default": "0",
+   "depends_on": "eval:doc.advancement_continuing_status",
+   "description": "A student enrolled in nothing in the term being advanced into must leave the term before it with one of the Status Field's other options (Withdrawn or Graduated, say), not with the Continuing Status or none. Apply refuses until every such student has one.",
+   "fieldname": "advancement_require_leaving_status",
+   "fieldtype": "Check",
+   "label": "Require a Leaving Status"
+  },
+  {
    "fieldname": "advancement_groups_section",
    "fieldtype": "Section Break",
    "label": "Student Groups"
@@ -536,7 +545,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-26 15:00:00.000000",
+ "modified": "2026-10-26 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

@@ -3,6 +3,7 @@ import { useCall } from 'frappe-ui'
 import {
   buildCandidates,
   defaultTerms,
+  findStrays,
   groupNameFor,
   NO_SETTINGS,
   renderGroupName,
@@ -116,6 +117,10 @@ export function useAdvancement() {
   const leavingCall = documentList<EnrollmentRow>('Program Enrollment')
   const enteringCall = documentList<EnrollmentRow>('Program Enrollment')
   const studentsCall = documentList<Record<string, string | null>>('Student')
+  const continuingCall = documentList<Record<string, string | null>>('Student')
+  const latestCall = documentList<{ student: string; program: string; academic_term: string }>(
+    'Program Enrollment',
+  )
   const membersCall = childList<MemberRow>()
   const nextCall = childList<Record<string, string>>()
 
@@ -131,6 +136,8 @@ export function useAdvancement() {
   const error = ref<Error | null>(null)
 
   const candidates = ref<Candidate[]>([])
+  /** Continuing students in neither term and no group: see `findStrays`. */
+  const strays = ref<Candidate[]>([])
   const termsLoaded = ref(false)
   const termsLoading = ref(false)
   const termsError = ref<Error | null>(null)
@@ -210,10 +217,12 @@ export function useAdvancement() {
     termsError.value = null
     termsLoaded.value = false
     candidates.value = []
+    strays.value = []
     if (!from || !to) return
     termsLoading.value = true
     try {
       const statusField = settings.value.status?.field ?? null
+      const continuing = settings.value.status?.continuing ?? null
       const chain = settings.value.next_programs
       const [leaving, entering] = await Promise.all([
         readAll(leavingCall, 'document', {
@@ -239,7 +248,7 @@ export function useAdvancement() {
         .map((row) => row.name)
       const programsLeft = [...new Set(leaving.rows.map((row) => row.program))]
 
-      const [studentRows, memberRows, nextRows] = await Promise.all([
+      const [studentRows, memberRows, nextRows, continuingRows] = await Promise.all([
         students.length
           ? readAll(studentsCall, 'document', {
               fields: JSON.stringify(['name', 'student_name', ...(statusField ? [statusField] : [])]),
@@ -266,6 +275,15 @@ export function useAdvancement() {
               order_by: 'parent asc, idx asc',
             })
           : { rows: [], complete: true },
+        // Everyone the status says is continuing, to find those nothing else
+        // says is: see `findStrays`.
+        statusField && continuing
+          ? readAll(continuingCall, 'document', {
+              fields: JSON.stringify(['name', 'student_name', statusField]),
+              filters: JSON.stringify([[statusField, '=', continuing]]),
+              order_by: 'student_name asc',
+            })
+          : { rows: [], complete: true },
       ])
       if (mine !== ticket) return
 
@@ -289,6 +307,38 @@ export function useAdvancement() {
         programs: programs.value,
         sourceTerm: from,
       })
+
+      const strayInput = {
+        continuing: continuingRows.rows.map(
+          (row): StudentRow => ({
+            name: row.name as string,
+            student_name: row.student_name ?? null,
+            status: statusField ? (row[statusField] ?? null) : null,
+          }),
+        ),
+        candidates: candidates.value,
+        entering: entering.rows,
+        groups: groups.value,
+        members: memberRows.rows,
+        sourceTerm: from,
+        terms: terms.value,
+      }
+      const found = findStrays({ ...strayInput, latest: [] })
+      // Where each was last enrolled: for the warning to say, and to leave
+      // out anyone enrolled in a later term than the one being left.
+      const latest = found.length
+        ? (
+            await readAll(latestCall, 'document', {
+              fields: JSON.stringify(['student', 'program', 'academic_term']),
+              filters: JSON.stringify([
+                ['student', 'in', found.map((row) => row.student)],
+                ['docstatus', '<', 2],
+              ]),
+            })
+          ).rows
+        : []
+      if (mine !== ticket) return
+      strays.value = findStrays({ ...strayInput, latest })
       incomplete.value = [
         ...incomplete.value.filter((label) => label === 'terms' || label === 'student groups'),
         ...(leaving.complete && entering.complete ? [] : ['enrolments']),
@@ -332,6 +382,7 @@ export function useAdvancement() {
     loaded,
     error,
     candidates,
+    strays,
     termsLoaded,
     termsLoading,
     termsError,
@@ -357,7 +408,12 @@ export function useApply() {
     {
       source_term: string
       target_term: string
-      decisions: { enrollment: string; program: string | null; status: string | null }[]
+      decisions: {
+        enrollment?: string
+        student?: string
+        program: string | null
+        status: string | null
+      }[]
       group_names: Record<string, string>
       make_current: boolean
     }
