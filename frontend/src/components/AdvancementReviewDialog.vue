@@ -1,7 +1,8 @@
 <!--
-  Everything Apply will write, before it writes it: the groups the new term
-  needs, named here; the draft enrolments by program; and each student's
-  change. One request, so it lands whole or not at all.
+  Everything Apply will write, before it writes it: the draft enrolments by
+  program, and each student's change. One request, so it lands whole or not at
+  all. Groups, fees and invoices are not made here: they follow when each
+  enrolment is submitted.
 -->
 
 <template>
@@ -27,36 +28,19 @@
 				</p>
 			</section>
 
-			<section v-if="plan.newGroups.length">
-				<h3 class="mb-1 text-base-medium text-ink-gray-8">New student groups</h3>
-				<p class="mb-2 text-p-sm text-ink-gray-5">
-					{{ targetTerm }} has no group for
-					{{ plan.newGroups.length === 1 ? 'this program' : 'these programs' }} yet. Each
-					is set up like the program's last group, without students: they join when their
-					enrolment is submitted.
-				</p>
-				<div class="space-y-2">
-					<FormControl
-						v-for="program in plan.newGroups"
-						:key="program"
-						v-model="names[program]"
-						type="text"
-						:label="program"
-					/>
-				</div>
-			</section>
-
 			<section>
 				<h3 class="mb-1 text-base-medium text-ink-gray-8">Draft enrolments</h3>
 				<p v-if="!plan.enrolments.length" class="text-p-sm text-ink-gray-5">None.</p>
-				<ul v-else class="text-p-sm text-ink-gray-7">
-					<li v-for="row in plan.enrolments" :key="row.program">
-						{{ pluralise(row.count, 'student') }} into {{ row.program }}
-						<span class="text-ink-gray-5">
-							· {{ row.group ? `group ${row.group}` : 'new group' }}
-						</span>
-					</li>
-				</ul>
+				<template v-else>
+					<ul class="text-p-sm text-ink-gray-7">
+						<li v-for="row in plan.enrolments" :key="row.program">
+							{{ pluralise(row.count, 'student') }} into {{ row.program }}
+						</li>
+					</ul>
+					<p class="mt-1 text-p-sm text-ink-gray-5">
+						Submitting each one puts the student in the term's group and bills them.
+					</p>
+				</template>
 			</section>
 
 			<section>
@@ -109,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Dialog, ErrorMessage, FormControl, toast, type DialogAction } from 'frappe-ui'
 import { useApply, type Applied } from '@/data/advancement'
 import { leavingStatuses, type AdvancementSettings, type Plan } from '@/data/advancementPlan'
@@ -117,8 +101,6 @@ import { pluralise } from '@/data/format'
 
 const props = defineProps<{
 	plan: Plan
-	/** The name a new group for a program is offered under. */
-	nameGroup: (program: string) => string
 	sourceTerm: string
 	targetTerm: string
 	/** Education Settings' current term, or null. */
@@ -140,23 +122,14 @@ const apply = useApply()
 const busy = ref(false)
 const problem = ref('')
 
-/** The new groups' names, suggested afresh each time the dialog opens. */
-const names = reactive<Record<string, string>>({})
-
 watch(open, (isOpen) => {
 	if (!isOpen) return
 	problem.value = ''
 	makeCurrent.value = true
-	for (const key of Object.keys(names)) delete names[key]
-	for (const program of props.plan.newGroups) {
-		names[program] = props.nameGroup(program)
-	}
 })
 
 const offerCurrent = computed(() => props.canSetCurrent && props.currentTerm !== props.targetTerm)
 const makeCurrent = ref(true)
-
-const missingName = computed(() => props.plan.newGroups.some((program) => !names[program]?.trim()))
 
 async function submit(close: () => void) {
 	busy.value = true
@@ -180,9 +153,6 @@ async function submit(close: () => void) {
 							status: row.decision.status,
 					  }
 			),
-			group_names: Object.fromEntries(
-				props.plan.newGroups.map((program) => [program, names[program].trim()])
-			),
 			make_current: offerCurrent.value && makeCurrent.value,
 		})
 		if (!result || apply.error) {
@@ -205,7 +175,7 @@ const actions = computed<DialogAction[]>(() => [
 	{
 		label: `Apply ${pluralise(props.plan.rows.length, 'change')}`,
 		variant: 'solid',
-		disabled: !props.plan.rows.length || missingName.value || props.plan.unresolved.length > 0,
+		disabled: !props.plan.rows.length || props.plan.unresolved.length > 0,
 		loading: busy.value,
 		onClick: ({ close }) => submit(close),
 	},

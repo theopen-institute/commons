@@ -5,8 +5,6 @@ import {
   continuingWithoutGroup,
   findStrays,
   defaultTerms,
-  groupNameFor,
-  renderGroupName,
   holdReason,
   needsLeavingStatus,
   NO_SETTINGS,
@@ -19,12 +17,10 @@ import {
 
 /**
  * What the advancement page has to get right. Each of these fails quietly: a
- * wrong suggestion is one more student a busy person has to notice, and a
- * wrong group name is a group made under a name nobody chose.
+ * wrong suggestion is one more student a busy person has to notice.
  */
 
 const SETTINGS: AdvancementSettings = {
-  group_name: null,
   next_programs: { table_field: 'next', table_doctype: 'Next Program', program_column: 'program' },
   status: {
     field: 'standing',
@@ -38,8 +34,8 @@ function enrolment(student: string, program: string, term = 'T1', docstatus = 1)
   return { name: `PE-${student}-${term}`, student, student_name: student, program, academic_term: term, docstatus }
 }
 
-function group(name: string, program: string, term: string, creation: string): GroupRow {
-  return { name, student_group_name: name, program, academic_term: term, creation }
+function group(name: string, program: string, term: string): GroupRow {
+  return { name, program, academic_term: term }
 }
 
 function candidate(overrides: Partial<Candidate> = {}): Candidate {
@@ -64,7 +60,7 @@ describe('candidates', () => {
       { name: 'a', student_name: 'Ann', status: 'Enrolled' },
       { name: 'b', student_name: 'Bo', status: null },
     ],
-    groups: [group('G1', 'One', 'T1', '1'), group('G2', 'Two', 'T1', '1'), group('GX', 'One', 'T0', '0')],
+    groups: [group('G1', 'One', 'T1'), group('G2', 'Two', 'T1'), group('GX', 'One', 'T0')],
     members: [
       { parent: 'G1', student: 'a', active: 1 },
       { parent: 'G1', student: 'b', active: 0 },
@@ -127,48 +123,8 @@ describe('suggestions', () => {
   })
 })
 
-describe('group names', () => {
-  const groups = [
-    group('W&R - 2024-25 Fall - Semester 1', 'One', '2024-25 (Fall)', '2024'),
-    group('W&R - 2025-26 Spring - Semester 1', 'One', '2025-26 (Spring)', '2026'),
-    group('Two 2025-26 (Spring)', 'Two', '2025-26 (Spring)', '2026'),
-    group('Odd name', 'Odd', '2025-26 (Spring)', '2026'),
-  ]
-
-  it("swaps the term in the program's latest group's name, with or without brackets", () => {
-    expect(groupNameFor('One', '2026-27 (Fall)', groups)).toBe('W&R - 2026-27 Fall - Semester 1')
-    expect(groupNameFor('Two', '2026-27 (Fall)', groups)).toBe('Two 2026-27 (Fall)')
-  })
-
-  it('falls back to the program and the term', () => {
-    expect(groupNameFor('Odd', '2026-27 (Fall)', groups)).toBe('Odd - 2026-27 (Fall)')
-    expect(groupNameFor('New', '2026-27 (Fall)', groups)).toBe('New - 2026-27 (Fall)')
-  })
-})
-
-describe('the group name format', () => {
-  const format = 'W&R - {academic_year} {term_name} - {program.custom_group_label}'
-  const term = { name: '2026-27 (Fall)', academic_year: '2026-27', term_name: 'Fall' }
-
-  it("fills the term's fields and the program's", () => {
-    expect(
-      renderGroupName(format, term, { name: 'M', custom_group_label: 'Maintenance Enrollment' }),
-    ).toBe('W&R - 2026-27 Fall - Maintenance Enrollment')
-    expect(renderGroupName('{program.name} - {name}', term, { name: 'Sem. 2' })).toBe(
-      'Sem. 2 - 2026-27 (Fall)',
-    )
-  })
-
-  it('is nothing where a placeholder has no value', () => {
-    expect(renderGroupName(format, term, { name: 'M', custom_group_label: '' })).toBeNull()
-    expect(renderGroupName(format, {}, { custom_group_label: 'X' })).toBeNull()
-  })
-})
-
 describe('the plan', () => {
-  const groups = [group('Existing', 'Two', 'T2', '1')]
-
-  it('counts enrolments, new groups and status changes, and leaves out what would change nothing', () => {
+  it('counts enrolments and status changes, and leaves out what would change nothing', () => {
     const a = candidate()
     const b = candidate({ enrollment: 'PE-b', student: 'b', status: null })
     const c = candidate({ enrollment: 'PE-c', student: 'c', already: [{ program: 'Two', name: 'x', draft: false }] })
@@ -179,16 +135,13 @@ describe('the plan', () => {
         'PE-b': { program: 'Two', status: 'Enrolled' },
         'PE-c': { program: 'Two', status: null },
       },
-      groups,
-      'T2',
     )
     expect(plan.rows.map((row) => row.candidate.student)).toEqual(['a', 'b'])
     expect(plan.rows[0].decision).toEqual({ program: 'Hold', status: null })
     expect(plan.enrolments).toEqual([
-      { program: 'Hold', count: 1, group: null },
-      { program: 'Two', count: 1, group: 'Existing' },
+      { program: 'Hold', count: 1 },
+      { program: 'Two', count: 1 },
     ])
-    expect(plan.newGroups).toEqual(['Hold'])
     expect(plan.statusChanges).toBe(1)
   })
 })
@@ -215,8 +168,6 @@ describe('students going nowhere', () => {
     const plan = buildPlan(
       [candidate(), candidate({ enrollment: 'PE-b', student: 'b' })],
       { 'PE-a': nowhere, 'PE-b': { program: null, status: 'Withdrawn' } },
-      [],
-      'T2',
       SETTINGS,
     )
     expect(plan.unresolved.map((row) => row.student)).toEqual(['a'])
@@ -240,7 +191,7 @@ describe('continuing students with nothing behind them', () => {
     ],
     candidates: [candidate({ student: 'listed' })],
     entering: [enrolment('entering', 'One', 'T2', 0)],
-    groups: [group('G1', 'One', 'T1', '1')],
+    groups: [group('G1', 'One', 'T1')],
     members: [{ parent: 'G1', student: 'active', active: 1 }],
     sourceTerm: 'T1',
     terms,

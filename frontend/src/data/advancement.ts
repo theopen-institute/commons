@@ -4,14 +4,11 @@ import {
   buildCandidates,
   defaultTerms,
   findStrays,
-  groupNameFor,
   NO_SETTINGS,
-  renderGroupName,
   type AdvancementSettings,
   type Candidate,
   type Decision,
   type EnrollmentRow,
-  type FieldValues,
   type GroupRow,
   type MemberRow,
   type NextRow,
@@ -28,8 +25,8 @@ import { permissionCall } from './permissions'
  * `frappe.client.get_list`, as the attendance register's do and for the same
  * reasons (see `data/attendance.ts`): every row is filtered by the reader's own
  * permissions, and the document API strips a child table's fields. The write
- * is this app's `apply`, because a term's groups, enrolments and statuses are
- * one act that should land whole or not at all. See
+ * is this app's `apply`, because a term's enrolments and statuses are one act
+ * that should land whole or not at all. See
  * `commons.student_advancement.advancement`.
  */
 
@@ -97,9 +94,8 @@ function readAll<Row>(
  * The page's data for one pair of terms, and what it needs before any pair.
  *
  * `load()` reads what does not depend on the terms -- the settings, the terms,
- * the programs, every student group and which terms have enrolments -- and
- * `loadTerms(from, to)` the rest. The groups are read whole because a new
- * group is named after the program's latest one, whatever term it was in.
+ * the programs and which terms have enrolments -- and `loadTerms(from, to)` the
+ * rest, the groups of the term being left among them.
  */
 export function useAdvancement() {
   const settingsCall = useCall<AdvancementSettings>({
@@ -107,7 +103,7 @@ export function useAdvancement() {
     immediate: false,
   })
   const termsCall = documentList<TermRow>('Academic Term')
-  const programsCall = documentList<FieldValues & { name: string }>('Program')
+  const programsCall = documentList<{ name: string }>('Program')
   const groupsCall = documentList<GroupRow>('Student Group')
   const enrolledTermsCall = documentList<{ academic_term: string }>('Program Enrollment')
   const currentTermCall = useCall<string | null, { doctype: string; field: string }>({
@@ -127,8 +123,6 @@ export function useAdvancement() {
   const settings = ref<AdvancementSettings>(NO_SETTINGS)
   const terms = ref<TermRow[]>([])
   const programs = ref<string[]>([])
-  const programRowsByName = ref<Record<string, FieldValues>>({})
-  const groups = ref<GroupRow[]>([])
   const defaults = ref({ from: '', to: '' })
   const loaded = ref(false)
   /** Education Settings' current term, or null where it is unset or unreadable. */
@@ -147,32 +141,17 @@ export function useAdvancement() {
   async function load() {
     error.value = null
     try {
-      // The settings first: the group name format says which fields of the
-      // terms and the programs to read.
       const found = await settingsCall.submit()
       if (found === null) throw settingsCall.error ?? new Error('The settings could not be loaded.')
       settings.value = { ...NO_SETTINGS, ...found }
-      const naming = settings.value.group_name
-      const [termRows, programRows, groupRows, enrolled] = await Promise.all([
+      const [termRows, programRows, enrolled] = await Promise.all([
         readAll(termsCall, 'document', {
-          fields: JSON.stringify([
-            ...new Set(['name', 'academic_year', 'term_start_date', ...(naming?.term_fields ?? [])]),
-          ]),
+          fields: JSON.stringify(['name', 'academic_year', 'term_start_date']),
           order_by: 'term_start_date desc, name asc',
         }),
         readAll(programsCall, 'document', {
-          fields: JSON.stringify([...new Set(['name', ...(naming?.program_fields ?? [])])]),
+          fields: JSON.stringify(['name']),
           order_by: 'name asc',
-        }),
-        readAll(groupsCall, 'document', {
-          fields: JSON.stringify([
-            'name',
-            'student_group_name',
-            'program',
-            'academic_term',
-            'creation',
-          ]),
-          order_by: 'creation desc',
         }),
         readAll(enrolledTermsCall, 'document', {
           fields: JSON.stringify(['academic_term']),
@@ -183,17 +162,12 @@ export function useAdvancement() {
       ])
       terms.value = termRows.rows
       programs.value = programRows.rows.map((row) => row.name)
-      programRowsByName.value = Object.fromEntries(programRows.rows.map((row) => [row.name, row]))
-      groups.value = groupRows.rows
       await loadCurrentTerm()
       defaults.value = defaultTerms(
         termRows.rows,
         enrolled.rows.map((row) => row.academic_term),
       )
-      incomplete.value = [
-        ...(termRows.complete ? [] : ['terms']),
-        ...(groupRows.complete ? [] : ['student groups']),
-      ]
+      incomplete.value = termRows.complete ? [] : ['terms']
       loaded.value = true
     } catch (problem) {
       error.value = problem as Error
@@ -224,7 +198,7 @@ export function useAdvancement() {
       const statusField = settings.value.status?.field ?? null
       const continuing = settings.value.status?.continuing ?? null
       const chain = settings.value.next_programs
-      const [leaving, entering] = await Promise.all([
+      const [leaving, entering, groupRows] = await Promise.all([
         readAll(leavingCall, 'document', {
           fields: JSON.stringify(['name', 'student', 'student_name', 'program', 'academic_term', 'docstatus']),
           filters: JSON.stringify([
@@ -241,11 +215,16 @@ export function useAdvancement() {
           ]),
           order_by: 'program asc',
         }),
+        // The groups of the term being left: who was active in one says who
+        // simply finished the term.
+        readAll(groupsCall, 'document', {
+          fields: JSON.stringify(['name', 'program', 'academic_term']),
+          filters: JSON.stringify([['academic_term', '=', from]]),
+        }),
       ])
+      const groups = groupRows.rows
       const students = [...new Set(leaving.rows.map((row) => row.student))]
-      const leavingGroups = groups.value
-        .filter((row) => row.academic_term === from)
-        .map((row) => row.name)
+      const leavingGroups = groups.map((row) => row.name)
       const programsLeft = [...new Set(leaving.rows.map((row) => row.program))]
 
       const [studentRows, memberRows, nextRows, continuingRows] = await Promise.all([
@@ -297,7 +276,7 @@ export function useAdvancement() {
             status: statusField ? (row[statusField] ?? null) : null,
           }),
         ),
-        groups: groups.value,
+        groups,
         members: memberRows.rows,
         nextRows: chain
           ? nextRows.rows.map(
@@ -318,7 +297,7 @@ export function useAdvancement() {
         ),
         candidates: candidates.value,
         entering: entering.rows,
-        groups: groups.value,
+        groups,
         members: memberRows.rows,
         sourceTerm: from,
         terms: terms.value,
@@ -340,7 +319,8 @@ export function useAdvancement() {
       if (mine !== ticket) return
       strays.value = findStrays({ ...strayInput, latest })
       incomplete.value = [
-        ...incomplete.value.filter((label) => label === 'terms' || label === 'student groups'),
+        ...incomplete.value.filter((label) => label === 'terms'),
+        ...(groupRows.complete ? [] : ['student groups']),
         ...(leaving.complete && entering.complete ? [] : ['enrolments']),
       ]
       termsLoaded.value = true
@@ -351,33 +331,12 @@ export function useAdvancement() {
     }
   }
 
-  /**
-   * The name a new group for `program` in `term` is offered under: the site's
-   * format where it has one and every placeholder has a value, else the
-   * program's last group's name with the term swapped.
-   */
-  function groupName(program: string, term: string): string {
-    const naming = settings.value.group_name
-    const termRow = terms.value.find((row) => row.name === term)
-    if (naming && termRow) {
-      const named = renderGroupName(
-        naming.format,
-        termRow as unknown as FieldValues,
-        programRowsByName.value[program] ?? { name: program },
-      )
-      if (named) return named
-    }
-    return groupNameFor(program, term, groups.value)
-  }
-
   return {
     currentTerm,
     loadCurrentTerm,
-    groupName,
     settings,
     terms,
     programs,
-    groups,
     defaults,
     loaded,
     error,
@@ -396,7 +355,6 @@ export function useAdvancement() {
 export interface Applied {
   /** The term made current, where Apply was asked to. */
   current_term?: string
-  groups: string[]
   enrollments: { name: string; student: string; student_name: string; program: string }[]
   skipped: { student: string; student_name: string; program: string }[]
   statuses: { student: string; student_name: string; from: string; to: string }[]
@@ -414,7 +372,6 @@ export function useApply() {
         program: string | null
         status: string | null
       }[]
-      group_names: Record<string, string>
       make_current: boolean
     }
   >({

@@ -101,30 +101,6 @@ class TestStatus(SiteTestCase):
 		self.assertIsNone(advancement.status({advancement.STATUS_FIELD: "note"}))
 
 
-class TestGroupName(SiteTestCase):
-	def test_term_and_program_fields(self):
-		settings = {advancement.GROUP_NAME_FORMAT: "W&R - {academic_year} {term_name} - {program.label}"}
-		self.assertEqual(
-			advancement.group_name(settings),
-			{
-				"format": "W&R - {academic_year} {term_name} - {program.label}",
-				"term_fields": ["academic_year", "term_name"],
-				"program_fields": ["label"],
-			},
-		)
-
-	def test_names_are_allowed(self):
-		settings = {advancement.GROUP_NAME_FORMAT: "{program.name} - {name}"}
-		self.assertEqual(advancement.group_name(settings)["program_fields"], ["name"])
-
-	def test_a_field_the_doctype_lacks_is_none(self):
-		self.assertIsNone(advancement.group_name({advancement.GROUP_NAME_FORMAT: "{program.term_name}"}))
-
-	def test_no_placeholder_or_unset_is_none(self):
-		self.assertIsNone(advancement.group_name({advancement.GROUP_NAME_FORMAT: "Fixed"}))
-		self.assertIsNone(advancement.group_name({}))
-
-
 class TestApplyRefuses(TestCase):
 	def test_a_reader_who_may_not_enrol(self):
 		def throw(message, exc=frappe.ValidationError, *args, **kwargs):

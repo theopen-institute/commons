@@ -502,7 +502,7 @@
    "label": "Student Groups"
   },
   {
-   "description": "How a new term's student group is named. <code>{field}</code> is a field of the <b>Academic Term</b> and <code>{program.field}</code> one of the <b>Program</b>; <code>name</code> is each one's own name. For example <code>{program.name} - {name}</code>. Left blank, a group is named after the program's last one, with the term swapped. Either way the name can be changed before it is made.",
+   "description": "How a term's student group is named when a submitted enrolment needs one and the term has none yet (Commons does not make groups: the site's own rules on submission read this). <code>{field}</code> is a field of the <b>Academic Term</b> and <code>{program.field}</code> one of the <b>Program</b>; <code>name</code> is each one's own name. For example <code>{program.name} - {name}</code>. Blank, or with a placeholder that has no value, a group is named after the program's last one, with the term swapped.",
    "fieldname": "advancement_group_name_format",
    "fieldtype": "Data",
    "label": "Group Name Format"
@@ -545,7 +545,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-26 16:00:00.000000",
+ "modified": "2026-10-27 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Commons Core",
  "name": "Commons Settings",

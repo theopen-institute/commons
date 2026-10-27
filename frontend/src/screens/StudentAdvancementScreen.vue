@@ -309,7 +309,6 @@
 		<AdvancementReviewDialog
 			v-model:open="reviewOpen"
 			:plan="plan"
-			:name-group="(program: string) => data.groupName(program, to)"
 			:source-term="from"
 			:target-term="to"
 			:current-term="data.currentTerm.value"
@@ -361,7 +360,7 @@ import type { PageAction, ScreenQuery } from '@/islands/contract'
  *
  * The rows are read-only. A row opens a dialog that changes the decision held
  * here, in the page, and nothing is written until Review and Apply, which shows
- * every group, enrolment and status it will write before it writes them. The
+ * every enrolment and status it will write before it writes them. The
  * two terms live in the query string (`from`, `to`), so a link reopens the
  * same view; like the attendance register, the screen reports its title,
  * actions and query rather than drawing a header, so it runs the same in the
@@ -452,9 +451,7 @@ const allDecisions = computed(() =>
 	Object.fromEntries(everyone.value.map((row) => [row.enrollment, decisionOf(row)]))
 )
 
-const plan = computed(() =>
-	buildPlan(everyone.value, allDecisions.value, data.groups.value, to.value, data.settings.value)
-)
+const plan = computed(() => buildPlan(everyone.value, allDecisions.value, data.settings.value))
 
 const leaving = computed(() => leavingStatuses(data.settings.value))
 
@@ -528,7 +525,6 @@ const appliedSummary = computed(() => {
 	if (!result) return ''
 	const parts = [
 		pluralise(result.enrollments.length, 'draft enrolment'),
-		pluralise(result.groups.length, 'new group'),
 		pluralise(result.statuses.length, 'status change', 'status changes'),
 	]
 	return `Made ${parts.join(', ')}.`

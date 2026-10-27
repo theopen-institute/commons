@@ -2,8 +2,8 @@
  * A term's advancement, worked out from the rows the document API returns.
  *
  * Pure: no Vue, no network. `advancement.ts` reads; this joins what came back
- * into one row per enrolment, suggests what becomes of each student, names
- * the groups a new term needs, and counts what Apply will write. The rules a
+ * into one row per enrolment, suggests what becomes of each student, and
+ * counts what Apply will write. The rules a
  * school has -- which program follows which, what a continuing student is
  * called -- come in as data, from the site's own fields; see
  * `commons.student_advancement.advancement`.
@@ -26,23 +26,12 @@ export interface AdvancementSettings {
     /** The site requires a student going nowhere to leave with another option. */
     require_leaving: boolean
   } | null
-  /** The format a new group is named by, and the fields of the term and the
-   *  program it reads. Null: named after the program's last group. */
-  group_name: {
-    format: string
-    term_fields: string[]
-    program_fields: string[]
-  } | null
 }
 
 export const NO_SETTINGS: AdvancementSettings = {
   next_programs: null,
   status: null,
-  group_name: null,
 }
-
-/** A row's fields by name, as read for the group name format. */
-export type FieldValues = Record<string, string | number | null | undefined>
 
 export interface TermRow {
   name: string
@@ -66,12 +55,11 @@ export interface StudentRow {
   status: string | null
 }
 
+/** A group of the term being left: who was active in it says who simply finished the term. */
 export interface GroupRow {
   name: string
-  student_group_name: string | null
   program: string | null
   academic_term: string | null
-  creation: string
 }
 
 export interface MemberRow {
@@ -288,74 +276,12 @@ export function suggest(candidate: Candidate, settings: AdvancementSettings): De
   }
 }
 
-/** The ways a term's name is written into a group's: as it stands, and without brackets. */
-export function termForms(term: string): string[] {
-  const bare = term.replace(/[()[\]]/g, '').replace(/\s+/g, ' ').trim()
-  return bare === term ? [term] : [term, bare]
-}
-
-/**
- * A group name from the site's format: `{field}` from the term, and
- * `{program.field}` from the program. Null if a placeholder has no value, so a
- * program whose label is not filled in yet falls back rather than being named
- * "W&R - 2026-27 Fall - ".
- */
-export function renderGroupName(
-  format: string,
-  term: FieldValues,
-  program: FieldValues,
-): string | null {
-  let missing = false
-  const name = format.replace(
-    /\{\s*(program\.)?([a-z0-9_]+)\s*\}/g,
-    (_, onProgram: string | undefined, field: string) => {
-      const value = (onProgram ? program : term)[field]
-      if (value === null || value === undefined || String(value).trim() === '') missing = true
-      return String(value ?? '').trim()
-    },
-  )
-  return missing ? null : name.replace(/\s+/g, ' ').trim()
-}
-
-/**
- * The name to give a new group for `program` in `term`, where the site has no
- * format for it (see `renderGroupName`).
- *
- * Copied from the program's latest group, with that group's term swapped for
- * the new one -- a school names its groups after a pattern, and the last one
- * made is the best statement of it. The term is matched as written or without
- * its brackets ("2025-26 Spring" for "2025-26 (Spring)"). Where the program
- * has never been grouped, or its last group's name does not contain its term,
- * the program and the term.
- */
-export function groupNameFor(program: string, term: string, groups: GroupRow[]): string {
-  const fallback = `${program} - ${term}`
-  const latest = groups
-    .filter((row) => row.program === program && row.academic_term && row.academic_term !== term)
-    .sort((a, b) => b.creation.localeCompare(a.creation))[0]
-  const name = latest?.student_group_name || latest?.name
-  if (!latest?.academic_term || !name) return fallback
-  const from = termForms(latest.academic_term)
-  const to = termForms(term)
-  for (let i = from.length - 1; i >= 0; i--) {
-    if (name.includes(from[i])) return name.replace(from[i], to[Math.min(i, to.length - 1)])
-  }
-  return fallback
-}
-
-/** The term's existing group for a program, if it has one. */
-export function existingGroup(program: string, term: string, groups: GroupRow[]): GroupRow | null {
-  return groups.find((row) => row.program === program && row.academic_term === term) ?? null
-}
-
 /** What Apply will write, worked out from the decisions. */
 export interface Plan {
   /** Rows with something to write, in candidate order. */
   rows: { candidate: Candidate; decision: Decision }[]
   /** Enrolments to draft, counted by program. */
-  enrolments: { program: string; count: number; group: string | null }[]
-  /** Programs the new term has no group for, which Apply will make. */
-  newGroups: string[]
+  enrolments: { program: string; count: number }[]
   /** Students whose status changes. */
   statusChanges: number
   /** Students going nowhere whose status still says they continue. Apply
@@ -400,8 +326,6 @@ export function needsLeavingStatus(
 export function buildPlan(
   candidates: Candidate[],
   decisions: Record<string, Decision>,
-  groups: GroupRow[],
-  targetTerm: string,
   settings: AdvancementSettings = NO_SETTINGS,
 ): Plan {
   const rows: Plan['rows'] = []
@@ -422,15 +346,9 @@ export function buildPlan(
     if (program) counts.set(program, (counts.get(program) ?? 0) + 1)
     if (status) statusChanges++
   }
-  const enrolments = [...counts].map(([program, count]) => ({
-    program,
-    count,
-    group: existingGroup(program, targetTerm, groups)?.name ?? null,
-  }))
   return {
     rows,
-    enrolments,
-    newGroups: enrolments.filter((row) => !row.group).map((row) => row.program),
+    enrolments: [...counts].map(([program, count]) => ({ program, count })),
     statusChanges,
     unresolved,
   }
