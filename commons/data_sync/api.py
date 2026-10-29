@@ -11,10 +11,15 @@ A record's attached files travel with it: the page asks this site which it
 lacks (`missing_files`), reads them from the source (`file`) and passes them to
 `apply`. See `files.py`.
 
-`apply` and `delete` are the only writes, and they run on the site the page is
-on, one record at a time, from the page's details modal. Each carries the hash
-the page saw for this site's copy and refuses if the record has changed since,
-so a compare that has gone stale cannot overwrite somebody's edit.
+`apply`, `delete` and `rename` are the only writes, and they run on the site the
+page is on, one record at a time, from the page's details modal. Each carries the
+hash the page saw for this site's copy and refuses if the record has changed
+since, so a compare that has gone stale cannot overwrite somebody's edit.
+
+A record one site renamed would otherwise show as two -- only on one site under
+its new name, only on the other under its old one. The manifest lists each
+renamed record's earlier names (`renames`), the page pairs the two up, and
+`rename` gives this site's record the source's name.
 
 Everything is System Manager only. The records are the site's configuration --
 scripts, permissions, report queries -- not something to hand any desk user.
@@ -63,7 +68,7 @@ def manifest(rules=None) -> dict:
 	_guard()
 	selected = _rules(rules)
 
-	entries, errors, duplicates = {}, {}, {}
+	entries, errors, duplicates, renames = {}, {}, {}, {}
 	for rule in selected:
 		doctype = rule["doctype"]
 		try:
@@ -78,6 +83,12 @@ def manifest(rules=None) -> dict:
 		dupes = {key: r["duplicates"] for key, r in loaded.items() if r.get("duplicates")}
 		if dupes:
 			duplicates[doctype] = dupes
+		# Only records known by their name: a key of other fields survives a rename.
+		if not rule["key_fields"] and not frappe.get_meta(doctype).issingle:
+			formers = records.former_names(doctype)
+			renamed = {key: formers[r["name"]] for key, r in loaded.items() if r["name"] in formers}
+			if renamed:
+				renames[doctype] = renamed
 
 	return {
 		"site": frappe.local.site,
@@ -86,6 +97,7 @@ def manifest(rules=None) -> dict:
 		"entries": entries,
 		"errors": errors,
 		"duplicates": duplicates,
+		"renames": renames,
 	}
 
 
@@ -237,6 +249,31 @@ def delete(rule, key: str, expected: str | None = None) -> dict:
 	if rule["doctype"] == "Custom DocPerm":
 		frappe.clear_cache(doctype=current["doc"].get("parent"))
 	return _state(rule, key)
+
+
+@frappe.whitelist(methods=["POST"])
+def rename(rule, key: str, new_name: str, expected: str | None = None) -> dict:
+	"""Give this site's record `key` the name the source knows it by, `new_name`.
+
+	Frappe's own rename, so links to the record follow it and its history stays
+	with it. Its content is left as it is: the page compares it under the new
+	name afterwards, to copy as usual. Returns this site's state under both names.
+	"""
+	_guard()
+	rule = sync_rules.parse(rule)[0]
+	doctype = rule["doctype"]
+	if rule["key_fields"] or frappe.get_meta(doctype).issingle:
+		frappe.throw(_("Only records known by their name can be renamed."))
+	current = _check_unchanged(rule, key, expected)
+	if not current:
+		frappe.throw(_("This site has no such record."))
+	# Names compare without case in the database, so a change of case alone finds itself.
+	if current["name"].lower() != new_name.lower() and frappe.db.exists(doctype, new_name):
+		frappe.throw(_("This site already has a {0} named {1}.").format(_(doctype), frappe.bold(new_name)))
+	frappe.rename_doc(doctype, current["name"], new_name, force=True, show_alert=False)
+	# Caches that hold records by name, such as which Server Scripts run on an event.
+	frappe.clear_cache()
+	return {"old": _state(rule, key), "new": _state(rule, new_name)}
 
 
 def _check_unchanged(rule: dict, key: str, expected: str | None) -> dict | None:

@@ -29,7 +29,9 @@ whose hashes were computed differently.
 
 import datetime
 import hashlib
+import html
 import json
+import re
 from decimal import Decimal
 
 import frappe
@@ -58,6 +60,9 @@ CHILD_SKIP = frozenset(
 
 # How many parent names go into one `IN (...)` when reading child rows.
 CHUNK = 500
+
+# The comment `frappe.rename_doc` adds to a renamed record, names in `frappe.bold`.
+RENAMED = re.compile(r"renamed from <strong>(.+?)</strong> to <strong>(.+?)</strong>")
 
 
 def load(rule: dict) -> dict[str, dict]:
@@ -192,6 +197,39 @@ def record_key(name: str, doc: dict, rule: dict) -> str:
 	if not rule["key_fields"]:
 		return name
 	return json.dumps([str(doc.get(f, "")) for f in rule["key_fields"]], ensure_ascii=False)
+
+
+def renamed_from(content: str | None) -> tuple[str, str] | None:
+	"""The old and new name in a rename comment, or None for any other comment."""
+	match = RENAMED.fullmatch((content or "").strip())
+	return tuple(html.unescape(n) for n in match.groups()) if match else None
+
+
+def former_names(doctype: str) -> dict[str, list[str]]:
+	"""`{name: [earlier names, oldest first]}` for this doctype's renamed records.
+
+	Read from the "renamed from <old> to <new>" comment Frappe adds on every
+	rename. A later rename carries the record's comments along, so a record
+	renamed twice holds both. Only Frappe's English wording is recognised: a
+	rename made in another language is not found, and the record is listed under
+	each name as before.
+	"""
+	out = {}
+	for name, content in frappe.get_all(
+		"Comment",
+		filters={"reference_doctype": doctype, "comment_type": "Edit", "content": ["like", "renamed from %"]},
+		fields=["reference_name", "content"],
+		order_by="creation asc",
+		as_list=True,
+	):
+		names = renamed_from(content)
+		if not names:
+			continue
+		earlier = out.setdefault(name, [])
+		for n in names:
+			if n != name and n not in earlier:
+				earlier.append(n)
+	return {name: earlier for name, earlier in out.items() if earlier}
 
 
 def hash_of(doc: dict, rule: dict) -> str:

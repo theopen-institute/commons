@@ -24,6 +24,13 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 	// How a record can differ between the two sites, in the order listed. The
 	// sites are compared as they are now: which one changed is for you to judge.
 	const STATUSES = {
+		renamed: {
+			label: __("Renamed"),
+			color: "purple",
+			help: __(
+				"One site renamed this record, so the two know it by different names. Renaming it here gives it the source's name; its content is then compared as usual."
+			),
+		},
 		differs: {
 			label: __("Differs"),
 			color: "blue",
@@ -46,6 +53,37 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 	function classify(d, p) {
 		if (d === p) return null;
 		return !p ? "only_source" : !d ? "only_here" : "differs";
+	}
+
+	// A record one site renamed, as `{src, here}` keys: the source's name for it
+	// and this site's. s, h: the doctype's entries; src_renames, here_renames:
+	// each site's earlier names per record, oldest first. A pair needs the new
+	// name on one site only and an earlier name on the other only; the most
+	// recent earlier name wins.
+	function renamed_pairs(s, h, src_renames = {}, here_renames = {}) {
+		const pairs = [];
+		const taken_src = new Set();
+		const taken_here = new Set();
+		const only_src = (k) => s[k] && !h[k] && !taken_src.has(k);
+		const only_here = (k) => h[k] && !s[k] && !taken_here.has(k);
+		const add = (src, here) => {
+			pairs.push({ src, here });
+			taken_src.add(src);
+			taken_here.add(here);
+		};
+		// The source renamed it: this site still has it under an earlier name.
+		for (const [key, earlier] of Object.entries(src_renames || {})) {
+			if (!only_src(key)) continue;
+			const old = [...earlier].reverse().find(only_here);
+			if (old) add(key, old);
+		}
+		// This site renamed it: the source still has it under an earlier name.
+		for (const [key, earlier] of Object.entries(here_renames || {})) {
+			if (!only_here(key)) continue;
+			const old = [...earlier].reverse().find(only_src);
+			if (old) add(old, key);
+		}
+		return pairs;
 	}
 
 	const esc = (v) => frappe.utils.escape_html(v == null ? "" : String(v));
@@ -421,8 +459,23 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 				}
 				const s = src.entries[dt] || {};
 				const h = here.entries[dt] || {};
+				const pairs = renamed_pairs(s, h, src.renames?.[dt], here.renames?.[dt]);
+				const paired_src = new Set(pairs.map((p) => p.src));
+				const paired_here = new Set(pairs.map((p) => p.here));
+				for (const p of pairs) {
+					this.rows.push({
+						rule,
+						key: p.src,
+						here_key: p.here,
+						status: "renamed",
+						src: s[p.src],
+						here: h[p.here],
+					});
+				}
 				for (const key of new Set([...Object.keys(s), ...Object.keys(h)])) {
 					const status = classify(s[key]?.[0] ?? null, h[key]?.[0] ?? null);
+					if (status === "only_source" && paired_src.has(key)) continue;
+					if (status === "only_here" && paired_here.has(key)) continue;
 					if (status)
 						this.rows.push({
 							rule,
@@ -442,6 +495,7 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 		}
 
 		display_key(row) {
+			if (row.status === "renamed") return `${row.here_key} → ${row.key}`;
 			if (!row.rule.key_fields?.length) return row.key;
 			try {
 				return JSON.parse(row.key).join(" · ");
@@ -636,7 +690,10 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 			try {
 				[src, here] = await Promise.all([
 					this.source.record(rule, row.key),
-					frappe.xcall(`${API}.record`, { rule: JSON.stringify(rule), key: row.key }),
+					frappe.xcall(`${API}.record`, {
+						rule: JSON.stringify(rule),
+						key: row.here_key ?? row.key,
+					}),
 				]);
 			} catch (e) {
 				frappe.msgprint({
@@ -657,7 +714,8 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 		// After a copy or delete: both entries for the record are what the servers
 		// last said -- the source's as read for the modal, this site's as the write
 		// left it -- and the list is reclassified around them.
-		update(row, state, src) {
+		update(row, state, src, renamed_from = null) {
+			if (renamed_from) delete this.result.here.entries[row.rule.doctype]?.[renamed_from];
 			const set = (manifest, s) => {
 				const entries = (manifest.entries[row.rule.doctype] ||= {});
 				if (s.hash)
@@ -764,18 +822,25 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 		}
 
 		show() {
-			const can_copy = !!this.src.doc;
+			const renaming = this.row.status === "renamed" && !!this.here.doc;
+			const can_copy = !renaming && !!this.src.doc;
 			const can_delete = !this.src.doc && !!this.here.doc;
 			this.dialog = new frappe.ui.Dialog({
 				title: `${__(this.row.rule.doctype)}: ${this.owner.display_key(this.row)}`,
 				size: "extra-large",
 				fields: [{ fieldtype: "HTML", fieldname: "body" }],
-				primary_action_label: can_copy
+				primary_action_label: renaming
+					? __("Rename Here to {0}", [this.row.key])
+					: can_copy
 					? __("Copy Source Version Here")
 					: can_delete
 					? __("Delete Here")
 					: null,
-				primary_action: can_copy || can_delete ? () => this.confirm(can_copy) : null,
+				primary_action: renaming
+					? () => this.rename()
+					: can_copy || can_delete
+					? () => this.confirm(can_copy)
+					: null,
 			});
 			this.dialog.$wrapper.addClass("ds-dialog");
 			if (can_delete)
@@ -1077,6 +1142,32 @@ frappe.pages["commons-data-sync"].on_page_load = (wrapper) => {
 					});
 				}
 				this.owner.update(this.row, state, this.src);
+			} catch {
+				// frappe.xcall has shown the server's message
+				this.dialog.enable_primary_action();
+			}
+		}
+
+		// Renaming leaves the content as it is here; the row then compares it under
+		// the source's name, to copy as usual if it still differs.
+		async rename() {
+			this.dialog.disable_primary_action();
+			try {
+				const state = await frappe.xcall(`${API}.rename`, {
+					rule: JSON.stringify(this.row.rule),
+					key: this.row.here_key,
+					new_name: this.row.key,
+					expected: this.here.hash || "",
+				});
+				this.dialog.hide();
+				const agree = state.new.hash && state.new.hash === this.src.hash;
+				frappe.show_alert({
+					message: agree
+						? __("Renamed. Both sites now agree.")
+						: __("Renamed. Its content still differs: open it again to copy."),
+					indicator: agree ? "green" : "orange",
+				});
+				this.owner.update(this.row, state.new, this.src, this.row.here_key);
 			} catch {
 				// frappe.xcall has shown the server's message
 				this.dialog.enable_primary_action();

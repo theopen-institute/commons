@@ -67,6 +67,29 @@ class TestKeys(TestCase):
 		self.assertEqual(as_int, as_text)
 
 
+class TestRenames(TestCase):
+	def test_reads_frappes_rename_comment(self):
+		self.assertEqual(
+			records.renamed_from(
+				"renamed from <strong>Salvage broken JEs</strong> to <strong>Payroll: Drop zero journal lines</strong>"
+			),
+			("Salvage broken JEs", "Payroll: Drop zero journal lines"),
+		)
+
+	def test_names_are_unescaped(self):
+		self.assertEqual(
+			records.renamed_from(
+				"renamed from <strong>W&amp;R fees</strong> to <strong>Fees: W&amp;R</strong>"
+			),
+			("W&R fees", "Fees: W&R"),
+		)
+
+	def test_other_comments_are_not_renames(self):
+		self.assertIsNone(records.renamed_from("merged <strong>A</strong> into <strong>B</strong>"))
+		self.assertIsNone(records.renamed_from("renamed from A to B"))
+		self.assertIsNone(records.renamed_from(None))
+
+
 class TestRules(TestCase):
 	def test_text_and_lists_normalise_alike(self):
 		from_settings = rules.normalise(
