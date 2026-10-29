@@ -59,6 +59,20 @@ def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 		limit_page_length=0,
 	)
 
+	bootinfo.commons_email_composer_position = composer_position()
+
+
+def composer_position() -> str:
+	"""Where the email composer opens for this user: their own choice on their
+	User (`email_composer_position`, blank for none), else the site's in Commons
+	Settings, else the corner, as Frappe opens it."""
+	from commons.commons_core import settings
+
+	own = None
+	if frappe.get_meta("User").has_field(settings.EMAIL_COMPOSER_POSITION):
+		own = frappe.db.get_value("User", frappe.session.user, settings.EMAIL_COMPOSER_POSITION)
+	return own or settings.value(settings.EMAIL_COMPOSER_POSITION) or "Corner"
+
 
 @frappe.whitelist(methods=["POST"])
 def compose(template: str, doctype: str, name: str) -> dict:

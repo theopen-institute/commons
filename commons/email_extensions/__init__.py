@@ -54,6 +54,10 @@ The rest of the module is about what gets sent, and where:
   the email sent are one compiler's output. It reads and writes `mjml_source`,
   and its comments say what it adapts in the plugin to keep a design's round
   trip exact.
+* where the composer opens -- docked in the corner, as core opens it, or in
+  core's centred full-screen view -- chosen by each user on their User, with a
+  site default in Commons Settings (`api.composer_position`, and the patch in
+  `email_extensions.js`).
 * `commons/public/js/email_composer.js` -- a Visual view of an HTML email in
   core's composer, editable in place. Behind "Enable Visual HTML Email Editor"
   in Commons Settings, as it changes core's dialog.

@@ -57,6 +57,24 @@
 		};
 	}
 
+	// Where every composer opens -- ours, core's Email button, a reply -- as the
+	// user or the site chose (`api.composer_position`). Core docks it in the
+	// corner; "Centred" opens it in core's own full-screen view, as its expand
+	// button would, so its buttons and styles stay core's. If core stops building
+	// its window in `setup_composer_shell`, it opens in the corner as before.
+	if (
+		frappe.boot.commons_email_composer_position === "Centred" &&
+		Composer &&
+		typeof Composer.prototype.setup_composer_shell === "function"
+	) {
+		const setup_composer_shell = Composer.prototype.setup_composer_shell;
+		Composer.prototype.setup_composer_shell = function () {
+			setup_composer_shell.apply(this, arguments);
+			this.dialog.$wrapper.addClass("expanded");
+			if (typeof this.sync_header_buttons === "function") this.sync_header_buttons();
+		};
+	}
+
 	const templates = () => frappe.boot.commons_email_templates || [];
 
 	// A template's Show When, read the way a field's Depends On is. One that does

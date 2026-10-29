@@ -10,7 +10,7 @@
   "fieldtype": "Data",
   "options": "URL",
   "insert_after": "home_page",
-  "description": "Where the <b>Website</b> button in the Commons sidebar opens. An absolute URL (<code>https://example.org</code>) or a path on this site (<code>/about</code>). Leave blank to open the site root. This does <b>not</b> change where anyone lands after logging in — that is Home Page above, together with the Home Page on each Role.",
+  "description": "Where the <b>Website</b> button in the Commons sidebar opens. An absolute URL (<code>https://example.org</code>) or a path on this site (<code>/about</code>). Leave blank to open the site root. This does <b>not</b> change where anyone lands after logging in \u2014 that is Home Page above, together with the Home Page on each Role.",
   "module": "Better Navigation"
  },
  {
@@ -358,5 +358,19 @@
   "depends_on": "eval:doc.append_to=='Captured Document'",
   "description": "What the scans emailed to this account are drafted as in Document Capture. They are read automatically only when the sender is a user on this site.",
   "module": "Document Capture"
+ },
+ {
+  "doctype": "Custom Field",
+  "name": "User-email_composer_position",
+  "owner": "Administrator",
+  "is_system_generated": 1,
+  "dt": "User",
+  "fieldname": "email_composer_position",
+  "label": "Email Composer Opens",
+  "fieldtype": "Select",
+  "options": "\nCorner\nCentred",
+  "insert_after": "code_editor_type",
+  "description": "Docked in the bottom right corner of the page, or as a centred window over it. Blank follows the site's choice in Commons Settings. Takes effect when the page is next loaded.",
+  "module": "Email Extensions"
  }
 ]

@@ -52,6 +52,7 @@ class CommonsSettings(Document):
 		change_request_applying_outcome: DF.Data | None
 		data_sync_doctypes: DF.Table[DataSyncDoctype]
 		data_sync_source_url: DF.Data | None
+		email_composer_position: DF.Literal["Corner", "Centred"]
 		enable_bikram_sambat: DF.Check
 		enable_clearing_internal_transfers: DF.Check
 		enable_derived_docfields: DF.Check

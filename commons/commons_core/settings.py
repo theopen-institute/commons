@@ -132,6 +132,10 @@ ENABLE_HIDING_INTERNAL_ACCOUNTS = "enable_hiding_internal_accounts"
 PAYROLL_PAYMENT_MODE_OF_PAYMENT = "payroll_payment_mode_of_payment"
 PAYROLL_PAYMENT_REFERENCE = "payroll_payment_reference"
 
+# `commons.email_extensions.api.extend_bootinfo`: where the email composer opens,
+# "Corner" or "Centred", for users who haven't chosen on their own User.
+EMAIL_COMPOSER_POSITION = "email_composer_position"
+
 # What the desk is told, under `frappe.boot.commons_features`: each key is the
 # name the browser half checks, and each value the field that switches it.
 DESK_FEATURES = {

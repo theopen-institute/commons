@@ -15,7 +15,7 @@ rewritten.
 
 | File | What it holds |
 | --- | --- |
-| `custom_field.json` | The ten fields this app adds to Frappe's core and customisation doctypes, the ten on Email Template, two on Notification, one on Communication, one on Email Account, and two on Web Template |
+| `custom_field.json` | The ten fields this app adds to Frappe's core and customisation doctypes, the ten on Email Template, two on Notification, one on Communication, one on Email Account, one on User, and two on Web Template |
 | `custom_field_erpnext.json` | The three fields the requests section adds to ERPNext's doctypes, and the financial reports' one on Account |
 | `property_setter.json` | Which of Email Template's and Notification's own fields show when a template is designed in MJML or used by a Notification, and the fieldtypes a Web Template's inputs may have |
 
