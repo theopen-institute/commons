@@ -140,7 +140,8 @@ class PayrollPaymentEntryMixin:
 				("total_amount", total),
 				("exchange_rate", 1),
 			):
-				if self.get("_action") in ("submit", "cancel"):
+				# Not on a new document, which has no row to write yet (as ERPNext's own).
+				if self.get("_action") in ("submit", "cancel") and not self.is_new():
 					d.db_set(field, value)
 				else:
 					d.set(field, value)

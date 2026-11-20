@@ -338,8 +338,12 @@ def derived_class(base: type, fieldnames: tuple[str, ...]) -> type:
 
 
 def _reduce_class(cls):
+	# Core's helpers live in `frappe.model.document`, not `base_document`.
+	from frappe.model import document as core_document
+
 	base = cls._commons_derived_base
-	if base.__dict__.get("__reduce__") is getattr(base_document, "_reduce_extended_instance", None):
+	reduce_extended = getattr(core_document, "_reduce_extended_instance", None)
+	if reduce_extended is not None and base.__dict__.get("__reduce__") is reduce_extended:
 		# One of core's `extend_doctype_class` classes, itself built at runtime:
 		# rebuilt from its bases, as core rebuilds it.
 		return (_rebuild_class, (True, base.__bases__, cls._commons_derived_fields))
@@ -347,7 +351,9 @@ def _reduce_class(cls):
 
 
 def _rebuild_class(extended: bool, bases: tuple, fieldnames: tuple[str, ...]) -> type:
-	base = base_document._create_extended_class(bases) if extended else bases[0]
+	from frappe.model import document as core_document
+
+	base = core_document._create_extended_class(bases) if extended else bases[0]
 	return derived_class(base, fieldnames)
 
 

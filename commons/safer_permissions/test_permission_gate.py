@@ -5,9 +5,10 @@ this user's set of roles put them behind the gate, and have they got past it.
 Everything underneath is core's, and is stubbed here.
 """
 
+import importlib.util
 from typing import ClassVar
 from unittest import TestCase, addModuleCleanup
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import frappe
 
@@ -342,6 +343,39 @@ class Reports(TestCase):
 		permissions._refuse_gated_report(None)
 
 
+class ReportPDF(TestCase):
+	"""`download_report_pdf` (Frappe 16.60), which runs a report in Python past the other wrappers."""
+
+	def download(self, refused):
+		core = MagicMock(return_value=None)
+		with (
+			patch.object(
+				permissions, "_refuse_gated_report", side_effect=frappe.PermissionError if refused else None
+			) as refuse,
+			patch.object(permissions, "_core", return_value=core),
+			patch.object(permissions.frappe, "call", side_effect=lambda fn, **kwargs: fn(**kwargs)),
+		):
+			try:
+				permissions.download_report_pdf(report_name="Salary Register", orientation="Portrait")
+			finally:
+				refuse.assert_called_once_with("Salary Register")
+		return core
+
+	def test_a_gated_role_never_reaches_core(self):
+		with self.assertRaises(frappe.PermissionError):
+			core = self.download(refused=True)
+			core.assert_not_called()
+
+	def test_everyone_else_gets_cores_pdf_with_every_argument(self):
+		core = self.download(refused=False)
+		core.assert_called_once_with(report_name="Salary Register", orientation="Portrait")
+
+	def test_it_answers_a_post_only_as_core_does(self):
+		self.assertEqual(
+			frappe.allowed_http_methods_for_whitelisted_func.get(permissions.download_report_pdf), ["POST"]
+		)
+
+
 class PreparedReports(TestCase):
 	"""A report's results, sitting in a file once the report has run."""
 
@@ -470,15 +504,30 @@ class CoreStillLooksTheSame(TestCase):
 		permissions.CORE_RUN: "commons.safer_permissions.permissions.run_query_report",
 		permissions.CORE_EXPORT: "commons.safer_permissions.permissions.export_query_report",
 		permissions.CORE_MAKE_PREPARED: "commons.safer_permissions.permissions.make_prepared_report",
+		permissions.CORE_DOWNLOAD_PDF: "commons.safer_permissions.permissions.download_report_pdf",
 	}
 
-	# The hook's entries that are not report overrides: a name v16 lacks, served
-	# by `commons.pseudo_islands` until v17 brings it, and a stand-in for a broken
-	# core endpoint (`commons.commons_core.frappe_fixes`).
-	NOT_REPORTS: ClassVar[dict[str, str]] = {
-		"frappe.utils.island.get_island_assets": "commons.pseudo_islands.registry.get_island_assets",
-		"frappe.desk.doctype.workspace.workspace.save_page": "commons.commons_core.frappe_fixes.save_page",
+	# Overridden ahead of the Frappe that brings them: absent before that version.
+	SINCE: ClassVar[dict[str, tuple[int, int]]] = {permissions.CORE_DOWNLOAD_PDF: (16, 60)}
+
+	# Every module in core's Python that runs a report through `query_report.run` itself,
+	# rather than through one of the overridden endpoints, and what stands in front of it.
+	# A module that is not here is a new way round the gate: wrap its endpoint, then add it.
+	RUN_CALLERS: ClassVar[dict[str, str]] = {
+		"core/doctype/prepared_report/prepared_report.py": "make_prepared_report, the only way in",
+		"utils/print_format.py": "download_report_pdf (Frappe 16.60)",
+		# Not gated: only for users with Flow User and a configured Flow model. Gated roles
+		# must not be given Flow User.
+		"flow/tools/builtins.py": "nothing -- see above",
 	}
+
+	# The hook's one entry that is not a report override: a name Frappe before 16.60
+	# lacks, served by `commons.pseudo_islands` until Frappe brings its own.
+	NOT_REPORTS: ClassVar[dict[str, str]] = (
+		{"frappe.utils.island.get_island_assets": "commons.pseudo_islands.registry.get_island_assets"}
+		if importlib.util.find_spec("frappe.utils.island") is None
+		else {}
+	)
 
 	def test_hooks_override_exactly_these_paths(self):
 		from commons import hooks
@@ -503,10 +552,54 @@ class CoreStillLooksTheSame(TestCase):
 			None,
 		)
 
+	def frappe_has(self, path):
+		"""Whether the installed Frappe is recent enough to have `path`."""
+		since = self.SINCE.get(path)
+		if not since:
+			return True
+		major, minor = (int(part) for part in frappe.__version__.split(".")[:2])
+		return (major, minor) >= since
+
 	def test_each_core_function_still_exists_where_it_did(self):
 		for path in self.OVERRIDES:
 			with self.subTest(path=path):
-				self.assertIsNotNone(self.core_function(path))
+				if self.frappe_has(path):
+					self.assertIsNotNone(self.core_function(path))
+				else:
+					self.assertIsNone(self.core_function(path), "arrived early: drop it from SINCE")
+
+	def test_every_report_run_in_core_is_one_the_gate_stands_in_front_of(self):
+		import ast
+		import os
+
+		root = os.path.dirname(frappe.__file__)
+		callers = set()
+		for directory, dirs, files in os.walk(root):
+			dirs[:] = [d for d in dirs if d not in ("tests", "test", "node_modules", "dist")]
+			for name in files:
+				if not name.endswith(".py") or name.startswith("test_"):
+					continue
+				path = os.path.join(directory, name)
+				with open(path, encoding="utf-8", errors="ignore") as file:
+					source = file.read()
+				if "query_report" not in source:
+					continue
+				for node in ast.walk(ast.parse(source)):
+					imports_run = (
+						isinstance(node, ast.ImportFrom)
+						and node.module == "frappe.desk.query_report"
+						and any(alias.name == "run" for alias in node.names)
+					)
+					calls_run = (
+						isinstance(node, ast.Attribute)
+						and node.attr == "run"
+						and isinstance(node.value, ast.Name)
+						and node.value.id == "query_report"
+					)
+					if imports_run or calls_run:
+						callers.add(os.path.relpath(path, root).replace(os.sep, "/"))
+		callers.discard("desk/query_report.py")
+		self.assertLessEqual(callers, set(self.RUN_CALLERS), "a new way to a report's rows")
 
 	def test_core_still_names_the_report_the_way_the_gate_reads_it(self):
 		for path in (permissions.CORE_RUN, permissions.CORE_MAKE_PREPARED):
@@ -529,7 +622,8 @@ class CoreStillLooksTheSame(TestCase):
 
 		for path in self.OVERRIDES:
 			with self.subTest(path=path):
-				self.assertIn(path, source)
+				if self.frappe_has(path):
+					self.assertIn(path, source)
 
 
 class AutoEmailReports(TestCase):

@@ -22,11 +22,10 @@ corrections to Frappe, but they are one design with this app's own sidebar, and
 between here and the app root; a section that claims a module outranks it.
 
 `jinja.py` adds `make_qr_code` to Frappe's own Jinja environment, reachable
-from every print format, letter head and portal page on the site. `frappe_fixes`
-stands in for Frappe endpoints that are broken upstream, each until Frappe fixes
-its own. `notifications` and `todos` read Frappe's Notification Log and ToDo for
-the session user alone, where core's own endpoints would hand an administrator
-the whole site's.
+from every print format, letter head and portal page on the site.
+`notifications` and `todos` read Frappe's Notification Log and ToDo for the
+session user alone, where core's own endpoints would hand an administrator the
+whole site's.
 
 The second thing is what is not an extension to Frappe at all but a fact about
 *the app*, and there is nowhere better for a fact about the app than the module

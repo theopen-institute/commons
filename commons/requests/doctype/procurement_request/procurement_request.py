@@ -251,10 +251,22 @@ def ordered_stock_qty(names) -> dict[str, object]:
 
 
 def get_conversion_factor(item_code: str, uom: str) -> float:
-	"""Stock units per `uom`, refusing the zero a missing conversion returns."""
+	"""Stock units per `uom`, refusing a missing conversion.
+
+	ERPNext answers a missing conversion with 1, unless asked to refuse it
+	(`throw_if_missing`, ERPNext 16.60 and later, which refuses it for stock items).
+	It is asked where it can be; the check below stays for a factor of zero or less.
+	"""
+	import inspect
+
 	from erpnext.stock.get_item_details import get_conversion_factor as erpnext_conversion_factor
 
-	factor = flt(erpnext_conversion_factor(item_code, uom).get("conversion_factor"))
+	refuse = "throw_if_missing" in inspect.signature(erpnext_conversion_factor).parameters
+	factor = flt(
+		erpnext_conversion_factor(item_code, uom, **({"throw_if_missing": True} if refuse else {})).get(
+			"conversion_factor"
+		)
+	)
 	if factor <= 0:
 		frappe.throw(_("No UOM conversion is available for {0} in {1}.").format(item_code, uom))
 	return factor

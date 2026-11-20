@@ -71,6 +71,36 @@ export function readAssetsJson(assetsJsonPath) {
 	}
 }
 
+// Frappe 16.60's lock protocol, from `esbuild/assets_json.js`: a directory beside the
+// file, freed by its holder, or by anyone once it is older than a writer could live.
+const ASSETS_JSON_STALE_LOCK_MS = 10000;
+const ASSETS_JSON_RETRY_MS = 20;
+
+async function withAssetsJsonLock(assetsJsonPath, update) {
+	const lock = assetsJsonPath + ".lock";
+	for (;;) {
+		try {
+			fs.mkdirSync(lock);
+			break;
+		} catch (error) {
+			if (error.code !== "EEXIST") throw error;
+		}
+		let stale = false;
+		try {
+			stale = Date.now() - fs.statSync(lock).mtimeMs > ASSETS_JSON_STALE_LOCK_MS;
+		} catch {
+			// Freed between the two calls.
+		}
+		if (stale) fs.rmSync(lock, { recursive: true, force: true });
+		await new Promise((resolve) => setTimeout(resolve, ASSETS_JSON_RETRY_MS));
+	}
+	try {
+		update();
+	} finally {
+		fs.rmSync(lock, { recursive: true, force: true });
+	}
+}
+
 /**
  * Register an app's built islands in assets.json.
  *
@@ -91,11 +121,6 @@ export function readAssetsJson(assetsJsonPath) {
  */
 export async function writeIslandAssets(paths, relMap) {
 	const ownPrefix = `${paths.urlPrefix}/`;
-	const existing = readAssetsJson(paths.assetsJsonPath);
-
-	const kept = Object.fromEntries(
-		Object.entries(existing).filter(([, url]) => !url.startsWith(ownPrefix))
-	);
 	const written = Object.fromEntries(
 		Object.entries(relMap).map(([key, rel]) => [
 			key,
@@ -103,21 +128,28 @@ export async function writeIslandAssets(paths, relMap) {
 		])
 	);
 
-	const taken = Object.keys(written).filter((key) => key in kept);
-	if (taken.length)
-		throw new Error(
-			"island: a build elsewhere on this bench already registers " +
-				taken.map((key) => `"${key}" (${kept[key]})`).join(", ") +
-				".\nAn island name is one bench-wide namespace. Rename the entry."
-		);
-
 	await fs.promises.mkdir(path.dirname(paths.assetsJsonPath), {
 		recursive: true,
 	});
-	await fs.promises.writeFile(
-		paths.assetsJsonPath,
-		JSON.stringify({ ...kept, ...written }, null, 4)
-	);
+	// Read and write under the lock Frappe 16.60's esbuild and island watchers take
+	// (`esbuild/assets_json.js`), so a write landing between another's read and write
+	// cannot drop its keys. Frappe 16.54 takes no lock, and there this one is harmless.
+	await withAssetsJsonLock(paths.assetsJsonPath, () => {
+		const existing = readAssetsJson(paths.assetsJsonPath);
+		const kept = Object.fromEntries(
+			Object.entries(existing).filter(([, url]) => !url.startsWith(ownPrefix))
+		);
+
+		const taken = Object.keys(written).filter((key) => key in kept);
+		if (taken.length)
+			throw new Error(
+				"island: a build elsewhere on this bench already registers " +
+					taken.map((key) => `"${key}" (${kept[key]})`).join(", ") +
+					".\nAn island name is one bench-wide namespace. Rename the entry."
+			);
+
+		fs.writeFileSync(paths.assetsJsonPath, JSON.stringify({ ...kept, ...written }, null, 4));
+	});
 	await invalidateAssetsCache(paths);
 	return written;
 }

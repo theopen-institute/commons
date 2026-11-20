@@ -316,7 +316,7 @@ def has_permission(doc=None, ptype: str | None = None, user: str | None = None, 
 #
 # Standing in front of core
 # -------------------------
-# The three wrappers are `override_whitelisted_methods` entries, and that is the
+# The four wrappers are `override_whitelisted_methods` entries, and that is the
 # one part of this module no switch can take out: hooks are read before any
 # setting is, so the wrappers answer at core's addresses whether the gate is on
 # or not. What can be done is to make them as thin as possible, so that the
@@ -343,19 +343,27 @@ def has_permission(doc=None, ptype: str | None = None, user: str | None = None, 
 #       Nothing at run time can see that happen, so `test_permission_gate`'s
 #       `CoreStillLooksTheSame` checks it against the installed Frappe -- run it
 #       after every upgrade.
+#   core adds a new path to the rows
+#       The same silence from the other side: a new endpoint that calls `run`
+#       itself never meets these wrappers. `download_report_pdf` (Frappe 16.60)
+#       was one; `CoreStillLooksTheSame` now lists every caller of `run` in
+#       core's Python and fails on one it has not been told about.
 #
-# All three are a bare `@frappe.whitelist()`, so all three answer a GET -- and
+# The first three are a bare `@frappe.whitelist()`, so they answer a GET -- and
 # `make_prepared_report` inserts a document on one, which is the shape an
 # endpoint of this app's own would shut with `methods=["POST"]`.
 # That is inherited rather than chosen: standing in for core at core's own
 # address, they have to accept what core accepts, and a narrower `methods` here
 # would refuse desk traffic that core sends as a GET. Said out loud so the next
-# reader does not take it for this app's decision about CSRF.
+# reader does not take it for this app's decision about CSRF. The fourth,
+# `download_report_pdf`, is POST-only because core's is.
 
 # Core's own addresses, which are also the keys in `hooks.override_whitelisted_methods`.
 CORE_RUN = "frappe.desk.query_report.run"
 CORE_EXPORT = "frappe.desk.query_report.export_query"
 CORE_MAKE_PREPARED = "frappe.core.doctype.prepared_report.prepared_report.make_prepared_report"
+# Frappe 16.60 and later; on an older Frappe nothing calls it and `_core` says so if asked.
+CORE_DOWNLOAD_PDF = "frappe.utils.print_format.download_report_pdf"
 
 
 def gated_report_doctype(report_name: str | None, user: str | None = None) -> str | None:
@@ -480,3 +488,15 @@ def export_query_report(**kwargs: Any) -> None:
 	"""
 	_refuse_gated_report(frappe.form_dict.get("report_name"))
 	return frappe.call(_core(CORE_EXPORT), **kwargs)
+
+
+@frappe.whitelist(methods=["POST"])
+def download_report_pdf(report_name: str | None = None, **kwargs: Any) -> None:
+	"""`frappe.utils.print_format.download_report_pdf`, refused for gated roles.
+
+	Core runs the report itself, in Python (`query_report.run`), so none of the
+	wrappers above would see it. Core's only check there is print permission on the
+	report's doctype, which a gated role usually has.
+	"""
+	_refuse_gated_report(report_name)
+	return frappe.call(_core(CORE_DOWNLOAD_PDF), report_name=report_name, **kwargs)

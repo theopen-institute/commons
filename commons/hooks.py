@@ -1,3 +1,5 @@
+import importlib.util
+
 app_name = "commons"
 app_title = "Commons"
 app_publisher = "Peter"
@@ -415,15 +417,16 @@ override_whitelisted_methods = {
 	"frappe.desk.query_report.export_query": "commons.safer_permissions.permissions.export_query_report",
 	# Runs a report without going through either of the two above.
 	"frappe.core.doctype.prepared_report.prepared_report.make_prepared_report": "commons.safer_permissions.permissions.make_prepared_report",
-	# Not an override: v16 has no `frappe.utils.island`. The name is the one an
-	# `<Island>` host calls on frappe develop, so it keeps working when v17
-	# brings the real one and this line goes. See `commons/pseudo_islands/`.
-	"frappe.utils.island.get_island_assets": "commons.pseudo_islands.registry.get_island_assets",
-	# TEMPORARY: Frappe 16.50 cannot save a workspace from its editor (it rejects its
-	# own request). Hands Frappe's function what it expects; delete the line, and
-	# `commons.commons_core.frappe_fixes.save_page`, once Frappe fixes it.
-	"frappe.desk.doctype.workspace.workspace.save_page": "commons.commons_core.frappe_fixes.save_page",
+	# Frappe 16.60: a PDF of a report, run in Python past the three above.
+	"frappe.utils.print_format.download_report_pdf": "commons.safer_permissions.permissions.download_report_pdf",
 }
+# Not an override: Frappe before 16.60 has no `frappe.utils.island`, so Commons
+# answers at the address an `<Island>` host calls. From 16.60 Frappe answers there
+# itself and the line is left out. See `commons/pseudo_islands/`.
+if importlib.util.find_spec("frappe.utils.island") is None:
+	override_whitelisted_methods["frappe.utils.island.get_island_assets"] = (
+		"commons.pseudo_islands.registry.get_island_assets"
+	)
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

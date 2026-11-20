@@ -1,10 +1,12 @@
 # Pseudo Islands
 
-Desk islands on Frappe v16. An island is a Vue screen from this app's frontend, built on its own
-and mounted into a desk page inside a shadow root. frappe develop ships islands (PR #43050,
-merged 2026-09-24); v16 does not. This module adds what v16 lacks, copied from develop at
-**`beeaa33c6b`**, so this app's islands are already written the way v17 hosts them. Everything
-in this folder is deleted on v17.
+Desk islands on Frappe v16 before 16.60. An island is a Vue screen from this app's frontend,
+built on its own and mounted into a desk page inside a shadow root. frappe develop ships islands
+(PR #43050, merged 2026-09-24), and Frappe 16.60 brings them to v16 (562e5b9db0); earlier v16
+releases do not have them. This module adds what those lack, copied from develop at
+**`beeaa33c6b`**, so this app's islands are already written the way Frappe hosts them. On 16.60
+every piece here stands aside for Frappe's own (see the end), and everything in this folder is
+deleted once every site Commons runs on has 16.60 or later.
 
 It is switched on per site by **Commons Settings → Core Overrides → Enable Desk Islands**
 (`enable_pseudo_islands`, off by default). Off, nothing is installed on the desk, the boot carries
@@ -16,8 +18,8 @@ The shims, all in this folder:
 
 | File | What it is | Changed from develop |
 | --- | --- | --- |
-| `vendor/framework-ui/island/`, `vite/`, `patches/` | develop's `ui/island/`, `ui/vite/index.js`, `ui/vite/island/` (without the framework page-island build) and the reka-ui patch | Nothing. `package.json` is trimmed to these exports, and its `frappe-ui` peer floor is beta.63, not rc.1 |
-| `registry.py` | develop's `frappe/utils/island.py` | `get_island_assets` refuses while the setting is off |
+| `vendor/framework-ui/island/`, `vite/`, `patches/` | develop's `ui/island/`, `ui/vite/index.js`, `ui/vite/island/` (without the framework page-island build) and the reka-ui patch | `vite/island/assets.js` writes `assets.json` under Frappe 16.60's lock (`esbuild/assets_json.js`), so it can run beside 16.60's own watchers. `package.json` is trimmed to these exports, and its `frappe-ui` peer floor is beta.63, not rc.1. 16.60's own copies have moved on (a newer Vite with Rolldown, input stamps) and are not drop-in replacements here |
+| `registry.py` | develop's `frappe/utils/island.py` | `get_island_assets` refuses while the setting is off. Reached only on a Frappe without `frappe.utils.island` |
 | `boot.py` | develop's `bootinfo.ui_islands`, from `frappe.sessions` | Gated by the setting, and yields to a Frappe that already sends the list |
 | `js/loader.js` | develop's `frappe/public/js/frappe/ui/island/loader.js` | Imports the host loop by path; publishes from `install()` |
 | `js/index.js` | Installs the loader | Only when the setting is on and `frappe.ui.mount_island` does not exist |
@@ -33,8 +35,9 @@ state is Frappe 16.50's `frappe.ui.empty_state`, as develop's is.
 
 Outside this folder, each shim is a line or two that names it:
 
-- `hooks.py`: `extend_bootinfo` → `boot.py`, and `override_whitelisted_methods` sends
-  `frappe.utils.island.get_island_assets`, which is develop's URL, to `registry.py`
+- `hooks.py`: `extend_bootinfo` → `boot.py`, and, only where Frappe has no
+  `frappe.utils.island`, `override_whitelisted_methods` sends
+  `frappe.utils.island.get_island_assets`, which is Frappe's URL, to `registry.py`
 - `public/js/commons.bundle.js` and `public/scss/commons.bundle.scss`: one import each
 - `commons_core/settings.py` and Commons Settings: `enable_pseudo_islands`
 - `safer_permissions/test_permission_gate.py`: `NOT_REPORTS`, the override above
@@ -44,7 +47,7 @@ Outside this folder, each shim is a line or two that names it:
   `document_capture/page/commons_capture/commons_capture.js` and
   `attendance_register/page/commons_attendance/commons_attendance.js`
 
-What stays on v17, because it is how develop expects an app to ship islands:
+What stays after that, because it is how develop expects an app to ship islands:
 
 - `frontend/build-islands.mjs`: `buildIslands`, with entries `commons.banking`,
   `commons.capture` and `commons.attendance`
@@ -71,12 +74,16 @@ each rebuild.
 dialog inside a shadow root. The patch was made against reka-ui 2.10.1. It applies cleanly to
 2.10.4, and patch-package warns about the version on every install.
 
-## On Frappe v17
+## Once every site has Frappe 16.60
+
+Frappe 16.60 hosts islands itself, so these steps can run once no site Commons runs on is older.
+Until then the module stays and stands aside on 16.60 (below).
 
 1. Delete this folder.
 2. In `frontend/package.json`, set `"@framework/ui": "link:../../frappe/ui"`, then run
    `yarn install`. Check that frappe's `ui/patches/` still has a reka-ui patch for the installed
-   version.
+   version. Frappe 16.60's `ui/package.json` wants `frappe-ui` 1.0.0-rc.1 or later, so the
+   frontend moves off beta.63 first.
 3. In `hooks.py`, remove the `extend_bootinfo` line and the `get_island_assets` override. Remove
    `NOT_REPORTS` from `test_permission_gate.py`, and the import lines from `commons.bundle.js` and
    `commons.bundle.scss`.
@@ -89,5 +96,8 @@ dialog inside a shadow root. The patch was made against reka-ui 2.10.1. It appli
    on the desk.
    `onReplaceQuery` is this module's own event.
 
-Until step 1, every piece here stands aside for v17's own: the loader installs only where
-`frappe.ui.mount_island` is missing, and the boot list is added only where Frappe has not sent one.
+Until step 1, every piece here stands aside for Frappe's own: the loader installs only where
+`frappe.ui.mount_island` is missing, the boot list is added only where Frappe has not sent one,
+and the `get_island_assets` override is registered only where Frappe has no endpoint of its own.
+The three Pages keep this module's host (`js/island_page.js`) on 16.60 too, for `onReplaceQuery`
+and primary buttons, mounting through Frappe's `frappe.ui.mount_island`.

@@ -51,7 +51,11 @@ def _lines(filters) -> list[dict]:
 	receivable/payable account of the party type's own kind (the accounts
 	Payment Reconciliation lets one choose), naming no voucher or naming their
 	own entry. Lines that name an order are advances and are left out, as
-	they settle nothing in this entry."""
+	they settle nothing in this entry.
+
+	An Employee may be reconciled on either kind (ERPNext 16.60, where an
+	employee advance sits on a Receivable account), so a line is signed by its
+	account's own type, as Payment Reconciliation signs it."""
 	clauses = ["je.docstatus = 1", "je.company = %(company)s", "ifnull(jea.party, '') != ''"]
 	values = {"company": filters.company}
 	for field in ("account", "party_type", "party"):
@@ -71,14 +75,16 @@ def _lines(filters) -> list[dict]:
 		f"""
 		select je.name as voucher_no, je.posting_date, jea.name as row_name, jea.idx,
 			jea.account, jea.party_type, jea.party,
-			if(pt.account_type = 'Receivable',
+			if(a.account_type = 'Receivable',
 				jea.credit_in_account_currency - jea.debit_in_account_currency,
 				jea.debit_in_account_currency - jea.credit_in_account_currency) as paying,
 			ifnull(jea.reference_type, '') as reference_type
 		from `tabJournal Entry` je
 		join `tabJournal Entry Account` jea on jea.parent = je.name and jea.parenttype = 'Journal Entry'
 		join `tabParty Type` pt on pt.name = jea.party_type
-		join `tabAccount` a on a.name = jea.account and a.account_type = pt.account_type
+		join `tabAccount` a on a.name = jea.account
+			and (a.account_type = pt.account_type
+				or (jea.party_type = 'Employee' and a.account_type in ('Receivable', 'Payable')))
 		where {" and ".join(clauses)}
 			and (ifnull(jea.reference_type, '') = ''
 				or (jea.reference_type = 'Journal Entry' and jea.reference_name = je.name))
