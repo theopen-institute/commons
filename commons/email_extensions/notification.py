@@ -77,6 +77,29 @@ class TemplateNotificationMixin:
 		scheduled.mark_sent(self, doc, since)
 		return result
 
+	def get_list_of_recipients(self, doc, context):
+		"""Core's recipients, and the addresses of the records a document field links to.
+
+		Core sends to a field's value only when it already is an address, so
+		"Receiver By Document Field: party" reaches nobody on a Payment Entry
+		whose party is a Customer. A Link or Dynamic Link field is followed here
+		to the linked record's address, exactly as the Email menu follows it
+		(`api.recipients`), so a template sent by hand and the same template sent
+		by a Notification go to the same person. A field in a child table
+		(`field,table`) is left to core.
+		"""
+		from commons.email_extensions.api import recipients as linked_recipients
+
+		recipients, cc, bcc = super().get_list_of_recipients(doc, context)
+		for row in self.recipients:
+			fieldname = row.receiver_by_document_field
+			if not fieldname or "," in fieldname:
+				continue
+			if row.condition and not frappe.safe_eval(row.condition, None, context):
+				continue
+			recipients.extend(a for a in linked_recipients(doc, fieldname) if a not in recipients)
+		return recipients, cc, bcc
+
 	def send(self, doc):
 		if self.get(scheduled.ONCE_FIELD) and self.channel == "Email" and self._sent_for_earlier_version(doc):
 			return

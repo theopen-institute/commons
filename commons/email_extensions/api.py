@@ -43,6 +43,15 @@ ADDRESS_FIELDS = (
 	"email_address",
 )
 
+# Records that stand for another and hold the address it lacks: `(doctype,
+# link field)` naming the record from the other side. Education makes each
+# Student a Customer, named after the student, with no address and no Contact,
+# and keeps the link on the Student. So the Customer on a fee invoice, or the
+# party on its payment, is written to at the student's address.
+STANDS_FOR = {
+	"Customer": (("Student", "customer"),),
+}
+
 
 def extend_bootinfo(bootinfo: "frappe._dict") -> None:
 	"""Tell the desk which templates each doctype's forms offer, and where emails may be waiting."""
@@ -160,8 +169,13 @@ def address_of(doctype: str | None, name: str) -> list[str]:
 	"""Where to write to about the record `doctype`/`name`.
 
 	The record's own address, by `ADDRESS_FIELDS` first and then any other field
-	of the Email type in form order; failing that, the default Contact's.
+	of the Email type in form order; failing that, the default Contact's;
+	failing that, the address of the one record it stands for (`STANDS_FOR`).
 	"""
+	return _own_address(doctype, name) or _address_of_whom_it_stands_for(doctype, name)
+
+
+def _own_address(doctype: str | None, name: str) -> list[str]:
 	if not doctype or not frappe.db.exists("DocType", doctype) or not frappe.db.exists(doctype, name):
 		return []
 
@@ -179,4 +193,19 @@ def address_of(doctype: str | None, name: str) -> list[str]:
 
 	if contact := get_default_contact(doctype, name):
 		return addresses_in(frappe.db.get_value("Contact", contact, "email_id") or "")
+	return []
+
+
+def _address_of_whom_it_stands_for(doctype: str | None, name: str) -> list[str]:
+	"""The address of the record that names this one as its own, when exactly one does.
+
+	Two Students sharing one Customer (siblings billed together) leave it to
+	the Customer's own Contact: picking one of them would be a guess.
+	"""
+	for owner, fieldname in STANDS_FOR.get(doctype or "", ()):
+		if not frappe.db.exists("DocType", owner) or not frappe.get_meta(owner).has_field(fieldname):
+			continue
+		owners = frappe.get_all(owner, filters={fieldname: name}, pluck="name", limit=2)
+		if len(owners) == 1:
+			return _own_address(owner, owners[0])
 	return []

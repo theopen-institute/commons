@@ -14,6 +14,7 @@ import {
   type TransactionRow,
 } from './reconciliationRules'
 import type { OutstandingDocument } from './paymentAllocation'
+import type { InvoiceRow, PaymentHistory, UnclearedPayment } from './invoiceMatching'
 import type { ExistingLine, StatementReading } from './statementImport'
 import { permissionCall } from './permissions'
 
@@ -31,9 +32,11 @@ import { permissionCall } from './permissions'
  *   desk form's Unreconcile button runs;
  * * `set_closing_balance_as_per_statement` on `Bank Account`.
  *
- * The one write of this app's own is `commons.banking.reconciliation.create_loan_repayments`.
- * It makes the Loan Repayment a person makes in the desk and matches it to the
- * deposit in one request. See that module for why it is one request.
+ * The writes of this app's own are `commons.banking.reconciliation.create_loan_repayments`
+ * and `commons.banking.invoice_payments.create_invoice_payments`. Each makes
+ * the document a person makes in the desk (a Loan Repayment; ERPNext's Payment
+ * Entry against an invoice) and matches it to the deposit in one request. See
+ * those modules for why it is one request.
  *
  * Reads go through the document API wherever that can answer, so User
  * Permissions and `commons.safer_permissions` apply. Two ERPNext reads cannot
@@ -55,9 +58,12 @@ const CLIENT = `${METHOD}/frappe.client`
 const TOOL = `${METHOD}/erpnext.accounts.doctype.bank_reconciliation_tool.bank_reconciliation_tool`
 const BANK_ACCOUNT_API = `${METHOD}/erpnext.accounts.doctype.bank_account.bank_account`
 const COMMONS = `${METHOD}/commons.banking.reconciliation`
+const INVOICE_PAYMENTS = `${METHOD}/commons.banking.invoice_payments`
 
 export const BANK_TRANSACTION = 'Bank Transaction'
 export const LOAN_REPAYMENT = 'Loan Repayment'
+export const PAYMENT_ENTRY = 'Payment Entry'
+export const SALES_INVOICE = 'Sales Invoice'
 
 /** How many rows each list may return. `document_list` defaults to 20 and has
  *  no "all", so every read says. A bank account sees a few hundred lines a
@@ -68,6 +74,7 @@ const PAGE = {
   loans: 2000,
   history: 5000,
   repayments: 1000,
+  invoices: 2000,
 }
 
 /** The voucher types ERPNext's candidate search is asked about. Loan
@@ -129,9 +136,13 @@ const canReconcileCall = permissionCall(BANK_TRANSACTION, 'write')
  *  doctype, the call is refused, and the answer is no, which is right. */
 const canRepayCall = permissionCall(LOAN_REPAYMENT, 'submit')
 
+/** Whether the invoice tab is offered: whoever may submit a Payment Entry. */
+const canPayInvoicesCall = permissionCall(PAYMENT_ENTRY, 'submit')
+
 export const reconciliationCan = computed(() => ({
   reconcile: Boolean(canReconcileCall.data?.has_permission),
   repayLoans: Boolean(canRepayCall.data?.has_permission),
+  payInvoices: Boolean(canPayInvoicesCall.data?.has_permission),
 }))
 
 /** Whether this reader reconciles, and whether that answer is in: what the
@@ -923,6 +934,148 @@ export function useCreateLoanRepayments() {
       draft?: boolean
     }
   >({ url: `${COMMONS}.create_loan_repayments`, method: 'POST', immediate: false })
+}
+
+/* Invoice payments --------------------------------------------------------- */
+
+export interface InvoiceBook {
+  /** The company's submitted Sales Invoices with something outstanding. */
+  invoices: InvoiceRow[]
+  /** Earlier payments from customers into this bank, with the statement line
+   *  each was matched to. What suggestions learn from. */
+  history: PaymentHistory[]
+  /** Payments from customers already booked to this bank and not yet on a
+   *  statement line. */
+  uncleared: UnclearedPayment[]
+  rules: LoanMatchingRules
+}
+
+const EMPTY_INVOICE_BOOK: InvoiceBook = { invoices: [], history: [], uncleared: [], rules: DEFAULT_LOAN_MATCHING }
+
+/**
+ * Everything the invoice tab needs for one bank account, in two rounds, as
+ * `useLoanBook` reads loans: once per account, not per line.
+ */
+export function useInvoiceBook() {
+  const invoices = documentList<InvoiceRow>(SALES_INVOICE)
+  const payments = documentList<UnclearedPayment & { clearance_date: string | null }>(PAYMENT_ENTRY)
+  const links = useCall<
+    { parent: string; payment_entry: string }[],
+    { doctype: string; parent: string; fields: string; filters: string; limit_page_length: number }
+  >({ url: `${CLIENT}.get_list`, immediate: false })
+  const lines = documentList<{ name: string; description: string | null }>(BANK_TRANSACTION)
+  const matching = useCall<LoanMatchingRules, Record<string, never>>({
+    url: `${COMMONS}.loan_matching_settings`,
+    immediate: false,
+  })
+
+  const book = ref<InvoiceBook>(EMPTY_INVOICE_BOOK) as Ref<InvoiceBook>
+  const loading = ref(false)
+  const error = ref<Error | null>(null)
+
+  async function load(account: BankAccountRow | null) {
+    if (!account?.company || !account.account) {
+      book.value = EMPTY_INVOICE_BOOK
+      return
+    }
+    loading.value = true
+    error.value = null
+    try {
+      const [open, received, rules] = await Promise.all([
+        fetchRows(invoices, {
+          fields: JSON.stringify([
+            'name',
+            'customer',
+            'customer_name',
+            'company',
+            'posting_date',
+            'due_date',
+            'grand_total',
+            'outstanding_amount',
+            'currency',
+          ]),
+          filters: JSON.stringify([
+            ['docstatus', '=', 1],
+            ['company', '=', account.company],
+            ['is_return', '=', 0],
+            ['outstanding_amount', '>', 0],
+          ]),
+          order_by: 'due_date asc, name asc',
+          limit: PAGE.invoices,
+        }),
+        // Every payment from a customer into this bank: the uncleared ones
+        // are offered for matching, and the cleared ones are history.
+        fetchRows(payments, {
+          fields: JSON.stringify(['name', 'party', 'party_name', 'paid_amount', 'posting_date', 'reference_no', 'clearance_date']),
+          filters: JSON.stringify([
+            ['docstatus', '=', 1],
+            ['payment_type', '=', 'Receive'],
+            ['party_type', '=', 'Customer'],
+            ['paid_to', '=', account.account],
+          ]),
+          order_by: 'posting_date asc',
+          limit: PAGE.history,
+        }),
+        matching.submit({}).then(loanMatchingRules, () => loanMatchingRules(null)),
+      ])
+
+      const [linked, described] = await Promise.all([
+        fetchRows(links, {
+          doctype: 'Bank Transaction Payments',
+          parent: BANK_TRANSACTION,
+          fields: JSON.stringify(['parent', 'payment_entry']),
+          filters: JSON.stringify([['payment_document', '=', PAYMENT_ENTRY]]),
+          limit_page_length: PAGE.history,
+        }),
+        fetchRows(lines, {
+          fields: JSON.stringify(['name', 'description']),
+          filters: JSON.stringify([
+            ['bank_account', '=', account.name],
+            ['docstatus', '=', 1],
+            ['deposit', '>', 0],
+            ['allocated_amount', '>', 0],
+          ]),
+          limit: PAGE.history,
+        }),
+      ])
+
+      const lineOf = new Map(linked.map((row) => [row.payment_entry, row.parent]))
+      const descriptionOf = new Map(described.map((row) => [row.name, row.description]))
+      book.value = {
+        invoices: open,
+        history: received
+          .filter((row) => row.clearance_date)
+          .map((row) => ({
+            customer: row.party,
+            amount: row.paid_amount,
+            description: descriptionOf.get(lineOf.get(row.name) ?? '') ?? null,
+          })),
+        uncleared: received.filter((row) => !row.clearance_date),
+        rules,
+      }
+    } catch (problem) {
+      error.value = problem as Error
+      book.value = EMPTY_INVOICE_BOOK
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { load, book, loading, error }
+}
+
+/** `commons.banking.invoice_payments.create_invoice_payments`. */
+export function useCreateInvoicePayments() {
+  return useCall<
+    { transaction: string; status: string; unallocated_amount: number; payment_entries: string[]; draft?: boolean },
+    {
+      bank_transaction: string
+      payments: { invoice: string; amount: number }[]
+      reference_number: string
+      /** Insert the payment entries as drafts: not submitted, not matched. */
+      draft?: boolean
+    }
+  >({ url: `${INVOICE_PAYMENTS}.create_invoice_payments`, method: 'POST', immediate: false })
 }
 
 /* Accounting dimensions ---------------------------------------------------- */

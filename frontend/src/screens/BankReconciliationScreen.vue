@@ -128,6 +128,11 @@
 					class="mt-4"
 				/>
 				<ErrorMessage
+					v-if="invoiceBook.error.value"
+					:message="`Sales invoices could not be read, so there are no invoice suggestions: ${invoiceBook.error.value.message}`"
+					class="mt-4"
+				/>
+				<ErrorMessage
 					v-if="loanBook.error.value"
 					:message="`Loans could not be read, so there are no suggestions: ${loanBook.error.value.message}`"
 					class="mt-4"
@@ -151,8 +156,8 @@
 					/>
 					<p class="mt-2 text-p-xs text-ink-gray-5">
 						Drag a line onto its entry, or an entry onto its line, to match them. Click
-						a statement line for everything else: a loan repayment, a new payment or
-						journal entry.
+						a statement line for everything else: a loan repayment, an invoice payment,
+						a new payment or journal entry.
 					</p>
 				</template>
 
@@ -203,6 +208,9 @@
 			:book="loanBook.book.value"
 			:suggestions="currentSuggestions"
 			:lending="reconciliationCan.repayLoans"
+			:invoice-book="invoiceBook.book.value"
+			:invoice-suggestions="currentInvoiceSuggestions"
+			:invoicing="reconciliationCan.payInvoices"
 			:names="loanBook.book.value.names"
 			:position="position"
 			:has-previous="stepTarget(-1) !== null"
@@ -252,6 +260,7 @@ import {
 	reconciliationGate,
 	useAutoReconcile,
 	useBankAccounts,
+	useInvoiceBook,
 	useLoanBook,
 	usePeriodBalances,
 	useProgress,
@@ -271,6 +280,7 @@ import {
 	type Suggestion,
 	type TransactionRow,
 } from '@/data/reconciliationRules'
+import { suggestInvoices, type InvoiceSuggestion } from '@/data/invoiceMatching'
 
 /**
  * Bank reconciliation: one bank account's statement for a period, and a
@@ -318,6 +328,7 @@ const periodBalances = usePeriodBalances()
 const unmatched = useUnmatchedEntries()
 const draftData = useDraftEntries()
 const loanBook = useLoanBook()
+const invoiceBook = useInvoiceBook()
 const auto = useAutoReconcile()
 
 const canReconcileResolved = reconciliationGate.resolved
@@ -481,11 +492,17 @@ const importedTo = computed(() => {
 	}`
 })
 
-// The loan book belongs to the account's company, not to the period.
+// The loan and invoice books belong to the account's company, not to the period.
 watch(
 	() => [account.value?.name, reconciliationCan.value.repayLoans],
 	() => {
 		if (reconciliationCan.value.repayLoans) loanBook.load(account.value)
+	}
+)
+watch(
+	() => [account.value?.name, reconciliationCan.value.payInvoices],
+	() => {
+		if (reconciliationCan.value.payInvoices) invoiceBook.load(account.value)
 	}
 )
 
@@ -502,6 +519,7 @@ function reload() {
 	loadLines()
 	loadProgress()
 	if (reconciliationCan.value.repayLoans) loanBook.load(account.value)
+	if (reconciliationCan.value.payInvoices) invoiceBook.load(account.value)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -558,6 +576,20 @@ const suggestions = computed<Record<string, Suggestion[]>>(() => {
 	return out
 })
 
+/** The same for invoices: each open deposit's likely invoices. */
+const invoiceSuggestions = computed<Record<string, InvoiceSuggestion[]>>(() => {
+	if (!reconciliationCan.value.payInvoices) return {}
+	const { invoices, history, rules } = invoiceBook.book.value
+	if (!invoices.length) return {}
+	const out: Record<string, InvoiceSuggestion[]> = {}
+	for (const row of transactions.rows.value) {
+		if (row.deposit > 0 && row.unallocated_amount > 0.005) {
+			out[row.name] = suggestInvoices(row, invoices, history, rules)
+		}
+	}
+	return out
+})
+
 const hints = computed<Record<string, RowHint>>(() => {
 	const { loans, names } = loanBook.book.value
 	const applicantOf = new Map(loans.map((loan) => [loan.name, loan.applicant]))
@@ -571,6 +603,23 @@ const hints = computed<Record<string, RowHint>>(() => {
 				found.length > 1 ? ` (+${found.length - 1})` : ''
 			}`,
 			reasons: best.reasons,
+			strong: best.strong,
+		}
+	}
+	// A strong invoice beats a weak loan; otherwise the loan hint stands.
+	const invoiceOf = new Map(
+		invoiceBook.book.value.invoices.map((invoice) => [invoice.name, invoice])
+	)
+	for (const [line, found] of Object.entries(invoiceSuggestions.value)) {
+		const best = found[0]
+		if (!best || (out[line] && (out[line].strong || !best.strong))) continue
+		const invoice = invoiceOf.get(best.invoice)
+		out[line] = {
+			label: `${best.strong ? 'Likely' : 'Maybe'} ${
+				invoice?.customer_name || invoice?.customer || best.invoice
+			}${found.length > 1 ? ` (+${found.length - 1})` : ''}`,
+			reasons: [best.invoice, ...best.reasons],
+			strong: best.strong,
 		}
 	}
 	return out
@@ -587,6 +636,7 @@ const current = computed(
 	() => transactions.rows.value.find((row) => row.name === currentName.value) ?? null
 )
 const currentSuggestions = computed(() => suggestions.value[currentName.value] ?? [])
+const currentInvoiceSuggestions = computed(() => invoiceSuggestions.value[currentName.value] ?? [])
 
 /**
  * The lines the dialog steps through: the ones on screen, frozen when the
@@ -627,6 +677,7 @@ function onDone(name: string, unallocated: number) {
 	// amounts, uncleared repayments), have moved too. Neither is waited for.
 	loadProgress()
 	if (reconciliationCan.value.repayLoans) loanBook.load(account.value)
+	if (reconciliationCan.value.payInvoices) invoiceBook.load(account.value)
 	dialogOpen.value = false
 }
 

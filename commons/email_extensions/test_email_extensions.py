@@ -84,6 +84,105 @@ class TestRecipients(TestCase):
 		self.assertEqual(self.recipients(Record("Fees"), None, {}), [])
 
 
+class TestStandsFor(TestCase):
+	"""A Customer Education made for a Student is written to at the student's address."""
+
+	def address_of(self, doctype, name, own, students):
+		meta = SimpleNamespace(has_field=lambda fieldname: fieldname == "customer")
+		with (
+			patch.object(api, "_own_address", side_effect=lambda dt, nm: own.get((dt, nm), [])),
+			patch.object(api.frappe, "db", SimpleNamespace(exists=lambda *a, **k: True)),
+			patch.object(api.frappe, "get_meta", return_value=meta),
+			patch.object(api.frappe, "get_all", return_value=students) as get_all,
+		):
+			return api.address_of(doctype, name), get_all
+
+	def test_a_customer_without_an_address_is_written_to_at_its_students(self):
+		found, get_all = self.address_of(
+			"Customer",
+			"Srizu Bajracharya",
+			own={("Student", "srizu@example.org"): ["srizu@example.org"]},
+			students=["srizu@example.org"],
+		)
+		self.assertEqual(found, ["srizu@example.org"])
+		self.assertEqual(get_all.call_args.kwargs["filters"], {"customer": "Srizu Bajracharya"})
+
+	def test_a_customer_with_its_own_address_keeps_it(self):
+		found, get_all = self.address_of(
+			"Customer", "Acme", own={("Customer", "Acme"): ["accounts@example.org"]}, students=[]
+		)
+		self.assertEqual(found, ["accounts@example.org"])
+		get_all.assert_not_called()
+
+	def test_a_customer_shared_by_two_students_is_not_guessed_at(self):
+		found, _ = self.address_of(
+			"Customer",
+			"Rai family",
+			own={
+				("Student", "a@example.org"): ["a@example.org"],
+				("Student", "b@example.org"): ["b@example.org"],
+			},
+			students=["a@example.org", "b@example.org"],
+		)
+		self.assertEqual(found, [])
+
+	def test_other_doctypes_stand_for_no_one(self):
+		found, get_all = self.address_of("Supplier", "Acme", own={}, students=["x@example.org"])
+		self.assertEqual(found, [])
+		get_all.assert_not_called()
+
+
+class TestNotificationRecipients(TestCase):
+	"""A Notification's document-field recipient is followed through a link, as the Email menu follows it."""
+
+	def recipients(self, rows, core=(), linked=None):
+		from commons.email_extensions import notification
+
+		class Core:
+			def get_list_of_recipients(self, doc, context):
+				return list(core), [], []
+
+		class Notification(notification.TemplateNotificationMixin, Core):
+			recipients = rows
+
+		linked = linked or {}
+		with patch.object(api, "recipients", side_effect=lambda doc, field: linked.get(field, [])):
+			return Notification().get_list_of_recipients(Record("Payment Entry"), {})[0]
+
+	def row(self, field, condition=None):
+		return SimpleNamespace(receiver_by_document_field=field, condition=condition)
+
+	def test_a_party_link_reaches_the_partys_address(self):
+		self.assertEqual(
+			self.recipients([self.row("party")], linked={"party": ["s@example.org"]}), ["s@example.org"]
+		)
+
+	def test_core_addresses_are_kept_and_not_repeated(self):
+		self.assertEqual(
+			self.recipients(
+				[self.row("contact_email"), self.row("party")],
+				core=["s@example.org"],
+				linked={"contact_email": ["s@example.org"], "party": ["s@example.org"]},
+			),
+			["s@example.org"],
+		)
+
+	def test_a_child_table_field_is_left_to_core(self):
+		self.assertEqual(
+			self.recipients([self.row("email,references")], linked={"email,references": ["x@example.org"]}),
+			[],
+		)
+
+	def test_a_row_whose_condition_fails_adds_no_one(self):
+		from commons.email_extensions import notification
+
+		with patch.object(notification.frappe, "safe_eval", return_value=False):
+			self.assertEqual(
+				self.recipients([self.row("party", condition="False")], linked={"party": ["s@example.org"]}),
+				[],
+			)
+
+
 class TestAddressesIn(TestCase):
 	def test_invalid_parts_are_dropped(self):
 		self.assertEqual(api.addresses_in("a@example.org; not an address"), ["a@example.org"])
